@@ -1,19 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import React, {
   useCallback,
   useMemo,
@@ -57,7 +41,31 @@ import {
 import { MOOD_EMOJIS } from './trackerConstants';
 import { isFieldVisible } from '../../utils/form';
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA DS
+   ═══════════════════════════════════════════════════════════════════════════ */
 
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Constants / helpers (unchanged)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const TRACKER_DEFAULTS: Record<string, Record<string, unknown>> = {
   mood: { mood: 3 },
@@ -73,7 +81,7 @@ const TRACKER_DEFAULTS: Record<string, Record<string, unknown>> = {
   water: { vessel: 'sippy' },
   vitamin: { given: true },
   screen_time: { device: 'tv' },
-  bedtime: { routineDuration: 1800 }, 
+  bedtime: { routineDuration: 1800 },
   play: { engagement: 3 },
   tummy_time: { tolerance: 3 },
   reading: { engagement: 3 },
@@ -108,10 +116,7 @@ const TREND_ICONS = {
   same: 'remove-outline',
 };
 
-
-const MAX_FUTURE_MS = 5 * 60 * 1000; 
-
-
+const MAX_FUTURE_MS = 5 * 60 * 1000;
 
 const GROWTH_BOUNDS = {
   weight: (ageMonths: number): { min: number; max: number } => {
@@ -148,7 +153,6 @@ const validateGrowthValue = (
   const type = measurementType?.toLowerCase();
   if (!['weight', 'height', 'head'].includes(type)) return null;
 
-  
   let normalizedValue = value;
   if (type === 'weight' && unit === 'lb') normalizedValue = value * 0.453592;
   else if (type === 'weight' && unit === 'oz') normalizedValue = value * 0.0283495;
@@ -172,7 +176,6 @@ const isFutureTimestamp = (value: unknown): boolean => {
   return d.getTime() - Date.now() > MAX_FUTURE_MS;
 };
 
-
 const formatDurationSeconds = (seconds: number): string => {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0m';
   const mins = Math.floor(seconds / 60);
@@ -183,6 +186,9 @@ const formatDurationSeconds = (seconds: number): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   StreakBadge (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const StreakBadge: React.FC<{
   streak: TrackerProgressiveState['streak'];
@@ -191,6 +197,7 @@ const StreakBadge: React.FC<{
   if (!streak || streak.currentStreak === 0) return null;
 
   const isAtRisk = streak.isAtRisk;
+  const tint = isAtRisk ? AURA.danger : color;
 
   return (
     <Animated.View
@@ -198,17 +205,17 @@ const StreakBadge: React.FC<{
       style={[
         styles.streakBadge,
         {
-          backgroundColor: isAtRisk ? '#FF6B6B20' : `${color}15`,
-          borderColor: isAtRisk ? '#FF6B6B' : color,
+          backgroundColor: `${tint}15`,
+          borderColor: `${tint}55`,
         },
       ]}
     >
       <Ionicons
         name={isAtRisk ? 'flame-outline' : 'flame'}
         size={16}
-        color={isAtRisk ? '#FF6B6B' : color}
+        color={tint}
       />
-      <Text style={[styles.streakText, { color: isAtRisk ? '#FF6B6B' : color }]}>
+      <Text style={[styles.streakText, { color: tint }]}>
         {streak.currentStreak} day{streak.currentStreak !== 1 ? 's' : ''}
         {isAtRisk ? ' (log soon!)' : ''}
       </Text>
@@ -216,7 +223,10 @@ const StreakBadge: React.FC<{
   );
 };
 
-// ─── Time context badge ────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   Time context badge (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const TimeContextBadge: React.FC<{
   timeContext: TrackerProgressiveState['timeContext'] | undefined;
   color: string;
@@ -236,7 +246,10 @@ const TimeContextBadge: React.FC<{
   );
 };
 
-// ─── Shared field wrapper ──────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   Shared field label (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const FieldLabel: React.FC<{
   label: string;
   required?: boolean;
@@ -262,12 +275,7 @@ const FieldLabel: React.FC<{
       >
         {label}
         {required && (
-          <Text
-            style={[styles.required, { color: colors.error || '#ef4444' }]}
-          >
-            {' '}
-            *
-          </Text>
+          <Text style={[styles.required, { color: AURA.danger }]}> *</Text>
         )}
       </Text>
       {hint ? (
@@ -285,7 +293,10 @@ const FieldLabel: React.FC<{
   </View>
 );
 
-// ─── Smart Multi-Select Field ──────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartMultiSelectField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const SmartMultiSelectField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -355,12 +366,9 @@ const SmartMultiSelectField: React.FC<{
         rightAccessory={
           selected.length > 0 ? (
             <View
-              style={[
-                styles.countBadge,
-                { backgroundColor: `${tracker.color}15` },
-              ]}
+              style={[styles.countBadge, { backgroundColor: `${AURA.primary}15` }]}
             >
-              <Text style={[styles.countText, { color: tracker.color }]}>
+              <Text style={[styles.countText, { color: AURA.primary }]}>
                 {selected.length} selected
               </Text>
             </View>
@@ -376,15 +384,13 @@ const SmartMultiSelectField: React.FC<{
               style={[
                 styles.suggestionChip,
                 {
-                  backgroundColor: `${tracker.color}15`,
+                  backgroundColor: `${AURA.warning}15`,
                   borderRadius: borderRadiusValue / 2,
                 },
               ]}
             >
               <Text style={styles.suggestionChipEmoji}>✨</Text>
-              <Text
-                style={[styles.suggestionChipText, { color: tracker.color }]}
-              >
+              <Text style={[styles.suggestionChipText, { color: AURA.warning }]}>
                 Suggest ({suggestionArray.join(', ')})
               </Text>
             </TouchableOpacity>
@@ -400,17 +406,8 @@ const SmartMultiSelectField: React.FC<{
                 },
               ]}
             >
-              <Ionicons
-                name="time-outline"
-                size={12}
-                color={colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.suggestionChipText,
-                  { color: colors.textSecondary },
-                ]}
-              >
+              <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
+              <Text style={[styles.suggestionChipText, { color: colors.textSecondary }]}>
                 Yesterday ({yesterdayArray.join(', ')})
               </Text>
             </TouchableOpacity>
@@ -431,14 +428,14 @@ const SmartMultiSelectField: React.FC<{
                 styles.optionChip,
                 {
                   backgroundColor: isSelected
-                    ? `${tracker.color}20`
+                    ? `${AURA.primary}20`
                     : isSuggested
-                    ? `${tracker.color}08`
+                    ? `${AURA.warning}10`
                     : colors.surface,
                   borderColor: isSelected
-                    ? tracker.color
+                    ? AURA.primary
                     : isSuggested
-                    ? `${tracker.color}50`
+                    ? AURA.warning
                     : colors.border,
                   borderRadius: borderRadiusValue,
                   borderWidth: isSuggested ? 2 : 1.5,
@@ -455,43 +452,36 @@ const SmartMultiSelectField: React.FC<{
                   styles.optionLabel,
                   {
                     color: isSelected
-                      ? tracker.color
+                      ? AURA.primary
                       : isSuggested
-                      ? tracker.color
+                      ? AURA.warning
                       : colors.textSecondary,
                   },
-                  isSelected && { fontWeight: '600' },
+                  isSelected && { fontWeight: '700' },
                 ]}
               >
                 {option.label}
               </Text>
               {isSelected && (
-                <Ionicons
-                  name="checkmark-circle"
-                  size={16}
-                  color={tracker.color}
-                />
+                <Ionicons name="checkmark-circle" size={16} color={AURA.primary} />
               )}
               {isSuggested && !isSelected && (
-                <Text
-                  style={[styles.suggestIndicator, { color: tracker.color }]}
-                >
-                  ✨
-                </Text>
+                <Text style={[styles.suggestIndicator, { color: AURA.warning }]}>✨</Text>
               )}
             </TouchableOpacity>
           );
         })}
       </View>
       {error && (
-        <Text style={[styles.errorText, { color: colors.error }]}>
-          {error}
-        </Text>
+        <Text style={[styles.errorText, { color: AURA.danger }]}>{error}</Text>
       )}
     </View>
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartSelectField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartSelectField: React.FC<{
   field: FieldConfig;
@@ -547,19 +537,14 @@ const SmartSelectField: React.FC<{
             <TouchableOpacity
               style={[
                 styles.suggestionChip,
-                {
-                  backgroundColor: `${tracker.color}15`,
-                  borderRadius: borderRadiusValue / 2,
-                },
+                { backgroundColor: `${AURA.warning}15`, borderRadius: borderRadiusValue / 2 },
               ]}
               onPress={() => onChange(suggestion!.value)}
             >
               <Text style={styles.suggestionChipEmoji}>✨</Text>
-              <Text
-                style={[styles.suggestionChipText, { color: tracker.color }]}
-              >
-                {field.options?.find((o) => o.id === suggestion!.value)
-                  ?.label || String(suggestion!.value)}{' '}
+              <Text style={[styles.suggestionChipText, { color: AURA.warning }]}>
+                {field.options?.find((o) => o.id === suggestion!.value)?.label ||
+                  String(suggestion!.value)}{' '}
                 ({suggestion!.confidence}%)
               </Text>
             </TouchableOpacity>
@@ -568,26 +553,13 @@ const SmartSelectField: React.FC<{
             <TouchableOpacity
               style={[
                 styles.suggestionChip,
-                {
-                  backgroundColor: `${colors.textSecondary}15`,
-                  borderRadius: borderRadiusValue / 2,
-                },
+                { backgroundColor: `${colors.textSecondary}15`, borderRadius: borderRadiusValue / 2 },
               ]}
               onPress={() => onChange(yesterdayValue)}
             >
-              <Ionicons
-                name="time-outline"
-                size={12}
-                color={colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.suggestionChipText,
-                  { color: colors.textSecondary },
-                ]}
-              >
-                Yesterday:{' '}
-                {field.options?.find((o) => o.id === yesterdayValue)?.label}
+              <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
+              <Text style={[styles.suggestionChipText, { color: colors.textSecondary }]}>
+                Yesterday: {field.options?.find((o) => o.id === yesterdayValue)?.label}
               </Text>
             </TouchableOpacity>
           )}
@@ -597,8 +569,7 @@ const SmartSelectField: React.FC<{
       <View style={styles.optionsRow}>
         {field.options?.map((option: FieldOption) => {
           const isSelected = value === option.id;
-          const isSuggested =
-            hasSuggestion && suggestion?.value === option.id;
+          const isSuggested = hasSuggestion && suggestion?.value === option.id;
 
           return (
             <TouchableOpacity
@@ -608,14 +579,14 @@ const SmartSelectField: React.FC<{
                 styles.optionChip,
                 {
                   backgroundColor: isSelected
-                    ? `${tracker.color}20`
+                    ? `${AURA.primary}20`
                     : isSuggested
-                    ? `${tracker.color}08`
+                    ? `${AURA.warning}10`
                     : colors.surface,
                   borderColor: isSelected
-                    ? tracker.color
+                    ? AURA.primary
                     : isSuggested
-                    ? `${tracker.color}50`
+                    ? AURA.warning
                     : colors.border,
                   borderRadius: borderRadiusValue,
                   borderWidth: isSuggested ? 2 : 1.5,
@@ -624,45 +595,40 @@ const SmartSelectField: React.FC<{
               ]}
               onPress={() => onChange(option.id)}
             >
-              {option.emoji && (
-                <Text style={styles.optionEmoji}>{option.emoji}</Text>
-              )}
+              {option.emoji && <Text style={styles.optionEmoji}>{option.emoji}</Text>}
               <Text
                 style={[
                   styles.optionLabel,
                   {
                     color: isSelected
-                      ? tracker.color
+                      ? AURA.primary
                       : isSuggested
-                      ? tracker.color
+                      ? AURA.warning
                       : colors.textSecondary,
                   },
-                  isSelected && { fontWeight: '600' },
+                  isSelected && { fontWeight: '700' },
                 ]}
               >
                 {option.label}
               </Text>
               {isSuggested && !isSelected && (
-                <Text
-                  style={[styles.suggestIndicator, { color: tracker.color }]}
-                >
-                  ✨
-                </Text>
+                <Text style={[styles.suggestIndicator, { color: AURA.warning }]}>✨</Text>
               )}
             </TouchableOpacity>
           );
         })}
       </View>
       {error && (
-        <Text style={[styles.errorText, { color: colors.error }]}>
-          {error}
-        </Text>
+        <Text style={[styles.errorText, { color: AURA.danger }]}>{error}</Text>
       )}
     </View>
   );
 };
 
-// ─── Smart Text Field ──────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartTextField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const SmartTextField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -697,9 +663,7 @@ const SmartTextField: React.FC<{
     suggestion.value !== '';
 
   const hasYesterday =
-    !hasSuggestion &&
-    yesterdayValue !== undefined &&
-    yesterdayValue !== '';
+    !hasSuggestion && yesterdayValue !== undefined && yesterdayValue !== '';
 
   return (
     <View style={styles.fieldContainer}>
@@ -715,19 +679,12 @@ const SmartTextField: React.FC<{
               <Ionicons
                 name={TREND_ICONS[trend.direction]}
                 size={14}
-                color={
-                  trend.direction === 'up' ? colors.success : colors.error
-                }
+                color={trend.direction === 'up' ? AURA.success : AURA.danger}
               />
               <Text
                 style={[
                   styles.trendText,
-                  {
-                    color:
-                      trend.direction === 'up'
-                        ? colors.success
-                        : colors.error,
-                  },
+                  { color: trend.direction === 'up' ? AURA.success : AURA.danger },
                 ]}
               >
                 {trend.deltaLabel}
@@ -743,15 +700,15 @@ const SmartTextField: React.FC<{
           styles.input,
           {
             borderColor: error
-              ? colors.error
+              ? AURA.danger
               : hasSuggestion
-              ? tracker.color
+              ? AURA.warning
               : colors.border,
             borderRadius: borderRadiusValue,
             backgroundColor: error
-              ? `${colors.error}10`
+              ? `${AURA.danger}10`
               : hasSuggestion
-              ? `${tracker.color}05`
+              ? `${AURA.warning}06`
               : colors.surface,
             color: colors.text,
             fontSize: 16 * fontSizeMultiplier,
@@ -760,21 +717,15 @@ const SmartTextField: React.FC<{
         ]}
         placeholder={
           field.placeholder ||
-          (hasSuggestion
-            ? `${suggestion!.emoji} ${String(suggestion!.value)}`
-            : '')
+          (hasSuggestion ? `${suggestion!.emoji} ${String(suggestion!.value)}` : '')
         }
-        placeholderTextColor={
-          hasSuggestion ? tracker.color : colors.textSecondary
-        }
+        placeholderTextColor={hasSuggestion ? AURA.warning : colors.textSecondary}
         value={String(value || '')}
         onChangeText={(text) => onChange(text)}
       />
 
       {field.unit && (
-        <Text style={[styles.unit, { color: colors.textSecondary }]}>
-          {field.unit}
-        </Text>
+        <Text style={[styles.unit, { color: colors.textSecondary }]}>{field.unit}</Text>
       )}
 
       {(hasSuggestion || hasYesterday) && editable && (
@@ -784,18 +735,11 @@ const SmartTextField: React.FC<{
               onPress={() => onChange(suggestion!.value)}
               style={[
                 styles.suggestionChip,
-                {
-                  backgroundColor: `${tracker.color}15`,
-                  borderRadius: borderRadiusValue / 2,
-                },
+                { backgroundColor: `${AURA.warning}15`, borderRadius: borderRadiusValue / 2 },
               ]}
             >
-              <Text style={styles.suggestionChipEmoji}>
-                {suggestion!.emoji}
-              </Text>
-              <Text
-                style={[styles.suggestionChipText, { color: tracker.color }]}
-              >
+              <Text style={styles.suggestionChipEmoji}>{suggestion!.emoji}</Text>
+              <Text style={[styles.suggestionChipText, { color: AURA.warning }]}>
                 {suggestion!.label} ({suggestion!.confidence}%)
               </Text>
             </TouchableOpacity>
@@ -805,23 +749,11 @@ const SmartTextField: React.FC<{
               onPress={() => onChange(yesterdayValue)}
               style={[
                 styles.suggestionChip,
-                {
-                  backgroundColor: `${colors.textSecondary}15`,
-                  borderRadius: borderRadiusValue / 2,
-                },
+                { backgroundColor: `${colors.textSecondary}15`, borderRadius: borderRadiusValue / 2 },
               ]}
             >
-              <Ionicons
-                name="time-outline"
-                size={12}
-                color={colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.suggestionChipText,
-                  { color: colors.textSecondary },
-                ]}
-              >
+              <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
+              <Text style={[styles.suggestionChipText, { color: colors.textSecondary }]}>
                 Yesterday: {String(yesterdayValue).slice(0, 20)}
               </Text>
             </TouchableOpacity>
@@ -830,14 +762,15 @@ const SmartTextField: React.FC<{
       )}
 
       {error && (
-        <Text style={[styles.errorText, { color: colors.error }]}>
-          {error}
-        </Text>
+        <Text style={[styles.errorText, { color: AURA.danger }]}>{error}</Text>
       )}
     </View>
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartNumberField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartNumberField: React.FC<{
   field: FieldConfig;
@@ -874,11 +807,7 @@ const SmartNumberField: React.FC<{
     const isValid = (n: number) => Number.isFinite(n) && n > 0 && n < 10000;
     const seenValues = new Set<number>();
 
-    if (
-      suggestion !== undefined &&
-      suggestion.confidence >= 70 &&
-      isValid(suggNum)
-    ) {
+    if (suggestion !== undefined && suggestion.confidence >= 70 && isValid(suggNum)) {
       values.push({ label: 'Suggested', value: suggNum, emoji: '✨' });
       seenValues.add(suggNum);
     }
@@ -892,11 +821,7 @@ const SmartNumberField: React.FC<{
       const quarterDown = Math.round(yestNum * 0.75);
       const quarterUp = Math.round(yestNum * 1.25);
 
-      if (
-        values.length < 4 &&
-        quarterDown > 0 &&
-        !seenValues.has(quarterDown)
-      ) {
+      if (values.length < 4 && quarterDown > 0 && !seenValues.has(quarterDown)) {
         values.push({ label: '−25%', value: quarterDown });
         seenValues.add(quarterDown);
       }
@@ -915,10 +840,10 @@ const SmartNumberField: React.FC<{
     suggestion.value !== undefined &&
     suggestion.value !== '';
 
-  
-  const step = Number.isFinite(field.step as any) && Number(field.step) > 0
-    ? Number(field.step)
-    : 1;
+  const step =
+    Number.isFinite(field.step as any) && Number(field.step) > 0
+      ? Number(field.step)
+      : 1;
   const decimalPlaces = step < 1 ? String(step).split('.')[1]?.length ?? 0 : 0;
 
   return (
@@ -935,19 +860,12 @@ const SmartNumberField: React.FC<{
               <Ionicons
                 name={TREND_ICONS[trend.direction]}
                 size={14}
-                color={
-                  trend.direction === 'up' ? colors.success : colors.error
-                }
+                color={trend.direction === 'up' ? AURA.success : AURA.danger}
               />
               <Text
                 style={[
                   styles.trendText,
-                  {
-                    color:
-                      trend.direction === 'up'
-                        ? colors.success
-                        : colors.error,
-                  },
+                  { color: trend.direction === 'up' ? AURA.success : AURA.danger },
                 ]}
               >
                 {trend.deltaLabel}
@@ -962,12 +880,12 @@ const SmartNumberField: React.FC<{
           styles.numberRow,
           {
             borderColor: error
-              ? colors.error
+              ? AURA.danger
               : hasSuggestion
-              ? tracker.color
+              ? AURA.warning
               : colors.border,
             borderRadius: borderRadiusValue,
-            backgroundColor: error ? `${colors.error}10` : colors.surface,
+            backgroundColor: error ? `${AURA.danger}10` : colors.surface,
             opacity: !editable ? 0.7 : 1,
           },
         ]}
@@ -981,13 +899,9 @@ const SmartNumberField: React.FC<{
           keyboardType="numeric"
           placeholder={
             field.placeholder ||
-            (hasSuggestion
-              ? `${suggestion!.emoji} ${String(suggestion!.value)}`
-              : '0')
+            (hasSuggestion ? `${suggestion!.emoji} ${String(suggestion!.value)}` : '0')
           }
-          placeholderTextColor={
-            hasSuggestion ? tracker.color : colors.textSecondary
-          }
+          placeholderTextColor={hasSuggestion ? AURA.warning : colors.textSecondary}
           value={String(value ?? '')}
           onChangeText={(text) => {
             if (text === '') {
@@ -1021,21 +935,14 @@ const SmartNumberField: React.FC<{
               key={`${qv.label}-${i}`}
               style={[
                 styles.quickValueChip,
-                {
-                  backgroundColor: `${tracker.color}10`,
-                  borderRadius: borderRadiusValue / 2,
-                },
+                { backgroundColor: `${AURA.primary}10`, borderRadius: borderRadiusValue / 2 },
               ]}
               onPress={() => onChange(qv.value)}
             >
-              <Text
-                style={[styles.quickValueText, { color: tracker.color }]}
-              >
+              <Text style={[styles.quickValueText, { color: AURA.primary }]}>
                 {qv.label}
               </Text>
-              <Text
-                style={[styles.quickValueNum, { color: tracker.color }]}
-              >
+              <Text style={[styles.quickValueNum, { color: AURA.primary }]}>
                 {qv.value}
               </Text>
             </TouchableOpacity>
@@ -1044,14 +951,15 @@ const SmartNumberField: React.FC<{
       )}
 
       {error && (
-        <Text style={[styles.errorText, { color: colors.error }]}>
-          {error}
-        </Text>
+        <Text style={[styles.errorText, { color: AURA.danger }]}>{error}</Text>
       )}
     </View>
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartDurationField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartDurationField: React.FC<{
   field: FieldConfig;
@@ -1113,7 +1021,6 @@ const SmartDurationField: React.FC<{
       ? Number(yesterdayValue)
       : null;
 
-  
   const supportsOngoing = [
     'sleep',
     'feed',
@@ -1135,39 +1042,13 @@ const SmartDurationField: React.FC<{
         fontSizeMultiplier={fontSizeMultiplier}
         rightAccessory={
           isTimerRunning ? (
-            <View
-              style={[
-                styles.recordingBadge,
-                { backgroundColor: `${tracker.color}20` },
-              ]}
-            >
-              <View
-                style={[
-                  styles.recordingDot,
-                  { backgroundColor: tracker.color },
-                ]}
-              />
-              <Text
-                style={[styles.recordingText, { color: tracker.color }]}
-              >
-                Recording
-              </Text>
+            <View style={[styles.recordingBadge, { backgroundColor: `${AURA.danger}15` }]}>
+              <View style={[styles.recordingDot, { backgroundColor: AURA.danger }]} />
+              <Text style={[styles.recordingText, { color: AURA.danger }]}>Recording</Text>
             </View>
           ) : supportsOngoing && seconds === 0 ? (
-            <View
-              style={[
-                styles.recordingBadge,
-                { backgroundColor: `${colors.textSecondary}15` },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.recordingText,
-                  { color: colors.textSecondary },
-                ]}
-              >
-                Optional
-              </Text>
+            <View style={[styles.recordingBadge, { backgroundColor: `${colors.textSecondary}15` }]}>
+              <Text style={[styles.recordingText, { color: colors.textSecondary }]}>Optional</Text>
             </View>
           ) : null
         }
@@ -1182,7 +1063,7 @@ const SmartDurationField: React.FC<{
           ]}
           onPress={() => onChange(Math.max(0, seconds - 60))}
         >
-          <Ionicons name="remove" size={20} color={tracker.color} />
+          <Ionicons name="remove" size={20} color={AURA.primary} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1190,11 +1071,11 @@ const SmartDurationField: React.FC<{
           style={[
             styles.timerToggle,
             {
-              backgroundColor: isTimerRunning
-                ? `${tracker.color}20`
-                : colors.surface,
+              backgroundColor: isTimerRunning ? `${AURA.primary}15` : colors.surface,
               borderRadius: borderRadiusValue,
               opacity: !editable ? 0.7 : 1,
+              borderColor: isTimerRunning ? AURA.primary : colors.border,
+              borderWidth: 1.5,
             },
           ]}
           onPress={() => setIsTimerRunning(!isTimerRunning)}
@@ -1202,7 +1083,7 @@ const SmartDurationField: React.FC<{
           <Ionicons
             name={isTimerRunning ? 'pause' : 'play'}
             size={24}
-            color={tracker.color}
+            color={AURA.primary}
           />
           <Text
             style={[
@@ -1222,7 +1103,7 @@ const SmartDurationField: React.FC<{
           ]}
           onPress={() => onChange(seconds + 60)}
         >
-          <Ionicons name="add" size={20} color={tracker.color} />
+          <Ionicons name="add" size={20} color={AURA.primary} />
         </TouchableOpacity>
       </View>
 
@@ -1241,9 +1122,7 @@ const SmartDurationField: React.FC<{
             ]}
             onPress={() => onChange(mins * 60)}
           >
-            <Text
-              style={[styles.presetText, { color: colors.textSecondary }]}
-            >
+            <Text style={[styles.presetText, { color: colors.textSecondary }]}>
               {mins}m
             </Text>
           </TouchableOpacity>
@@ -1252,15 +1131,12 @@ const SmartDurationField: React.FC<{
           <TouchableOpacity
             style={[
               styles.presetChip,
-              {
-                backgroundColor: `${tracker.color}15`,
-                borderRadius: borderRadiusValue / 2,
-              },
+              { backgroundColor: `${AURA.warning}15`, borderRadius: borderRadiusValue / 2 },
             ]}
             onPress={() => onChange(suggestedDuration)}
           >
             <Text style={styles.suggestionChipEmoji}>✨</Text>
-            <Text style={[styles.presetText, { color: tracker.color }]}>
+            <Text style={[styles.presetText, { color: AURA.warning }]}>
               {formatDurationSeconds(suggestedDuration!)}
             </Text>
           </TouchableOpacity>
@@ -1272,15 +1148,12 @@ const SmartDurationField: React.FC<{
             <TouchableOpacity
               style={[
                 styles.presetChip,
-                {
-                  backgroundColor: `${tracker.color}15`,
-                  borderRadius: borderRadiusValue / 2,
-                },
+                { backgroundColor: `${AURA.primary}15`, borderRadius: borderRadiusValue / 2 },
               ]}
               onPress={() => onChange(yesterdayDuration)}
             >
-              <Ionicons name="time-outline" size={12} color={tracker.color} />
-              <Text style={[styles.presetText, { color: tracker.color }]}>
+              <Ionicons name="time-outline" size={12} color={AURA.primary} />
+              <Text style={[styles.presetText, { color: AURA.primary }]}>
                 Yesterday ({formatDurationSeconds(yesterdayDuration!)})
               </Text>
             </TouchableOpacity>
@@ -1290,7 +1163,10 @@ const SmartDurationField: React.FC<{
   );
 };
 
-// ─── Smart Mood Field ──────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartMoodField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const SmartMoodField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -1331,13 +1207,7 @@ const SmartMoodField: React.FC<{
         fontSizeMultiplier={fontSizeMultiplier}
       />
       {yesterdayMood && (
-        <Text
-          style={{
-            color: colors.textSecondary,
-            fontSize: 12,
-            marginBottom: 6,
-          }}
-        >
+        <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 6 }}>
           Yesterday: {MOOD_EMOJIS[yesterdayMood - 1]}
         </Text>
       )}
@@ -1355,13 +1225,13 @@ const SmartMoodField: React.FC<{
               style={[
                 styles.moodBtn,
                 isSelected && {
-                  backgroundColor: `${tracker.color}15`,
+                  backgroundColor: `${AURA.primary}15`,
                   transform: [{ scale: 1.15 }],
                 },
                 isSuggested &&
                   !isSelected && {
                     borderWidth: 2,
-                    borderColor: tracker.color,
+                    borderColor: AURA.warning,
                   },
                 wasYesterday &&
                   !isSelected &&
@@ -1374,21 +1244,11 @@ const SmartMoodField: React.FC<{
               ]}
               onPress={() => onChange(moodValue)}
             >
-              <Text
-                style={[
-                  styles.moodEmoji,
-                  isSelected && { fontSize: 40 },
-                ]}
-              >
+              <Text style={[styles.moodEmoji, isSelected && { fontSize: 40 }]}>
                 {emoji}
               </Text>
               {isSuggested && !isSelected && (
-                <View
-                  style={[
-                    styles.suggestIndicatorBadge,
-                    { backgroundColor: tracker.color },
-                  ]}
-                >
+                <View style={[styles.suggestIndicatorBadge, { backgroundColor: AURA.warning }]}>
                   <Text style={styles.suggestIndicatorText}>✨</Text>
                 </View>
               )}
@@ -1400,6 +1260,9 @@ const SmartMoodField: React.FC<{
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartPainScaleField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const PAIN_EMOJIS = ['😊', '🙂', '😐', '😕', '😣', '😖', '😫', '😭', '😱', '🆘', '🚨'];
 
@@ -1423,9 +1286,7 @@ const SmartPainScaleField: React.FC<{
   editable = true,
 }) => {
   const raw = Number(value);
-  const currentValue = Number.isFinite(raw)
-    ? Math.max(0, Math.min(10, raw))
-    : 0;
+  const currentValue = Number.isFinite(raw) ? Math.max(0, Math.min(10, raw)) : 0;
   const emoji = PAIN_EMOJIS[currentValue] || '😐';
 
   return (
@@ -1448,24 +1309,23 @@ const SmartPainScaleField: React.FC<{
           step={1}
           value={currentValue}
           onValueChange={(v) => onChange(Math.round(v))}
-          minimumTrackTintColor={tracker.color}
+          minimumTrackTintColor={AURA.primary}
           maximumTrackTintColor={colors.border}
-          thumbTintColor={tracker.color}
+          thumbTintColor={AURA.primary}
         />
       </View>
 
       <View style={styles.painAnchors}>
-        <Text style={[styles.painAnchor, { color: colors.textSecondary }]}>
-          No pain
-        </Text>
-        <Text style={[styles.painAnchor, { color: colors.textSecondary }]}>
-          Severe
-        </Text>
+        <Text style={[styles.painAnchor, { color: colors.textSecondary }]}>No pain</Text>
+        <Text style={[styles.painAnchor, { color: colors.textSecondary }]}>Severe</Text>
       </View>
     </View>
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartTemperatureField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartTemperatureField: React.FC<{
   field: FieldConfig;
@@ -1496,13 +1356,9 @@ const SmartTemperatureField: React.FC<{
 
   const defaultUnit = useMemo(() => {
     try {
-      const locale =
-        Intl.NumberFormat().resolvedOptions().locale || 'en-US';
+      const locale = Intl.NumberFormat().resolvedOptions().locale || 'en-US';
       const region = locale.split('-')[1] || 'US';
-      if (
-        unitOptions.some((u: any) => u.id === 'fahrenheit') &&
-        region === 'US'
-      ) {
+      if (unitOptions.some((u: any) => u.id === 'fahrenheit') && region === 'US') {
         return 'fahrenheit';
       }
     } catch {}
@@ -1525,11 +1381,11 @@ const SmartTemperatureField: React.FC<{
         style={[
           styles.tempRow,
           {
-            borderColor: errors[field.id]
-              ? fullThemeColors.error || '#ef4444'
-              : fullThemeColors.border,
+            borderColor: errors[field.id] ? AURA.danger : fullThemeColors.border,
             borderRadius: borderRadiusValue,
-            backgroundColor: fullThemeColors.surface,
+            backgroundColor: errors[field.id]
+              ? `${AURA.danger}10`
+              : fullThemeColors.surface,
             opacity: !editable ? 0.7 : 1,
           },
         ]}
@@ -1538,10 +1394,7 @@ const SmartTemperatureField: React.FC<{
           editable={editable}
           style={[
             styles.tempInput,
-            {
-              color: fullThemeColors.text,
-              fontSize: 16 * fontSizeMultiplier,
-            },
+            { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
           ]}
           keyboardType="decimal-pad"
           placeholder={selectedUnit === 'fahrenheit' ? '98.6' : '36.5'}
@@ -1568,7 +1421,7 @@ const SmartTemperatureField: React.FC<{
               style={[
                 styles.tempUnitBtn,
                 selectedUnit === u.id && {
-                  backgroundColor: tracker.color,
+                  backgroundColor: AURA.primary,
                   borderRadius: borderRadiusValue / 3,
                 },
               ]}
@@ -1579,9 +1432,7 @@ const SmartTemperatureField: React.FC<{
                   styles.tempUnitText,
                   {
                     color:
-                      selectedUnit === u.id
-                        ? '#fff'
-                        : fullThemeColors.textSecondary,
+                      selectedUnit === u.id ? AURA.white : fullThemeColors.textSecondary,
                   },
                 ]}
               >
@@ -1593,12 +1444,7 @@ const SmartTemperatureField: React.FC<{
       </View>
 
       {errors[field.id] && (
-        <Text
-          style={[
-            styles.errorText,
-            { color: fullThemeColors.error || '#ef4444' },
-          ]}
-        >
+        <Text style={[styles.errorText, { color: AURA.danger }]}>
           {errors[field.id]}
         </Text>
       )}
@@ -1606,6 +1452,9 @@ const SmartTemperatureField: React.FC<{
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartQuantityField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartQuantityField: React.FC<{
   field: FieldConfig;
@@ -1630,8 +1479,6 @@ const SmartQuantityField: React.FC<{
 }) => {
   const unitKey = `${field.id}_unit`;
 
-  
-  
   const isSolidFood =
     field.id?.toLowerCase().includes('solid') ||
     field.id?.toLowerCase().includes('food') ||
@@ -1642,32 +1489,21 @@ const SmartQuantityField: React.FC<{
     (field as any).unitOptions ||
     (isSolidFood ? CANONICAL_SOLID_UNITS : CANONICAL_LIQUID_UNITS);
 
-  
   const defaultUnit = useMemo(() => {
     try {
-      const locale =
-        Intl.NumberFormat().resolvedOptions().locale || 'en-US';
+      const locale = Intl.NumberFormat().resolvedOptions().locale || 'en-US';
       const region = locale.split('-')[1] || 'US';
       const isImperialRegion =
-        region === 'US' ||
-        region === 'GB' ||
-        region === 'LR' ||
-        region === 'MM';
+        region === 'US' || region === 'GB' || region === 'LR' || region === 'MM';
 
       if (isSolidFood) {
-        if (
-          isImperialRegion &&
-          unitOptions.some((u: any) => u.id === 'oz')
-        ) {
+        if (isImperialRegion && unitOptions.some((u: any) => u.id === 'oz')) {
           return 'oz';
         }
         return 'g';
       }
 
-      if (
-        isImperialRegion &&
-        unitOptions.some((u: any) => u.id === 'oz')
-      ) {
+      if (isImperialRegion && unitOptions.some((u: any) => u.id === 'oz')) {
         return 'oz';
       }
     } catch {}
@@ -1676,10 +1512,10 @@ const SmartQuantityField: React.FC<{
 
   const selectedUnit = (data[unitKey] as string) || defaultUnit;
 
-  
-  const step = Number.isFinite(field.step as any) && Number(field.step) > 0
-    ? Number(field.step)
-    : 1;
+  const step =
+    Number.isFinite(field.step as any) && Number(field.step) > 0
+      ? Number(field.step)
+      : 1;
   const decimalPlaces = step < 1 ? String(step).split('.')[1]?.length ?? 0 : 0;
 
   return (
@@ -1696,12 +1532,10 @@ const SmartQuantityField: React.FC<{
         style={[
           styles.numberRow,
           {
-            borderColor: errors[field.id]
-              ? fullThemeColors.error || '#ef4444'
-              : fullThemeColors.border,
+            borderColor: errors[field.id] ? AURA.danger : fullThemeColors.border,
             borderRadius: borderRadiusValue,
             backgroundColor: errors[field.id]
-              ? `${fullThemeColors.error || '#ef4444'}10`
+              ? `${AURA.danger}10`
               : fullThemeColors.surface,
             opacity: !editable ? 0.7 : 1,
           },
@@ -1711,10 +1545,7 @@ const SmartQuantityField: React.FC<{
           editable={editable}
           style={[
             styles.numberInput,
-            {
-              color: fullThemeColors.text,
-              fontSize: 16 * fontSizeMultiplier,
-            },
+            { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
           ]}
           keyboardType="numeric"
           placeholder={field.placeholder || '0'}
@@ -1753,7 +1584,7 @@ const SmartQuantityField: React.FC<{
               style={[
                 styles.tempUnitBtn,
                 selectedUnit === u.id && {
-                  backgroundColor: tracker.color,
+                  backgroundColor: AURA.primary,
                   borderRadius: borderRadiusValue / 3,
                 },
               ]}
@@ -1764,9 +1595,7 @@ const SmartQuantityField: React.FC<{
                   styles.tempUnitText,
                   {
                     color:
-                      selectedUnit === u.id
-                        ? '#fff'
-                        : fullThemeColors.textSecondary,
+                      selectedUnit === u.id ? AURA.white : fullThemeColors.textSecondary,
                   },
                 ]}
               >
@@ -1778,12 +1607,7 @@ const SmartQuantityField: React.FC<{
       </View>
 
       {errors[field.id] && (
-        <Text
-          style={[
-            styles.errorText,
-            { color: fullThemeColors.error || '#ef4444' },
-          ]}
-        >
+        <Text style={[styles.errorText, { color: AURA.danger }]}>
           {errors[field.id]}
         </Text>
       )}
@@ -1791,6 +1615,9 @@ const SmartQuantityField: React.FC<{
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartDateTimeField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const SmartDateTimeField: React.FC<{
   field: FieldConfig;
@@ -1839,14 +1666,11 @@ const SmartDateTimeField: React.FC<{
 
   const handleOpenPicker = useCallback(() => {
     if (!editable) return;
-    datePicker.open(
-      { value: currentDate, mode: 'datetime' },
-      (picked) => {
-        if (picked) {
-          updateField(field.id, picked.toISOString());
-        }
+    datePicker.open({ value: currentDate, mode: 'datetime' }, (picked) => {
+      if (picked) {
+        updateField(field.id, picked.toISOString());
       }
-    );
+    });
   }, [editable, currentDate, datePicker, field.id, updateField]);
 
   return (
@@ -1875,11 +1699,7 @@ const SmartDateTimeField: React.FC<{
         ]}
         onPress={handleOpenPicker}
       >
-        <Ionicons
-          name="calendar-outline"
-          size={18}
-          color={colors.textSecondary}
-        />
+        <Ionicons name="calendar-outline" size={18} color={AURA.primary} />
         <Text
           style={{
             color: hasValue ? colors.text : colors.textSecondary,
@@ -1894,16 +1714,11 @@ const SmartDateTimeField: React.FC<{
             onPress={() => updateField(field.id, undefined)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons
-              name="close-circle"
-              size={18}
-              color={colors.textSecondary}
-            />
+            <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
         )}
       </TouchableOpacity>
 
-      {/* Ongoing hint: start is set, end is not, and this tracker supports ongoing */}
       {isStart && hasValue && !hasOtherValue && editable && (
         <TouchableOpacity
           style={styles.ongoingHint}
@@ -1911,22 +1726,17 @@ const SmartDateTimeField: React.FC<{
             updateField('endTime', new Date().toISOString());
           }}
         >
-          <Ionicons name="time-outline" size={14} color={tracker.color} />
-          <Text style={[styles.ongoingHintText, { color: tracker.color }]}>
+          <Ionicons name="time-outline" size={14} color={AURA.primary} />
+          <Text style={[styles.ongoingHintText, { color: AURA.primary }]}>
             Ongoing — tap here to end now
           </Text>
         </TouchableOpacity>
       )}
 
-      {/* Duration display when both start and end are set */}
       {!isStart && hasValue && hasOtherValue && (
         <View style={styles.durationHint}>
-          <Ionicons
-            name="checkmark-circle"
-            size={14}
-            color={tracker.color}
-          />
-          <Text style={[styles.durationHintText, { color: tracker.color }]}>
+          <Ionicons name="checkmark-circle" size={14} color={AURA.success} />
+          <Text style={[styles.durationHintText, { color: AURA.success }]}>
             Duration:{' '}
             {formatDurationSeconds(
               Math.max(
@@ -1940,7 +1750,6 @@ const SmartDateTimeField: React.FC<{
         </View>
       )}
 
-      {/* iOS-only modal render */}
       {Platform.OS === 'ios' && datePicker.iosPicker.visible ? (
         <Modal
           transparent
@@ -1979,13 +1788,7 @@ const SmartDateTimeField: React.FC<{
                   onPress={datePicker.dismissIos}
                   accessibilityRole="button"
                 >
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: '600',
-                      color: tracker.color,
-                    }}
-                  >
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: AURA.primary }}>
                     Done
                   </Text>
                 </TouchableOpacity>
@@ -1993,7 +1796,8 @@ const SmartDateTimeField: React.FC<{
               {(() => {
                 try {
                   // eslint-disable-next-line @typescript-eslint/no-var-requires
-                  const DateTimePicker = require('@react-native-community/datetimepicker').default;
+                  const DateTimePicker =
+                    require('@react-native-community/datetimepicker').default;
                   return (
                     <DateTimePicker
                       value={datePicker.iosPicker.value}
@@ -2015,7 +1819,10 @@ const SmartDateTimeField: React.FC<{
   );
 };
 
-// ─── Smart Time Field (HH:mm) ──────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   SmartTimeField (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const SmartTimeField: React.FC<{
   field: FieldConfig;
   value: unknown;
@@ -2039,7 +1846,6 @@ const SmartTimeField: React.FC<{
 }) => {
   const datePicker = useDateTimePicker();
 
-  
   const parsedDate = useMemo(() => {
     const d = new Date();
     if (typeof value === 'string' && /^\d{1,2}:\d{2}/.test(value)) {
@@ -2057,16 +1863,13 @@ const SmartTimeField: React.FC<{
 
   const handleOpenPicker = useCallback(() => {
     if (!editable) return;
-    datePicker.open(
-      { value: parsedDate, mode: 'time' },
-      (picked) => {
-        if (picked) {
-          const hh = String(picked.getHours()).padStart(2, '0');
-          const mm = String(picked.getMinutes()).padStart(2, '0');
-          onChange(`${hh}:${mm}`);
-        }
+    datePicker.open({ value: parsedDate, mode: 'time' }, (picked) => {
+      if (picked) {
+        const hh = String(picked.getHours()).padStart(2, '0');
+        const mm = String(picked.getMinutes()).padStart(2, '0');
+        onChange(`${hh}:${mm}`);
       }
-    );
+    });
   }, [editable, parsedDate, datePicker, onChange]);
 
   return (
@@ -2084,9 +1887,9 @@ const SmartTimeField: React.FC<{
         style={[
           styles.input,
           {
-            borderColor: error ? colors.error : colors.border,
+            borderColor: error ? AURA.danger : colors.border,
             borderRadius: borderRadiusValue,
-            backgroundColor: error ? `${colors.error}10` : colors.surface,
+            backgroundColor: error ? `${AURA.danger}10` : colors.surface,
             flexDirection: 'row',
             alignItems: 'center',
             gap: 10,
@@ -2095,7 +1898,7 @@ const SmartTimeField: React.FC<{
         ]}
         onPress={handleOpenPicker}
       >
-        <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
+        <Ionicons name="time-outline" size={18} color={AURA.primary} />
         <Text
           style={{
             color:
@@ -2113,16 +1916,11 @@ const SmartTimeField: React.FC<{
             onPress={() => onChange('')}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons
-              name="close-circle"
-              size={18}
-              color={colors.textSecondary}
-            />
+            <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
         )}
       </TouchableOpacity>
 
-      {/* iOS-only modal render */}
       {Platform.OS === 'ios' && datePicker.iosPicker.visible ? (
         <Modal
           transparent
@@ -2161,13 +1959,7 @@ const SmartTimeField: React.FC<{
                   onPress={datePicker.dismissIos}
                   accessibilityRole="button"
                 >
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: '600',
-                      color: tracker.color,
-                    }}
-                  >
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: AURA.primary }}>
                     Done
                   </Text>
                 </TouchableOpacity>
@@ -2175,7 +1967,8 @@ const SmartTimeField: React.FC<{
               {(() => {
                 try {
                   // eslint-disable-next-line @typescript-eslint/no-var-requires
-                  const DateTimePicker = require('@react-native-community/datetimepicker').default;
+                  const DateTimePicker =
+                    require('@react-native-community/datetimepicker').default;
                   return (
                     <DateTimePicker
                       value={datePicker.iosPicker.value}
@@ -2195,14 +1988,15 @@ const SmartTimeField: React.FC<{
       ) : null}
 
       {error && (
-        <Text style={[styles.errorText, { color: colors.error }]}>
-          {error}
-        </Text>
+        <Text style={[styles.errorText, { color: AURA.danger }]}>{error}</Text>
       )}
     </View>
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DynamicTrackerForm (Aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   tracker,
@@ -2250,7 +2044,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     todayEntries = [],
   } = progressiveState || {};
 
-  
   const medicationQuickFill = useMemo(() => {
     if (tracker.id !== 'medication') return null;
     const last = (yesterdayEntries[0] || todayEntries[0]) as any;
@@ -2260,7 +2053,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     return { name, dosage, type };
   }, [tracker.id, yesterdayEntries, todayEntries]);
 
-  
   const [data, setData] = useState<Record<string, unknown>>(() => {
     const defaults = {
       ...(medicationQuickFill || {}),
@@ -2268,7 +2060,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     };
     const merged = { ...defaults, ...prefillData, ...initialData };
 
-    
     suggestions.forEach((s) => {
       if (
         merged[s.fieldId] === undefined &&
@@ -2288,22 +2079,20 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [photoUris, setPhotoUris] = useState<string[]>([]);
-    const [photoAiTags, setPhotoAiTags] = useState<string[]>([]);
+  const [photoAiTags, setPhotoAiTags] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(
     new Set()
   );
-  const [dismissedCorrelations, setDismissedCorrelations] = useState<
-    Set<string>
-  >(new Set());
-  const [appliedPrefill, setAppliedPrefill] = useState<Record<
-    string,
-    unknown
-  > | null>(null);
+  const [dismissedCorrelations, setDismissedCorrelations] = useState<Set<string>>(
+    new Set()
+  );
+  const [appliedPrefill, setAppliedPrefill] = useState<Record<string, unknown> | null>(
+    null
+  );
 
   const userEditedFields = useRef<Set<string>>(new Set());
 
-  
   useEffect(() => {
     setData((prev) => {
       const merged = { ...prefillData, ...initialData };
@@ -2327,7 +2116,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         setAppliedPrefill(null);
       }
 
-      
       userEditedFields.current.forEach((key) => {
         if (prev[key] !== undefined) {
           merged[key] = prev[key];
@@ -2338,24 +2126,17 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     });
   }, [prefillData, suggestions, initialData, appliedPrefill]);
 
-  
   const validate = useCallback((): boolean => {
     const newErrors: Record<string, string> = {};
     tracker.fields.forEach((field) => {
       try {
-        if (
-          typeof isFieldVisible === 'function' &&
-          !isFieldVisible(field, data)
-        ) {
+        if (typeof isFieldVisible === 'function' && !isFieldVisible(field, data)) {
           return;
         }
-      } catch {
-        
-      }
+      } catch {}
 
       const value = data[field.id];
 
-      
       if (field.required) {
         if (
           value === undefined ||
@@ -2368,18 +2149,14 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         }
       }
 
-      
       if (
-        (field.type === 'datetime' ||
-          field.type === 'date' ||
-          field.type === 'time') &&
+        (field.type === 'datetime' || field.type === 'date' || field.type === 'time') &&
         isFutureTimestamp(value)
       ) {
         newErrors[field.id] = `${field.label} can't be in the future`;
         return;
       }
 
-      
       if (
         (field.type === 'number' ||
           field.type === 'quantity' ||
@@ -2388,20 +2165,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       ) {
         if (Number.isFinite(field.min as any) && value < Number(field.min)) {
           newErrors[field.id] = `${field.label} must be at least ${field.min}`;
-        } else if (
-          Number.isFinite(field.max as any) &&
-          value > Number(field.max)
-        ) {
+        } else if (Number.isFinite(field.max as any) && value > Number(field.max)) {
           newErrors[field.id] = `${field.label} must be at most ${field.max}`;
         }
       }
 
-      
-      if (
-        tracker.id === 'growth' &&
-        field.id === 'value' &&
-        typeof value === 'number'
-      ) {
+      if (tracker.id === 'growth' && field.id === 'value' && typeof value === 'number') {
         const mType = String(data.measurementType || '');
         const mUnit = String(data.value_unit || data.unit || 'kg');
         const growthErr = validateGrowthValue(
@@ -2415,15 +2184,9 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         }
       }
 
-      
-      if (
-        tracker.id === 'temperature' &&
-        field.id === 'value' &&
-        typeof value === 'number'
-      ) {
+      if (tracker.id === 'temperature' && field.id === 'value' && typeof value === 'number') {
         const unit = String(data.unit || 'celsius');
-        const celsius =
-          unit === 'fahrenheit' ? ((value - 32) * 5) / 9 : value;
+        const celsius = unit === 'fahrenheit' ? ((value - 32) * 5) / 9 : value;
         if (celsius < 34 || celsius > 43) {
           newErrors[field.id] = `Temperature looks unusual (${value}°${
             unit === 'fahrenheit' ? 'F' : 'C'
@@ -2436,7 +2199,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     return Object.keys(newErrors).length === 0;
   }, [tracker.fields, data, currentBabyAgeMonths, tracker.id]);
 
-  
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) return;
 
@@ -2450,20 +2212,13 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     triggerHaptic('success');
 
     try {
-      
       const finalData: Record<string, unknown> = {};
 
-      // Only include fields that are currently visible AND have a value.
-      // This prevents hidden `showIf` branches (e.g. breast-only fields
-      // when feedType === 'bottle') from leaking into the saved entry,
-      // which was the source of "validation error" loops on feed/sleep.
       const visibleFieldIds = new Set(
         tracker.fields
           .filter((f) => {
             try {
-              return typeof isFieldVisible === 'function'
-                ? isFieldVisible(f, data)
-                : true;
+              return typeof isFieldVisible === 'function' ? isFieldVisible(f, data) : true;
             } catch {
               return true;
             }
@@ -2480,16 +2235,13 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         } else if (Array.isArray(v)) {
           const cleaned = v
             .map((item) => (typeof item === 'string' ? item.trim() : item))
-            .filter(
-              (item) => item !== '' && item !== null && item !== undefined
-            );
+            .filter((item) => item !== '' && item !== null && item !== undefined);
           if (cleaned.length > 0) finalData[k] = cleaned;
         } else if (v !== undefined && v !== null) {
           finalData[k] = v;
         }
       }
 
-      
       const DURATION_TRACKERS = [
         'sleep',
         'feed',
@@ -2504,10 +2256,8 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         'screen_time',
       ];
       if (DURATION_TRACKERS.includes(tracker.id)) {
-        const hasStart =
-          finalData.startTime && String(finalData.startTime).length > 0;
-        const hasEnd =
-          finalData.endTime && String(finalData.endTime).length > 0;
+        const hasStart = finalData.startTime && String(finalData.startTime).length > 0;
+        const hasEnd = finalData.endTime && String(finalData.endTime).length > 0;
 
         if (hasStart && hasEnd) {
           const startMs = new Date(String(finalData.startTime)).getTime();
@@ -2526,11 +2276,9 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             finalData.status = 'completed';
           }
         } else if (hasStart) {
-          
           delete finalData.duration;
           finalData.status = 'ongoing';
         } else if (hasEnd) {
-          
           delete finalData.duration;
           finalData.status = 'completed';
         }
@@ -2570,14 +2318,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     photoAiTags,
   ]);
 
-  
   const updateField = useCallback(
     (fieldId: string, value: unknown) => {
       userEditedFields.current.add(fieldId);
       setData((prev) => {
         const next = { ...prev, [fieldId]: value };
 
-        
         if (tracker.id === 'feed' && fieldId === 'feedType') {
           if (value === 'breast') {
             delete next.bottleAmount;
@@ -2628,17 +2374,11 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           }
         }
 
-        
-        if (
-          tracker.id === 'sleep' &&
-          fieldId === 'status' &&
-          value === 'ongoing'
-        ) {
+        if (tracker.id === 'sleep' && fieldId === 'status' && value === 'ongoing') {
           delete next.endTime;
           delete next.duration;
         }
 
-        
         if (tracker.id === 'diaper' && fieldId === 'type') {
           if (value === 'wet' || value === 'dry') {
             delete next.color;
@@ -2650,21 +2390,18 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           }
         }
 
-        
         if (tracker.id === 'potty' && fieldId === 'type') {
           if (value === 'accident') {
             next.successful = false;
           }
         }
 
-        
         if (tracker.id === 'growth' && fieldId === 'measurementType') {
           delete next.value;
           delete next.value_unit;
           delete next.percentile;
         }
 
-        
         const durationTrackers = [
           'sleep',
           'feed',
@@ -2675,8 +2412,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           'tummy_time',
         ];
         if (durationTrackers.includes(tracker.id)) {
-          const hasStart =
-            next.startTime && String(next.startTime).length > 0;
+          const hasStart = next.startTime && String(next.startTime).length > 0;
           const hasEnd = next.endTime && String(next.endTime).length > 0;
 
           if (fieldId === 'startTime' || fieldId === 'endTime') {
@@ -2707,19 +2443,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           }
         }
 
-        
         if (tracker.id === 'growth') {
-          const weight = Number(
-            next.weight ?? next.weight_kg ?? prev.weight
-          );
-          const height = Number(
-            next.height ?? next.height_cm ?? prev.height
-          );
-          if (
-            Number.isFinite(weight) &&
-            Number.isFinite(height) &&
-            height > 0
-          ) {
+          const weight = Number(next.weight ?? next.weight_kg ?? prev.weight);
+          const height = Number(next.height ?? next.height_cm ?? prev.height);
+          if (Number.isFinite(weight) && Number.isFinite(height) && height > 0) {
             const heightM = height > 3 ? height / 100 : height;
             next.bmi = parseFloat((weight / (heightM * heightM)).toFixed(1));
           }
@@ -2737,20 +2464,16 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     [tracker.id]
   );
 
-  
   const applyYesterdayData = useCallback(
     (yestData: Record<string, unknown>) => {
       triggerHaptic('light');
-      Object.keys(yestData).forEach((key) =>
-        userEditedFields.current.add(key)
-      );
+      Object.keys(yestData).forEach((key) => userEditedFields.current.add(key));
       setData((prev) => ({ ...prev, ...yestData }));
       info('Applied', "Yesterday's values filled in!");
     },
     [triggerHaptic, info]
   );
 
-  
   const getFieldSuggestion = useCallback(
     (fieldId: string): ProgressiveSuggestion | undefined => {
       return suggestions.find(
@@ -2775,28 +2498,19 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     [trends]
   );
 
-  
   const renderField = useCallback(
     (field: FieldConfig) => {
       try {
-        if (
-          typeof isFieldVisible === 'function' &&
-          !isFieldVisible(field, data)
-        ) {
+        if (typeof isFieldVisible === 'function' && !isFieldVisible(field, data)) {
           return null;
         }
-      } catch {
-        
-      }
+      } catch {}
 
       const suggestion = getFieldSuggestion(field.id);
       const yesterdayValue = getYesterdayValue(field.id);
       const trend = getFieldTrend(field.id);
 
-      const animatedWrapper = (
-        children: React.ReactNode,
-        key?: string
-      ) => (
+      const animatedWrapper = (children: React.ReactNode, key?: string) => (
         <Animated.View
           key={key}
           entering={shouldReduceMotion ? undefined : FadeInUp.delay(50)}
@@ -2851,10 +2565,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               field.id
             );
           }
-          return animatedWrapper(
-            <SmartTextField {...commonProps} />,
-            field.id
-          );
+          return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
         }
         case 'time':
           return animatedWrapper(
@@ -2872,36 +2583,21 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             field.id
           );
         case 'number':
-          return animatedWrapper(
-            <SmartNumberField {...commonProps} />,
-            field.id
-          );
+          return animatedWrapper(<SmartNumberField {...commonProps} />, field.id);
         case 'select':
-          return animatedWrapper(
-            <SmartSelectField {...commonProps} />,
-            field.id
-          );
+          return animatedWrapper(<SmartSelectField {...commonProps} />, field.id);
         case 'multiselect':
-          return animatedWrapper(
-            <SmartMultiSelectField {...commonProps} />,
-            field.id
-          );
+          return animatedWrapper(<SmartMultiSelectField {...commonProps} />, field.id);
         case 'toggle':
           return animatedWrapper(
             <View
               key={field.id}
-              style={[
-                styles.toggleContainer,
-                { borderBottomColor: fullThemeColors.border },
-              ]}
+              style={[styles.toggleContainer, { borderBottomColor: fullThemeColors.border }]}
             >
               <Text
                 style={[
                   styles.toggleLabel,
-                  {
-                    color: fullThemeColors.text,
-                    fontSize: 15 * fontSizeMultiplier,
-                  },
+                  { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
                 ]}
               >
                 {field.label}
@@ -2912,22 +2608,15 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 onValueChange={(value) => updateField(field.id, value)}
                 trackColor={{
                   false: fullThemeColors.border,
-                  true: `${tracker.color}80`,
+                  true: `${AURA.primary}80`,
                 }}
-                thumbColor={
-                  data[field.id]
-                    ? tracker.color
-                    : fullThemeColors.textSecondary
-                }
+                thumbColor={data[field.id] ? AURA.primary : fullThemeColors.textSecondary}
               />
             </View>,
             field.id
           );
         case 'duration':
-          return animatedWrapper(
-            <SmartDurationField {...commonProps} />,
-            field.id
-          );
+          return animatedWrapper(<SmartDurationField {...commonProps} />, field.id);
         case 'rating': {
           const max = field.max || 5;
           const ratingValue = Number(data[field.id]) || 0;
@@ -2951,9 +2640,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                       name={star <= ratingValue ? 'star' : 'star-outline'}
                       size={32}
                       color={
-                        star <= ratingValue
-                          ? fullThemeColors.warning
-                          : fullThemeColors.border
+                        star <= ratingValue ? AURA.warning : fullThemeColors.border
                       }
                     />
                   </TouchableOpacity>
@@ -2980,7 +2667,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                   styles.textarea,
                   {
                     borderColor: errors[field.id]
-                      ? fullThemeColors.error || '#ef4444'
+                      ? AURA.danger
                       : fullThemeColors.border,
                     borderRadius: borderRadiusValue,
                     backgroundColor: fullThemeColors.surface,
@@ -2999,12 +2686,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 textAlignVertical="top"
               />
               {errors[field.id] && (
-                <Text
-                  style={[
-                    styles.errorText,
-                    { color: fullThemeColors.error || '#ef4444' },
-                  ]}
-                >
+                <Text style={[styles.errorText, { color: AURA.danger }]}>
                   {errors[field.id]}
                 </Text>
               )}
@@ -3012,17 +2694,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             field.id
           );
         case 'mood_emoji':
-          return animatedWrapper(
-            <SmartMoodField {...commonProps} />,
-            field.id
-          );
+          return animatedWrapper(<SmartMoodField {...commonProps} />, field.id);
         case 'slider': {
-          const sliderMin = Number.isFinite(field.min as any)
-            ? Number(field.min)
-            : 0;
-          const sliderMax = Number.isFinite(field.max as any)
-            ? Number(field.max)
-            : 100;
+          const sliderMin = Number.isFinite(field.min as any) ? Number(field.min) : 0;
+          const sliderMax = Number.isFinite(field.max as any) ? Number(field.max) : 100;
           const sliderStep =
             Number.isFinite(field.step as any) && Number(field.step) > 0
               ? Number(field.step)
@@ -3033,16 +2708,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             : sliderMin;
 
           const displayValue =
-            sliderStep < 1
-              ? sliderValue.toFixed(1)
-              : String(Math.round(sliderValue));
+            sliderStep < 1 ? sliderValue.toFixed(1) : String(Math.round(sliderValue));
 
           return animatedWrapper(
             <View key={field.id} style={styles.fieldContainer}>
               <FieldLabel
-                label={`${field.label}: ${displayValue}${
-                  field.unit ? ` ${field.unit}` : ''
-                }`}
+                label={`${field.label}: ${displayValue}${field.unit ? ` ${field.unit}` : ''}`}
                 required={field.required}
                 hint={field.hint}
                 colors={fullThemeColors}
@@ -3055,21 +2726,11 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                   marginTop: 4,
                 }}
               >
-                <Text
-                  style={{
-                    color: fullThemeColors.textSecondary,
-                    fontSize: 11,
-                  }}
-                >
+                <Text style={{ color: fullThemeColors.textSecondary, fontSize: 11 }}>
                   {sliderMin}
                   {field.unit ? ` ${field.unit}` : ''}
                 </Text>
-                <Text
-                  style={{
-                    color: fullThemeColors.textSecondary,
-                    fontSize: 11,
-                  }}
-                >
+                <Text style={{ color: fullThemeColors.textSecondary, fontSize: 11 }}>
                   {sliderMax}
                   {field.unit ? ` ${field.unit}` : ''}
                 </Text>
@@ -3082,9 +2743,9 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 step={sliderStep}
                 value={sliderValue}
                 onValueChange={(value) => updateField(field.id, value)}
-                minimumTrackTintColor={tracker.color}
+                minimumTrackTintColor={AURA.primary}
                 maximumTrackTintColor={fullThemeColors.border}
-                thumbTintColor={tracker.color}
+                thumbTintColor={AURA.primary}
               />
             </View>,
             field.id
@@ -3111,11 +2772,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               label={field.label}
               trackerContext={tracker.id}
               value={photoUris[0]}
-              // Single shared buffer — all photo fields on the same
-              // tracker write to the same `photoUris` state, so nothing
-              // is lost when a tracker has more than one photo field.
               onUrisChange={(uris) => setPhotoUris(uris)}
-              // `field.max` is not part of FieldConfig; fall back to 4.
               maxPhotos={4}
               initialPhotoUris={photoUris}
               onAnalysis={(analysis) => {
@@ -3130,8 +2787,6 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             field.id
           );
         case 'video':
-          // Video capture isn't implemented — show a friendly placeholder
-          // instead of silently falling through to a text input.
           return animatedWrapper(
             <View key={field.id} style={styles.fieldContainer}>
               <FieldLabel
@@ -3160,12 +2815,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                   size={18}
                   color={fullThemeColors.textSecondary}
                 />
-                <Text
-                  style={{
-                    color: fullThemeColors.textSecondary,
-                    fontSize: 14,
-                  }}
-                >
+                <Text style={{ color: fullThemeColors.textSecondary, fontSize: 14 }}>
                   Video capture coming soon
                 </Text>
               </View>
@@ -3204,10 +2854,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             field.id
           );
         default:
-          return animatedWrapper(
-            <SmartTextField {...commonProps} />,
-            field.id
-          );
+          return animatedWrapper(<SmartTextField {...commonProps} />, field.id);
       }
     },
     [
@@ -3228,7 +2875,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     ]
   );
 
-  // ─── Quick mode ─────────────────────────────────────────────────────────
+  /* ─── Quick mode (Aura) ──────────────────────────────────────────────── */
   if (quickMode) {
     return (
       <View
@@ -3237,31 +2884,28 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           { backgroundColor: fullThemeColors.background },
         ]}
       >
-        <View
-          style={[
-            styles.quickHeader,
-            { backgroundColor: tracker.gradient[0] + '15' },
-          ]}
+        <LinearGradient
+          colors={[`${AURA.primary}22`, 'transparent']}
+          style={styles.quickHeader}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
         >
           <Text style={{ fontSize: 32 }}>{tracker.emoji}</Text>
           <Text
             style={[
               styles.quickTitle,
-              {
-                color: fullThemeColors.text,
-                fontSize: 18 * fontSizeMultiplier,
-              },
+              { color: fullThemeColors.text, fontSize: 18 * fontSizeMultiplier },
             ]}
           >
             {tracker.name}
           </Text>
-          {streak && <StreakBadge streak={streak} color={tracker.color} />}
+          {streak && <StreakBadge streak={streak} color={AURA.success} />}
           <TimeContextBadge
             timeContext={timeContext}
-            color={tracker.color}
+            color={AURA.primary}
             colors={fullThemeColors}
           />
-        </View>
+        </LinearGradient>
 
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -3270,29 +2914,29 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           {tracker.fields.slice(0, 3).map(renderField)}
 
           <TouchableOpacity
-            style={[
-              styles.quickSubmit,
-              {
-                backgroundColor: tracker.gradient[0],
-                borderRadius: borderRadiusValue,
-              },
-            ]}
+            style={[styles.quickSubmit, { borderRadius: borderRadiusValue }]}
             onPress={handleSubmit}
             disabled={isSubmitting}
+            activeOpacity={0.85}
           >
-            <Text style={styles.quickSubmitText}>
-              {isSubmitting ? 'Saving...' : `Save ${tracker.emoji}`}
-            </Text>
+            <LinearGradient
+              colors={[AURA.primary, AURA.accent]}
+              style={[styles.quickSubmitInner, { borderRadius: borderRadiusValue }]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={styles.quickSubmitText}>
+                {isSubmitting ? 'Saving...' : `Save ${tracker.emoji}`}
+              </Text>
+            </LinearGradient>
           </TouchableOpacity>
         </ScrollView>
       </View>
     );
   }
 
-  // ─── Full mode ──────────────────────────────────────────────────────────
-  const visibleInsights = insights.filter(
-    (i) => !dismissedInsights.has(i.id)
-  );
+  /* ─── Full mode (Aura) ───────────────────────────────────────────────── */
+  const visibleInsights = insights.filter((i) => !dismissedInsights.has(i.id));
   const visibleCorrelations = correlations.filter(
     (c) => !dismissedCorrelations.has(c.id)
   );
@@ -3303,39 +2947,30 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       style={{ flex: 1 }}
     >
       <ScrollView
-        style={[
-          styles.container,
-          { backgroundColor: fullThemeColors.background },
-        ]}
+        style={[styles.container, { backgroundColor: fullThemeColors.background }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
-        <View
+        <LinearGradient
+          colors={[`${AURA.primary}22`, `${AURA.accent}10`, 'transparent']}
           style={[
             styles.header,
             {
-              backgroundColor: tracker.gradient[0] + '15',
               borderBottomLeftRadius: borderRadiusValue * 1.5,
               borderBottomRightRadius: borderRadiusValue * 1.5,
             },
           ]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         >
-          <Text
-            style={[
-              styles.headerEmoji,
-              { fontSize: 48 * fontSizeMultiplier },
-            ]}
-          >
+          <Text style={[styles.headerEmoji, { fontSize: 48 * fontSizeMultiplier }]}>
             {tracker.emoji}
           </Text>
           <Text
             style={[
               styles.headerTitle,
-              {
-                color: fullThemeColors.text,
-                fontSize: 22 * fontSizeMultiplier,
-              },
+              { color: fullThemeColors.text, fontSize: 22 * fontSizeMultiplier },
             ]}
           >
             {tracker.name}
@@ -3352,31 +2987,22 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             {tracker.description}
           </Text>
 
-          {streak && <StreakBadge streak={streak} color={tracker.color} />}
+          {streak && <StreakBadge streak={streak} color={AURA.success} />}
           <TimeContextBadge
             timeContext={timeContext}
-            color={tracker.color}
+            color={AURA.primary}
             colors={fullThemeColors}
           />
 
           {linkedEntryId && (
-            <View
-              style={[
-                styles.linkedBadge,
-                { backgroundColor: `${tracker.color}20` },
-              ]}
-            >
-              <Ionicons
-                name="link-outline"
-                size={14}
-                color={tracker.color}
-              />
-              <Text style={[styles.linkedText, { color: tracker.color }]}>
+            <View style={[styles.linkedBadge, { backgroundColor: `${AURA.primary}20` }]}>
+              <Ionicons name="link-outline" size={14} color={AURA.primary} />
+              <Text style={[styles.linkedText, { color: AURA.primary }]}>
                 Linked to previous entry
               </Text>
             </View>
           )}
-        </View>
+        </LinearGradient>
 
         {/* Correlations */}
         {visibleCorrelations.length > 0 && (
@@ -3388,10 +3014,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 style={[
                   styles.correlationBanner,
                   {
-                    backgroundColor: `${tracker.color}08`,
+                    backgroundColor: `${AURA.primary}08`,
                     borderRadius: borderRadiusValue,
                     borderLeftWidth: 3,
-                    borderLeftColor: tracker.color,
+                    borderLeftColor: AURA.primary,
                   },
                 ]}
               >
@@ -3423,12 +3049,12 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                     <TouchableOpacity
                       style={[
                         styles.correlationActionBtn,
-                        { backgroundColor: tracker.color },
+                        { backgroundColor: AURA.primary },
                       ]}
                       onPress={() => {
                         if (correlation.prefillData) {
-                          Object.keys(correlation.prefillData).forEach(
-                            (key) => userEditedFields.current.add(key)
+                          Object.keys(correlation.prefillData).forEach((key) =>
+                            userEditedFields.current.add(key)
                           );
                           setData((prev) => ({
                             ...prev,
@@ -3477,22 +3103,23 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                   {
                     backgroundColor:
                       insight.priority === 'good'
-                        ? `${fullThemeColors.success}10`
+                        ? `${AURA.success}10`
                         : insight.priority === 'warning'
-                        ? `${fullThemeColors.warning}10`
-                        : `${fullThemeColors.info}10`,
+                        ? `${AURA.warning}10`
+                        : `${AURA.info}10`,
+                    borderColor:
+                      insight.priority === 'good'
+                        ? `${AURA.success}30`
+                        : insight.priority === 'warning'
+                        ? `${AURA.warning}30`
+                        : `${AURA.info}30`,
                     borderRadius: borderRadiusValue,
                   },
                 ]}
               >
                 <Text style={styles.insightEmoji}>{insight.emoji}</Text>
                 <View style={styles.insightContent}>
-                  <Text
-                    style={[
-                      styles.insightTitle,
-                      { color: fullThemeColors.text },
-                    ]}
-                  >
+                  <Text style={[styles.insightTitle, { color: fullThemeColors.text }]}>
                     {insight.title}
                   </Text>
                   <Text
@@ -3507,9 +3134,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 </View>
                 <TouchableOpacity
                   onPress={() =>
-                    setDismissedInsights((prev) =>
-                      new Set(prev).add(insight.id)
-                    )
+                    setDismissedInsights((prev) => new Set(prev).add(insight.id))
                   }
                 >
                   <Ionicons
@@ -3553,12 +3178,8 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               >
                 Suggested from Yesterday
               </Text>
-              <TouchableOpacity
-                onPress={() => applyYesterdayData(prefillData)}
-              >
-                <Text
-                  style={[styles.yesterdayApply, { color: tracker.color }]}
-                >
+              <TouchableOpacity onPress={() => applyYesterdayData(prefillData)}>
+                <Text style={[styles.yesterdayApply, { color: AURA.primary }]}>
                   Apply All
                 </Text>
               </TouchableOpacity>
@@ -3572,7 +3193,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                     style={[
                       styles.yesterdayChip,
                       {
-                        backgroundColor: `${tracker.color}10`,
+                        backgroundColor: `${AURA.primary}10`,
                         borderRadius: borderRadiusValue / 2,
                       },
                     ]}
@@ -3581,12 +3202,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                       setData((prev) => ({ ...prev, [key]: value }));
                     }}
                   >
-                    <Text
-                      style={[
-                        styles.yesterdayChipText,
-                        { color: tracker.color },
-                      ]}
-                    >
+                    <Text style={[styles.yesterdayChipText, { color: AURA.primary }]}>
                       {key}:{' '}
                       {String(value).length > 15
                         ? String(value).slice(0, 15) + '...'
@@ -3599,19 +3215,14 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         )}
 
         {/* Dynamic fields */}
-        <View style={styles.formBody}>
-          {tracker.fields.map(renderField)}
-        </View>
+        <View style={styles.formBody}>{tracker.fields.map(renderField)}</View>
 
         {/* Notes */}
         <View style={styles.fieldContainer}>
           <Text
             style={[
               styles.label,
-              {
-                color: fullThemeColors.text,
-                fontSize: 15 * fontSizeMultiplier,
-              },
+              { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
             ]}
           >
             Additional Notes
@@ -3647,10 +3258,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             <Text
               style={[
                 styles.label,
-                {
-                  color: fullThemeColors.text,
-                  fontSize: 15 * fontSizeMultiplier,
-                },
+                { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
               ]}
             >
               Quick Tags
@@ -3664,10 +3272,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                     styles.tagChip,
                     {
                       backgroundColor: selectedTags.includes(tag)
-                        ? tracker.color
+                        ? AURA.primary
                         : fullThemeColors.surface,
                       borderColor: selectedTags.includes(tag)
-                        ? tracker.color
+                        ? AURA.primary
                         : fullThemeColors.border,
                       borderRadius: borderRadiusValue,
                       opacity: isSubmitting ? 0.7 : 1,
@@ -3687,7 +3295,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                       styles.tagText,
                       {
                         color: selectedTags.includes(tag)
-                          ? '#fff'
+                          ? AURA.white
                           : fullThemeColors.textSecondary,
                         fontSize: 13 * fontSizeMultiplier,
                       },
@@ -3711,6 +3319,8 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 {
                   backgroundColor: fullThemeColors.surface,
                   borderRadius: borderRadiusValue,
+                  borderWidth: 1,
+                  borderColor: fullThemeColors.border,
                 },
               ]}
               onPress={onCancel}
@@ -3732,22 +3342,26 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             style={[
               styles.submitBtn,
               {
-                backgroundColor: tracker.gradient[0],
                 borderRadius: borderRadiusValue,
                 opacity: isSubmitting ? 0.7 : 1,
+                overflow: 'hidden',
+                padding: 0,
               },
             ]}
             onPress={handleSubmit}
             disabled={isSubmitting}
+            activeOpacity={0.85}
           >
-            <Text
-              style={[
-                styles.submitText,
-                { fontSize: 16 * fontSizeMultiplier },
-              ]}
+            <LinearGradient
+              colors={[AURA.primary, AURA.accent]}
+              style={[styles.submitGradient, { borderRadius: borderRadiusValue }]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
             >
-              {isSubmitting ? 'Saving...' : `Save ${tracker.emoji}`}
-            </Text>
+              <Text style={[styles.submitText, { fontSize: 16 * fontSizeMultiplier }]}>
+                {isSubmitting ? 'Saving...' : `Save ${tracker.emoji}`}
+              </Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -3755,7 +3369,10 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   );
 };
 
-// ─── STYLES ────────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
@@ -3765,7 +3382,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerEmoji: { marginBottom: 8 },
-  headerTitle: { fontWeight: '700' },
+  headerTitle: { fontWeight: '800', letterSpacing: -0.3 },
   headerDesc: { textAlign: 'center', marginTop: 4 },
 
   streakBadge: {
@@ -3778,7 +3395,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: 8,
   },
-  streakText: { fontSize: 13, fontWeight: '600' },
+  streakText: { fontSize: 13, fontWeight: '700' },
 
   timeContextBadge: {
     flexDirection: 'row',
@@ -3800,7 +3417,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 8,
   },
-  linkedText: { fontSize: 12, fontWeight: '500' },
+  linkedText: { fontSize: 12, fontWeight: '600' },
 
   correlationsSection: { padding: 16, paddingBottom: 0, gap: 10 },
   correlationBanner: {
@@ -3824,7 +3441,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 10,
   },
-  correlationActionText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  correlationActionText: { color: AURA.white, fontSize: 12, fontWeight: '700' },
 
   insightsSection: { padding: 16, paddingBottom: 0, gap: 10 },
   insightCard: {
@@ -3833,7 +3450,6 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
     gap: 12,
   },
   insightEmoji: { fontSize: 24 },
@@ -3855,13 +3471,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   yesterdayTitle: { fontSize: 13, fontWeight: '600', flex: 1 },
-  yesterdayApply: { fontSize: 13, fontWeight: '700' },
+  yesterdayApply: { fontSize: 13, fontWeight: '800' },
   yesterdayData: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   yesterdayChip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  yesterdayChipText: { fontSize: 12, fontWeight: '500' },
+  yesterdayChipText: { fontSize: 12, fontWeight: '600' },
 
   formBody: { padding: 16 },
   fieldContainer: { marginBottom: 20 },
@@ -3873,9 +3489,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   labelTextWrap: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  label: { fontWeight: '600' },
+  label: { fontWeight: '700' },
   labelHint: { fontWeight: '400' },
-  required: { fontWeight: '700' },
+  required: { fontWeight: '800' },
 
   countBadge: {
     paddingHorizontal: 8,
@@ -3891,18 +3507,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: 'rgba(99,102,241,0.08)',
   },
-  trendText: { fontSize: 11, fontWeight: '600' },
+  trendText: { fontSize: 11, fontWeight: '700' },
 
   input: {
     borderWidth: 1,
     padding: 14,
-    fontWeight: '400',
+    fontWeight: '500',
   },
   textarea: { textAlignVertical: 'top' },
   unit: { position: 'absolute', right: 16, top: 46 },
-  errorText: { fontSize: 12, marginTop: 4 },
+  errorText: { fontSize: 12, marginTop: 4, fontWeight: '500' },
 
   suggestionRow: {
     flexDirection: 'row',
@@ -3918,7 +3534,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   suggestionChipEmoji: { fontSize: 14 },
-  suggestionChipText: { fontSize: 12, fontWeight: '500' },
+  suggestionChipText: { fontSize: 12, fontWeight: '600' },
   suggestIndicator: { fontSize: 12 },
   suggestIndicatorBadge: {
     position: 'absolute',
@@ -3938,8 +3554,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingRight: 16,
   },
-  numberInput: { flex: 1, padding: 14, fontWeight: '500' },
-  unitLabel: { marginLeft: 12, fontWeight: '500' },
+  numberInput: { flex: 1, padding: 14, fontWeight: '600' },
+  unitLabel: { marginLeft: 12, fontWeight: '600' },
   quickValuesRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -3952,8 +3568,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     minWidth: 60,
   },
-  quickValueText: { fontSize: 11, fontWeight: '600' },
-  quickValueNum: { fontSize: 13, fontWeight: '700', marginTop: 2 },
+  quickValueText: { fontSize: 11, fontWeight: '700' },
+  quickValueNum: { fontSize: 13, fontWeight: '800', marginTop: 2 },
 
   optionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   optionsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -3974,7 +3590,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  toggleLabel: { fontWeight: '600' },
+  toggleLabel: { fontWeight: '700' },
 
   durationRow: {
     flexDirection: 'row',
@@ -3996,7 +3612,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  durationText: { fontWeight: '700', minWidth: 100, textAlign: 'center' },
+  durationText: { fontWeight: '800', minWidth: 100, textAlign: 'center' },
   presetRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -4011,7 +3627,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  presetText: { fontSize: 13 },
+  presetText: { fontSize: 13, fontWeight: '600' },
 
   recordingBadge: {
     flexDirection: 'row',
@@ -4030,21 +3646,21 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 6,
   },
-  ongoingHintText: { fontSize: 12, fontWeight: '600' },
+  ongoingHintText: { fontSize: 12, fontWeight: '700' },
   durationHint: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginTop: 6,
   },
-  durationHintText: { fontSize: 12, fontWeight: '600' },
+  durationHintText: { fontSize: 12, fontWeight: '700' },
   pickerDoneBtn: {
     marginTop: 8,
     paddingVertical: 10,
     borderRadius: 10,
     alignItems: 'center',
   },
-  pickerDoneText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  pickerDoneText: { color: AURA.white, fontSize: 14, fontWeight: '700' },
 
   ratingRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
 
@@ -4069,7 +3685,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingHorizontal: 4,
   },
-  painAnchor: { fontSize: 11, fontWeight: '500' },
+  painAnchor: { fontSize: 11, fontWeight: '600' },
 
   slider: { width: '100%', height: 40, marginTop: 8 },
 
@@ -4080,14 +3696,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 16,
   },
-  tempInput: { flex: 1, paddingVertical: 14, fontWeight: '500' },
+  tempInput: { flex: 1, paddingVertical: 14, fontWeight: '600' },
   tempUnitToggle: { flexDirection: 'row', overflow: 'hidden' },
   tempUnitBtn: { paddingHorizontal: 16, paddingVertical: 12 },
-  tempUnitText: { fontSize: 14, fontWeight: '600' },
+  tempUnitText: { fontSize: 14, fontWeight: '700' },
 
   tagsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tagChip: { paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1.5 },
-  tagText: { fontWeight: '500' },
+  tagText: { fontWeight: '600' },
 
   buttonRow: {
     flexDirection: 'row',
@@ -4096,18 +3712,21 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   cancelBtn: { flex: 1, padding: 16, alignItems: 'center' },
-  cancelText: { fontWeight: '600' },
+  cancelText: { fontWeight: '700' },
   submitBtn: {
     flex: 2,
+    shadowColor: AURA.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  submitGradient: {
     padding: 16,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
+    justifyContent: 'center',
   },
-  submitText: { fontWeight: '700', color: '#fff' },
+  submitText: { fontWeight: '800', color: AURA.white, letterSpacing: 0.4 },
 
   quickContainer: { flex: 1 },
   quickHeader: {
@@ -4115,18 +3734,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  quickTitle: { fontWeight: '700' },
+  quickTitle: { fontWeight: '800' },
   quickSubmit: {
     margin: 16,
+    shadowColor: AURA.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  quickSubmitInner: {
     padding: 16,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  quickSubmitText: { fontWeight: '700', color: '#fff', fontSize: 16 },
+  quickSubmitText: { fontWeight: '800', color: AURA.white, fontSize: 16 },
 });
 
 export default DynamicTrackerForm;

@@ -1,13 +1,12 @@
-
 import React, { useCallback, useEffect, useState } from 'react';
-import { 
-  Dimensions, 
-  Linking, 
-  ScrollView, 
-  StatusBar, 
-  StyleSheet, 
-  Text, 
-  TouchableOpacity, 
+import {
+  Dimensions,
+  Linking,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
   View,
   Share,
 } from 'react-native';
@@ -19,22 +18,49 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useApp } from '../../context/AppContext';
-import { useAuth } from '../../context/AuthContext'; 
+import { useAuth } from '../../context/AuthContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import packageJson from '../../../package.json';
-import { supabase } from '../../lib/supabase'; 
+import { supabase } from '../../lib/supabase';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'About'>;
+
+/* ═══════════════════════════════════════════════════════════════════════
+   AURA DS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  secondary: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray700: '#44403c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_GAP = 12;
 const HORIZONTAL_PADDING = 40;
 const CARD_WIDTH = (SCREEN_WIDTH - HORIZONTAL_PADDING - CARD_GAP) / 2;
 
-
+/* ═══════════════════════════════════════════════════════════════════════
+   Types
+   ═══════════════════════════════════════════════════════════════════════ */
 
 interface ServiceLink {
   icon: keyof typeof Ionicons.glyphMap;
@@ -62,7 +88,9 @@ interface SocialLink {
   color: string;
 }
 
-
+/* ═══════════════════════════════════════════════════════════════════════
+   Data (Aura palette for feature cards)
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const FEATURES: FeatureItem[] = [
   {
@@ -70,35 +98,35 @@ const FEATURES: FeatureItem[] = [
     title: 'Privacy First',
     desc: 'Your data stays on your device or encrypted in the cloud',
     route: 'PrivacyPolicy',
-    color: '#10b981',
+    color: AURA.success,
   },
   {
     icon: 'people',
     title: 'Family Dashboard',
     desc: 'Invite co-parents and guardians',
     route: 'FamilySharing',
-    color: '#667eea',
+    color: AURA.primary,
   },
   {
     icon: 'trending-up',
     title: 'Growth Tracking',
     desc: 'Monitor height, weight, milestones',
     route: 'GrowthDashboard',
-    color: '#f59e0b',
+    color: AURA.warning,
   },
   {
     icon: 'moon',
     title: 'Sleep Insights',
     desc: 'Track and understand sleep patterns',
     route: 'SleepTracker',
-    color: '#8b5cf6',
+    color: AURA.secondary,
   },
   {
     icon: 'restaurant',
     title: 'Feeding Log',
     desc: 'Track breast, bottle, and solids',
     route: 'FeedTracker',
-    color: '#f97316',
+    color: '#fb923c',
   },
   {
     icon: 'medical',
@@ -106,14 +134,14 @@ const FEATURES: FeatureItem[] = [
     desc: 'Medications, allergies, and more',
     route: 'UniversalTrackerHub',
     params: { type: 'health' },
-    color: '#ef4444',
+    color: AURA.danger,
   },
   {
     icon: 'color-wand',
     title: 'Customize',
     desc: 'Themes, colors, and app look',
     route: 'Customize',
-    color: '#ec4899',
+    color: AURA.accent,
   },
   {
     icon: 'trophy',
@@ -127,7 +155,7 @@ const FEATURES: FeatureItem[] = [
     title: 'Gallery',
     desc: 'Photos and precious memories',
     route: 'Gallery',
-    color: '#06b6d4',
+    color: AURA.info,
   },
   {
     icon: 'alarm',
@@ -148,14 +176,14 @@ const FEATURES: FeatureItem[] = [
     title: 'Sound Mixer',
     desc: 'White noise and lullabies',
     route: 'SoundMixer',
-    color: '#6366f1',
+    color: AURA.primary,
   },
 ];
 
 const SOCIAL_LINKS: SocialLink[] = [
   { icon: 'logo-twitter', label: 'Twitter', url: 'https://twitter.com/littleloom', color: '#1DA1F2' },
   { icon: 'logo-instagram', label: 'Instagram', url: 'https://instagram.com/littleloom', color: '#E4405F' },
-  { icon: 'logo-github', label: 'GitHub', url: 'https://github.com/littleloom', color: '#333' },
+  { icon: 'logo-github', label: 'GitHub', url: 'https://github.com/littleloom', color: AURA.gray900 },
   { icon: 'logo-youtube', label: 'YouTube', url: 'https://youtube.com/littleloom', color: '#FF0000' },
 ];
 
@@ -164,7 +192,9 @@ const TEAM = [
   { name: 'Community', role: 'Powered by Supabase', emoji: '⚡' },
 ];
 
-
+/* ═══════════════════════════════════════════════════════════════════════
+   SectionHeader
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const SectionHeader: React.FC<{
   icon: keyof typeof Ionicons.glyphMap;
@@ -182,6 +212,10 @@ const SectionHeader: React.FC<{
   </View>
 );
 
+/* ═══════════════════════════════════════════════════════════════════════
+   ServiceLinkItem
+   ═══════════════════════════════════════════════════════════════════════ */
+
 const ServiceLinkItem: React.FC<{
   item: ServiceLink;
   isDark: boolean;
@@ -192,7 +226,7 @@ const ServiceLinkItem: React.FC<{
     style={[
       styles.linkItem,
       isDark && styles.linkItemDark,
-      { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+      { borderColor: isDark ? AURA.darkBorder : 'rgba(0,0,0,0.04)' },
     ]}
     onPress={onPress}
     activeOpacity={0.7}
@@ -211,10 +245,14 @@ const ServiceLinkItem: React.FC<{
     <Ionicons
       name={item.isExternal ? 'open-outline' : 'chevron-forward'}
       size={18}
-      color={isDark ? '#666' : '#999'}
+      color={isDark ? AURA.gray500 : AURA.gray400}
     />
   </TouchableOpacity>
 );
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FeatureCard / FeatureRow
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const FeatureCard: React.FC<{
   feature: FeatureItem;
@@ -233,7 +271,7 @@ const FeatureCard: React.FC<{
       style={[
         styles.featureCard,
         isDark && styles.featureCardDark,
-        { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+        { borderColor: isDark ? AURA.darkBorder : 'rgba(0,0,0,0.04)' },
       ]}
     >
       <View style={[styles.featureIcon, { backgroundColor: `${feature.color}15` }]}>
@@ -276,27 +314,27 @@ const FeatureRow: React.FC<{
   </View>
 );
 
-
+/* ═══════════════════════════════════════════════════════════════════════
+   Main Screen
+   ═══════════════════════════════════════════════════════════════════════ */
 
 export default function AboutScreen({ navigation }: Props) {
   const { themeColors, darkMode, reduceMotion, avatar } = useCustomization();
   const { colors, isDark: appIsDark } = useApp();
-  const { user } = useAuth(); 
+  const { user } = useAuth();
   const { sweetAlert } = useSweetAlert();
   const insets = useSafeAreaInsets();
 
   const isDark = darkMode ?? appIsDark;
-  const primary = themeColors?.primary || colors.primary || '#667eea';
-  const secondary = themeColors?.secondary || colors.accent || '#fa709a';
+  const primary = themeColors?.primary || colors.primary || AURA.primary;
+  const secondary = themeColors?.secondary || colors.accent || AURA.accent;
 
   const [appVersion, setAppVersion] = useState('1.0.0');
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
 
-  
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        
         const { error } = await supabase.from('tracker_entries').select('id').limit(1);
         setIsSupabaseConnected(!error);
       } catch {
@@ -310,7 +348,7 @@ export default function AboutScreen({ navigation }: Props) {
     try {
       setAppVersion(packageJson.version || '1.0.0');
     } catch {
-      
+      /* package.json not available */
     }
   }, []);
 
@@ -334,8 +372,8 @@ export default function AboutScreen({ navigation }: Props) {
 
   const handleHaptic = (style: 'light' | 'medium' | 'success' = 'light') => {
     if (!reduceMotion) {
-      const hapticStyle = style === 'success' 
-        ? Haptics.ImpactFeedbackStyle.Medium 
+      const hapticStyle = style === 'success'
+        ? Haptics.ImpactFeedbackStyle.Medium
         : Haptics.ImpactFeedbackStyle.Light;
       Haptics.impactAsync(hapticStyle).catch(() => {});
     }
@@ -382,7 +420,7 @@ export default function AboutScreen({ navigation }: Props) {
       title: 'Cloud Status',
       subtitle: isSupabaseConnected ? 'Connected to Supabase' : 'Offline mode',
       url: 'https://status.littleloom.app',
-      color: isSupabaseConnected ? '#10b981' : '#f59e0b',
+      color: isSupabaseConnected ? AURA.success : AURA.warning,
       isExternal: true,
     },
     {
@@ -390,7 +428,7 @@ export default function AboutScreen({ navigation }: Props) {
       title: 'Website',
       subtitle: 'Visit our official website',
       url: 'https://littleloom.app',
-      color: '#4facfe',
+      color: AURA.info,
       isExternal: true,
     },
     {
@@ -398,7 +436,7 @@ export default function AboutScreen({ navigation }: Props) {
       title: 'Open Source',
       subtitle: 'Contribute on GitHub',
       url: 'https://github.com/littleloom',
-      color: '#333',
+      color: AURA.gray900,
       isExternal: true,
     },
     {
@@ -406,7 +444,7 @@ export default function AboutScreen({ navigation }: Props) {
       title: 'Contact Support',
       subtitle: 'Get help from our team',
       route: 'ContactSupport',
-      color: '#11998e',
+      color: AURA.success,
       isExternal: false,
     },
     {
@@ -414,7 +452,7 @@ export default function AboutScreen({ navigation }: Props) {
       title: 'Rate the App',
       subtitle: 'Share your feedback',
       url: 'https://littleloom.app/review',
-      color: '#f59e0b',
+      color: AURA.warning,
       isExternal: true,
     },
   ];
@@ -438,7 +476,7 @@ export default function AboutScreen({ navigation }: Props) {
   }
 
   const bgColors = isDark
-    ? [themeColors?.colors?.[0] || '#0f0f1e', themeColors?.colors?.[1] || '#1a1a2e', themeColors?.colors?.[2] || '#16213e']
+    ? [themeColors?.colors?.[0] || AURA.darkBg, themeColors?.colors?.[1] || '#1a1428', themeColors?.colors?.[2] || AURA.darkBg]
     : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#f0f4ff', themeColors?.colors?.[2] || '#e8eeff'];
 
   return (
@@ -460,7 +498,7 @@ export default function AboutScreen({ navigation }: Props) {
           <TouchableOpacity
             style={[
               styles.backButton,
-              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
+              { backgroundColor: isDark ? AURA.darkCard : 'rgba(0,0,0,0.05)' },
             ]}
             onPress={() => {
               handleHaptic('light');
@@ -468,7 +506,7 @@ export default function AboutScreen({ navigation }: Props) {
             }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+            <Ionicons name="arrow-back" size={24} color={isDark ? AURA.white : AURA.gray900} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>
             About
@@ -477,10 +515,10 @@ export default function AboutScreen({ navigation }: Props) {
             onPress={handleShareApp}
             style={[
               styles.shareButton,
-              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
+              { backgroundColor: isDark ? AURA.darkCard : 'rgba(0,0,0,0.05)' },
             ]}
           >
-            <Ionicons name="share-outline" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
+            <Ionicons name="share-outline" size={22} color={isDark ? AURA.white : AURA.gray900} />
           </TouchableOpacity>
         </Animated.View>
 
@@ -498,8 +536,8 @@ export default function AboutScreen({ navigation }: Props) {
               style={[
                 styles.logoContainer,
                 {
-                  backgroundColor: `${primary}20`,
-                  borderColor: `${primary}40`,
+                  backgroundColor: `${AURA.primary}20`,
+                  borderColor: `${AURA.primary}40`,
                 },
               ]}
             >
@@ -520,9 +558,9 @@ export default function AboutScreen({ navigation }: Props) {
               Weaving together the precious moments of parenthood
             </Text>
             {isSupabaseConnected && (
-              <View style={[styles.cloudBadge, { backgroundColor: `${primary}15` }]}>
-                <View style={[styles.cloudDot, { backgroundColor: '#10b981' }]} />
-                <Text style={[styles.cloudText, { color: '#10b981' }]}>
+              <View style={[styles.cloudBadge, { backgroundColor: `${AURA.success}15` }]}>
+                <View style={[styles.cloudDot, { backgroundColor: AURA.success }]} />
+                <Text style={[styles.cloudText, { color: AURA.success }]}>
                   Connected to Supabase
                 </Text>
               </View>
@@ -538,7 +576,7 @@ export default function AboutScreen({ navigation }: Props) {
           <SectionHeader
             icon="grid-outline"
             title="Features"
-            color={primary}
+            color={AURA.primary}
             isDark={isDark}
           />
           <BlurView
@@ -569,7 +607,7 @@ export default function AboutScreen({ navigation }: Props) {
           <SectionHeader
             icon="share-social-outline"
             title="Connect With Us"
-            color="#4facfe"
+            color={AURA.info}
             isDark={isDark}
           />
           <BlurView
@@ -584,7 +622,7 @@ export default function AboutScreen({ navigation }: Props) {
                   style={[
                     styles.socialItem,
                     isDark && styles.socialItemDark,
-                    { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                    { borderColor: isDark ? AURA.darkBorder : 'rgba(0,0,0,0.04)' },
                   ]}
                   onPress={() => {
                     handleHaptic('light');
@@ -612,7 +650,7 @@ export default function AboutScreen({ navigation }: Props) {
           <SectionHeader
             icon="people-outline"
             title="Team"
-            color={secondary}
+            color={AURA.secondary}
             isDark={isDark}
           />
           <BlurView
@@ -626,10 +664,10 @@ export default function AboutScreen({ navigation }: Props) {
                 style={[
                   styles.teamCard,
                   isDark && styles.teamCardDark,
-                  { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                  { borderColor: isDark ? AURA.darkBorder : 'rgba(0,0,0,0.04)' },
                 ]}
               >
-                <View style={[styles.teamAvatar, { backgroundColor: `${primary}15` }]}>
+                <View style={[styles.teamAvatar, { backgroundColor: `${AURA.primary}15` }]}>
                   <Text style={styles.teamEmoji}>{member.emoji}</Text>
                 </View>
                 <View style={styles.teamInfo}>
@@ -653,7 +691,7 @@ export default function AboutScreen({ navigation }: Props) {
           <SectionHeader
             icon="link-outline"
             title="Links & Services"
-            color="#4facfe"
+            color={AURA.info}
             isDark={isDark}
           />
           <BlurView
@@ -694,7 +732,7 @@ export default function AboutScreen({ navigation }: Props) {
             {'\u00A9 2026 LittleLoom. All rights reserved.'}
           </Text>
           <View style={styles.madeWithLove}>
-            <Ionicons name="heart" size={12} color={secondary} />
+            <Ionicons name="heart" size={12} color={AURA.accent} />
             <Text style={[styles.madeWithText, isDark && styles.madeWithTextDark]}>
               {' Made with love for parents everywhere'}
             </Text>
@@ -709,6 +747,10 @@ export default function AboutScreen({ navigation }: Props) {
     </LinearGradient>
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Styles (structure unchanged, Aura values now flow through)
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -739,10 +781,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 28,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     letterSpacing: -0.5,
   },
-  headerTitleDark: { color: '#fff' },
+  headerTitleDark: { color: AURA.white },
 
   sectionWrapper: { marginBottom: 20 },
   sectionHeader: {
@@ -763,10 +805,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     letterSpacing: -0.3,
   },
-  sectionTitleDark: { color: '#ffffff' },
+  sectionTitleDark: { color: AURA.white },
 
   logoSection: { alignItems: 'center', marginBottom: 24 },
   logoCard: {
@@ -794,27 +836,27 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     letterSpacing: -0.5,
     marginBottom: 4,
   },
-  appNameDark: { color: '#fff' },
+  appNameDark: { color: AURA.white },
   version: {
     fontSize: 14,
-    color: '#888',
+    color: AURA.gray400,
     fontWeight: '600',
     marginBottom: 8,
   },
-  versionDark: { color: '#aaa' },
+  versionDark: { color: AURA.gray400 },
   tagline: {
     fontSize: 14,
-    color: '#666',
+    color: AURA.gray500,
     textAlign: 'center',
     fontWeight: '500',
     maxWidth: 280,
     lineHeight: 20,
   },
-  taglineDark: { color: '#a0a0a0' },
+  taglineDark: { color: AURA.gray400 },
   cloudBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -861,7 +903,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   featureCardDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
+    backgroundColor: 'rgba(41,37,36,0.4)',
   },
   featureIcon: {
     width: 48,
@@ -874,19 +916,19 @@ const styles = StyleSheet.create({
   featureTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     marginBottom: 4,
     textAlign: 'center',
   },
-  featureTitleDark: { color: '#fff' },
+  featureTitleDark: { color: AURA.white },
   featureDesc: {
     fontSize: 12,
-    color: '#888',
+    color: AURA.gray500,
     textAlign: 'center',
     fontWeight: '500',
     lineHeight: 18,
   },
-  featureDescDark: { color: '#bbb' },
+  featureDescDark: { color: AURA.gray400 },
   featureArrow: {
     width: 28,
     height: 28,
@@ -920,7 +962,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   socialItemDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
+    backgroundColor: 'rgba(41,37,36,0.4)',
   },
   socialIcon: {
     width: 40,
@@ -932,9 +974,9 @@ const styles = StyleSheet.create({
   socialLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: AURA.gray900,
   },
-  socialLabelDark: { color: '#fff' },
+  socialLabelDark: { color: AURA.white },
 
   teamContainer: {
     borderRadius: 24,
@@ -952,7 +994,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   teamCardDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
+    backgroundColor: 'rgba(41,37,36,0.4)',
   },
   teamAvatar: {
     width: 48,
@@ -967,16 +1009,16 @@ const styles = StyleSheet.create({
   teamName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     marginBottom: 2,
   },
-  teamNameDark: { color: '#fff' },
+  teamNameDark: { color: AURA.white },
   teamRole: {
     fontSize: 13,
-    color: '#888',
+    color: AURA.gray500,
     fontWeight: '500',
   },
-  teamRoleDark: { color: '#bbb' },
+  teamRoleDark: { color: AURA.gray400 },
 
   linksContainer: {
     borderRadius: 24,
@@ -1006,17 +1048,17 @@ const styles = StyleSheet.create({
   linkTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     letterSpacing: -0.2,
   },
-  linkTitleDark: { color: '#ffffff' },
+  linkTitleDark: { color: AURA.white },
   linkSubtitle: {
     fontSize: 13,
-    color: '#888',
+    color: AURA.gray500,
     marginTop: 3,
     fontWeight: '500',
   },
-  linkSubtitleDark: { color: '#888' },
+  linkSubtitleDark: { color: AURA.gray400 },
 
   divider: {
     height: 1,
@@ -1024,7 +1066,7 @@ const styles = StyleSheet.create({
     marginLeft: 80,
   },
   dividerDark: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: AURA.darkBorder,
   },
 
   copyright: {
@@ -1037,15 +1079,15 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: 'rgba(102,126,234,0.1)',
+    backgroundColor: `${AURA.primary}10`,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.2)',
+    borderColor: `${AURA.primary}20`,
   },
   appIconContainerDark: {
-    backgroundColor: 'rgba(163,191,250,0.15)',
-    borderColor: 'rgba(163,191,250,0.25)',
+    backgroundColor: `${AURA.primary}15`,
+    borderColor: `${AURA.primary}25`,
   },
   safeAvatarSmall: {
     width: 32,
@@ -1053,12 +1095,12 @@ const styles = StyleSheet.create({
   },
   copyrightText: {
     fontSize: 12,
-    color: '#999',
+    color: AURA.gray400,
     textAlign: 'center',
     lineHeight: 20,
     fontWeight: '500',
   },
-  copyrightTextDark: { color: '#666' },
+  copyrightTextDark: { color: AURA.gray500 },
   madeWithLove: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1066,15 +1108,15 @@ const styles = StyleSheet.create({
   },
   madeWithText: {
     fontSize: 12,
-    color: '#999',
+    color: AURA.gray400,
     fontWeight: '600',
   },
-  madeWithTextDark: { color: '#666' },
+  madeWithTextDark: { color: AURA.gray500 },
   userInfo: {
     fontSize: 11,
-    color: '#aaa',
+    color: AURA.gray400,
     fontWeight: '500',
     marginTop: 4,
   },
-  userInfoDark: { color: '#555' },
+  userInfoDark: { color: AURA.gray500 },
 });

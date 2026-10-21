@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -15,6 +14,28 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'UnitSettings'>;
+
+/* ─── AURA DS ────────────────────────────────────────────────────── */
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  secondary: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray700: '#44403c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
 
 type UnitSystem = 'metric' | 'imperial';
 
@@ -55,13 +76,12 @@ export default function UnitSettingsScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
 
   const isDark = darkMode;
-  const primary = themeColors?.primary || '#667eea';
+  const primary = themeColors?.primary || AURA.primary;
 
   const [system, setSystem] = useState<UnitSystem>('metric');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  
   useEffect(() => {
     const loadUnits = async () => {
       if (isConnected && user) {
@@ -98,10 +118,8 @@ export default function UnitSettingsScreen({ navigation }: Props) {
     setSystem(newSystem);
 
     try {
-      
       await updateSettings({ units: newSystem as any });
 
-      
       if (isConnected && user) {
         const { error } = await supabase
           .from('user_preferences')
@@ -146,15 +164,15 @@ export default function UnitSettingsScreen({ navigation }: Props) {
   }) => (
     <View style={[styles.unitRow, isDark && styles.unitRowDark]}>
       <View style={styles.unitRowLeft}>
-        <View style={[styles.unitIcon, { backgroundColor: `${primary}10` }]}>
-          <Ionicons name={icon as any} size={20} color={primary} />
+        <View style={[styles.unitIcon, { backgroundColor: `${AURA.primary}10` }]}>
+          <Ionicons name={icon as any} size={20} color={AURA.primary} />
         </View>
         <Text style={[styles.unitLabel, isDark && styles.unitLabelDark]}>{label}</Text>
       </View>
       <View style={styles.unitValues}>
         <Text style={[
           styles.unitValue,
-          system === 'metric' && [styles.unitValueActive, { color: primary }],
+          system === 'metric' && [styles.unitValueActive, { color: AURA.primary }],
           isDark && styles.unitValueDark,
         ]}>
           {metric}
@@ -162,7 +180,7 @@ export default function UnitSettingsScreen({ navigation }: Props) {
         <Text style={[styles.unitSlash, isDark && styles.unitSlashDark]}>/</Text>
         <Text style={[
           styles.unitValue,
-          system === 'imperial' && [styles.unitValueActive, { color: primary }],
+          system === 'imperial' && [styles.unitValueActive, { color: AURA.primary }],
           isDark && styles.unitValueDark,
         ]}>
           {imperial}
@@ -172,8 +190,8 @@ export default function UnitSettingsScreen({ navigation }: Props) {
   );
 
   const bgColors = isDark
-    ? [themeColors?.colors?.[0] || '#0f0f1e', themeColors?.colors?.[1] || '#1a1a2e', themeColors?.colors?.[2] || '#16213e']
-    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#f0f4ff', themeColors?.colors?.[2] || '#e8eeff'];
+    ? [themeColors?.colors?.[0] || AURA.darkBg, themeColors?.colors?.[1] || '#1a1428', themeColors?.colors?.[2] || AURA.darkBg]
+    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#eef0ff', themeColors?.colors?.[2] || '#e2e5ff'];
 
   if (isLoading) {
     return (
@@ -194,19 +212,15 @@ export default function UnitSettingsScreen({ navigation }: Props) {
       <Animated.ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }
+          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeInUp.delay(100)}
-          style={styles.header}
-        >
+        <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(100)} style={styles.header}>
           <TouchableOpacity
             style={[
               styles.backButton,
-              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
+              { backgroundColor: isDark ? AURA.darkCard : 'rgba(0,0,0,0.05)' },
             ]}
             onPress={() => {
               handleHaptic();
@@ -214,7 +228,7 @@ export default function UnitSettingsScreen({ navigation }: Props) {
             }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+            <Ionicons name="arrow-back" size={24} color={isDark ? AURA.white : AURA.gray900} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Units</Text>
           <Text style={[styles.headerSubtitle, isDark && styles.headerSubtitleDark]}>
@@ -222,29 +236,30 @@ export default function UnitSettingsScreen({ navigation }: Props) {
           </Text>
         </Animated.View>
 
-        {/* Cloud Sync Status */}
         {isConnected && (
           <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(150)}>
-            <View style={[styles.cloudBadge, { backgroundColor: `${primary}15` }]}>
-              <Ionicons name="cloud-outline" size={16} color={primary} />
-              <Text style={[styles.cloudText, { color: primary }]}>
+            <View style={[styles.cloudBadge, { backgroundColor: `${AURA.success}15` }]}>
+              <Ionicons name="cloud-outline" size={16} color={AURA.success} />
+              <Text style={[styles.cloudText, { color: AURA.success }]}>
                 Preferences synced to cloud
               </Text>
             </View>
           </Animated.View>
         )}
 
-        {/* System Selector */}
         <Animated.View
           entering={reduceMotion ? undefined : FadeInUp.delay(200)}
           style={styles.sectionWrapper}
         >
-          <SectionHeader icon="options-outline" title="System" color={primary} isDark={isDark} />
+          <SectionHeader icon="options-outline" title="System" color={AURA.primary} isDark={isDark} />
           <View style={styles.selector}>
             <TouchableOpacity
               style={[
                 styles.selectorBtn,
-                system === 'metric' && [styles.selectorBtnActive, { backgroundColor: primary, borderColor: `${primary}4D` }],
+                system === 'metric' && [
+                  styles.selectorBtnActive,
+                  { backgroundColor: AURA.primary, borderColor: `${AURA.primary}4D` },
+                ],
                 isDark && styles.selectorBtnDark,
                 isSaving && styles.selectorBtnDisabled,
               ]}
@@ -254,17 +269,19 @@ export default function UnitSettingsScreen({ navigation }: Props) {
               <Ionicons
                 name="earth"
                 size={24}
-                color={system === 'metric' ? '#fff' : isDark ? '#888' : '#666'}
+                color={system === 'metric' ? AURA.white : isDark ? AURA.gray400 : AURA.gray500}
               />
               <Text style={[
                 styles.selectorText,
                 system === 'metric' && styles.selectorTextActive,
+                isDark && !system.startsWith('metric') && { color: AURA.gray400 },
               ]}>
                 Metric
               </Text>
               <Text style={[
                 styles.selectorSub,
                 system === 'metric' && styles.selectorSubActive,
+                isDark && system !== 'metric' && { color: AURA.gray500 },
               ]}>
                 kg, cm, °C, ml
               </Text>
@@ -273,7 +290,10 @@ export default function UnitSettingsScreen({ navigation }: Props) {
             <TouchableOpacity
               style={[
                 styles.selectorBtn,
-                system === 'imperial' && [styles.selectorBtnActive, { backgroundColor: primary, borderColor: `${primary}4D` }],
+                system === 'imperial' && [
+                  styles.selectorBtnActive,
+                  { backgroundColor: AURA.primary, borderColor: `${AURA.primary}4D` },
+                ],
                 isDark && styles.selectorBtnDark,
                 isSaving && styles.selectorBtnDisabled,
               ]}
@@ -283,17 +303,19 @@ export default function UnitSettingsScreen({ navigation }: Props) {
               <Ionicons
                 name="flag"
                 size={24}
-                color={system === 'imperial' ? '#fff' : isDark ? '#888' : '#666'}
+                color={system === 'imperial' ? AURA.white : isDark ? AURA.gray400 : AURA.gray500}
               />
               <Text style={[
                 styles.selectorText,
                 system === 'imperial' && styles.selectorTextActive,
+                isDark && system !== 'imperial' && { color: AURA.gray400 },
               ]}>
                 Imperial
               </Text>
               <Text style={[
                 styles.selectorSub,
                 system === 'imperial' && styles.selectorSubActive,
+                isDark && system !== 'imperial' && { color: AURA.gray500 },
               ]}>
                 lb, in, °F, oz
               </Text>
@@ -301,12 +323,11 @@ export default function UnitSettingsScreen({ navigation }: Props) {
           </View>
         </Animated.View>
 
-        {/* Unit Preview */}
         <Animated.View
           entering={reduceMotion ? undefined : FadeInUp.delay(300)}
           style={styles.sectionWrapper}
         >
-          <SectionHeader icon="eye-outline" title="Preview" color="#11998e" isDark={isDark} />
+          <SectionHeader icon="eye-outline" title="Preview" color={AURA.success} isDark={isDark} />
           <BlurView
             intensity={isDark ? 30 : 70}
             style={styles.previewContainer}
@@ -339,15 +360,13 @@ export default function UnitSettingsScreen({ navigation }: Props) {
           </BlurView>
         </Animated.View>
 
-        {/* Note */}
         <Text style={[styles.note, isDark && styles.noteDark]}>
           Existing entries will not be converted. New entries will use the selected units.
         </Text>
 
-        {/* Saving indicator */}
         {isSaving && (
-          <View style={styles.savingContainer}>
-            <UniversalSpinner size={20} color={primary} variant="liquid" section="settings" />
+          <View style={[styles.savingContainer, { backgroundColor: `${AURA.primary}10` }]}>
+            <UniversalSpinner size={20} color={AURA.primary} variant="liquid" section="settings" />
             <Text style={[styles.savingText, isDark && styles.savingTextDark]}>
               Saving preferences...
             </Text>
@@ -362,206 +381,101 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingHorizontal: 20 },
 
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#64748b',
-  },
-  loadingTextDark: { color: '#94a3b8' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
+  loadingText: { fontSize: 16, fontWeight: '500', color: AURA.gray500 },
+  loadingTextDark: { color: AURA.gray400 },
 
   header: { marginBottom: 24 },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    width: 40, height: 40, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
   headerTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    letterSpacing: -0.5,
-    marginBottom: 6,
+    fontSize: 32, fontWeight: '800', color: AURA.gray900,
+    letterSpacing: -0.5, marginBottom: 6,
   },
-  headerTitleDark: { color: '#fff' },
-  headerSubtitle: {
-    fontSize: 15,
-    color: '#666',
-    fontWeight: '500',
-  },
-  headerSubtitleDark: { color: '#a0a0a0' },
+  headerTitleDark: { color: AURA.white },
+  headerSubtitle: { fontSize: 15, color: AURA.gray500, fontWeight: '500' },
+  headerSubtitleDark: { color: AURA.gray400 },
 
   cloudBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginBottom: 20,
-    gap: 8,
-    alignSelf: 'flex-start',
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16,
+    marginBottom: 20, gap: 8, alignSelf: 'flex-start',
   },
-  cloudText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  cloudText: { fontSize: 13, fontWeight: '600' },
 
   sectionWrapper: { marginBottom: 20 },
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    marginBottom: 8,
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 14, paddingHorizontal: 4, marginBottom: 8,
   },
   sectionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    width: 40, height: 40, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', marginRight: 12,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    letterSpacing: -0.3,
-  },
-  sectionTitleDark: { color: '#ffffff' },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: AURA.gray900, letterSpacing: -0.3 },
+  sectionTitleDark: { color: AURA.white },
 
-  selector: {
-    flexDirection: 'row',
-    gap: 12,
-  },
+  selector: { flexDirection: 'row', gap: 12 },
   selectorBtn: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: 20, padding: 20, alignItems: 'center',
+    borderWidth: 2, borderColor: 'transparent',
   },
-  selectorBtnDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-  },
-  selectorBtnActive: {
-    borderColor: 'rgba(102,126,234,0.3)',
-  },
-  selectorBtnDisabled: {
-    opacity: 0.6,
-  },
+  selectorBtnDark: { backgroundColor: 'rgba(41,37,36,0.4)' },
+  selectorBtnActive: { borderColor: 'rgba(99,102,241,0.3)' },
+  selectorBtnDisabled: { opacity: 0.6 },
   selectorText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginTop: 10,
-    marginBottom: 4,
+    fontSize: 16, fontWeight: '700', color: AURA.gray900,
+    marginTop: 10, marginBottom: 4,
   },
-  selectorTextActive: { color: '#fff' },
-  selectorSub: {
-    fontSize: 13,
-    color: '#888',
-    fontWeight: '500',
-  },
+  selectorTextActive: { color: AURA.white },
+  selectorSub: { fontSize: 13, color: AURA.gray500, fontWeight: '500' },
   selectorSubActive: { color: 'rgba(255,255,255,0.8)' },
 
   previewContainer: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    padding: 16,
+    borderRadius: 24, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', padding: 16,
   },
   unitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.03)',
+    borderRadius: 16, padding: 16, marginBottom: 10,
+    borderWidth: 1, borderColor: 'rgba(99,102,241,0.08)',
   },
   unitRowDark: {
-    backgroundColor: 'rgba(30,30,40,0.3)',
-    borderColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(41,37,36,0.3)',
+    borderColor: AURA.darkBorder,
   },
-  unitRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  unitRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   unitIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 40, height: 40, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
   },
-  unitLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
-  unitLabelDark: { color: '#fff' },
-  unitValues: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  unitLabel: { fontSize: 15, fontWeight: '600', color: AURA.gray900 },
+  unitLabelDark: { color: AURA.white },
+  unitValues: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   unitValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#888',
-    minWidth: 30,
-    textAlign: 'center',
+    fontSize: 16, fontWeight: '700', color: AURA.gray500,
+    minWidth: 30, textAlign: 'center',
   },
-  unitValueDark: { color: '#666' },
-  unitValueActive: {
-    fontSize: 18,
-  },
-  unitSlash: {
-    fontSize: 14,
-    color: '#ccc',
-    fontWeight: '500',
-  },
-  unitSlashDark: { color: '#444' },
+  unitValueDark: { color: AURA.gray500 },
+  unitValueActive: { fontSize: 18 },
+  unitSlash: { fontSize: 14, color: AURA.gray300, fontWeight: '500' },
+  unitSlashDark: { color: AURA.gray700 },
 
   note: {
-    fontSize: 13,
-    color: '#888',
-    textAlign: 'center',
-    fontWeight: '500',
-    lineHeight: 20,
-    marginTop: 8,
+    fontSize: 13, color: AURA.gray500, textAlign: 'center',
+    fontWeight: '500', lineHeight: 20, marginTop: 8,
   },
-  noteDark: { color: '#666' },
+  noteDark: { color: AURA.gray400 },
 
   savingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    marginTop: 16,
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.04)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 12, marginTop: 16, padding: 12, borderRadius: 16,
   },
-  savingText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#64748b',
-  },
-  savingTextDark: { color: '#94a3b8' },
+  savingText: { fontSize: 14, fontWeight: '500', color: AURA.gray500 },
+  savingTextDark: { color: AURA.gray400 },
 });

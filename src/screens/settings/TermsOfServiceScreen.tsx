@@ -10,8 +10,29 @@ import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
-
 type Props = NativeStackScreenProps<RootStackParamList, 'TermsOfService'>;
+
+/* ─── AURA DS ────────────────────────────────────────────────────── */
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  secondary: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray700: '#44403c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
 
 const SECTIONS = [
   {
@@ -166,8 +187,8 @@ export default function TermsOfServiceScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
 
   const isDark = darkMode;
-  const primary = themeColors?.primary || '#667eea';
-  const success = themeColors?.accent || '#43e97b';
+  const primary = themeColors?.primary || AURA.primary;
+  const success = themeColors?.accent || AURA.success;
 
   const handleHaptic = () => {
     if (!reduceMotion) {
@@ -184,24 +205,32 @@ export default function TermsOfServiceScreen({ navigation }: Props) {
   };
 
   const bgColors = isDark
-    ? [themeColors?.colors?.[0] || '#0f0f1e', themeColors?.colors?.[1] || '#1a1a2e', themeColors?.colors?.[2] || '#16213e']
-    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#f0f4ff', themeColors?.colors?.[2] || '#e8eeff'];
+    ? [themeColors?.colors?.[0] || AURA.darkBg, themeColors?.colors?.[1] || '#1a1428', themeColors?.colors?.[2] || AURA.darkBg]
+    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#eef0ff', themeColors?.colors?.[2] || '#e2e5ff'];
 
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <Animated.ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(100)} style={styles.header}>
           <TouchableOpacity
-            style={[styles.backButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}
-            onPress={() => { handleHaptic(); navigation.goBack(); }}
+            style={[
+              styles.backButton,
+              { backgroundColor: isDark ? AURA.darkCard : 'rgba(0,0,0,0.05)' },
+            ]}
+            onPress={() => {
+              handleHaptic();
+              navigation.goBack();
+            }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+            <Ionicons name="arrow-back" size={24} color={isDark ? AURA.white : AURA.gray900} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Terms of Service</Text>
           <Text style={[styles.headerSubtitle, isDark && styles.headerSubtitleDark]}>
@@ -209,15 +238,17 @@ export default function TermsOfServiceScreen({ navigation }: Props) {
           </Text>
         </Animated.View>
 
-        {/* Intro */}
-        <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(200)} style={styles.sectionWrapper}>
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeInUp.delay(200)}
+          style={styles.sectionWrapper}
+        >
           <BlurView
             intensity={isDark ? 30 : 70}
-            style={[styles.introCard, { borderColor: `${primary}26` }]}
+            style={[styles.introCard, { borderColor: `${AURA.primary}26` }]}
             tint={isDark ? 'dark' : 'light'}
           >
-            <View style={[styles.introIcon, { backgroundColor: `${primary}15` }]}>
-              <Ionicons name="document-text" size={28} color={primary} />
+            <View style={[styles.introIcon, { backgroundColor: `${AURA.primary}15` }]}>
+              <Ionicons name="document-text" size={28} color={AURA.primary} />
             </View>
             <Text style={[styles.introTitle, isDark && styles.introTitleDark]}>
               Your Agreement with LittleLoom
@@ -228,22 +259,30 @@ export default function TermsOfServiceScreen({ navigation }: Props) {
           </BlurView>
         </Animated.View>
 
-        {/* Accept Button (for signup flow) */}
-        <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(250)} style={styles.sectionWrapper}>
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeInUp.delay(250)}
+          style={styles.sectionWrapper}
+        >
           <TouchableOpacity
-            style={[styles.acceptButton, { backgroundColor: success }]}
+            style={styles.acceptButton}
             onPress={() => {
               handleHaptic();
               navigation.navigate('SignUp');
             }}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <Ionicons name="checkmark-circle" size={22} color="#fff" />
-            <Text style={styles.acceptButtonText}>I Accept the Terms of Service</Text>
+            <LinearGradient
+              colors={[AURA.primary, AURA.accent]}
+              style={styles.acceptGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name="checkmark-circle" size={22} color={AURA.white} />
+              <Text style={styles.acceptButtonText}>I Accept the Terms of Service</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Sections */}
         {SECTIONS.map((section, index) => (
           <Animated.View
             key={index}
@@ -265,30 +304,37 @@ export default function TermsOfServiceScreen({ navigation }: Props) {
           </Animated.View>
         ))}
 
-        {/* Footer */}
         <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(900)} style={styles.footer}>
           <TouchableOpacity
             style={[styles.footerCard, isDark && styles.footerCardDark]}
-            onPress={() => { handleHaptic(); openEmail(); }}
+            onPress={() => {
+              handleHaptic();
+              openEmail();
+            }}
             activeOpacity={0.7}
           >
-            <Ionicons name="mail-outline" size={20} color={primary} />
+            <Ionicons name="mail-outline" size={20} color={AURA.primary} />
             <Text style={[styles.footerText, isDark && styles.footerTextDark]}>
-              Legal questions? <Text style={{ color: primary, fontWeight: '700' }}>legal@littleloom.app</Text>
+              Legal questions?{' '}
+              <Text style={{ color: AURA.primary, fontWeight: '700' }}>legal@littleloom.app</Text>
             </Text>
-            <Ionicons name="open-outline" size={16} color={isDark ? '#666' : '#999'} />
+            <Ionicons name="open-outline" size={16} color={isDark ? AURA.gray500 : AURA.gray400} />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.footerCard, isDark && styles.footerCardDark, { marginTop: 12 }]}
-            onPress={() => { handleHaptic(); navigation.navigate('PrivacyPolicy'); }}
+            onPress={() => {
+              handleHaptic();
+              navigation.navigate('PrivacyPolicy');
+            }}
             activeOpacity={0.7}
           >
-            <Ionicons name="shield-checkmark" size={20} color={success} />
+            <Ionicons name="shield-checkmark" size={20} color={AURA.success} />
             <Text style={[styles.footerText, isDark && styles.footerTextDark]}>
-              View our <Text style={{ color: success, fontWeight: '700' }}>Privacy Policy</Text>
+              View our{' '}
+              <Text style={{ color: AURA.success, fontWeight: '700' }}>Privacy Policy</Text>
             </Text>
-            <Ionicons name="chevron-forward" size={16} color={isDark ? '#666' : '#999'} />
+            <Ionicons name="chevron-forward" size={16} color={isDark ? AURA.gray500 : AURA.gray400} />
           </TouchableOpacity>
         </Animated.View>
       </Animated.ScrollView>
@@ -302,131 +348,73 @@ const styles = StyleSheet.create({
 
   header: { marginBottom: 24 },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    width: 40, height: 40, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
   headerTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    letterSpacing: -0.5,
-    marginBottom: 6,
+    fontSize: 32, fontWeight: '800', color: AURA.gray900,
+    letterSpacing: -0.5, marginBottom: 6,
   },
-  headerTitleDark: { color: '#fff' },
-  headerSubtitle: {
-    fontSize: 15,
-    color: '#666',
-    fontWeight: '500',
-  },
-  headerSubtitleDark: { color: '#a0a0a0' },
+  headerTitleDark: { color: AURA.white },
+  headerSubtitle: { fontSize: 15, color: AURA.gray500, fontWeight: '500' },
+  headerSubtitleDark: { color: AURA.gray400 },
 
   sectionWrapper: { marginBottom: 12 },
 
   introCard: {
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 24, padding: 24, alignItems: 'center',
+    overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
   },
   introIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    width: 56, height: 56, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
   introTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 8,
-    textAlign: 'center',
+    fontSize: 18, fontWeight: '700', color: AURA.gray900,
+    marginBottom: 8, textAlign: 'center',
   },
-  introTitleDark: { color: '#fff' },
+  introTitleDark: { color: AURA.white },
   introText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 22,
-    fontWeight: '500',
+    fontSize: 14, color: AURA.gray500, textAlign: 'center',
+    lineHeight: 22, fontWeight: '500',
   },
-  introTextDark: { color: '#a0a0a0' },
+  introTextDark: { color: AURA.gray400 },
 
   acceptButton: {
-    borderRadius: 20,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    shadowColor: '#000',
+    borderRadius: 20, overflow: 'hidden',
+    shadowColor: AURA.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOpacity: 0.3, shadowRadius: 12, elevation: 6,
   },
-  acceptButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
+  acceptGradient: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    padding: 18, gap: 10,
   },
+  acceptButtonText: { color: AURA.white, fontSize: 16, fontWeight: '800' },
 
   sectionCard: {
-    borderRadius: 24,
-    padding: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 24, padding: 20, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
   },
-  sectionCardDark: {
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
+  sectionCardDark: { borderColor: AURA.darkBorder },
   sectionCardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 12,
+    fontSize: 16, fontWeight: '700', color: AURA.gray900, marginBottom: 12,
   },
-  sectionCardTitleDark: { color: '#fff' },
-  sectionText: {
-    fontSize: 14,
-    color: '#555',
-    lineHeight: 22,
-    fontWeight: '500',
-  },
-  sectionTextDark: { color: '#a0a0a0' },
+  sectionCardTitleDark: { color: AURA.white },
+  sectionText: { fontSize: 14, color: AURA.gray500, lineHeight: 22, fontWeight: '500' },
+  sectionTextDark: { color: AURA.gray400 },
 
-  footer: {
-    marginTop: 20,
-    marginBottom: 20,
-  },
+  footer: { marginTop: 20, marginBottom: 20 },
   footerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 20,
-    padding: 20,
-    gap: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
+    borderRadius: 20, padding: 20, gap: 14,
+    borderWidth: 1, borderColor: 'rgba(99,102,241,0.08)',
   },
   footerCardDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(41,37,36,0.4)',
+    borderColor: AURA.darkBorder,
   },
-  footerText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#888',
-    lineHeight: 22,
-    fontWeight: '500',
-  },
-  footerTextDark: { color: '#666' },
+  footerText: { flex: 1, fontSize: 14, color: AURA.gray500, lineHeight: 22, fontWeight: '500' },
+  footerTextDark: { color: AURA.gray400 },
 });

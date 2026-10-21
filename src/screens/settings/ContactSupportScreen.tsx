@@ -1,15 +1,14 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
-import { 
-  Alert, 
-  KeyboardAvoidingView, 
-  Linking, 
-  Platform, 
-  StatusBar, 
-  StyleSheet, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
   View,
   ScrollView,
   ActivityIndicator,
@@ -29,6 +28,35 @@ import type { RootStackParamList } from '../../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ContactSupport'>;
 
+/* ═══════════════════════════════════════════════════════════════════════
+   AURA DS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  secondary: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray700: '#44403c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Types
+   ═══════════════════════════════════════════════════════════════════════ */
+
 interface CategoryItem {
   id: string;
   label: string;
@@ -46,6 +74,10 @@ interface AltContact {
   route?: keyof RootStackParamList;
   color: string;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Categories (unchanged)
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const CATEGORIES: CategoryItem[] = [
   { id: 'bug', label: 'Bug Report', icon: 'bug-outline' },
@@ -187,6 +219,10 @@ const CATEGORIES: CategoryItem[] = [
   { id: 'other', label: 'Other', icon: 'ellipsis-horizontal-outline' },
 ];
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Section Header (Aura)
+   ═══════════════════════════════════════════════════════════════════════ */
+
 const SectionHeader: React.FC<{
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -203,12 +239,15 @@ const SectionHeader: React.FC<{
   </View>
 );
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Main Screen
+   ═══════════════════════════════════════════════════════════════════════ */
+
 export default function ContactSupportScreen({ navigation }: Props) {
   const { sweetAlert } = useSweetAlert();
   const [user, setUser] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
-  
-  
+
   useEffect(() => {
     const checkSupabase = async () => {
       try {
@@ -230,15 +269,14 @@ export default function ContactSupportScreen({ navigation }: Props) {
     reduceMotion,
   } = useCustomization();
 
-  const primary = themeColors?.primary || '#667eea';
-  const secondary = themeColors?.secondary || '#fa709a';
+  const primary = themeColors?.primary || AURA.primary;
+  const secondary = themeColors?.secondary || AURA.accent;
 
   const [category, setCategory] = useState('bug');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
-  
-  
+
   useEffect(() => {
     if (user?.email) {
       setEmail(user.email);
@@ -249,8 +287,8 @@ export default function ContactSupportScreen({ navigation }: Props) {
 
   const handleHaptic = (style: 'light' | 'medium' | 'success' = 'light') => {
     if (!reduceMotion) {
-      const hapticStyle = style === 'success' 
-        ? Haptics.ImpactFeedbackStyle.Medium 
+      const hapticStyle = style === 'success'
+        ? Haptics.ImpactFeedbackStyle.Medium
         : Haptics.ImpactFeedbackStyle.Light;
       Haptics.impactAsync(hapticStyle).catch(() => {});
     }
@@ -293,7 +331,6 @@ export default function ContactSupportScreen({ navigation }: Props) {
     setIsSending(true);
     setSendProgress(0);
 
-    
     const progressInterval = setInterval(() => {
       setSendProgress(prev => {
         if (prev >= 90) {
@@ -305,7 +342,6 @@ export default function ContactSupportScreen({ navigation }: Props) {
     }, 200);
 
     try {
-      
       const supportData = {
         email,
         category,
@@ -317,7 +353,6 @@ export default function ContactSupportScreen({ navigation }: Props) {
         created_at: new Date().toISOString(),
       };
 
-      
       const { error } = await supabase
         .from('support_tickets')
         .insert([supportData]);
@@ -372,7 +407,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
       label: 'Email',
       value: 'support@littleloom.app',
       url: 'mailto:support@littleloom.app',
-      color: primary,
+      color: AURA.primary,
     },
     {
       icon: 'logo-twitter',
@@ -386,14 +421,14 @@ export default function ContactSupportScreen({ navigation }: Props) {
       label: 'Help Center',
       value: 'Browse FAQs',
       route: 'HelpCenter',
-      color: '#11998e',
+      color: AURA.success,
     },
     {
       icon: 'document-text-outline',
       label: 'Privacy Policy',
       value: 'Read our policy',
       route: 'PrivacyPolicy',
-      color: '#f59e0b',
+      color: AURA.warning,
     },
   ];
 
@@ -407,8 +442,8 @@ export default function ContactSupportScreen({ navigation }: Props) {
   };
 
   const bgColors = isDark
-    ? [themeColors?.colors?.[0] || '#0f0f1e', themeColors?.colors?.[1] || '#1a1a2e', themeColors?.colors?.[2] || '#16213e']
-    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#f0f4ff', themeColors?.colors?.[2] || '#e8eeff'];
+    ? [themeColors?.colors?.[0] || AURA.darkBg, themeColors?.colors?.[1] || '#1a1428', themeColors?.colors?.[2] || AURA.darkBg]
+    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#eef0ff', themeColors?.colors?.[2] || '#e2e5ff'];
 
   return (
     <KeyboardAvoidingView
@@ -433,7 +468,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
             <TouchableOpacity
               style={[
                 styles.backButton,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
+                { backgroundColor: isDark ? AURA.darkCard : 'rgba(0,0,0,0.05)' },
               ]}
               onPress={() => {
                 handleHaptic('light');
@@ -441,7 +476,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+              <Ionicons name="arrow-back" size={24} color={isDark ? AURA.white : AURA.gray900} />
             </TouchableOpacity>
             <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>
               Contact Support
@@ -453,14 +488,26 @@ export default function ContactSupportScreen({ navigation }: Props) {
 
           {/* ─── Status Banner ─── */}
           <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(150)}>
-            <View style={[styles.statusBanner, { backgroundColor: isConnected ? `${primary}10` : `${secondary}10` }]}>
-              <Ionicons 
-                name={isConnected ? 'cloud-outline' : 'cloud-offline-outline'} 
-                size={20} 
-                color={isConnected ? primary : secondary} 
+            <View
+              style={[
+                styles.statusBanner,
+                { backgroundColor: isConnected ? `${AURA.success}12` : `${AURA.warning}12` },
+              ]}
+            >
+              <Ionicons
+                name={isConnected ? 'cloud-outline' : 'cloud-offline-outline'}
+                size={20}
+                color={isConnected ? AURA.success : AURA.warning}
               />
-              <Text style={[styles.statusText, { color: isConnected ? primary : secondary }]}>
-                {isConnected ? 'Connected to support system' : 'You are offline - messages will be queued'}
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: isConnected ? AURA.success : AURA.warning },
+                ]}
+              >
+                {isConnected
+                  ? 'Connected to support system'
+                  : 'You are offline - messages will be queued'}
               </Text>
             </View>
           </Animated.View>
@@ -470,7 +517,12 @@ export default function ContactSupportScreen({ navigation }: Props) {
             entering={reduceMotion ? undefined : FadeInUp.delay(200)}
             style={styles.sectionWrapper}
           >
-            <SectionHeader icon="grid-outline" title="What do you need help with?" color={primary} isDark={isDark} />
+            <SectionHeader
+              icon="grid-outline"
+              title="What do you need help with?"
+              color={AURA.primary}
+              isDark={isDark}
+            />
             <BlurView
               intensity={isDark ? 30 : 70}
               style={styles.categoryContainer}
@@ -482,7 +534,10 @@ export default function ContactSupportScreen({ navigation }: Props) {
                     key={cat.id}
                     style={[
                       styles.categoryChip,
-                      category === cat.id && { backgroundColor: primary, borderColor: primary },
+                      category === cat.id && {
+                        backgroundColor: AURA.primary,
+                        borderColor: AURA.primary,
+                      },
                       isDark && styles.categoryChipDark,
                     ]}
                     onPress={() => handleCategoryPress(cat)}
@@ -490,17 +545,30 @@ export default function ContactSupportScreen({ navigation }: Props) {
                     <Ionicons
                       name={cat.icon as any}
                       size={16}
-                      color={category === cat.id ? '#fff' : isDark ? '#888' : '#666'}
+                      color={
+                        category === cat.id
+                          ? AURA.white
+                          : isDark
+                          ? AURA.gray400
+                          : AURA.gray500
+                      }
                     />
-                    <Text style={[
-                      styles.categoryChipText,
-                      category === cat.id && styles.categoryChipTextActive,
-                      isDark && styles.categoryChipTextDark,
-                    ]}>
+                    <Text
+                      style={[
+                        styles.categoryChipText,
+                        category === cat.id && styles.categoryChipTextActive,
+                        isDark && styles.categoryChipTextDark,
+                      ]}
+                    >
                       {cat.label}
                     </Text>
                     {cat.route && category !== cat.id && (
-                      <Ionicons name="open-outline" size={12} color={isDark ? '#666' : '#999'} style={{ marginLeft: 4 }} />
+                      <Ionicons
+                        name="open-outline"
+                        size={12}
+                        color={isDark ? AURA.gray500 : AURA.gray400}
+                        style={{ marginLeft: 4 }}
+                      />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -513,7 +581,12 @@ export default function ContactSupportScreen({ navigation }: Props) {
             entering={reduceMotion ? undefined : FadeInUp.delay(300)}
             style={styles.sectionWrapper}
           >
-            <SectionHeader icon="create-outline" title="Your Message" color={secondary} isDark={isDark} />
+            <SectionHeader
+              icon="create-outline"
+              title="Your Message"
+              color={AURA.accent}
+              isDark={isDark}
+            />
             <BlurView
               intensity={isDark ? 30 : 70}
               style={styles.formContainer}
@@ -524,7 +597,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
                 <TextInput
                   style={[styles.input, isDark && styles.inputDark]}
                   placeholder="you@example.com"
-                  placeholderTextColor={isDark ? '#666' : '#999'}
+                  placeholderTextColor={isDark ? AURA.gray500 : AURA.gray400}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -538,7 +611,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
                 <TextInput
                   style={[styles.input, isDark && styles.inputDark]}
                   placeholder="What's this about?"
-                  placeholderTextColor={isDark ? '#666' : '#999'}
+                  placeholderTextColor={isDark ? AURA.gray500 : AURA.gray400}
                   value={subject}
                   onChangeText={setSubject}
                 />
@@ -549,7 +622,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
                 <TextInput
                   style={[styles.textArea, isDark && styles.textAreaDark]}
                   placeholder="Describe your issue or suggestion in detail..."
-                  placeholderTextColor={isDark ? '#666' : '#999'}
+                  placeholderTextColor={isDark ? AURA.gray500 : AURA.gray400}
                   value={message}
                   onChangeText={setMessage}
                   multiline
@@ -560,10 +633,25 @@ export default function ContactSupportScreen({ navigation }: Props) {
 
               {isSending && (
                 <View style={styles.progressContainer}>
-                  <View style={styles.progressBarBg}>
-                    <View style={[styles.progressBarFill, { width: `${sendProgress}%`, backgroundColor: primary }]} />
+                  <View
+                    style={[
+                      styles.progressBarBg,
+                      { backgroundColor: isDark ? AURA.darkBorder : 'rgba(0,0,0,0.06)' },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        { width: `${sendProgress}%`, backgroundColor: AURA.primary },
+                      ]}
+                    />
                   </View>
-                  <Text style={[styles.progressText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                  <Text
+                    style={[
+                      styles.progressText,
+                      { color: isDark ? AURA.gray400 : AURA.gray500 },
+                    ]}
+                  >
                     {sendProgress < 100 ? 'Sending...' : 'Sent!'}
                   </Text>
                 </View>
@@ -574,24 +662,32 @@ export default function ContactSupportScreen({ navigation }: Props) {
           {/* ─── Send Button ─── */}
           <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(400)}>
             <TouchableOpacity
-              style={[styles.sendButton, (isSending || !subject.trim() || !message.trim()) && styles.sendButtonDisabled]}
+              style={[
+                styles.sendButton,
+                (isSending || !subject.trim() || !message.trim()) && styles.sendButtonDisabled,
+              ]}
               onPress={handleSend}
               disabled={isSending || !subject.trim() || !message.trim()}
+              activeOpacity={0.85}
             >
               <LinearGradient
-                colors={isSending ? ['#999', '#888'] : [primary, secondary]}
+                colors={
+                  isSending
+                    ? [AURA.gray400, AURA.gray500]
+                    : [AURA.primary, AURA.accent]
+                }
                 style={styles.sendGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
                 {isSending ? (
                   <View style={styles.sendLoading}>
-                    <UniversalSpinner size={20} color="#fff" variant="liquid" section="settings" />
+                    <UniversalSpinner size={20} color={AURA.white} variant="liquid" section="settings" />
                     <Text style={styles.sendButtonText}>Sending...</Text>
                   </View>
                 ) : (
                   <>
-                    <Ionicons name="send" size={18} color="#fff" style={{ marginRight: 8 }} />
+                    <Ionicons name="send" size={18} color={AURA.white} style={{ marginRight: 8 }} />
                     <Text style={styles.sendButtonText}>Send Message</Text>
                   </>
                 )}
@@ -604,7 +700,12 @@ export default function ContactSupportScreen({ navigation }: Props) {
             entering={reduceMotion ? undefined : FadeInUp.delay(500)}
             style={styles.sectionWrapper}
           >
-            <SectionHeader icon="chatbubbles-outline" title="Other Ways to Reach Us" color="#11998e" isDark={isDark} />
+            <SectionHeader
+              icon="chatbubbles-outline"
+              title="Other Ways to Reach Us"
+              color={AURA.success}
+              isDark={isDark}
+            />
             <BlurView
               intensity={isDark ? 30 : 70}
               style={styles.linksContainer}
@@ -616,7 +717,7 @@ export default function ContactSupportScreen({ navigation }: Props) {
                     style={[
                       styles.altItem,
                       isDark && styles.altItemDark,
-                      { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                      { borderColor: isDark ? AURA.darkBorder : 'rgba(0,0,0,0.04)' },
                     ]}
                     onPress={() => handleAltContact(contact)}
                     activeOpacity={0.7}
@@ -625,13 +726,17 @@ export default function ContactSupportScreen({ navigation }: Props) {
                       <Ionicons name={contact.icon} size={22} color={contact.color} />
                     </View>
                     <View style={styles.altText}>
-                      <Text style={[styles.altLabel, isDark && styles.altLabelDark]}>{contact.label}</Text>
-                      <Text style={[styles.altValue, isDark && styles.altValueDark]}>{contact.value}</Text>
+                      <Text style={[styles.altLabel, isDark && styles.altLabelDark]}>
+                        {contact.label}
+                      </Text>
+                      <Text style={[styles.altValue, isDark && styles.altValueDark]}>
+                        {contact.value}
+                      </Text>
                     </View>
                     <Ionicons
                       name={contact.route ? 'chevron-forward' : 'open-outline'}
                       size={18}
-                      color={isDark ? '#666' : '#999'}
+                      color={isDark ? AURA.gray500 : AURA.gray400}
                     />
                   </TouchableOpacity>
                   {i < altContacts.length - 1 && (
@@ -646,6 +751,10 @@ export default function ContactSupportScreen({ navigation }: Props) {
     </KeyboardAvoidingView>
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Styles
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -663,17 +772,17 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     letterSpacing: -0.5,
     marginBottom: 6,
   },
-  headerTitleDark: { color: '#fff' },
+  headerTitleDark: { color: AURA.white },
   headerSubtitle: {
     fontSize: 15,
-    color: '#666',
+    color: AURA.gray500,
     fontWeight: '500',
   },
-  headerSubtitleDark: { color: '#a0a0a0' },
+  headerSubtitleDark: { color: AURA.gray400 },
 
   statusBanner: {
     flexDirection: 'row',
@@ -686,7 +795,7 @@ const styles = StyleSheet.create({
   statusText: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 
   sectionWrapper: { marginBottom: 20 },
@@ -708,10 +817,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     letterSpacing: -0.3,
   },
-  sectionTitleDark: { color: '#ffffff' },
+  sectionTitleDark: { color: AURA.white },
 
   categoryContainer: {
     borderRadius: 24,
@@ -737,16 +846,16 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.05)',
   },
   categoryChipDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(41,37,36,0.4)',
+    borderColor: AURA.darkBorder,
   },
   categoryChipText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#666',
+    color: AURA.gray500,
   },
-  categoryChipTextActive: { color: '#fff' },
-  categoryChipTextDark: { color: '#888' },
+  categoryChipTextActive: { color: AURA.white },
+  categoryChipTextDark: { color: AURA.gray400 },
 
   formContainer: {
     borderRadius: 24,
@@ -759,25 +868,25 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     marginBottom: 10,
   },
-  labelDark: { color: '#fff' },
+  labelDark: { color: AURA.white },
   input: {
     backgroundColor: 'rgba(255,255,255,0.5)',
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 15,
-    color: '#1a1a1a',
+    color: AURA.gray900,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+    borderColor: 'rgba(99,102,241,0.15)',
     fontWeight: '500',
   },
   inputDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-    color: '#fff',
-    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(41,37,36,0.4)',
+    color: AURA.white,
+    borderColor: AURA.darkBorder,
   },
   textArea: {
     backgroundColor: 'rgba(255,255,255,0.5)',
@@ -785,16 +894,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 15,
-    color: '#1a1a1a',
+    color: AURA.gray900,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+    borderColor: 'rgba(99,102,241,0.15)',
     minHeight: 120,
     fontWeight: '500',
   },
   textAreaDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-    color: '#fff',
-    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(41,37,36,0.4)',
+    color: AURA.white,
+    borderColor: AURA.darkBorder,
   },
 
   progressContainer: {
@@ -804,7 +913,6 @@ const styles = StyleSheet.create({
   progressBarBg: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.06)',
     overflow: 'hidden',
   },
   progressBarFill: {
@@ -836,7 +944,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sendButtonText: {
-    color: '#fff',
+    color: AURA.white,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -867,17 +975,17 @@ const styles = StyleSheet.create({
   altLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     letterSpacing: -0.2,
     marginBottom: 2,
   },
-  altLabelDark: { color: '#ffffff' },
+  altLabelDark: { color: AURA.white },
   altValue: {
     fontSize: 13,
-    color: '#888',
+    color: AURA.gray500,
     fontWeight: '500',
   },
-  altValueDark: { color: '#888' },
+  altValueDark: { color: AURA.gray400 },
 
   divider: {
     height: 1,
@@ -885,6 +993,6 @@ const styles = StyleSheet.create({
     marginLeft: 80,
   },
   dividerDark: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: AURA.darkBorder,
   },
 });

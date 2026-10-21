@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -17,6 +16,19 @@ import {
   discoverCorrelations,
   DiscoveredCorrelation,
 } from '../../services/ai/CorrelationEngine';
+
+/* ─── Aura DS ────────────────────────────────────────────────────── */
+const AURA = {
+  primary: '#6366f1',
+  accent: '#ec4899',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+};
 
 export default function CorrelationCard() {
   const navigation = useNavigation<any>();
@@ -58,7 +70,7 @@ export default function CorrelationCard() {
           },
         ]}
       >
-        <ActivityIndicator size="small" color="#667eea" />
+        <ActivityIndicator size="small" color={AURA.primary} />
       </View>
     );
   }
@@ -78,7 +90,9 @@ export default function CorrelationCard() {
       ]}
     >
       <View style={styles.header}>
-        <Text style={{ fontSize: 18 }}>🔍</Text>
+        <View style={[styles.headerIcon, { backgroundColor: `${AURA.primary}15` }]}>
+          <Ionicons name="sparkles" size={16} color={AURA.primary} />
+        </View>
         <Text
           style={[
             styles.headerText,
@@ -92,103 +106,100 @@ export default function CorrelationCard() {
         </Text>
       </View>
 
-      {correlations.slice(0, 3).map((c, idx) => (
-        <Animated.View
-          key={c.id}
-          entering={FadeInUp.delay(idx * 60)}
-          style={[
-            styles.card,
-            {
-              backgroundColor: `${
-                c.direction === 'positive' ? '#10b981' : '#f59e0b'
-              }10`,
-              borderRadius: borderRadiusValue / 1.5,
-            },
-          ]}
-        >
-          <View style={styles.cardHeader}>
-            <Text style={{ fontSize: 22 }}>{c.emoji}</Text>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text
-                style={[
-                  styles.headline,
-                  {
-                    color: fullThemeColors.text,
-                    fontSize: 14 * fontSizeMultiplier,
-                  },
-                ]}
-              >
-                {c.headline}
-              </Text>
-              <Text
-                style={[
-                  styles.description,
-                  {
-                    color: fullThemeColors.textSecondary,
-                    fontSize: 12 * fontSizeMultiplier,
-                  },
-                ]}
-              >
-                {c.description}
-              </Text>
-            </View>
-          </View>
-
-          <View
+      {correlations.slice(0, 3).map((c, idx) => {
+        const tint = c.direction === 'positive' ? AURA.success : AURA.warning;
+        return (
+          <Animated.View
+            key={c.id}
+            entering={FadeInUp.delay(idx * 60)}
             style={[
-              styles.effectBadge,
+              styles.card,
               {
-                backgroundColor: `${
-                  c.direction === 'positive' ? '#10b981' : '#f59e0b'
-                }20`,
+                backgroundColor: `${tint}10`,
+                borderRadius: borderRadiusValue / 1.5,
+                borderColor: `${tint}25`,
+                borderWidth: 1,
               },
             ]}
           >
-            <Ionicons
-              name={
-                c.direction === 'positive' ? 'trending-up' : 'trending-down'
-              }
-              size={12}
-              color={c.direction === 'positive' ? '#10b981' : '#f59e0b'}
-            />
-            <Text
-              style={[
-                styles.effectText,
-                { color: c.direction === 'positive' ? '#10b981' : '#f59e0b' },
-              ]}
-            >
-              {c.effectSize > 0.7
-                ? 'Strong'
-                : c.effectSize > 0.5
-                ? 'Moderate'
-                : 'Weak'}{' '}
-              pattern · {c.samples} samples
-            </Text>
-          </View>
+            <View style={styles.cardHeader}>
+              <Text style={{ fontSize: 22 }}>{c.emoji}</Text>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text
+                  style={[
+                    styles.headline,
+                    {
+                      color: fullThemeColors.text,
+                      fontSize: 14 * fontSizeMultiplier,
+                    },
+                  ]}
+                >
+                  {c.headline}
+                </Text>
+                <Text
+                  style={[
+                    styles.description,
+                    {
+                      color: fullThemeColors.textSecondary,
+                      fontSize: 12 * fontSizeMultiplier,
+                    },
+                  ]}
+                >
+                  {c.description}
+                </Text>
+              </View>
+            </View>
 
-          <View style={styles.suggestionRow}>
-            <Ionicons
-              name="bulb-outline"
-              size={14}
-              color={fullThemeColors.textSecondary}
-            />
-            <Text
+            <View
               style={[
-                styles.suggestionText,
-                { color: fullThemeColors.textSecondary },
+                styles.effectBadge,
+                { backgroundColor: `${tint}20` },
               ]}
             >
-              {c.suggestion}
-            </Text>
-          </View>
-        </Animated.View>
-      ))}
+              <Ionicons
+                name={c.direction === 'positive' ? 'trending-up' : 'trending-down'}
+                size={12}
+                color={tint}
+              />
+              <Text style={[styles.effectText, { color: tint }]}>
+                {c.effectSize > 0.7
+                  ? 'Strong'
+                  : c.effectSize > 0.5
+                  ? 'Moderate'
+                  : 'Weak'}{' '}
+                pattern · {c.samples} samples
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.suggestionRow,
+                { borderTopColor: fullThemeColors.border },
+              ]}
+            >
+              <Ionicons
+                name="bulb-outline"
+                size={14}
+                color={fullThemeColors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.suggestionText,
+                  { color: fullThemeColors.textSecondary },
+                ]}
+              >
+                {c.suggestion}
+              </Text>
+            </View>
+          </Animated.View>
+        );
+      })}
 
       <TouchableOpacity
         style={styles.footer}
         onPress={() => navigation.navigate('Insights')}
       >
-        <Text style={[styles.footerText, { color: '#667eea' }]}>
+        <Text style={[styles.footerText, { color: AURA.primary }]}>
           View all patterns in Insights →
         </Text>
       </TouchableOpacity>
@@ -209,7 +220,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 8,
   },
-  headerText: { fontWeight: '800' },
+  headerIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerText: { fontWeight: '800', flex: 1 },
   card: { padding: 12, marginBottom: 10 },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   headline: { fontWeight: '700' },
@@ -232,9 +250,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.06)',
   },
   suggestionText: { fontSize: 12, flex: 1, lineHeight: 16 },
   footer: { alignItems: 'center', paddingVertical: 8, marginTop: 4 },
-  footerText: { fontSize: 12, fontWeight: '600' },
+  footerText: { fontSize: 12, fontWeight: '700' },
 });

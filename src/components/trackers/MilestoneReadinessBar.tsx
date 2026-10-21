@@ -19,11 +19,11 @@ const DS = {
 };
 
 const CATEGORY_META: Record<string, { grad: [string, string]; emoji: string }> = {
-  physical: { grad: ['#FF9F43', '#FFD700'], emoji: '🏃' },
-  cognitive: { grad: ['#5F27CD', '#8B5CF6'], emoji: '🧠' },
-  social: { grad: ['#10AC84', '#1DD1A1'], emoji: '👥' },
-  language: { grad: ['#54A0FF', '#00D2D3'], emoji: '💬' },
-  emotional: { grad: ['#FF6B6B', '#FF9FF3'], emoji: '❤️' },
+  physical:  { grad: ['#f59e0b', '#fb923c'], emoji: '🏃' }, // amber → orange
+  cognitive: { grad: ['#6366f1', '#8b5cf6'], emoji: '🧠' }, // indigo → violet (Aura primary)
+  social:    { grad: ['#10b981', '#34d399'], emoji: '👥' }, // emerald
+  language:  { grad: ['#0ea5e9', '#38bdf8'], emoji: '💬' }, // sky
+  emotional: { grad: ['#ec4899', '#f472b6'], emoji: '❤️' }, // pink (Aura accent)
 };
 
 const getMeta = (cat: string) => CATEGORY_META[cat] || { grad: [DS.primary, DS.accent] as [string, string], emoji: '🎯' };
@@ -115,7 +115,7 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
           {/* Progress bar */}
           <View style={[styles.progressTrack, { backgroundColor: fullThemeColors.border }]}>
             <LinearGradient
-              colors={pct > 80 ? meta.grad : pct > 50 ? ['#f59e0b', '#fbbf24'] : ['#94a3b8', '#cbd5e1']}
+              colors={pct > 80 ? meta.grad : pct > 50 ? [AURA.warning, '#fbbf24'] : ['#a8a29e', '#d6d3d1']}
               style={[styles.progressFill, { width: `${pct}%` }]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}

@@ -21,12 +21,13 @@ const DS = {
   gray400: '#a8a29e',
 };
 
+// Replace TYPE_META with Aura-aligned tracker colors
 const TYPE_META: Record<PredictorType, { emoji: string; color: string; trackerId: string; label: string }> = {
-  sleep: { emoji: '😴', color: '#8b5cf6', trackerId: 'sleep', label: 'Sleep' },
-  feed: { emoji: '🍼', color: '#f59e0b', trackerId: 'feed', label: 'Feed' },
-  diaper: { emoji: '🧷', color: '#3b82f6', trackerId: 'diaper', label: 'Diaper' },
-  wake: { emoji: '⏰', color: '#06b6d4', trackerId: 'sleep', label: 'Wake' },
-  medication: { emoji: '💊', color: '#ef4444', trackerId: 'medication', label: 'Med' },
+  sleep:      { emoji: '😴', color: '#8b5cf6', trackerId: 'sleep',      label: 'Sleep' }, // violet — matches sleep tracker
+  feed:       { emoji: '🍼', color: DS.warning, trackerId: 'feed',       label: 'Feed' },  // amber
+  diaper:     { emoji: '🧷', color: DS.info,    trackerId: 'diaper',     label: 'Diaper' },// sky
+  wake:       { emoji: '⏰', color: DS.info,    trackerId: 'sleep',      label: 'Wake' },  // sky
+  medication: { emoji: '💊', color: DS.danger,  trackerId: 'medication', label: 'Med' },   // red
 };
 
 const STORAGE_PREFIX = '@littleloom_predictor_v1:';

@@ -1,5 +1,3 @@
-
-
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
@@ -37,14 +35,39 @@ import { supabase } from '@/utils/supabase';
 import { decode } from 'base64-arraybuffer';
 import * as FileSystem from 'expo-file-system';
 
+import { useCustomization } from '../../hooks/useCustomization';
+
+/* ═══════════════════════════════════════════════════════════════════════
+   AURA DS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray700: '#44403c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.08)',
+};
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PREVIEW_SIZE = SCREEN_W - 48;
 const MAX_ANNOTATION_POINTS = 1500;
 
-
 const MAX_PHOTOS = 4;
-
 
 const MAX_IMAGE_DIMENSION = 1600;
 const CAMERA_MAX_DIMENSION = 900;
@@ -52,30 +75,36 @@ const IMAGE_COMPRESS = 0.7;
 const CAMERA_QUALITY = 0.4;
 const GALLERY_QUALITY = 0.7;
 
-
+/* Static light-mode fallback — the live `colors` memo in the component
+   overrides these for dark mode. Preserved as a module constant so any
+   module-level reader (there are none currently, but defensive) still
+   compiles. */
 const COLORS = {
   text: {
-    primary: '#1a1a1a',
-    secondary: '#555555',
-    tertiary: '#888888',
-    disabled: '#bbbbbb',
+    primary: AURA.gray900,
+    secondary: AURA.gray500,
+    tertiary: AURA.gray400,
+    disabled: AURA.gray300,
   },
-  primary: '#6366f1',
-  surface: '#ffffff',
+  primary: AURA.primary,
+  surface: AURA.white,
   background: '#f8fafc',
-  danger: '#ef4444',
-  warning: '#f59e0b',
-  success: '#10b981',
+  danger: AURA.danger,
+  warning: AURA.warning,
+  success: AURA.success,
 };
 
 const GLASS = {
   bg: 'rgba(255,255,255,0.9)',
-  border: 'rgba(0,0,0,0.06)',
+  border: 'rgba(99,102,241,0.10)',
 };
 
 const RADIUS = { sm: 6, md: 10, lg: 16, xl: 24 };
 const SPACE = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Types
+   ═══════════════════════════════════════════════════════════════════════ */
 
 interface PhotoMeta {
   uri: string;
@@ -91,7 +120,7 @@ interface PhotoMeta {
 
 interface AIAnalysis {
   labels: string[];
-  confidence: number; 
+  confidence: number;
   suggestions: string[];
   severity?: 'low' | 'medium' | 'high';
   /** `true` only when a real on-device ML model produced this analysis.
@@ -120,6 +149,9 @@ interface SmartPhotoFieldProps {
   onAnalysis?: (analysis: AIAnalysis) => void;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Optional native modules (unchanged)
+   ═══════════════════════════════════════════════════════════════════════ */
 
 let ImageManipulator: any = null;
 try {
@@ -135,12 +167,14 @@ try {
   Haptics = null;
 }
 
-
 const MEDIA_IMAGES: any =
   (ImagePicker as any).MediaType?.Images ??
   (ImagePicker as any).MediaTypeOptions?.Images ??
   'Images';
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Helpers (unchanged)
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const formatBytes = (bytes?: number): string => {
   if (!bytes || isNaN(bytes)) return '—';
@@ -205,26 +239,23 @@ const sweetAlert = {
   },
 };
 
-
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════
+   AI analysis (unchanged)
+   ═══════════════════════════════════════════════════════════════════════ */
 
 interface PhotoAnalysisResult {
   labels: string[];
-  confidence: number; 
+  confidence: number;
   suggestions: string[];
   severity?: 'low' | 'medium' | 'high';
   modelAvailable: boolean;
 }
 
 const analyzePhoto = async (uri: string, context?: string): Promise<PhotoAnalysisResult> => {
-  
   if (!uri || typeof uri !== 'string' || uri.length === 0) {
     throw new Error('Invalid photo URI');
   }
 
-  
   const contextGuidance: Record<string, { suggestions: string[]; severity: 'low' | 'medium' | 'high' }> = {
     skin_condition: {
       suggestions: [
@@ -285,7 +316,6 @@ const analyzePhoto = async (uri: string, context?: string): Promise<PhotoAnalysi
     severity: 'low' as const,
   };
 
-  
   let modelLabels: string[] = [];
   let modelConfidence = 0;
   let modelAvailable = false;
@@ -311,6 +341,9 @@ const analyzePhoto = async (uri: string, context?: string): Promise<PhotoAnalysi
   };
 };
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Image helpers (unchanged)
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const getImageDimensionsSafe = (
   uri: string
@@ -327,7 +360,6 @@ const getImageDimensionsSafe = (
     }
   });
 };
-
 
 const optimizeImage = async (
   uri: string,
@@ -362,7 +394,6 @@ const optimizeImage = async (
     return uri;
   }
 };
-
 
 const uploadToSupabase = async (
   uri: string,
@@ -405,7 +436,9 @@ const uploadToSupabase = async (
   }
 };
 
-
+/* ═══════════════════════════════════════════════════════════════════════
+   Main component
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   value,
@@ -424,6 +457,30 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   uploadToSupabase = true,
   onAnalysis,
 }) => {
+  /* ─── Aura live colors ─────────────────────────────────────────── */
+  const { isDark: isDarkMode, fullThemeColors } = useCustomization();
+  const isDark = isDarkMode ?? false;
+
+  const colors = useMemo(() => ({
+    text: {
+      primary: isDark ? AURA.white : AURA.gray900,
+      secondary: isDark ? AURA.gray400 : AURA.gray500,
+      tertiary: isDark ? AURA.gray500 : AURA.gray400,
+      disabled: isDark ? AURA.gray700 : AURA.gray300,
+    },
+    primary: AURA.primary,
+    surface: isDark ? AURA.darkCard : AURA.white,
+    background: isDark ? AURA.darkBg : '#f8fafc',
+    danger: AURA.danger,
+    warning: AURA.warning,
+    success: AURA.success,
+  }), [isDark]);
+
+  const glass = useMemo(() => ({
+    bg: isDark ? 'rgba(41,37,36,0.85)' : 'rgba(255,255,255,0.9)',
+    border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(99,102,241,0.10)',
+  }), [isDark]);
+
   const [photos, setPhotos] = useState<PhotoMeta[]>([]);
   const [currentUri, setCurrentUri] = useState<string | null>(value || null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -449,25 +506,21 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   const mountedRef = useRef(true);
   const localTempUrisRef = useRef<Set<string>>(new Set());
 
-  
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
 
-      
-      
       const temps = localTempUrisRef.current;
       if (temps.size > 0) {
         Promise.all(
           [...temps].map(async (uri) => {
             try {
-              
               if (uri.startsWith('file://') || uri.startsWith('/')) {
                 await FileSystem.deleteAsync(uri, { idempotent: true });
               }
             } catch {
-              
+              // ignore
             }
           })
         ).catch(() => {});
@@ -475,7 +528,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     };
   }, []);
 
-  
   useEffect(() => {
     try {
       if (value && value !== currentUri && photos.some((p) => p.uri === value)) {
@@ -486,7 +538,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [value]);
 
-  
   useEffect(() => {
     try {
       if (hasInitializedPhotos.current) return;
@@ -513,7 +564,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [initialPhotoUris]);
 
-  
   useEffect(() => {
     try {
       const currentPhotos = Array.isArray(photos) ? photos : [];
@@ -533,10 +583,8 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       if (changed) {
         prevPhotosRef.current = currentPhotos;
 
-        
         onPhotosChange?.(currentPhotos);
 
-        
         const uris = currentPhotos
           .map((p) => (typeof p?.uri === 'string' ? p.uri : ''))
           .filter((u): u is string => u.length > 0);
@@ -547,7 +595,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [photos, onPhotosChange, onUrisChange]);
 
-  
   useEffect(() => {
     (async () => {
       try {
@@ -559,7 +606,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     })();
   }, []);
 
-  
   const processPhoto = useCallback(
     async (rawUri: string, exif: any, isFromCamera: boolean = false) => {
       if (isProcessingRef.current) return;
@@ -571,34 +617,26 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
       try {
         if (!rawUri || typeof rawUri !== 'string') return;
 
-        
         if (photos.length >= maxPhotos) {
           sweetAlert.alert('Limit Reached', `Maximum ${maxPhotos} photos allowed.`);
           return;
         }
 
-        
         const maxDim = isFromCamera ? CAMERA_MAX_DIMENSION : MAX_IMAGE_DIMENSION;
         const compress = isFromCamera ? CAMERA_QUALITY : IMAGE_COMPRESS;
 
         const uri = await optimizeImage(rawUri, maxDim, compress);
         if (!mountedRef.current) return;
 
-        
         if (uri.startsWith('file://') || uri.startsWith('/')) {
           localTempUrisRef.current.add(uri);
         }
 
-        
         if (photos.some((p) => p.uri === uri)) {
           sweetAlert.alert('Duplicate', 'This photo is already added.');
           return;
         }
 
-        
-        
-        
-        
         let storagePath: string | undefined;
         let publicUrl: string | undefined;
 
@@ -621,10 +659,8 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           }
         }
 
-        
         if (!mountedRef.current) return;
 
-        
         let fileSize: number | undefined;
         try {
           const fileInfo = await FileSystem.getInfoAsync(uri);
@@ -633,7 +669,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           /* ignore */
         }
 
-        
         const dims = await getImageDimensionsSafe(uri);
         let width = dims.width;
         let height = dims.height;
@@ -655,13 +690,10 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         setCurrentUri(meta.uri);
         onChange?.(meta.uri, meta);
 
-        
-        
         if (storagePath) {
           localTempUrisRef.current.delete(uri);
         }
 
-        
         if (autoAnalyze) {
           setAnalyzing(true);
           try {
@@ -697,7 +729,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [photos, maxPhotos, autoAnalyze, trackerContext, onChange, uploadToSupabase, babyId, onAnalysis]
   );
 
-  
   const takePhoto = useCallback(async () => {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -727,7 +758,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [processPhoto]);
 
-  
   const pickPhoto = useCallback(async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -758,7 +788,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [currentUri]);
 
-  
   const removePhoto = useCallback(
     (idx: number) => {
       try {
@@ -798,7 +827,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [currentUri, onChange, photos, analysis, analysisHistory]
   );
 
-  
   const handleTouchStart = (event: any) => {
     if (!annotating) return;
     const { locationX, locationY } = event.nativeEvent;
@@ -852,7 +880,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     sweetAlert.alert('Saved', 'Annotation saved with photo.');
   };
 
-  
   const toggleCompareSelect = (idx: number) => {
     try {
       if (idx < 0 || idx >= photos.length) return;
@@ -866,7 +893,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   };
 
-  
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -941,7 +967,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     ],
   }));
 
-  
   const confidenceProgress = useSharedValue(0);
   useEffect(() => {
     try {
@@ -957,7 +982,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     width: `${interpolate(confidenceProgress.value, [0, 1], [0, 100])}%`,
   }));
 
-  
   const currentMeta = useMemo(() => {
     try {
       return photos.find((p) => p.uri === currentUri);
@@ -967,10 +991,10 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   }, [photos, currentUri]);
 
   const severityColor = useMemo(() => {
-    if (analysis?.severity === 'high') return COLORS.danger;
-    if (analysis?.severity === 'medium') return COLORS.warning;
-    return COLORS.success;
-  }, [analysis]);
+    if (analysis?.severity === 'high') return colors.danger;
+    if (analysis?.severity === 'medium') return colors.warning;
+    return colors.success;
+  }, [analysis, colors]);
 
   const photoCountText = `${photos?.length || 0}/${maxPhotos || MAX_PHOTOS}`;
 
@@ -982,7 +1006,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     }
   }, [photos, currentUri]);
 
-  
   const currentImageSource = useMemo(
     () => (currentUri ? { uri: currentUri } : null),
     [currentUri]
@@ -992,7 +1015,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
     [currentUri]
   );
 
-  
   const renderAnnotationOverlay = () => {
     try {
       const allPoints = [...annotationPoints, ...currentPoints];
@@ -1039,14 +1061,13 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   if (error) {
     return (
       <View style={[styles.container, { padding: SPACE.md }]}>
-        <Text style={{ color: COLORS.danger, textAlign: 'center' }}>
+        <Text style={{ color: colors.danger, textAlign: 'center' }}>
           Something went wrong. Please try again.
         </Text>
       </View>
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { marginVertical: SPACE.md }]}>
       {label ? (
@@ -1054,7 +1075,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           <Text
             style={[
               styles.label,
-              { color: COLORS.text.primary, marginBottom: SPACE.sm },
+              { color: colors.text.primary, marginBottom: SPACE.sm },
             ]}
           >
             {label}
@@ -1063,14 +1084,14 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
             style={[
               styles.badge,
               {
-                backgroundColor: GLASS.bg,
-                borderColor: GLASS.border,
+                backgroundColor: glass.bg,
+                borderColor: glass.border,
                 borderRadius: RADIUS.md,
                 borderWidth: 1,
               },
             ]}
           >
-            <Text style={[styles.badgeText, { color: COLORS.text.secondary }]}>
+            <Text style={[styles.badgeText, { color: colors.text.secondary }]}>
               {photoCountText}
             </Text>
           </View>
@@ -1087,8 +1108,8 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           style={[
             styles.previewWrap,
             {
-              backgroundColor: GLASS.bg,
-              borderColor: GLASS.border,
+              backgroundColor: glass.bg,
+              borderColor: glass.border,
               borderRadius: RADIUS.lg,
               borderWidth: 1,
             },
@@ -1115,7 +1136,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 </View>
               ) : null}
 
-              {/* AI badge only shows when a REAL model is available */}
               {analysis && !analyzing && analysis.modelAvailable === true && analysis.confidence > 0 ? (
                 <View
                   style={[
@@ -1143,7 +1163,6 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 </View>
               ) : null}
 
-              {/* Local-only warning when upload didn't complete */}
               {currentMeta && !currentMeta.storagePath && uploadToSupabase && babyId ? (
                 <View
                   style={[
@@ -1158,11 +1177,11 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
               {analyzing || isProcessing ? (
                 <View style={styles.analyzingOverlay}>
-                  <ActivityIndicator color={COLORS.primary} size="large" />
+                  <ActivityIndicator color={colors.primary} size="large" />
                   <Text
                     style={[
                       styles.analyzingText,
-                      { color: COLORS.text.primary },
+                      { color: colors.text.primary },
                     ]}
                   >
                     {isProcessing
@@ -1175,20 +1194,20 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
               <View style={styles.actionBar}>
                 <TouchableOpacity
                   onPress={() => setShowMeta(true)}
-                  style={[styles.iconBtn, { backgroundColor: GLASS.bg }]}
+                  style={[styles.iconBtn, { backgroundColor: glass.bg }]}
                 >
                   <Ionicons
                     name="information-circle"
                     size={20}
-                    color={COLORS.primary}
+                    color={colors.primary}
                   />
                 </TouchableOpacity>
                 {allowAnnotation ? (
                   <TouchableOpacity
                     onPress={() => setAnnotating(true)}
-                    style={[styles.iconBtn, { backgroundColor: GLASS.bg }]}
+                    style={[styles.iconBtn, { backgroundColor: glass.bg }]}
                   >
-                    <Ionicons name="pencil" size={20} color={COLORS.primary} />
+                    <Ionicons name="pencil" size={20} color={colors.primary} />
                   </TouchableOpacity>
                 ) : null}
                 {allowCompare && photos.length > 1 ? (
@@ -1201,27 +1220,27 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                       styles.iconBtn,
                       {
                         backgroundColor: compareMode
-                          ? COLORS.primary
-                          : GLASS.bg,
+                          ? colors.primary
+                          : glass.bg,
                       },
                     ]}
                   >
                     <Ionicons
                       name="git-compare"
                       size={20}
-                      color={compareMode ? '#FFF' : COLORS.primary}
+                      color={compareMode ? '#FFF' : colors.primary}
                     />
                   </TouchableOpacity>
                 ) : null}
                 {allowShare ? (
                   <TouchableOpacity
                     onPress={sharePhoto}
-                    style={[styles.iconBtn, { backgroundColor: GLASS.bg }]}
+                    style={[styles.iconBtn, { backgroundColor: glass.bg }]}
                   >
                     <Ionicons
                       name="share-outline"
                       size={20}
-                      color={COLORS.primary}
+                      color={colors.primary}
                     />
                   </TouchableOpacity>
                 ) : null}
@@ -1230,9 +1249,9 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                     if (currentPhotoIndex !== -1)
                       removePhoto(currentPhotoIndex);
                   }}
-                  style={[styles.iconBtn, { backgroundColor: GLASS.bg }]}
+                  style={[styles.iconBtn, { backgroundColor: glass.bg }]}
                 >
-                  <Ionicons name="trash" size={20} color={COLORS.danger} />
+                  <Ionicons name="trash" size={20} color={colors.danger} />
                 </TouchableOpacity>
               </View>
 
@@ -1246,17 +1265,17 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
               <Ionicons
                 name="camera"
                 size={48}
-                color={COLORS.text.tertiary}
+                color={colors.text.tertiary}
               />
               <Text
-                style={[styles.emptyText, { color: COLORS.text.secondary }]}
+                style={[styles.emptyText, { color: colors.text.secondary }]}
               >
                 {'No photo yet'}
               </Text>
               <Text
                 style={[
                   styles.emptySub,
-                  { color: COLORS.text.tertiary, marginTop: SPACE.xs },
+                  { color: colors.text.tertiary, marginTop: SPACE.xs },
                 ]}
               >
                 {'Tap camera or gallery below'}
@@ -1272,13 +1291,13 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           value={caption}
           onChangeText={setCaption}
           placeholder="Add a caption or note..."
-          placeholderTextColor={COLORS.text.tertiary}
+          placeholderTextColor={colors.text.tertiary}
           style={[
             styles.captionInput,
             {
-              backgroundColor: GLASS.bg,
-              borderColor: GLASS.border,
-              color: COLORS.text.primary,
+              backgroundColor: glass.bg,
+              borderColor: glass.border,
+              color: colors.text.primary,
               borderRadius: RADIUS.md,
             },
           ]}
@@ -1287,73 +1306,72 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
       {/* AI Analysis Panel */}
       {analysis && !analyzing ? (
-  <View
-    style={[
-      styles.analysisPanel,
-      {
-        backgroundColor: GLASS.bg,
-        borderColor: GLASS.border,
-        borderRadius: RADIUS.lg,
-        borderWidth: 1,
-      },
-    ]}
-  >
-    <View style={styles.analysisHeader}>
-      <Ionicons name="bulb" size={18} color={COLORS.primary} />
-      <Text
-        style={[styles.analysisTitle, { color: COLORS.text.primary }]}
-      >
-        {'Photo Guidance'}
-      </Text>
-    </View>
-
-    {/* Confidence bar only renders when a real ML model is available */}
-    {analysis.modelAvailable === true && analysis.confidence > 0 && (
-      <>
         <View
           style={[
-            styles.confidenceTrack,
-            { backgroundColor: COLORS.text.disabled + '40' },
+            styles.analysisPanel,
+            {
+              backgroundColor: glass.bg,
+              borderColor: glass.border,
+              borderRadius: RADIUS.lg,
+              borderWidth: 1,
+            },
           ]}
         >
-          <Animated.View
-            style={[
-              styles.confidenceFill,
-              { backgroundColor: severityColor },
-              severityBarStyle,
-            ]}
-          />
-        </View>
-        <Text
-          style={[
-            styles.confidenceLabel,
-            { color: COLORS.text.tertiary, marginBottom: SPACE.sm },
-          ]}
-        >
-          {`Confidence: ${Math.round(analysis.confidence * 100)}%`}
-        </Text>
-      </>
-    )}
+          <View style={styles.analysisHeader}>
+            <Ionicons name="bulb" size={18} color={colors.primary} />
+            <Text
+              style={[styles.analysisTitle, { color: colors.text.primary }]}
+            >
+              {'Photo Guidance'}
+            </Text>
+          </View>
+
+          {analysis.modelAvailable === true && analysis.confidence > 0 && (
+            <>
+              <View
+                style={[
+                  styles.confidenceTrack,
+                  { backgroundColor: colors.text.disabled + '40' },
+                ]}
+              >
+                <Animated.View
+                  style={[
+                    styles.confidenceFill,
+                    { backgroundColor: severityColor },
+                    severityBarStyle,
+                  ]}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.confidenceLabel,
+                  { color: colors.text.tertiary, marginBottom: SPACE.sm },
+                ]}
+              >
+                {`Confidence: ${Math.round(analysis.confidence * 100)}%`}
+              </Text>
+            </>
+          )}
           {Array.isArray(analysis.suggestions) &&
-          analysis.suggestions.length > 0
-            ? analysis.suggestions.map((s, i) => (
-                <View key={`suggestion-${i}`} style={styles.suggestionRow}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={14}
-                    color={severityColor}
-                  />
-                  <Text
-                    style={[
-                      styles.suggestionText,
-                      { color: COLORS.text.secondary },
-                    ]}
-                  >
-                    {String(s)}
-                  </Text>
-                </View>
-              ))
-            : null}
+            analysis.suggestions.length > 0
+              ? analysis.suggestions.map((s, i) => (
+                  <View key={`suggestion-${i}`} style={styles.suggestionRow}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={14}
+                      color={severityColor}
+                    />
+                    <Text
+                      style={[
+                        styles.suggestionText,
+                        { color: colors.text.secondary },
+                      ]}
+                    >
+                      {String(s)}
+                    </Text>
+                  </View>
+                ))
+              : null}
         </View>
       ) : null}
 
@@ -1386,10 +1404,10 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                     borderRadius: RADIUS.md,
                     borderWidth: currentUri === photo.uri ? 3 : 2,
                     borderColor: currentUri === photo.uri
-                      ? COLORS.primary
+                      ? colors.primary
                       : isSelected
-                      ? COLORS.warning
-                      : GLASS.border,
+                      ? colors.warning
+                      : glass.border,
                   },
                 ]}
               >
@@ -1399,7 +1417,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                   fadeDuration={0}
                 />
                 {isSelected && compareMode ? (
-                  <View style={styles.compareBadge}>
+                  <View style={[styles.compareBadge, { backgroundColor: colors.warning }]}>
                     <Text style={styles.compareBadgeText}>
                       {String(selectedCompare.indexOf(idx) + 1)}
                     </Text>
@@ -1412,16 +1430,16 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                       {
                         backgroundColor:
                           historyEntry.severity === 'high'
-                            ? COLORS.danger
+                            ? colors.danger
                             : historyEntry.severity === 'medium'
-                            ? COLORS.warning
-                            : COLORS.success,
+                            ? colors.warning
+                            : colors.success,
                       },
                     ]}
                   />
                 ) : null}
                 {photo.storagePath ? (
-                  <View style={styles.cloudBadge}>
+                  <View style={[styles.cloudBadge, { backgroundColor: 'rgba(99,102,241,0.8)' }]}>
                     <Ionicons name="cloud" size={10} color="#FFF" />
                   </View>
                 ) : null}
@@ -1436,13 +1454,17 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         <View
           style={[
             styles.compareContainer,
-            { borderRadius: RADIUS.lg },
+            {
+              borderRadius: RADIUS.lg,
+              backgroundColor: glass.bg,
+              borderColor: glass.border,
+            },
           ]}
         >
           <Text
             style={[
               styles.compareLabel,
-              { color: COLORS.text.primary },
+              { color: colors.text.primary },
             ]}
           >
             {'Before & After'}
@@ -1458,7 +1480,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
             <Ionicons
               name="arrow-forward"
               size={24}
-              color={COLORS.primary}
+              color={colors.primary}
             />
             {photos[selectedCompare[1]] ? (
               <Image
@@ -1478,7 +1500,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           disabled={isProcessing || uploading || photos.length >= maxPhotos}
           style={[
             styles.captureBtn,
-            { backgroundColor: COLORS.primary, borderRadius: RADIUS.md },
+            { backgroundColor: colors.primary, borderRadius: RADIUS.md },
             (isProcessing || uploading || photos.length >= maxPhotos) && { opacity: 0.6 },
           ]}
         >
@@ -1491,24 +1513,24 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           style={[
             styles.captureBtn,
             {
-              backgroundColor: GLASS.bg,
+              backgroundColor: glass.bg,
               borderRadius: RADIUS.md,
               borderWidth: 1,
-              borderColor: GLASS.border,
+              borderColor: glass.border,
             },
             (isProcessing || uploading || photos.length >= maxPhotos) && { opacity: 0.6 },
           ]}
         >
-          <Ionicons name="images" size={20} color={COLORS.primary} />
+          <Ionicons name="images" size={20} color={colors.primary} />
           <Text
-            style={[styles.captureBtnText, { color: COLORS.primary }]}
+            style={[styles.captureBtnText, { color: colors.primary }]}
           >
             {'Gallery'}
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* ── MODALS ─────────────────────────────────────────────────────── */}
+      {/* ── MODALS ─────────────────────────────────────────────────── */}
 
       {/* Metadata Modal */}
       <Modal
@@ -1526,46 +1548,49 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
           <View
             style={[
               styles.modalContent,
-              { backgroundColor: COLORS.surface, borderRadius: RADIUS.xl },
+              { backgroundColor: colors.surface, borderRadius: RADIUS.xl },
             ]}
             onStartShouldSetResponder={() => true}
           >
             <Text
               style={[
                 styles.modalTitle,
-                { color: COLORS.text.primary },
+                { color: colors.text.primary },
               ]}
             >
               {'Photo Metadata'}
             </Text>
             {currentMeta ? (
               <ScrollView showsVerticalScrollIndicator={false}>
-                <MetaRow label="URI" value={currentMeta.uri} />
+                <MetaRow label="URI" value={currentMeta.uri} colors={colors} />
                 <MetaRow
                   label="Dimensions"
                   value={`${currentMeta.width || 0} × ${currentMeta.height || 0}`}
+                  colors={colors}
                 />
-                <MetaRow label="File Size" value={formatBytes(currentMeta.fileSize)} />
-                <MetaRow label="Timestamp" value={formatDate(currentMeta.timestamp)} />
-                <MetaRow label="Type" value={currentMeta.type || '—'} />
+                <MetaRow label="File Size" value={formatBytes(currentMeta.fileSize)} colors={colors} />
+                <MetaRow label="Timestamp" value={formatDate(currentMeta.timestamp)} colors={colors} />
+                <MetaRow label="Type" value={currentMeta.type || '—'} colors={colors} />
                 {currentMeta.storagePath ? (
-                  <MetaRow label="Storage Path" value={currentMeta.storagePath} />
+                  <MetaRow label="Storage Path" value={currentMeta.storagePath} colors={colors} />
                 ) : null}
                 {currentMeta.location ? (
                   <>
                     <MetaRow
                       label="Latitude"
                       value={String(currentMeta.location.latitude?.toFixed(6) ?? '—')}
+                      colors={colors}
                     />
                     <MetaRow
                       label="Longitude"
                       value={String(currentMeta.location.longitude?.toFixed(6) ?? '—')}
+                      colors={colors}
                     />
                   </>
                 ) : null}
               </ScrollView>
             ) : (
-              <Text style={{ color: COLORS.text.secondary }}>
+              <Text style={{ color: colors.text.secondary }}>
                 {'No metadata available'}
               </Text>
             )}
@@ -1573,7 +1598,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
               onPress={() => setShowMeta(false)}
               style={[
                 styles.modalClose,
-                { backgroundColor: COLORS.primary, borderRadius: RADIUS.md },
+                { backgroundColor: colors.primary, borderRadius: RADIUS.md },
               ]}
             >
               <Text style={styles.modalCloseText}>{'Close'}</Text>
@@ -1592,15 +1617,15 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         <View
           style={[
             styles.annotateContainer,
-            { backgroundColor: COLORS.background },
+            { backgroundColor: colors.background },
           ]}
         >
-          <View style={styles.annotateHeader}>
+          <View style={[styles.annotateHeader, { borderBottomColor: glass.border }]}>
             <TouchableOpacity onPress={() => setAnnotating(false)}>
-              <Ionicons name="close" size={28} color={COLORS.text.primary} />
+              <Ionicons name="close" size={28} color={colors.text.primary} />
             </TouchableOpacity>
             <Text
-              style={[styles.annotateTitle, { color: COLORS.text.primary }]}
+              style={[styles.annotateTitle, { color: colors.text.primary }]}
             >
               {'Annotate'}
             </Text>
@@ -1609,14 +1634,14 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                 <Ionicons
                   name="arrow-undo"
                   size={24}
-                  color={COLORS.text.secondary}
+                  color={colors.text.secondary}
                 />
               </TouchableOpacity>
               <TouchableOpacity onPress={clearAnnotation}>
-                <Ionicons name="trash-bin" size={24} color={COLORS.danger} />
+                <Ionicons name="trash-bin" size={24} color={colors.danger} />
               </TouchableOpacity>
               <TouchableOpacity onPress={saveAnnotation}>
-                <Ionicons name="checkmark" size={28} color={COLORS.primary} />
+                <Ionicons name="checkmark" size={28} color={colors.primary} />
               </TouchableOpacity>
             </View>
           </View>
@@ -1632,7 +1657,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
                     {
                       backgroundColor: c,
                       borderWidth: annotationColor === c ? 3 : 0,
-                      borderColor: COLORS.text.primary,
+                      borderColor: colors.text.primary,
                     },
                   ]}
                 />
@@ -1716,24 +1741,29 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
   );
 };
 
+/* ═══════════════════════════════════════════════════════════════════════
+   MetaRow (now takes `colors` so it respects dark mode)
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const MetaRow = ({
   label,
   value,
+  colors,
 }: {
   label?: string | null;
   value?: string | null;
+  colors: any;
 }) => {
   const safeLabel = label != null ? String(label) : '—';
   const safeValue = value != null ? String(value) : '—';
 
   return (
-    <View style={styles.metaRow}>
-      <Text style={[styles.metaKey, { color: COLORS.text.tertiary }]}>
+    <View style={[styles.metaRow, { borderBottomColor: colors.text.disabled + '40' }]}>
+      <Text style={[styles.metaKey, { color: colors.text.tertiary }]}>
         {safeLabel}
       </Text>
       <Text
-        style={[styles.metaValue, { color: COLORS.text.primary }]}
+        style={[styles.metaValue, { color: colors.text.primary }]}
         numberOfLines={2}
       >
         {safeValue}
@@ -1742,7 +1772,10 @@ const MetaRow = ({
   );
 };
 
-// ── Styles ─────────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════
+   Styles
+   ═══════════════════════════════════════════════════════════════════════ */
+
 const styles = StyleSheet.create({
   container: { width: '100%' },
   labelRow: {
@@ -1750,7 +1783,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  label: { fontSize: 15, fontWeight: '600' },
+  label: { fontSize: 15, fontWeight: '700' },
   badge: { paddingHorizontal: 10, paddingVertical: 4, marginBottom: 8 },
   badgeText: { fontSize: 12, fontWeight: '700' },
   previewWrap: {
@@ -1888,7 +1921,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 2,
     right: 2,
-    backgroundColor: COLORS.warning,
     borderRadius: 10,
     width: 20,
     height: 20,
@@ -1910,7 +1942,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 2,
     left: 2,
-    backgroundColor: 'rgba(99,102,241,0.8)',
     borderRadius: 8,
     width: 16,
     height: 16,
@@ -1920,9 +1951,7 @@ const styles = StyleSheet.create({
   compareContainer: {
     marginTop: 12,
     padding: 12,
-    backgroundColor: GLASS.bg,
     borderWidth: 1,
-    borderColor: GLASS.border,
   },
   compareLabel: {
     fontSize: 14,
@@ -1946,7 +1975,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 8,
   },
-  captureBtnText: { color: '#FFF', fontSize: 15, fontWeight: '600' },
+  captureBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -1966,7 +1995,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   metaKey: { fontSize: 13, fontWeight: '500' },
   metaValue: {
@@ -1983,7 +2011,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: GLASS.border,
   },
   annotateTitle: { fontSize: 18, fontWeight: '700' },
   colorRow: {

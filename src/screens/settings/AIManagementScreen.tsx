@@ -1,19 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import React, {
   useCallback,
   useEffect,
@@ -85,6 +69,31 @@ import type { RootStackParamList } from '../../types/navigation';
 const { width: SCREEN_W } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   AURA DS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  secondary: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray700: '#44403c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
    DESIGN TOKENS — Unified with AddEntryScreen
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -101,7 +110,7 @@ const DESIGN = {
 const SPRING_CONFIG = { damping: 15, stiffness: 300 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   METRIC METADATA
+   METRIC METADATA — Aura palette
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface MetricMeta {
@@ -122,8 +131,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'Temp',
     emoji: '🌡️',
     unit: '°C',
-    color: '#ef4444',
-    gradient: ['#ef4444', '#f87171'],
+    color: AURA.danger,
+    gradient: [AURA.danger, '#f87171'],
     category: 'vitals',
     format: v => v.toFixed(2),
     description: 'Body temperature readings. Fever threshold is typically >38°C.',
@@ -133,8 +142,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'Feed',
     emoji: '🍼',
     unit: 'ml',
-    color: '#f59e0b',
-    gradient: ['#f59e0b', '#fbbf24'],
+    color: AURA.warning,
+    gradient: [AURA.warning, '#fbbf24'],
     category: 'feeding',
     format: v => v.toFixed(0),
     description: 'Volume per feeding session. Adjusts to baby\'s growing appetite.',
@@ -144,8 +153,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'Feed Gap',
     emoji: '⏱️',
     unit: 'min',
-    color: '#f97316',
-    gradient: ['#f97316', '#fb923c'],
+    color: '#fb923c',
+    gradient: ['#fb923c', '#fdba74'],
     category: 'feeding',
     format: v => v.toFixed(0),
     description: 'Time between feeds. Decreases as baby grows and takes larger feeds.',
@@ -155,8 +164,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'Sleep',
     emoji: '😴',
     unit: 'min',
-    color: '#8b5cf6',
-    gradient: ['#8b5cf6', '#a78bfa'],
+    color: AURA.secondary,
+    gradient: [AURA.secondary, '#a78bfa'],
     category: 'sleep',
     format: v => v.toFixed(0),
     description: 'Length of each sleep session. Varies by age and time of day.',
@@ -166,8 +175,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'Wake Gap',
     emoji: '🌙',
     unit: 'min',
-    color: '#6366f1',
-    gradient: ['#6366f1', '#818cf8'],
+    color: AURA.primary,
+    gradient: [AURA.primary, AURA.primaryLight],
     category: 'sleep',
     format: v => v.toFixed(0),
     description: 'Wake windows between sleep periods. Longer as baby matures.',
@@ -177,8 +186,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'Diaper',
     emoji: '🧷',
     unit: 'min',
-    color: '#3b82f6',
-    gradient: ['#3b82f6', '#60a5fa'],
+    color: AURA.info,
+    gradient: [AURA.info, '#38bdf8'],
     category: 'vitals',
     format: v => v.toFixed(0),
     description: 'Time between diaper changes. Helps predict and anticipate needs.',
@@ -188,8 +197,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'Weight',
     emoji: '⚖️',
     unit: 'kg',
-    color: '#10b981',
-    gradient: ['#10b981', '#34d399'],
+    color: AURA.success,
+    gradient: [AURA.success, '#34d399'],
     category: 'growth',
     format: v => v.toFixed(2),
     description: 'Body weight measurements. Tracks growth velocity.',
@@ -221,8 +230,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'HR',
     emoji: '❤️',
     unit: 'bpm',
-    color: '#ec4899',
-    gradient: ['#ec4899', '#f472b6'],
+    color: AURA.accent,
+    gradient: [AURA.accent, '#f472b6'],
     category: 'vitals',
     format: v => v.toFixed(0),
     description: 'Heart rate readings. Resting rate is typically higher in infants.',
@@ -232,8 +241,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'SpO2',
     emoji: '🫁',
     unit: '%',
-    color: '#ef4444',
-    gradient: ['#ef4444', '#f87171'],
+    color: AURA.danger,
+    gradient: [AURA.danger, '#f87171'],
     category: 'vitals',
     format: v => v.toFixed(1),
     description: 'Oxygen saturation. Normal range is typically 95-100%.',
@@ -265,8 +274,8 @@ const METRIC_META: Record<MetricKey, MetricMeta> = {
     shortLabel: 'Wake',
     emoji: '⏰',
     unit: 'min',
-    color: '#0ea5e9',
-    gradient: ['#0ea5e9', '#38bdf8'],
+    color: AURA.info,
+    gradient: [AURA.info, '#38bdf8'],
     category: 'sleep',
     format: v => v.toFixed(0),
     description: 'Optimal awake time before next sleep. Critical for avoiding overtiredness.',
@@ -302,7 +311,7 @@ interface CohortInfo {
 type ScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'AIManagement'>;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   UNIFIED GLASS CARD — Matches AddEntryScreen
+   UNIFIED GLASS CARD — Aura
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const GlassCard = ({
@@ -326,14 +335,14 @@ const GlassCard = ({
       style={[
         styles.glassCard,
         { borderRadius: borderRadiusValue },
-        active && { borderColor: fullThemeColors.primary, borderWidth: 2 },
+        active && { borderColor: AURA.primary, borderWidth: 2 },
         style,
       ]}
     >
       <LinearGradient
         colors={
           isDark
-            ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']
+            ? ['rgba(41,37,36,0.85)', 'rgba(28,25,23,0.65)']
             : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']
         }
         style={StyleSheet.absoluteFill}
@@ -343,7 +352,7 @@ const GlassCard = ({
       <View
         style={[
           styles.glassBorder,
-          { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' },
+          { backgroundColor: isDark ? AURA.darkBorder : 'rgba(255,255,255,0.5)' },
         ]}
       />
       <View style={styles.glassContent}>{children}</View>
@@ -352,7 +361,7 @@ const GlassCard = ({
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER
+   SECTION HEADER — Aura
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const SectionHeader = ({
@@ -365,13 +374,13 @@ const SectionHeader = ({
   icon?: keyof typeof Ionicons.glyphMap;
 }) => {
   const { fullThemeColors, themeColors } = useCustomization();
-  const primary = themeColors?.primary || '#667eea';
+  const primary = themeColors?.primary || AURA.primary;
 
   return (
     <View style={styles.sectionHeader}>
       {icon && (
-        <View style={[styles.sectionIcon, { backgroundColor: `${primary}12` }]}>
-          <Ionicons name={icon} size={16} color={primary} />
+        <View style={[styles.sectionIcon, { backgroundColor: `${AURA.primary}12` }]}>
+          <Ionicons name={icon} size={16} color={AURA.primary} />
         </View>
       )}
       <View style={{ flex: 1 }}>
@@ -387,7 +396,7 @@ const SectionHeader = ({
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SPARKLINE — Mini trend visualization
+   SPARKLINE
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const Sparkline = ({
@@ -456,7 +465,7 @@ const Sparkline = ({
             borderRadius: 2,
             backgroundColor: color,
             borderWidth: 1,
-            borderColor: '#fff',
+            borderColor: AURA.white,
           }}
         />
       ))}
@@ -465,7 +474,7 @@ const Sparkline = ({
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   HEALTH SCORE RING
+   HEALTH SCORE RING — Aura
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const HealthScoreRing = ({
@@ -477,11 +486,10 @@ const HealthScoreRing = ({
   size?: number;
   strokeWidth?: number;
 }) => {
-  const { fullThemeColors, themeColors } = useCustomization();
-  const primary = themeColors?.primary || '#667eea';
+  const { fullThemeColors } = useCustomization();
 
   const scoreColor =
-    score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : score >= 40 ? '#f97316' : '#ef4444';
+    score >= 80 ? AURA.success : score >= 60 ? AURA.warning : score >= 40 ? '#fb923c' : AURA.danger;
   const scoreLabel =
     score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Fair' : 'Learning';
 
@@ -528,7 +536,7 @@ const HealthScoreRing = ({
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   METRIC DETAIL MODAL
+   METRIC DETAIL MODAL — Aura
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const MetricDetailModal = ({
@@ -544,7 +552,7 @@ const MetricDetailModal = ({
   cohortInfo: CohortInfo | null;
   onClose: () => void;
 }) => {
-  const { fullThemeColors, isDark, borderRadiusValue, themeColors, fontSizeMultiplier } =
+  const { fullThemeColors, isDark, borderRadiusValue, fontSizeMultiplier } =
     useCustomization();
   const scale = useSharedValue(0.9);
   const opacity = useSharedValue(0);
@@ -572,7 +580,7 @@ const MetricDetailModal = ({
   const isLearned = samples >= LEARNED_THRESHOLD;
   const isPartial = samples >= PARTIAL_THRESHOLD && samples < LEARNED_THRESHOLD;
 
-  const statusColor = isLearned ? '#10b981' : isPartial ? '#f59e0b' : '#94a3b8';
+  const statusColor = isLearned ? AURA.success : isPartial ? AURA.warning : AURA.gray400;
   const statusLabel = isLearned ? 'Fully Learned' : isPartial ? 'Learning' : 'Not Started';
   const statusIcon = isLearned
     ? 'checkmark-circle'
@@ -607,11 +615,11 @@ const MetricDetailModal = ({
             <Text style={styles.modalEmoji}>{meta.emoji}</Text>
             <Text style={styles.modalTitle}>{meta.label}</Text>
             <View style={[styles.modalStatusBadge, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
-              <Ionicons name={statusIcon as any} size={14} color="#fff" />
+              <Ionicons name={statusIcon as any} size={14} color={AURA.white} />
               <Text style={styles.modalStatusText}>{statusLabel}</Text>
             </View>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
-              <Ionicons name="close" size={24} color="#fff" />
+              <Ionicons name="close" size={24} color={AURA.white} />
             </TouchableOpacity>
           </LinearGradient>
 
@@ -620,12 +628,10 @@ const MetricDetailModal = ({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 24 }}
           >
-            {/* Description */}
             <Text style={[styles.modalDescription, { color: fullThemeColors.textSecondary }]}>
               {meta.description}
             </Text>
 
-            {/* Progress */}
             <View style={styles.modalSection}>
               <Text style={[styles.modalSectionTitle, { color: fullThemeColors.textSecondary }]}>
                 LEARNING PROGRESS
@@ -651,7 +657,6 @@ const MetricDetailModal = ({
               </View>
             </View>
 
-            {/* Stats Grid */}
             {samples >= PARTIAL_THRESHOLD && (
               <View style={styles.modalSection}>
                 <Text style={[styles.modalSectionTitle, { color: fullThemeColors.textSecondary }]}>
@@ -714,7 +719,6 @@ const MetricDetailModal = ({
               </View>
             )}
 
-            {/* Cohort Info */}
             {cohortInfo && cohortInfo.contributorCount > 0 && (
               <View style={styles.modalSection}>
                 <Text style={[styles.modalSectionTitle, { color: fullThemeColors.textSecondary }]}>
@@ -723,24 +727,24 @@ const MetricDetailModal = ({
                 <View
                   style={[
                     styles.modalCohortCard,
-                    { backgroundColor: '#8b5cf608', borderRadius: borderRadiusValue },
+                    { backgroundColor: `${AURA.secondary}08`, borderRadius: borderRadiusValue },
                   ]}
                 >
                   <View style={styles.modalCohortRow}>
-                    <Ionicons name="people" size={16} color="#8b5cf6" />
+                    <Ionicons name="people" size={16} color={AURA.secondary} />
                     <Text style={[styles.modalCohortText, { color: fullThemeColors.text }]}>
                       {cohortInfo.contributorCount} contributor
                       {cohortInfo.contributorCount !== 1 ? 's' : ''}
                     </Text>
                   </View>
                   <View style={styles.modalCohortRow}>
-                    <Ionicons name="analytics" size={16} color="#8b5cf6" />
+                    <Ionicons name="analytics" size={16} color={AURA.secondary} />
                     <Text style={[styles.modalCohortText, { color: fullThemeColors.text }]}>
                       {cohortInfo.sampleCount} total samples
                     </Text>
                   </View>
                   <View style={styles.modalCohortRow}>
-                    <Ionicons name="stats-chart" size={16} color="#8b5cf6" />
+                    <Ionicons name="stats-chart" size={16} color={AURA.secondary} />
                     <Text style={[styles.modalCohortText, { color: fullThemeColors.text }]}>
                       Cohort mean: {meta.format(cohortInfo.mu)} {meta.unit}
                     </Text>
@@ -749,7 +753,6 @@ const MetricDetailModal = ({
               </View>
             )}
 
-            {/* How it works */}
             <View style={styles.modalSection}>
               <Text style={[styles.modalSectionTitle, { color: fullThemeColors.textSecondary }]}>
                 HOW IT WORKS
@@ -801,7 +804,7 @@ export default function AIManagementScreen() {
   } = useCustomization();
   const sweetAlert = useSweetAlert();
 
-  const primary = themeColors?.primary || '#667eea';
+  const primary = themeColors?.primary || AURA.primary;
 
   /* ─── State ─────────────────────────────────────────────────────── */
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
@@ -858,7 +861,6 @@ export default function AIManagementScreen() {
       const cohort = ageToCohort(currentBaby.birthDate);
       const infoMap: Record<string, CohortInfo> = {};
 
-      
       for (const row of metrics) {
         if ((row.range?.samples || 0) >= PARTIAL_THRESHOLD) {
           try {
@@ -996,47 +998,46 @@ export default function AIManagementScreen() {
     );
   }, [currentBaby, userProfile, loadSettings, triggerHaptic, sweetAlert]);
 
-const handleUnblockCohort = useCallback(async () => {
-  if (!currentBaby?.id || !userProfile?.id) {
-    sweetAlert.warning('No Baby Selected', 'Select a baby profile first.');
-    return;
-  }
+  const handleUnblockCohort = useCallback(async () => {
+    if (!currentBaby?.id || !userProfile?.id) {
+      sweetAlert.warning('No Baby Selected', 'Select a baby profile first.');
+      return;
+    }
 
-  Alert.alert(
-    'Unblock Cohort Contributions?',
-    'This will re-enable sharing of anonymized statistical patterns for this baby. Your past local caches will start rebuilding immediately.',
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Unblock',
-        onPress: async () => {
-          setUnblocking(true);
-          try {
-            const res = await unblockCohortContributions(currentBaby.id, userProfile.id);
-            if (res.success) {
-              triggerHaptic('success');
-              await loadSettings();
+    Alert.alert(
+      'Unblock Cohort Contributions?',
+      'This will re-enable sharing of anonymized statistical patterns for this baby. Your past local caches will start rebuilding immediately.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unblock',
+          onPress: async () => {
+            setUnblocking(true);
+            try {
+              const res = await unblockCohortContributions(currentBaby.id, userProfile.id);
+              if (res.success) {
+                triggerHaptic('success');
+                await loadSettings();
 
-              
-              try {
-                const { bootstrapAI } = await import('../../services/ai/bootstrap');
-                bootstrapAI(currentBaby.id, true).catch(() => {});
-              } catch {}
+                try {
+                  const { bootstrapAI } = await import('../../services/ai/bootstrap');
+                  bootstrapAI(currentBaby.id, true).catch(() => {});
+                } catch {}
 
-              sweetAlert.success('Unblocked', res.message);
-            } else {
-              sweetAlert.error('Error', res.message);
+                sweetAlert.success('Unblocked', res.message);
+              } else {
+                sweetAlert.error('Error', res.message);
+              }
+            } catch (e) {
+              sweetAlert.error('Error', 'Failed to unblock contributions.');
+            } finally {
+              setUnblocking(false);
             }
-          } catch (e) {
-            sweetAlert.error('Error', 'Failed to unblock contributions.');
-          } finally {
-            setUnblocking(false);
-          }
+          },
         },
-      },
-    ]
-  );
-}, [currentBaby, userProfile, loadSettings, triggerHaptic, sweetAlert]);
+      ]
+    );
+  }, [currentBaby, userProfile, loadSettings, triggerHaptic, sweetAlert]);
 
   const handleToggleCollaborative = useCallback(
     async (value: boolean) => {
@@ -1108,7 +1109,6 @@ const handleUnblockCohort = useCallback(async () => {
         ? metrics.reduce((sum, r) => sum + (r.range?.confidence || 0), 0) / metrics.length
         : 0;
 
-    
     const learningProgress = metrics.length > 0 ? (learnedCount / metrics.length) * 60 : 0;
     const confidenceScore = avgConfidence * 30;
     const sampleScore = Math.min(10, (totalSamples / 200) * 10);
@@ -1135,7 +1135,6 @@ const handleUnblockCohort = useCallback(async () => {
   const filteredMetrics = useMemo(() => {
     if (filterCategory === 'all') return metrics;
 
-    
     return [...metrics]
       .filter(m => METRIC_META[m.metric].category === filterCategory)
       .sort((a, b) => {
@@ -1159,17 +1158,17 @@ const handleUnblockCohort = useCallback(async () => {
 
     if (samples >= LEARNED_THRESHOLD) {
       status = 'learned';
-      statusColor = '#10b981';
+      statusColor = AURA.success;
       statusLabel = 'Learned';
       statusIcon = 'checkmark-circle';
     } else if (samples >= PARTIAL_THRESHOLD) {
       status = 'learning';
-      statusColor = '#f59e0b';
+      statusColor = AURA.warning;
       statusLabel = 'Learning';
       statusIcon = 'hourglass';
     } else {
       status = 'not_started';
-      statusColor = '#94a3b8';
+      statusColor = AURA.gray400;
       statusLabel = 'Not started';
       statusIcon = 'ellipse-outline';
     }
@@ -1177,7 +1176,6 @@ const handleUnblockCohort = useCallback(async () => {
     const progress = Math.min(100, (samples / LEARNED_THRESHOLD) * 100);
     const cohortInfo = cohortInfoMap[row.metric];
 
-    
     const sparkData = samples >= PARTIAL_THRESHOLD
       ? [row.range.lower95, row.range.mean - row.range.stddev * 0.5, row.range.mean, row.range.mean + row.range.stddev * 0.5, row.range.upper95]
       : [];
@@ -1219,12 +1217,10 @@ const handleUnblockCohort = useCallback(async () => {
               </Text>
             </View>
 
-            {/* Sparkline */}
             {sparkData.length >= 2 && (
               <Sparkline data={sparkData} color={meta.color} width={50} height={18} />
             )}
 
-            {/* Status pill */}
             <View style={[styles.statusPill, { backgroundColor: `${statusColor}15` }]}>
               <Ionicons name={statusIcon as any} size={12} color={statusColor} />
               <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
@@ -1237,7 +1233,6 @@ const handleUnblockCohort = useCallback(async () => {
             />
           </View>
 
-          {/* Range summary */}
           {samples >= PARTIAL_THRESHOLD && row.range && (
             <View
               style={[
@@ -1266,10 +1261,10 @@ const handleUnblockCohort = useCallback(async () => {
                 <>
                   <View style={styles.rangeDivider} />
                   <View style={styles.rangeItem}>
-                    <Text style={[styles.rangeLabel, { color: '#8b5cf6' }]}>
+                    <Text style={[styles.rangeLabel, { color: AURA.secondary }]}>
                       Cohort
                     </Text>
-                    <Text style={[styles.rangeValue, { color: '#8b5cf6' }]}>
+                    <Text style={[styles.rangeValue, { color: AURA.secondary }]}>
                       {cohortInfo.contributorCount} users
                     </Text>
                   </View>
@@ -1278,7 +1273,6 @@ const handleUnblockCohort = useCallback(async () => {
             </View>
           )}
 
-          {/* Progress bar */}
           <View style={[styles.progressTrack, { backgroundColor: `${statusColor}12` }]}>
             <View
               style={[
@@ -1316,7 +1310,7 @@ const handleUnblockCohort = useCallback(async () => {
         colors={
           isDark
             ? [fullThemeColors.background, fullThemeColors.surface]
-            : ['#f8fafc', '#e2e8f0', '#dbeafe']
+            : ['#f8faff', '#eef0ff', '#e2e5ff']
         }
         style={StyleSheet.absoluteFill}
       />
@@ -1408,7 +1402,7 @@ const handleUnblockCohort = useCallback(async () => {
 
                   <View style={styles.heroStatsRow}>
                     <View style={styles.heroStatItem}>
-                      <Text style={[styles.heroStatValue, { color: '#10b981' }]}>
+                      <Text style={[styles.heroStatValue, { color: AURA.success }]}>
                         {stats.learnedCount}
                       </Text>
                       <Text style={[styles.heroStatLabel, { color: fullThemeColors.textSecondary }]}>
@@ -1416,7 +1410,7 @@ const handleUnblockCohort = useCallback(async () => {
                       </Text>
                     </View>
                     <View style={styles.heroStatItem}>
-                      <Text style={[styles.heroStatValue, { color: '#f59e0b' }]}>
+                      <Text style={[styles.heroStatValue, { color: AURA.warning }]}>
                         {stats.partialCount}
                       </Text>
                       <Text style={[styles.heroStatLabel, { color: fullThemeColors.textSecondary }]}>
@@ -1424,7 +1418,7 @@ const handleUnblockCohort = useCallback(async () => {
                       </Text>
                     </View>
                     <View style={styles.heroStatItem}>
-                      <Text style={[styles.heroStatValue, { color: '#94a3b8' }]}>
+                      <Text style={[styles.heroStatValue, { color: AURA.gray400 }]}>
                         {stats.notStarted}
                       </Text>
                       <Text style={[styles.heroStatLabel, { color: fullThemeColors.textSecondary }]}>
@@ -1448,13 +1442,13 @@ const handleUnblockCohort = useCallback(async () => {
           {/* ─── GDPR BLOCKED BANNER ────────────────────────────────── */}
           {cohortBlocked && (
             <Animated.View entering={FadeInUp.delay(80).springify()} style={styles.section}>
-              <GlassCard style={{ borderColor: '#ef444430', borderWidth: 1.5 }}>
+              <GlassCard style={{ borderColor: `${AURA.danger}30`, borderWidth: 1.5 }}>
                 <View style={styles.gdprBanner}>
-                  <View style={[styles.gdprIcon, { backgroundColor: '#ef444415' }]}>
-                    <Ionicons name="ban" size={24} color="#ef4444" />
+                  <View style={[styles.gdprIcon, { backgroundColor: `${AURA.danger}15` }]}>
+                    <Ionicons name="ban" size={24} color={AURA.danger} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.gdprTitle, { color: '#ef4444' }]}>
+                    <Text style={[styles.gdprTitle, { color: AURA.danger }]}>
                       Cohort Contribution Blocked
                     </Text>
                     <Text style={[styles.gdprSubtitle, { color: fullThemeColors.textSecondary }]}>
@@ -1493,8 +1487,8 @@ const handleUnblockCohort = useCallback(async () => {
             />
             <GlassCard>
               <View style={styles.settingRow}>
-                <View style={[styles.settingIcon, { backgroundColor: '#8b5cf615' }]}>
-                  <Ionicons name="globe-outline" size={22} color="#8b5cf6" />
+                <View style={[styles.settingIcon, { backgroundColor: `${AURA.secondary}15` }]}>
+                  <Ionicons name="globe-outline" size={22} color={AURA.secondary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.settingTitle, { color: fullThemeColors.text }]}>
@@ -1512,10 +1506,10 @@ const handleUnblockCohort = useCallback(async () => {
                   value={collaborativeEnabled}
                   onValueChange={handleToggleCollaborative}
                   trackColor={{
-                    false: isDark ? '#333' : '#d1d5db',
-                    true: '#8b5cf650',
+                    false: isDark ? AURA.gray700 : '#d1d5db',
+                    true: `${AURA.secondary}50`,
                   }}
-                  thumbColor={collaborativeEnabled ? '#8b5cf6' : isDark ? '#555' : '#f4f3f4'}
+                  thumbColor={collaborativeEnabled ? AURA.secondary : isDark ? AURA.gray500 : '#f4f3f4'}
                 />
               </View>
 
@@ -1554,16 +1548,16 @@ const handleUnblockCohort = useCallback(async () => {
                     style={[
                       styles.filterChip,
                       {
-                        backgroundColor: isActive ? primary : fullThemeColors.surface,
+                        backgroundColor: isActive ? AURA.primary : fullThemeColors.surface,
                         borderRadius: borderRadiusValue,
-                        borderColor: isActive ? primary : fullThemeColors.border,
+                        borderColor: isActive ? AURA.primary : fullThemeColors.border,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.filterChipText,
-                        { color: isActive ? '#fff' : fullThemeColors.textSecondary },
+                        { color: isActive ? AURA.white : fullThemeColors.textSecondary },
                       ]}
                     >
                       {label}
@@ -1571,13 +1565,13 @@ const handleUnblockCohort = useCallback(async () => {
                     <View
                       style={[
                         styles.filterChipCount,
-                        { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : `${primary}15` },
+                        { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : `${AURA.primary}15` },
                       ]}
                     >
                       <Text
                         style={[
                           styles.filterChipCountText,
-                          { color: isActive ? '#fff' : primary },
+                          { color: isActive ? AURA.white : AURA.primary },
                         ]}
                       >
                         {count}
@@ -1620,8 +1614,8 @@ const handleUnblockCohort = useCallback(async () => {
 
             <GlassCard onPress={handleResetLearning} style={styles.dangerCard}>
               <View style={styles.settingRow}>
-                <View style={[styles.settingIcon, { backgroundColor: '#f59e0b15' }]}>
-                  <Ionicons name="refresh" size={22} color="#f59e0b" />
+                <View style={[styles.settingIcon, { backgroundColor: `${AURA.warning}15` }]}>
+                  <Ionicons name="refresh" size={22} color={AURA.warning} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.settingTitle, { color: fullThemeColors.text }]}>
@@ -1634,7 +1628,7 @@ const handleUnblockCohort = useCallback(async () => {
                   </Text>
                 </View>
                 {resetting ? (
-                  <UniversalSpinner size={20} color="#f59e0b" variant="liquid" section="settings" />
+                  <UniversalSpinner size={20} color={AURA.warning} variant="liquid" section="settings" />
                 ) : (
                   <Ionicons
                     name="chevron-forward"
@@ -1647,8 +1641,8 @@ const handleUnblockCohort = useCallback(async () => {
 
             <GlassCard onPress={handleEraseCohort} style={styles.dangerCard}>
               <View style={styles.settingRow}>
-                <View style={[styles.settingIcon, { backgroundColor: '#ef444415' }]}>
-                  <Ionicons name="trash-bin-outline" size={22} color="#ef4444" />
+                <View style={[styles.settingIcon, { backgroundColor: `${AURA.danger}15` }]}>
+                  <Ionicons name="trash-bin-outline" size={22} color={AURA.danger} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.settingTitle, { color: fullThemeColors.text }]}>
@@ -1661,7 +1655,7 @@ const handleUnblockCohort = useCallback(async () => {
                   </Text>
                 </View>
                 {erasing ? (
-                  <UniversalSpinner size={20} color="#ef4444" variant="liquid" section="settings" />
+                  <UniversalSpinner size={20} color={AURA.danger} variant="liquid" section="settings" />
                 ) : (
                   <Ionicons
                     name="chevron-forward"
@@ -1696,7 +1690,7 @@ const handleUnblockCohort = useCallback(async () => {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Unified with AddEntryScreen
+   STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
@@ -1705,7 +1699,6 @@ const styles = StyleSheet.create({
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { fontSize: 14, fontWeight: '500' },
 
-  // ── Glass Card ──────────────────────────────────────────────────
   glassCard: {
     borderRadius: DESIGN.radius.lg,
     overflow: 'hidden',
@@ -1723,7 +1716,6 @@ const styles = StyleSheet.create({
   },
   glassContent: { flex: 1 },
 
-  // ── Sticky Header ───────────────────────────────────────────────
   stickyHeader: {
     position: 'absolute',
     top: 0,
@@ -1737,7 +1729,6 @@ const styles = StyleSheet.create({
   stickyTitle: { fontSize: 17, fontWeight: '800' },
   stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
-  // ── Top Header ──────────────────────────────────────────────────
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1756,7 +1747,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
   headerSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
 
-  // ── Section Header ──────────────────────────────────────────────
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1775,10 +1765,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
 
-  // ── Section ─────────────────────────────────────────────────────
   section: { marginBottom: 20 },
 
-  // ── Hero Section ────────────────────────────────────────────────
   heroSection: { marginBottom: 16 },
   heroContent: {
     flexDirection: 'row',
@@ -1804,7 +1792,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // ── GDPR Banner ─────────────────────────────────────────────────
   gdprBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1832,7 +1819,6 @@ const styles = StyleSheet.create({
   },
   unblockBtnText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Setting Row ─────────────────────────────────────────────────
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1859,7 +1845,6 @@ const styles = StyleSheet.create({
   },
   privacyNoteText: { flex: 1, fontSize: 11, fontWeight: '500', lineHeight: 16 },
 
-  // ── Filter Section ──────────────────────────────────────────────
   filterSection: { marginBottom: 16 },
   filterScroll: { paddingHorizontal: 20, gap: 8 },
   filterChip: {
@@ -1880,7 +1865,6 @@ const styles = StyleSheet.create({
   },
   filterChipCountText: { fontSize: 11, fontWeight: '800' },
 
-  // ── Metric Card ─────────────────────────────────────────────────
   metricCard: { padding: 14, marginBottom: 10 },
   metricHeader: {
     flexDirection: 'row',
@@ -1931,14 +1915,11 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: '100%', borderRadius: 2 },
 
-  // ── Empty Metrics ───────────────────────────────────────────────
   emptyMetrics: { alignItems: 'center', padding: 32, gap: 12 },
   emptyMetricsText: { fontSize: 14, fontWeight: '500' },
 
-  // ── Danger Card ─────────────────────────────────────────────────
   dangerCard: { marginBottom: 10 },
 
-  // ── Empty State ─────────────────────────────────────────────────
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -1949,7 +1930,6 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 18, fontWeight: '700' },
   emptySubtitle: { fontSize: 14, fontWeight: '500', textAlign: 'center' },
 
-  // ── Modal ───────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -1973,7 +1953,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   modalEmoji: { fontSize: 44, marginBottom: 8 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: AURA.white, letterSpacing: -0.3 },
   modalStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1983,7 +1963,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginTop: 8,
   },
-  modalStatusText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  modalStatusText: { color: AURA.white, fontSize: 11, fontWeight: '700' },
   modalCloseBtn: {
     position: 'absolute',
     top: 14,

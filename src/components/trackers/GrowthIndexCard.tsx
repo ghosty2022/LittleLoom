@@ -43,7 +43,7 @@ const getEmojiForLabel = (label: string): string => {
 const getScoreColor = (v: number): string => {
   if (v >= 85) return DS.success;
   if (v >= 70) return DS.warning;
-  if (v >= 50) return '#f97316';
+  if (v >= 50) return '#fb923c'; 
   return DS.danger;
 };
 
@@ -113,7 +113,7 @@ const VelocityChip: React.FC<{
   return (
     <View style={[styles.velocityChip, { backgroundColor: `${color}12`, borderColor: `${color}30` }]}>
       <Text style={[styles.velocityLabel, { color }]}>{label}</Text>
-      <Text style={[styles.velocityValue, { color: isDark ? DS.white : '#1e293b' }]}>
+      <Text style={[styles.velocityValue, { color: isDark ? DS.white : '#292524' }]}>
         {value > 0 ? value.toFixed(1) : '—'}
         <Text style={[styles.velocityUnit, { color: fullThemeColors.textSecondary }]}> {unit}</Text>
       </Text>
@@ -277,7 +277,7 @@ export const GrowthIndexCard: React.FC = () => {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
             {growthIndex.milestoneReadiness.map((r, idx) => {
               const pct = Math.max(0, Math.min(100, r.readinessPercent || 0));
-              const color = pct > 80 ? DS.success : pct > 50 ? DS.warning : '#f97316';
+              const color = pct > 80 ? DS.success : pct > 50 ? DS.warning : '#fb923c';
               return (
                 <TouchableOpacity
                   key={idx}

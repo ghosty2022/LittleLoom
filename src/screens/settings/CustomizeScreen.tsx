@@ -1,4 +1,3 @@
-
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -51,6 +50,30 @@ import type { RootStackParamList } from '../../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Customize'>;
 
+/* ═══════════════════════════════════════════════════════════════════════
+   AURA DS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  secondary: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray700: '#44403c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
+
 const { width: SCREEN_W } = Dimensions.get('window');
 const CARD_MARGIN = 16;
 const GAP = 10;
@@ -92,13 +115,25 @@ const ANIMATION_OPTIONS = [
   { value: 'instant' as const, label: 'Instant', icon: 'stopwatch-outline' as const },
 ];
 
+/* Aura-aligned swatch row — replaces the old #667eea/#ec4899/#3b82f6/... set */
 const ACCENT_COLORS = [
-  '#667eea', '#ec4899', '#3b82f6', '#10b981', '#f59e0b',
-  '#f97316', '#ef4444', '#14b8a6', '#8b5cf6', '#e11d48',
-  '#06b6d4', '#84cc16',
+  AURA.primary,   // indigo
+  AURA.accent,    // pink
+  AURA.info,      // sky
+  AURA.success,   // emerald
+  AURA.warning,   // amber
+  '#fb923c',      // orange-400
+  AURA.danger,    // red
+  '#14b8a6',      // teal
+  AURA.secondary, // violet
+  '#e11d48',      // rose-600
+  '#06b6d4',      // cyan
+  '#84cc16',      // lime
 ];
 
-
+/* ═══════════════════════════════════════════════════════════════════════
+   PillSelector
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const PillSelector = <T extends string>({
   options,
@@ -136,7 +171,7 @@ const PillSelector = <T extends string>({
                 elevation: 6,
               },
               !isActive && {
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                backgroundColor: isDark ? AURA.darkBorder : 'rgba(0,0,0,0.04)',
               },
             ]}
             android_ripple={{ color: activeColor + '20', borderless: true }}
@@ -145,14 +180,14 @@ const PillSelector = <T extends string>({
               <Ionicons
                 name={opt.icon}
                 size={16}
-                color={isActive ? '#fff' : subTextColor}
+                color={isActive ? AURA.white : subTextColor}
                 style={{ marginRight: 6 }}
               />
             )}
             <Text
               style={[
                 styles.pillText,
-                { color: isActive ? '#fff' : textColor },
+                { color: isActive ? AURA.white : textColor },
               ]}
             >
               {opt.label}
@@ -163,6 +198,10 @@ const PillSelector = <T extends string>({
     </View>
   );
 };
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ColorDot
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const ColorDot = ({
   color,
@@ -212,12 +251,16 @@ const ColorDot = ({
         ]}
       >
         {selected && (
-          <Ionicons name="checkmark" size={size * 0.5} color="#fff" />
+          <Ionicons name="checkmark" size={size * 0.5} color={AURA.white} />
         )}
       </Animated.View>
     </Pressable>
   );
 };
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ModernToggle
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const ModernToggle = ({
   icon,
@@ -266,7 +309,7 @@ const ModernToggle = ({
           backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
           borderRadius: 18,
           borderWidth: 1,
-          borderColor: value ? color + '25' : isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+          borderColor: value ? color + '25' : isDark ? AURA.darkBorder : 'rgba(0,0,0,0.04)',
           opacity: disabled ? 0.5 : 1,
         },
       ]}
@@ -285,7 +328,7 @@ const ModernToggle = ({
           value={value}
           onValueChange={disabled ? undefined : onToggle}
           trackColor={{ false: isDark ? 'rgba(255,255,255,0.12)' : '#e2e8f0', true: color + '50' }}
-          thumbColor={value ? color : isDark ? '#555' : '#f4f3f4'}
+          thumbColor={value ? color : isDark ? AURA.gray500 : '#f4f3f4'}
           style={{ transform: [{ scale: 0.85 }] }}
           disabled={disabled}
         />
@@ -293,6 +336,10 @@ const ModernToggle = ({
     </Pressable>
   );
 };
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SectionHeader
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const SectionHeader = ({
   icon,
@@ -320,7 +367,9 @@ const SectionHeader = ({
   </View>
 );
 
-
+/* ═══════════════════════════════════════════════════════════════════════
+   Main Screen
+   ═══════════════════════════════════════════════════════════════════════ */
 
 export default function CustomizeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
@@ -328,7 +377,7 @@ export default function CustomizeScreen({ navigation }: Props) {
   const { setAppearance } = useTheme();
   const { sweetAlert } = useSweetAlert();
   const { user, isConnected, supabase } = useSupabase();
-  
+
   const {
     settings,
     isLoaded,
@@ -424,10 +473,8 @@ export default function CustomizeScreen({ navigation }: Props) {
   const savePreferences = useCallback(async () => {
     setIsSyncing(true);
     try {
-      
       await updateSettings(pending);
 
-      
       if (isConnected && user) {
         const { error } = await supabase
           .from('user_preferences')
@@ -493,7 +540,6 @@ export default function CustomizeScreen({ navigation }: Props) {
         setPending(DEFAULT_SETTINGS);
         hapticSuccess();
 
-        
         if (isConnected && user) {
           try {
             await supabase
@@ -562,10 +608,11 @@ export default function CustomizeScreen({ navigation }: Props) {
   const effectivePrimary = pending.accentColor || currentTheme.primary;
   const effectiveSecondary = pending.accentColor ? currentTheme.secondary : currentTheme.secondary;
 
-  const textColor = effectiveIsDark ? '#f1f5f9' : '#1a1a1a';
-  const subTextColor = effectiveIsDark ? '#94a3b8' : '#64748b';
-  const cardBg = effectiveIsDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)';
-  const sectionBorder = effectiveIsDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  /* ─── Aura live neutrals (dark-mode aware) ─────────────────────── */
+  const textColor = effectiveIsDark ? AURA.white : AURA.gray900;
+  const subTextColor = effectiveIsDark ? AURA.gray400 : AURA.gray500;
+  const cardBg = effectiveIsDark ? AURA.darkCard : 'rgba(255,255,255,0.7)';
+  const sectionBorder = effectiveIsDark ? AURA.darkBorder : 'rgba(0,0,0,0.04)';
 
   if (!isLoaded) {
     return (
@@ -583,9 +630,9 @@ export default function CustomizeScreen({ navigation }: Props) {
       {/* ─── Cloud Sync Status ─── */}
       {isConnected && user && (
         <Animated.View entering={FadeInUp.delay(50)} style={styles.syncStatus}>
-          <View style={[styles.syncBadge, { backgroundColor: `${effectivePrimary}15` }]}>
-            <View style={[styles.syncDot, { backgroundColor: '#10b981' }]} />
-            <Text style={[styles.syncText, { color: '#10b981' }]}>
+          <View style={[styles.syncBadge, { backgroundColor: `${AURA.success}15` }]}>
+            <View style={[styles.syncDot, { backgroundColor: AURA.success }]} />
+            <Text style={[styles.syncText, { color: AURA.success }]}>
               Synced to cloud
             </Text>
           </View>
@@ -691,7 +738,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(200).duration(500)} style={styles.section}>
           <SectionHeader
             icon="contrast"
-            color={effectivePrimary}
+            color={AURA.primary}
             title="Appearance"
             subtitle={APPEARANCE_OPTIONS.find(a => a.id === pending.appearance)?.label || 'System'}
             textColor={textColor}
@@ -712,7 +759,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(300).duration(500)} style={styles.section}>
           <SectionHeader
             icon="color-palette"
-            color={currentTheme.secondary}
+            color={AURA.secondary}
             title="Color Theme"
             subtitle={THEME_OPTIONS.find(t => t.id === pending.theme)?.name || 'Lavender'}
             textColor={textColor}
@@ -736,7 +783,7 @@ export default function CustomizeScreen({ navigation }: Props) {
                     styles.themeBubble,
                     isActive && {
                       borderColor: themeColors?.primary,
-                      backgroundColor: (themeColors?.primary || '#667eea') + '12',
+                      backgroundColor: (themeColors?.primary || AURA.primary) + '12',
                       shadowColor: themeColors?.primary,
                       shadowOffset: { width: 0, height: 6 },
                       shadowOpacity: 0.25,
@@ -750,7 +797,7 @@ export default function CustomizeScreen({ navigation }: Props) {
                   ]}
                 >
                   <LinearGradient
-                    colors={themeColors?.colors || ['#e0e7ff', '#d1d5ff']}
+                    colors={themeColors?.colors || [AURA.primaryLight, AURA.secondary]}
                     style={styles.themeBubbleGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
@@ -761,7 +808,7 @@ export default function CustomizeScreen({ navigation }: Props) {
                   <Text style={[styles.themeBubbleDesc, { color: subTextColor }]}>{theme.desc}</Text>
                   {isActive && (
                     <View style={[styles.themeBubbleCheck, { backgroundColor: themeColors?.primary }]}>
-                      <Ionicons name="checkmark" size={10} color="#fff" />
+                      <Ionicons name="checkmark" size={10} color={AURA.white} />
                     </View>
                   )}
                 </Pressable>
@@ -774,7 +821,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(400).duration(500)} style={styles.section}>
           <SectionHeader
             icon="color-fill"
-            color={currentTheme.accent}
+            color={AURA.accent}
             title="Accent Color"
             subtitle={pending.accentColor ? 'Custom' : 'Theme Default'}
             textColor={textColor}
@@ -803,7 +850,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(500).duration(500)} style={styles.section}>
           <SectionHeader
             icon="happy-outline"
-            color={currentTheme.accent}
+            color={AURA.accent}
             title="Avatar"
             subtitle="Choose your character"
             textColor={textColor}
@@ -832,7 +879,7 @@ export default function CustomizeScreen({ navigation }: Props) {
                   <Text style={styles.avatarEmoji}>{emoji}</Text>
                   {isActive && (
                     <View style={[styles.avatarCheck, { backgroundColor: effectivePrimary }]}>
-                      <Ionicons name="checkmark" size={10} color="#fff" />
+                      <Ionicons name="checkmark" size={10} color={AURA.white} />
                     </View>
                   )}
                 </Pressable>
@@ -845,7 +892,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(600).duration(500)} style={styles.section}>
           <SectionHeader
             icon="text"
-            color="#f59e0b"
+            color={AURA.warning}
             title="Typography"
             subtitle={`Size: ${pending.fontSize}`}
             textColor={textColor}
@@ -866,7 +913,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(700).duration(500)} style={styles.section}>
           <SectionHeader
             icon="shapes"
-            color="#10b981"
+            color={AURA.success}
             title="Shape"
             subtitle={`Radius: ${pending.borderRadius}`}
             textColor={textColor}
@@ -887,7 +934,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(800).duration(500)} style={styles.section}>
           <SectionHeader
             icon="speedometer"
-            color="#8b5cf6"
+            color={AURA.secondary}
             title="Motion"
             subtitle={`Speed: ${pending.animationSpeed}`}
             textColor={textColor}
@@ -908,7 +955,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(900).duration(500)} style={styles.section}>
           <SectionHeader
             icon="sparkles"
-            color="#f97316"
+            color={'#fb923c'}
             title="Visual Effects"
             subtitle="Fine-tune the look"
             textColor={textColor}
@@ -921,7 +968,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Smooth blends"
               value={pending.useGradients}
               onToggle={() => toggleSetting('useGradients')}
-              color={effectivePrimary}
+              color={AURA.primary}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -932,7 +979,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Glassmorphism"
               value={pending.useBlur}
               onToggle={() => toggleSetting('useBlur')}
-              color={currentTheme.secondary}
+              color={AURA.secondary}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -943,7 +990,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Depth & glow"
               value={pending.showShadows}
               onToggle={() => toggleSetting('showShadows')}
-              color={currentTheme.accent}
+              color={AURA.accent}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -954,7 +1001,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Tight layout"
               value={pending.compactSpacing}
               onToggle={() => toggleSetting('compactSpacing')}
-              color="#f59e0b"
+              color={AURA.warning}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -966,7 +1013,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(1000).duration(500)} style={styles.section}>
           <SectionHeader
             icon="accessibility"
-            color="#14b8a6"
+            color={'#14b8a6'}
             title="Accessibility"
             subtitle="Make it work for you"
             textColor={textColor}
@@ -979,7 +1026,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Minimize animations"
               value={pending.reduceMotion}
               onToggle={() => toggleSetting('reduceMotion')}
-              color="#11998e"
+              color={AURA.success}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -990,7 +1037,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Enhanced visibility"
               value={pending.highContrast}
               onToggle={() => toggleSetting('highContrast')}
-              color="#667eea"
+              color={AURA.primary}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -1001,7 +1048,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Heavier weight"
               value={pending.boldText}
               onToggle={() => toggleSetting('boldText')}
-              color="#e11d48"
+              color={'#e11d48'}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -1012,7 +1059,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Vibrate on tap"
               value={pending.hapticFeedback}
               onToggle={() => toggleSetting('hapticFeedback')}
-              color="#fc5c7d"
+              color={AURA.accent}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -1024,7 +1071,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(1100).duration(500)} style={styles.section}>
           <SectionHeader
             icon="volume-high"
-            color="#ec4899"
+            color={AURA.accent}
             title="Sounds & Alerts"
             subtitle="Audio preferences"
             textColor={textColor}
@@ -1037,7 +1084,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Action sounds"
               value={pending.soundEffects}
               onToggle={() => toggleSetting('soundEffects')}
-              color={currentTheme.accent}
+              color={AURA.accent}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -1048,7 +1095,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               subtitle="Push alerts"
               value={pending.notifications}
               onToggle={() => toggleSetting('notifications')}
-              color={currentTheme.secondary}
+              color={AURA.secondary}
               textColor={textColor}
               subTextColor={subTextColor}
               isDark={effectiveIsDark}
@@ -1060,7 +1107,7 @@ export default function CustomizeScreen({ navigation }: Props) {
         <Animated.View entering={FadeInUp.delay(1200).duration(500)} style={styles.fabContainer}>
           {hasChanges && (
             <View style={styles.unsavedPill}>
-              <View style={[styles.unsavedDot, { backgroundColor: effectivePrimary }]} />
+              <View style={[styles.unsavedDot, { backgroundColor: AURA.primary }]} />
               <Text style={[styles.unsavedText, { color: textColor }]}>Unsaved changes</Text>
             </View>
           )}
@@ -1069,7 +1116,7 @@ export default function CustomizeScreen({ navigation }: Props) {
               styles.fab,
               {
                 opacity: hasChanges && !isSyncing ? 1 : 0.4,
-                shadowColor: effectivePrimary,
+                shadowColor: AURA.primary,
                 shadowOffset: { width: 0, height: 8 },
                 shadowOpacity: 0.4,
                 shadowRadius: 16,
@@ -1081,15 +1128,15 @@ export default function CustomizeScreen({ navigation }: Props) {
             disabled={!hasChanges || isSyncing}
           >
             <LinearGradient
-              colors={isSyncing ? ['#999', '#888'] : [effectivePrimary, currentTheme.secondary]}
+              colors={isSyncing ? [AURA.gray400, AURA.gray500] : [AURA.primary, AURA.accent]}
               style={styles.fabGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
               {isSyncing ? (
-                <UniversalSpinner size={20} color="#fff" variant="liquid" section="settings" />
+                <UniversalSpinner size={20} color={AURA.white} variant="liquid" section="settings" />
               ) : (
-                <Ionicons name="checkmark" size={24} color="#fff" />
+                <Ionicons name="checkmark" size={24} color={AURA.white} />
               )}
               <Text style={styles.fabText}>{isSyncing ? 'Saving...' : 'Save'}</Text>
             </LinearGradient>
@@ -1099,6 +1146,10 @@ export default function CustomizeScreen({ navigation }: Props) {
     </View>
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Styles (unchanged structure, Aura-driven values already inline)
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

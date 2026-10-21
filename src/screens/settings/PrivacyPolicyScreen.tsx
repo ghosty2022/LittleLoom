@@ -10,8 +10,29 @@ import { useCustomization } from '../../hooks/useCustomization';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 
-
 type Props = NativeStackScreenProps<RootStackParamList, 'PrivacyPolicy'>;
+
+/* ─── AURA DS ────────────────────────────────────────────────────── */
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  secondary: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray700: '#44403c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+};
 
 const SECTIONS = [
   {
@@ -95,29 +116,13 @@ Continued use of LittleLoom after changes constitutes acceptance of the updated 
   },
 ];
 
-const SectionHeader: React.FC<{
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  color: string;
-  isDark: boolean;
-}> = ({ icon, title, color, isDark }) => (
-  <View style={styles.sectionHeader}>
-    <View style={[styles.sectionIcon, { backgroundColor: `${color}20` }]}>
-      <Ionicons name={icon} size={20} color={color} />
-    </View>
-    <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>
-      {title}
-    </Text>
-  </View>
-);
-
 export default function PrivacyPolicyScreen({ navigation }: Props) {
   const { themeColors, darkMode, reduceMotion } = useCustomization();
   const insets = useSafeAreaInsets();
 
   const isDark = darkMode;
-  const primary = themeColors?.primary || '#667eea';
-  const success = themeColors?.accent || '#43e97b';
+  const primary = themeColors?.primary || AURA.primary;
+  const success = themeColors?.accent || AURA.success;
 
   const handleHaptic = () => {
     if (!reduceMotion) {
@@ -134,8 +139,8 @@ export default function PrivacyPolicyScreen({ navigation }: Props) {
   };
 
   const bgColors = isDark
-    ? [themeColors?.colors?.[0] || '#0f0f1e', themeColors?.colors?.[1] || '#1a1a2e', themeColors?.colors?.[2] || '#16213e']
-    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#f0f4ff', themeColors?.colors?.[2] || '#e8eeff'];
+    ? [themeColors?.colors?.[0] || AURA.darkBg, themeColors?.colors?.[1] || '#1a1428', themeColors?.colors?.[2] || AURA.darkBg]
+    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#eef0ff', themeColors?.colors?.[2] || '#e2e5ff'];
 
   return (
     <LinearGradient colors={bgColors} style={styles.container}>
@@ -143,11 +148,10 @@ export default function PrivacyPolicyScreen({ navigation }: Props) {
       <Animated.ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }
+          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <Animated.View
           entering={reduceMotion ? undefined : FadeInUp.delay(100)}
           style={styles.header}
@@ -155,7 +159,7 @@ export default function PrivacyPolicyScreen({ navigation }: Props) {
           <TouchableOpacity
             style={[
               styles.backButton,
-              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
+              { backgroundColor: isDark ? AURA.darkCard : 'rgba(0,0,0,0.05)' },
             ]}
             onPress={() => {
               handleHaptic();
@@ -163,7 +167,7 @@ export default function PrivacyPolicyScreen({ navigation }: Props) {
             }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+            <Ionicons name="arrow-back" size={24} color={isDark ? AURA.white : AURA.gray900} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Privacy Policy</Text>
           <Text style={[styles.headerSubtitle, isDark && styles.headerSubtitleDark]}>
@@ -171,18 +175,17 @@ export default function PrivacyPolicyScreen({ navigation }: Props) {
           </Text>
         </Animated.View>
 
-        {/* Intro */}
         <Animated.View
           entering={reduceMotion ? undefined : FadeInUp.delay(200)}
           style={styles.sectionWrapper}
         >
           <BlurView
             intensity={isDark ? 30 : 70}
-            style={[styles.introCard, { borderColor: `${success}26` }]}
+            style={[styles.introCard, { borderColor: `${AURA.success}26` }]}
             tint={isDark ? 'dark' : 'light'}
           >
-            <View style={[styles.introIcon, { backgroundColor: `${success}15` }]}>
-              <Ionicons name="shield-checkmark" size={28} color={success} />
+            <View style={[styles.introIcon, { backgroundColor: `${AURA.success}15` }]}>
+              <Ionicons name="shield-checkmark" size={28} color={AURA.success} />
             </View>
             <Text style={[styles.introTitle, isDark && styles.introTitleDark]}>
               Privacy First, Always
@@ -193,7 +196,6 @@ export default function PrivacyPolicyScreen({ navigation }: Props) {
           </BlurView>
         </Animated.View>
 
-        {/* Sections */}
         {SECTIONS.map((section, index) => (
           <Animated.View
             key={index}
@@ -215,7 +217,6 @@ export default function PrivacyPolicyScreen({ navigation }: Props) {
           </Animated.View>
         ))}
 
-        {/* Contact Cards */}
         <Animated.View
           entering={reduceMotion ? undefined : FadeInUp.delay(900)}
           style={styles.footer}
@@ -228,12 +229,12 @@ export default function PrivacyPolicyScreen({ navigation }: Props) {
             }}
             activeOpacity={0.7}
           >
-            <Ionicons name="mail-outline" size={20} color={primary} />
+            <Ionicons name="mail-outline" size={20} color={AURA.primary} />
             <Text style={[styles.footerText, isDark && styles.footerTextDark]}>
-              Questions about privacy?
-                  <Text style={{ color: primary, fontWeight: '700' }}>privacy@littleloom.app</Text>
+              Questions about privacy?{' '}
+              <Text style={{ color: AURA.primary, fontWeight: '700' }}>privacy@littleloom.app</Text>
             </Text>
-            <Ionicons name="open-outline" size={16} color={isDark ? '#666' : '#999'} />
+            <Ionicons name="open-outline" size={16} color={isDark ? AURA.gray500 : AURA.gray400} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -244,12 +245,12 @@ export default function PrivacyPolicyScreen({ navigation }: Props) {
             }}
             activeOpacity={0.7}
           >
-            <Ionicons name="chatbubble-ellipses" size={20} color={success} />
+            <Ionicons name="chatbubble-ellipses" size={20} color={AURA.success} />
             <Text style={[styles.footerText, isDark && styles.footerTextDark]}>
-              Need to talk to a human?
-              <Text style={{ color: success, fontWeight: '700' }}>Contact Support</Text>
+              Need to talk to a human?{' '}
+              <Text style={{ color: AURA.success, fontWeight: '700' }}>Contact Support</Text>
             </Text>
-            <Ionicons name="chevron-forward" size={16} color={isDark ? '#666' : '#999'} />
+            <Ionicons name="chevron-forward" size={16} color={isDark ? AURA.gray500 : AURA.gray400} />
           </TouchableOpacity>
         </Animated.View>
       </Animated.ScrollView>
@@ -263,112 +264,61 @@ const styles = StyleSheet.create({
 
   header: { marginBottom: 24 },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    width: 40, height: 40, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
   headerTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#1a1a1a',
-    letterSpacing: -0.5,
-    marginBottom: 6,
+    fontSize: 32, fontWeight: '800', color: AURA.gray900,
+    letterSpacing: -0.5, marginBottom: 6,
   },
-  headerTitleDark: { color: '#fff' },
-  headerSubtitle: {
-    fontSize: 15,
-    color: '#666',
-    fontWeight: '500',
-  },
-  headerSubtitleDark: { color: '#a0a0a0' },
+  headerTitleDark: { color: AURA.white },
+  headerSubtitle: { fontSize: 15, color: AURA.gray500, fontWeight: '500' },
+  headerSubtitleDark: { color: AURA.gray400 },
 
   sectionWrapper: { marginBottom: 12 },
 
   introCard: {
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 24, padding: 24, alignItems: 'center',
+    overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
   },
   introIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    width: 56, height: 56, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
   introTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 8,
-    textAlign: 'center',
+    fontSize: 18, fontWeight: '700', color: AURA.gray900,
+    marginBottom: 8, textAlign: 'center',
   },
-  introTitleDark: { color: '#fff' },
+  introTitleDark: { color: AURA.white },
   introText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    lineHeight: 22,
-    fontWeight: '500',
+    fontSize: 14, color: AURA.gray500, textAlign: 'center',
+    lineHeight: 22, fontWeight: '500',
   },
-  introTextDark: { color: '#a0a0a0' },
+  introTextDark: { color: AURA.gray400 },
 
   sectionCard: {
-    borderRadius: 24,
-    padding: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 24, padding: 20, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
   },
-  sectionCardDark: {
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
+  sectionCardDark: { borderColor: AURA.darkBorder },
   sectionCardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 12,
+    fontSize: 16, fontWeight: '700', color: AURA.gray900, marginBottom: 12,
   },
-  sectionCardTitleDark: { color: '#fff' },
-  sectionText: {
-    fontSize: 14,
-    color: '#555',
-    lineHeight: 22,
-    fontWeight: '500',
-  },
-  sectionTextDark: { color: '#a0a0a0' },
+  sectionCardTitleDark: { color: AURA.white },
+  sectionText: { fontSize: 14, color: AURA.gray500, lineHeight: 22, fontWeight: '500' },
+  sectionTextDark: { color: AURA.gray400 },
 
-  footer: {
-    marginTop: 20,
-    marginBottom: 20,
-  },
+  footer: { marginTop: 20, marginBottom: 20 },
   footerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 20,
-    padding: 20,
-    gap: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
+    borderRadius: 20, padding: 20, gap: 14,
+    borderWidth: 1, borderColor: 'rgba(99,102,241,0.08)',
   },
   footerCardDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(41,37,36,0.4)',
+    borderColor: AURA.darkBorder,
   },
-  footerText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#888',
-    lineHeight: 22,
-    fontWeight: '500',
-  },
-  footerTextDark: { color: '#666' },
+  footerText: { flex: 1, fontSize: 14, color: AURA.gray500, lineHeight: 22, fontWeight: '500' },
+  footerTextDark: { color: AURA.gray400 },
 });
