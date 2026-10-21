@@ -1,17 +1,5 @@
-
-
-
-
-import React, {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Dimensions,
   Modal,
   Pressable,
@@ -32,11 +20,9 @@ import { BlurView } from 'expo-blur';
 import {
   differenceInDays,
   differenceInMonths,
-  differenceInWeeks,
   format,
   isValid,
   parseISO,
-  addMonths,
   startOfDay,
 } from 'date-fns';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -53,6 +39,8 @@ import Animated, {
   Extrapolation,
   withSpring,
   withTiming,
+  withRepeat,
+  withSequence,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -66,7 +54,7 @@ import { useGrowthIntelligence } from '@/hooks/useGrowthIntelligence';
 import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';
 import { useTrackerAchievements } from '@/hooks/useTrackerAchievements';
 import { useTrackerProgressive } from '@/hooks/useTrackerProgressive';
-import { useWHOGrowthCalculator } from '@/hooks/useWHOGrowthCalculator';
+import { useWHOGrowthCalculator, predictGrowth } from '@/hooks/useWHOGrowthCalculator';
 import type { GrowthMeasurement, BabyProfile } from '@/types';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -74,39 +62,63 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
+const HEADER_TOP_PADDING = 52;
+const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Unified with TrackerHub
+   AURA DESIGN SYSTEM
    ═══════════════════════════════════════════════════════════════════════════ */
-
-const SPACING = {
-  xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  primaryGhost: 'rgba(99,102,241,0.08)',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  text: {
+    xs: { size: 11, weight: '500' as const },
+    sm: { size: 13, weight: '500' as const },
+    base: { size: 15, weight: '400' as const },
+    lg: { size: 17, weight: '600' as const },
+    xl: { size: 20, weight: '700' as const },
+    '2xl': { size: 26, weight: '800' as const },
+  },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
 };
 
-const RADIUS = {
-  xs: 6, sm: 10, md: 14, lg: 18, xl: 22, full: 999,
-};
-
-const SHADOW = {
-  none: { shadowOpacity: 0, elevation: 0 },
-  xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
-  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
-  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
-  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
-  xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
-};
-
-const SPRING_CONFIG = { damping: 15, stiffness: 300 };
-const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SAFE HELPERS
    ═══════════════════════════════════════════════════════════════════════════ */
-
-const safeGender = (g?: string): 'boy' | 'girl' => g === 'girl' ? 'girl' : 'boy';
-
+const safeGender = (g?: string): 'boy' | 'girl' => (g === 'girl' ? 'girl' : 'boy');
 const safeParseDate = (d?: string | null): Date | null => {
   if (!d) return null;
   try {
@@ -114,43 +126,27 @@ const safeParseDate = (d?: string | null): Date | null => {
     return isValid(p) ? p : null;
   } catch { return null; }
 };
-
 const safeDiffMonths = (a: Date | string, b: Date | string): number => {
   const left = safeParseDate(typeof a === 'string' ? a : undefined) || (a instanceof Date ? a : null);
   const right = safeParseDate(typeof b === 'string' ? b : undefined) || (b instanceof Date ? b : null);
   if (!left || !right) return 0;
   return Math.max(0, differenceInMonths(left, right));
 };
-
 const safeDiffDays = (a: Date | string, b: Date | string): number => {
   const left = safeParseDate(typeof a === 'string' ? a : undefined) || (a instanceof Date ? a : null);
   const right = safeParseDate(typeof b === 'string' ? b : undefined) || (b instanceof Date ? b : null);
   if (!left || !right) return 0;
   return differenceInDays(left, right);
 };
-
 const safeFmt = (d: Date | string | null | undefined, fmt: string): string => {
   const p = safeParseDate(typeof d === 'string' ? d : undefined) || (d instanceof Date ? d : null);
   if (!p) return '—';
   try { return format(p, fmt); } catch { return '—'; }
 };
 
-const safeStr = (val: unknown, fallback = ''): string => {
-  if (val === undefined || val === null) return fallback;
-  return String(val);
-};
-
-const safeNum = (val: unknown, fallback = 0): number => {
-  if (val === undefined || val === null) return fallback;
-  const num = Number(val);
-  if (Number.isNaN(num) || !Number.isFinite(num)) return fallback;
-  return num;
-};
-
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════════════════ */
-
 type MetricType = 'height' | 'weight' | 'head' | 'bmi';
 type TimeRange = '1m' | '3m' | '6m' | '1y' | 'all';
 type ChartMode = 'trend' | 'velocity' | 'percentile';
@@ -167,140 +163,97 @@ interface InsightItem {
   action?: { label: string; screen: string; params?: any };
   timestamp: number;
 }
-
-interface PredictedMilestone {
-  id: string;
-  title: string;
-  category: string;
-  predictedAge: number;
-  confidence: number;
-  description: string;
-  emoji: string;
-}
-
-interface ActivitySuggestion {
-  id: string;
-  title: string;
-  category: string;
-  duration: string;
-  frequency: string;
-  benefit: string;
-  emoji: string;
-  color: string;
-}
+interface PredictedMilestone { id: string; title: string; category: string; predictedAge: number; confidence: number; description: string; emoji: string; }
+interface ActivitySuggestion { id: string; title: string; category: string; duration: string; frequency: string; benefit: string; emoji: string; color: string; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   THEME HOOK — Unified with TrackerHub pattern
+   THEME HOOK
    ═══════════════════════════════════════════════════════════════════════════ */
-
 const useDashboardTheme = () => {
   const { isDark, colors, fullThemeColors } = useCustomization();
-
   return useMemo(() => ({
-    primary: colors?.primary || '#667eea',
-    secondary: colors?.secondary || '#764ba2',
+    primary: colors?.primary || DS.primary,
+    secondary: colors?.secondary || DS.accent,
     isDark: !!isDark,
-    bgColors: isDark ? ['#0a0a1a', '#12122a'] : ['#f8faff', '#eef2ff'],
-    statusBar: isDark ? 'light-content' : 'dark-content' as const,
-    blur: isDark ? 'dark' : 'light' as const,
     text: {
-      primary: fullThemeColors?.text || (isDark ? '#ffffff' : '#1a1a1a'),
-      secondary: fullThemeColors?.textSecondary || (isDark ? '#94a3b8' : '#64748b'),
-      muted: fullThemeColors?.textMuted || (isDark ? '#64748b' : '#94a3b8'),
+      primary: fullThemeColors?.text || (isDark ? DS.white : DS.gray900),
+      secondary: fullThemeColors?.textSecondary || (isDark ? DS.gray400 : DS.gray500),
+      muted: fullThemeColors?.textMuted || (isDark ? DS.gray500 : DS.gray400),
     },
-    surface: {
-      bg: fullThemeColors?.surface || (isDark ? 'rgba(30,30,45,0.8)' : 'rgba(255,255,255,0.9)'),
-      card: fullThemeColors?.card || (isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)'),
-      border: fullThemeColors?.border || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
-    },
+    border: fullThemeColors?.border || (isDark ? DS.darkBorder : DS.gray200),
   }), [isDark, colors, fullThemeColors]);
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   UNIFIED GLASS CARD — Matches TrackerHub exactly
+   GradientText + PressableScale
    ═══════════════════════════════════════════════════════════════════════════ */
-
-const GlassCard = memo(({ 
-  children, 
-  style, 
-  onPress, 
-  active = false,
-  shadow = 'md',
-}: { 
-  children: React.ReactNode; 
-  style?: any; 
-  onPress?: () => void; 
-  active?: boolean;
-  shadow?: keyof typeof SHADOW;
+const GradientText = memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: {
+  children: React.ReactNode; style?: any; colors?: string[];
 }) => {
-  const theme = useDashboardTheme();
-  const Wrapper = onPress ? TouchableOpacity : View;
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
   return (
-    <Wrapper 
-      onPress={onPress} 
-      activeOpacity={onPress ? 0.85 : 1} 
-      style={[
-        styles.glassCard,
-        SHADOW[shadow],
-        active && { borderColor: theme.primary, borderWidth: 2 },
-        style
-      ]}
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>{l}</Text>;
+      })}
+    </View>
+  );
+});
+
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = memo<{
+  children: React.ReactNode; onPress?: () => void; disabled?: boolean; style?: any; activeScale?: number;
+}>(({ children, onPress, disabled, style, activeScale = 0.96 }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={() => { if (!disabled) { HAPTIC_LIGHT(); onPress?.(); } }}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
     >
-      <LinearGradient
-        colors={theme.isDark 
-          ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] 
-          : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <View style={[styles.glassBorder, { 
-        backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' 
-      }]} />
-      <View style={styles.glassContent}>{children}</View>
-    </Wrapper>
+      {children}
+    </AnimatedTouchable>
   );
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER — Matches TrackerHub exactly
+   SectionHeader
    ═══════════════════════════════════════════════════════════════════════════ */
-
-const SectionHeader = memo(({ 
-  title, 
-  subtitle, 
-  action, 
-  actionLabel,
-  icon,
-}: { 
-  title: string; 
-  subtitle?: string; 
-  action?: () => void; 
-  actionLabel?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
+const SectionHeader = memo(({ title, subtitle, action, actionLabel, icon, color = DS.primary }: {
+  title: string; subtitle?: string; action?: () => void; actionLabel?: string;
+  icon?: keyof typeof Ionicons.glyphMap; color?: string;
 }) => {
   const theme = useDashboardTheme();
   return (
     <View style={styles.sectionHeader}>
-      <View style={styles.sectionHeaderLeft}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
         {icon && (
-          <View style={[styles.sectionHeaderIcon, { backgroundColor: `${theme.primary}12` }]}>
-            <Ionicons name={icon} size={16} color={theme.primary} />
+          <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}>
+            <Ionicons name={icon} size={16} color={color} />
           </View>
         )}
         <View>
           <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
-          {subtitle && (
-            <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>
-          )}
+          {subtitle && <Text style={[styles.sectionSub, { color: theme.text.muted }]}>{subtitle}</Text>}
         </View>
       </View>
       {action && (
-        <TouchableOpacity onPress={action} style={styles.sectionAction} activeOpacity={0.7}>
-          <Text style={[styles.sectionActionText, { color: theme.primary }]}>
-            {actionLabel || 'See All'}
-          </Text>
-          <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+        <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+          <Text style={[styles.sectionAction, { color }]}>{actionLabel || 'See All'}</Text>
+          <Ionicons name="chevron-forward" size={13} color={color} />
         </TouchableOpacity>
       )}
     </View>
@@ -308,16 +261,143 @@ const SectionHeader = memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TAB BAR — Unified style
+   GROWTH PULSE HEADER — replaces heavy hero
    ═══════════════════════════════════════════════════════════════════════════ */
+const GrowthPulse = memo(({
+  isDark, baby, ageMonths, composite, topMetrics, todayLogs, onBabyPress, onPDF, onAdd,
+}: {
+  isDark: boolean; baby: BabyProfile; ageMonths: number; composite: number;
+  topMetrics: { height?: string; weight?: string; head?: string };
+  todayLogs: number;
+  onBabyPress: () => void;
+  onPDF: () => void;
+  onAdd: () => void;
+}) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 9000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.85, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, [pulse, rotate, glow]);
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
 
-const TabBar = memo(({ 
-  tabs, 
-  activeTab, 
-  onChange 
-}: { 
-  tabs: { key: DashboardTab; label: string; icon: keyof typeof Ionicons.glyphMap }[]; 
-  activeTab: DashboardTab; 
+  const scoreColor = composite >= 80 ? DS.success : composite >= 60 ? DS.primary : composite >= 40 ? DS.warning : DS.danger;
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View style={[styles.pulseWrap, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient
+          colors={isDark
+            ? ['rgba(99,102,241,0.20)', 'rgba(236,72,153,0.10)', 'rgba(139,92,246,0.05)']
+            : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']}
+          style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        />
+        <LinearGradient colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']}
+          style={styles.pulseGlowL} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} pointerEvents="none" />
+        <LinearGradient colors={[`${DS.accent}${isDark ? '35' : '22'}`, 'transparent']}
+          style={styles.pulseGlowR} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} pointerEvents="none" />
+
+        <View style={styles.pulseRow}>
+          <PressableScale onPress={onBabyPress} activeScale={0.94}>
+            <View style={styles.pulseAvatarWrap}>
+              <Animated.View style={[styles.pulseAvatarGlow, glowStyle]} />
+              <Animated.View style={[styles.pulseAvatarRing, ringStyle]}>
+                <LinearGradient colors={[DS.primary, DS.accent, DS.warning, DS.primary]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+              </Animated.View>
+              <View style={[styles.pulseAvatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+                <SafeAvatar avatar={baby.avatar} size={44} fallbackIcon="person" borderColor={DS.primary} borderWidth={1} />
+              </View>
+            </View>
+          </PressableScale>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[styles.pulseName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                {baby.name}
+              </Text>
+              <View style={[styles.pulseAgePill, { backgroundColor: `${DS.primary}18` }]}>
+                <Text style={[styles.pulseAgeText, { color: DS.primary }]}>{ageMonths}mo</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <View style={[styles.pulseLiveDot, { backgroundColor: scoreColor }]} />
+              <Text style={[styles.pulseSubText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                Growth index {composite} · {todayLogs} logs today
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <PressableScale onPress={onPDF} activeScale={0.9}>
+              <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                <Ionicons name="document-text-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
+              </View>
+            </PressableScale>
+            <PressableScale onPress={onAdd} activeScale={0.9}>
+              <LinearGradient colors={[DS.primary, DS.accent]} style={styles.pulseAddBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                <Ionicons name="add" size={22} color={DS.white} />
+              </LinearGradient>
+            </PressableScale>
+          </View>
+        </View>
+
+        <View style={[styles.pulseStats, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' }]}>
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: '#6366f1' }]}>{topMetrics.height || '—'}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>height</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: '#ec4899' }]}>{topMetrics.weight || '—'}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>weight</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: '#06b6d4' }]}>{topMetrics.head || '—'}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>head</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: scoreColor }]}>{composite}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>index</Text>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Aura Ribbon
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AuraRibbon = memo<{
+  isDark: boolean; icon: keyof typeof Ionicons.glyphMap; color: string;
+  label: string; text: string; onPress?: () => void;
+}>(({ isDark, icon, color, label, text, onPress }) => (
+  <Animated.View entering={FadeInUp.delay(120).springify()}>
+    <PressableScale onPress={onPress} activeScale={0.98}>
+      <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+          <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={1}>{text}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+      </View>
+    </PressableScale>
+  </Animated.View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TabBar
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TabBar = memo(({ tabs, activeTab, onChange }: {
+  tabs: { key: DashboardTab; label: string; icon: keyof typeof Ionicons.glyphMap }[];
+  activeTab: DashboardTab;
   onChange: (t: DashboardTab) => void;
 }) => {
   const theme = useDashboardTheme();
@@ -329,17 +409,10 @@ const TabBar = memo(({
           <TouchableOpacity
             key={tab.key}
             onPress={() => onChange(tab.key)}
-            style={[
-              styles.tabItem,
-              isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', ...SHADOW.sm }
-            ]}
+            style={[styles.tabItem, isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : DS.white, ...DS.shadow.sm }]}
           >
-            <Ionicons name={tab.icon} size={16} color={isActive ? theme.primary : theme.text.muted} />
-            <Text style={[
-              styles.tabLabel,
-              { color: isActive ? theme.primary : theme.text.muted },
-              isActive && { fontWeight: '700' }
-            ]}>
+            <Ionicons name={tab.icon} size={15} color={isActive ? theme.primary : theme.text.muted} />
+            <Text style={[styles.tabLabel, { color: isActive ? theme.primary : theme.text.muted }, isActive && { fontWeight: '700' }]}>
               {tab.label}
             </Text>
           </TouchableOpacity>
@@ -350,232 +423,128 @@ const TabBar = memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   KPI CARD — Growth-specific, unified aesthetic
+   KPI CARD — Aura styled
    ═══════════════════════════════════════════════════════════════════════════ */
-
-const KpiCard = memo(({ 
-  title, 
-  value, 
-  unit, 
-  change, 
-  changeLabel,
-  icon, 
-  color, 
-  percentile, 
-  status, 
-  onPress, 
-  size = 'normal'
-}: any) => {
+const KpiCard = memo(({ title, value, unit, change, icon, color, percentile, status, onPress }: any) => {
   const theme = useDashboardTheme();
-  const isLarge = size === 'large';
-  
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[
-      styles.kpiCard,
-      isLarge && styles.kpiCardLarge,
-    ]}>
-      <View style={styles.kpiInner}>
-        <View style={[styles.kpiIconBg, { backgroundColor: `${color}12` }]}>
-          <Text style={styles.kpiIcon}>{icon}</Text>
+    <PressableScale onPress={onPress} activeScale={0.97} style={{ flex: 1 }}>
+      <View style={[styles.kpiCard, { backgroundColor: isDarkBg(theme) ? DS.darkCard : DS.white, borderColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient colors={[`${color}10`, `${color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View style={[styles.kpiIcon, { backgroundColor: `${color}18` }]}>
+            <Text style={{ fontSize: 18 }}>{icon}</Text>
+          </View>
+          {percentile !== undefined && (
+            <View style={[styles.kpiP, { backgroundColor: `${color}18` }]}>
+              <Text style={[styles.kpiPText, { color }]}>P{percentile}</Text>
+            </View>
+          )}
         </View>
-        
-        <View style={styles.kpiBody}>
-          <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: isLarge ? 28 : 22 }]} numberOfLines={1}>
-            {value}
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 10 }}>
+          <Text style={[styles.kpiVal, { color: theme.text.primary }]}>{value}</Text>
           <Text style={[styles.kpiUnit, { color }]}>{unit}</Text>
         </View>
-
-        <Text style={[styles.kpiTitle, { color: theme.text.secondary }]}>{title}</Text>
-
-        {percentile !== undefined && (
-          <View style={[styles.kpiPercentileBadge, { backgroundColor: `${color}10` }]}>
-            <Text style={[styles.kpiPercentileText, { color }]}>P{percentile}</Text>
+        <Text style={[styles.kpiTitle, { color: theme.text.muted }]}>{title}</Text>
+        {change !== undefined && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 6 }}>
+            <Ionicons name={change >= 0 ? 'trending-up' : 'trending-down'} size={10} color={change >= 0 ? DS.success : DS.danger} />
+            <Text style={[styles.kpiChange, { color: change >= 0 ? DS.success : DS.danger }]}>
+              {change > 0 ? '+' : ''}{change}{unit}
+            </Text>
           </View>
         )}
-
-        {(change !== undefined || status) && (
-          <View style={styles.kpiFooter}>
-            {change !== undefined && (
-              <View style={styles.kpiChangeRow}>
-                <Ionicons 
-                  name={change >= 0 ? 'trending-up' : 'trending-down'} 
-                  size={10} 
-                  color={change >= 0 ? '#10b981' : '#ef4444'} 
-                />
-                <Text style={[styles.kpiChange, { color: change >= 0 ? '#10b981' : '#ef4444' }]}>
-                  {change > 0 ? '+' : ''}{change}{unit}
-                </Text>
-                {changeLabel && (
-                  <Text style={[styles.kpiChangeLabel, { color: theme.text.muted }]}>{changeLabel}</Text>
-                )}
-              </View>
-            )}
-            {status && (
-              <View style={[styles.kpiStatusBadge, { backgroundColor: `${status.color}10` }]}>
-                <View style={[styles.kpiStatusDot, { backgroundColor: status.color }]} />
-                <Text style={[styles.kpiStatusText, { color: status.color }]}>{status.label}</Text>
-              </View>
-            )}
+        {status && (
+          <View style={[styles.kpiStatus, { backgroundColor: `${status.color}15` }]}>
+            <View style={[styles.kpiStatusDot, { backgroundColor: status.color }]} />
+            <Text style={[styles.kpiStatusText, { color: status.color }]}>{status.label}</Text>
           </View>
         )}
       </View>
-    </TouchableOpacity>
+    </PressableScale>
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   INSIGHT CARD — Unified with TrackerHub SmartInsightsCarousel style
-   ═══════════════════════════════════════════════════════════════════════════ */
+const isDarkBg = (theme: any) => theme.isDark;
 
-const InsightCard = memo(({ 
-  insight, 
-  onPress, 
-  index 
-}: { 
-  insight: InsightItem; 
-  onPress: () => void; 
-  index: number;
-}) => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   Insight Card
+   ═══════════════════════════════════════════════════════════════════════════ */
+const InsightCard = memo(({ insight, onPress, index }: { insight: InsightItem; onPress: () => void; index: number }) => {
   const theme = useDashboardTheme();
-  
   return (
     <Animated.View entering={FadeInUp.delay(index * 60).springify()}>
-      <TouchableOpacity
-        onPress={onPress}
-        style={[styles.insightCard, { borderLeftColor: insight.color, borderLeftWidth: 3 }]}
-        activeOpacity={0.85}
-      >
-        <LinearGradient
-          colors={[`${insight.color}08`, `${insight.color}02`]}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-        <View style={styles.insightTop}>
-          <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-          <View style={[styles.insightPriorityDot, { backgroundColor: insight.color }]} />
-        </View>
-        <Text style={[styles.insightTitle, { color: theme.text.primary }]} numberOfLines={1}>{insight.title}</Text>
-        <Text style={[styles.insightDesc, { color: theme.text.secondary }]} numberOfLines={2}>{insight.description}</Text>
-        {insight.action && (
-          <View style={[styles.insightActionBadge, { backgroundColor: `${theme.primary}10` }]}>
-            <Text style={[styles.insightActionText, { color: theme.primary }]}>{insight.action.label} →</Text>
+      <PressableScale onPress={onPress} activeScale={0.97}>
+        <View style={[styles.insightCard, { backgroundColor: theme.isDark ? DS.darkCard : DS.white, borderColor: theme.isDark ? DS.darkBorder : DS.gray200, borderLeftColor: insight.color }]}>
+          <LinearGradient colors={[`${insight.color}10`, `${insight.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: DS.space.md }}>
+            <Text style={{ fontSize: 22 }}>{insight.emoji}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.insightTitle, { color: theme.text.primary }]} numberOfLines={1}>{insight.title}</Text>
+              <Text style={[styles.insightDesc, { color: theme.text.secondary }]} numberOfLines={2}>{insight.description}</Text>
+              {insight.action && (
+                <View style={[styles.insightAction, { backgroundColor: `${theme.primary}12` }]}>
+                  <Text style={[styles.insightActionText, { color: theme.primary }]}>{insight.action.label} →</Text>
+                </View>
+              )}
+            </View>
           </View>
-        )}
-      </TouchableOpacity>
+        </View>
+      </PressableScale>
     </Animated.View>
   );
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GROWTH-SPECIFIC COMPONENTS (kept, restyled to match)
+   Growth-specific cards
    ═══════════════════════════════════════════════════════════════════════════ */
-
-import { predictGrowth } from '@/hooks/useWHOGrowthCalculator';
-
 const AIGrowthPredictor = memo(({ baby, growthIndex, onPress }: { baby: BabyProfile; growthIndex: any; onPress: () => void }) => {
   const theme = useDashboardTheme();
-
-  
-  
-  
   const predictions = useMemo(() => {
     if (!baby?.birthDate || !growthIndex) return [];
     const ageNow = safeDiffMonths(new Date(), baby.birthDate);
     const gender: 'boy' | 'girl' = baby.gender === 'girl' ? 'girl' : 'boy';
-
-    
-    const dims = (growthIndex as any)?.velocityTrends || {};
-    const latestValue = (metric: 'height' | 'weight' | 'head'): number | null => {
-      const perMonth = dims?.[metric]?.perMonth;
-      if (typeof perMonth !== 'number' || !Number.isFinite(perMonth)) return null;
-      
-      
-      return null;
-    };
-
-    
-    
     const nGrowth = (growthIndex as any)?.sampleCounts?.growth ?? 0;
-    const confidenceFromN = Math.max(30, Math.min(95, 30 + nGrowth * 5));
-
-    const makePrediction = (
-      metric: 'height' | 'weight' | 'head',
-      label: string,
-      emoji: string,
-      category: string,
-      monthsAhead: number,
-      currentValue: number | null,
-    ) => {
-      if (currentValue == null) return null;
-      const pred = predictGrowth(currentValue, ageNow, metric, gender, monthsAhead);
-      return {
-        milestone: label,
-        predictedAge: Math.round(ageNow + monthsAhead),
-        predictedValue: pred.predicted,
-        confidence: Math.round((confidenceFromN + pred.confidence) / 2),
-        category,
-        emoji,
-      };
+    const baseConf = Math.max(30, Math.min(95, 30 + nGrowth * 5));
+    const make = (metric: 'height' | 'weight' | 'head', label: string, emoji: string, months: number, current: number | null) => {
+      if (current == null) return null;
+      const pred = predictGrowth(current, ageNow, metric, gender, months);
+      return { milestone: label, predictedAge: Math.round(ageNow + months), confidence: Math.round((baseConf + pred.confidence) / 2), category: 'Physical', emoji };
     };
-
-    
-    
-    const heightNow = (growthIndex as any)?.latestValues?.height_cm ?? null;
-    const weightNow = (growthIndex as any)?.latestValues?.weight_kg ?? null;
-    const headNow   = (growthIndex as any)?.latestValues?.head_cm   ?? null;
-
-    const preds = [
-      makePrediction('height', 'Height in 3mo', '📏', 'Physical', 3, heightNow),
-      makePrediction('weight', 'Weight in 3mo', '⚖️', 'Physical', 3, weightNow),
-      makePrediction('head',   'Head in 3mo',   '🧠', 'Physical', 3, headNow),
-    ].filter(Boolean) as Array<{
-      milestone: string; predictedAge: number; predictedValue: number;
-      confidence: number; category: string; emoji: string;
-    }>;
-
-    return preds;
+    return [
+      make('height', 'Height in 3mo', '📏', 3, (growthIndex as any)?.latestValues?.height_cm ?? null),
+      make('weight', 'Weight in 3mo', '⚖️', 3, (growthIndex as any)?.latestValues?.weight_kg ?? null),
+      make('head', 'Head in 3mo', '🧠', 3, (growthIndex as any)?.latestValues?.head_cm ?? null),
+    ].filter(Boolean) as any[];
   }, [growthIndex, baby?.birthDate, baby?.gender]);
-
-  if (predictions.length === 0) return null;
-
+  if (!predictions.length) return null;
   return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <GlassCard onPress={onPress}>
-        <View style={styles.predictorHeader}>
-          <View style={[styles.predictorIconBg, { backgroundColor: `${theme.primary}15` }]}>
-            <Ionicons name="sparkles" size={20} color={theme.primary} />
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
+      <PressableScale onPress={onPress} activeScale={0.98}>
+        <View style={[styles.auraCard, { backgroundColor: theme.isDark ? DS.darkCard : DS.white, borderColor: theme.isDark ? DS.darkBorder : DS.gray200 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.md, marginBottom: DS.space.md }}>
+            <View style={[styles.sectionIcon, { backgroundColor: `${theme.primary}18` }]}>
+              <Ionicons name="sparkles" size={16} color={theme.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.auraTitle, { color: theme.text.primary }]}>AI Growth Predictor</Text>
+              <Text style={[styles.auraSub, { color: theme.text.muted }]}>Based on current patterns</Text>
+            </View>
           </View>
-          <View style={styles.predictorTitleWrap}>
-            <Text style={[styles.predictorTitle, { color: theme.text.primary }]}>AI Growth Predictor</Text>
-            <Text style={[styles.predictorSubtitle, { color: theme.text.muted }]}>Based on current patterns</Text>
-          </View>
-        </View>
-        <View style={styles.predictorList}>
-          {predictions.map((pred, i) => (
-            <View key={i} style={[styles.predictorItem, i < predictions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]}>
-              <View style={styles.predictorLeft}>
-                <Text style={styles.predictorEmoji}>{pred.emoji}</Text>
-                <View>
-                  <Text style={[styles.predictorMilestone, { color: theme.text.primary }]}>{pred.milestone}</Text>
-                  <Text style={[styles.predictorCategory, { color: theme.text.muted }]}>{pred.category}</Text>
-                </View>
+          {predictions.map((p, i) => (
+            <View key={i} style={[styles.predictorRow, i < predictions.length - 1 && { borderBottomColor: theme.isDark ? DS.darkBorder : DS.gray200, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+              <Text style={{ fontSize: 20 }}>{p.emoji}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.predLabel, { color: theme.text.primary }]}>{p.milestone}</Text>
+                <Text style={[styles.predSub, { color: theme.text.muted }]}>~{p.predictedAge}mo · {p.category}</Text>
               </View>
-              <View style={styles.predictorRight}>
-                <View style={styles.predictorBarBg}>
-                  <View style={[styles.predictorBarFill, { 
-                    width: `${pred.confidence}%`, 
-                    backgroundColor: pred.confidence > 70 ? '#10b981' : pred.confidence > 50 ? '#f59e0b' : '#ef4444' 
-                  }]} />
-                </View>
-                <Text style={[styles.predictorConfidence, { color: theme.text.secondary }]}>{pred.confidence}% confidence</Text>
-                <Text style={[styles.predictorAge, { color: theme.primary }]}>~{pred.predictedAge} months</Text>
+              <View style={[styles.predConf, { backgroundColor: p.confidence > 70 ? `${DS.success}15` : p.confidence > 50 ? `${DS.warning}15` : `${DS.danger}15` }]}>
+                <Text style={[styles.predConfText, { color: p.confidence > 70 ? DS.success : p.confidence > 50 ? DS.warning : DS.danger }]}>{p.confidence}%</Text>
               </View>
             </View>
           ))}
         </View>
-      </GlassCard>
+      </PressableScale>
     </Animated.View>
   );
 });
@@ -583,240 +552,148 @@ const AIGrowthPredictor = memo(({ baby, growthIndex, onPress }: { baby: BabyProf
 const PercentileRadar = memo(({ stats }: { stats: any }) => {
   const theme = useDashboardTheme();
   if (!stats) return null;
-  
   const dimensions = [
     { key: 'height', label: 'Height', color: '#6366f1' },
     { key: 'weight', label: 'Weight', color: '#ec4899' },
     { key: 'head', label: 'Head', color: '#06b6d4' },
     { key: 'bmi', label: 'BMI', color: '#f59e0b' },
   ];
-
-  const values = dimensions.map(d => {
-    const s = stats[d.key];
-    return s?.percentile ? Math.min(s.percentile, 100) : 0;
-  });
-
-  const maxVal = 100;
-  const size = 140;
-  const center = size / 2;
-  const radius = size * 0.38;
+  const values = dimensions.map(d => stats[d.key]?.percentile ? Math.min(stats[d.key].percentile, 100) : 0);
+  const size = 140, center = size / 2, radius = size * 0.38;
   const angleStep = (Math.PI * 2) / dimensions.length;
-
   return (
-    <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard>
-        <View style={styles.radarHeader}>
-          <Text style={[styles.radarTitle, { color: theme.text.primary }]}>Growth Dimensions</Text>
-          <Text style={[styles.radarSubtitle, { color: theme.text.muted }]}>WHO Percentiles</Text>
+    <Animated.View entering={FadeInUp.delay(180).springify()}>
+      <View style={[styles.auraCard, { backgroundColor: theme.isDark ? DS.darkCard : DS.white, borderColor: theme.isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.md, marginBottom: DS.space.md }}>
+          <View style={[styles.sectionIcon, { backgroundColor: `${theme.primary}18` }]}>
+            <Ionicons name="analytics" size={16} color={theme.primary} />
+          </View>
+          <View>
+            <Text style={[styles.auraTitle, { color: theme.text.primary }]}>Growth Dimensions</Text>
+            <Text style={[styles.auraSub, { color: theme.text.muted }]}>WHO percentiles</Text>
+          </View>
         </View>
-        <View style={styles.radarContainer}>
-          <View style={[styles.radarCanvas, { width: size, height: size }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.lg }}>
+          <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
             {[0.25, 0.5, 0.75, 1].map((r, i) => (
-              <View key={i} style={[
-                styles.radarRing,
-                {
-                  width: radius * 2 * r,
-                  height: radius * 2 * r,
-                  borderRadius: radius * r,
-                  borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                  left: center - radius * r,
-                  top: center - radius * r,
-                }
-              ]} />
+              <View key={i} style={[styles.radarRing, {
+                width: radius * 2 * r, height: radius * 2 * r, borderRadius: radius * r,
+                borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                left: center - radius * r, top: center - radius * r,
+              }]} />
             ))}
-            {dimensions.map((_, i) => {
-              const angle = i * angleStep - Math.PI / 2;
-              return (
-                <View key={`axis-${i}`} style={[
-                  styles.radarAxis,
-                  {
-                    left: center,
-                    top: center,
-                    width: radius,
-                    transform: [{ rotate: `${angle * 180 / Math.PI}deg` }],
-                    backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                  }
-                ]} />
-              );
-            })}
             {values.map((v, i) => {
               const angle = i * angleStep - Math.PI / 2;
-              const r = (v / maxVal) * radius;
-              const x = center + Math.cos(angle) * r;
-              const y = center + Math.sin(angle) * r;
-              return (
-                <View key={`pt-${i}`} style={[
-                  styles.radarPoint,
-                  { left: x - 4, top: y - 4, backgroundColor: dimensions[i].color }
-                ]} />
-              );
+              const r = (v / 100) * radius;
+              return <View key={i} style={[styles.radarPoint, { left: center + Math.cos(angle) * r - 4, top: center + Math.sin(angle) * r - 4, backgroundColor: dimensions[i].color }]} />;
             })}
           </View>
-          <View style={styles.radarLegend}>
+          <View style={{ flex: 1, gap: 8 }}>
             {dimensions.map((d, i) => (
-              <View key={d.key} style={styles.radarLegendItem}>
-                <View style={[styles.radarLegendDot, { backgroundColor: d.color }]} />
-                <Text style={[styles.radarLegendLabel, { color: theme.text.secondary }]}>{d.label}</Text>
-                <Text style={[styles.radarLegendValue, { color: theme.text.primary }]}>P{values[i] || '—'}</Text>
+              <View key={d.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={[styles.radarDot, { backgroundColor: d.color }]} />
+                <Text style={[styles.radarLabel, { color: theme.text.secondary }]}>{d.label}</Text>
+                <Text style={[styles.radarVal, { color: theme.text.primary }]}>P{values[i] || '—'}</Text>
               </View>
             ))}
           </View>
         </View>
-      </GlassCard>
+      </View>
     </Animated.View>
   );
 });
 
-const VelocityHeatmap = memo(({ measurements, activeMetric }: { measurements: GrowthMeasurement[]; activeMetric: MetricType }) => {
+const VelocityHeatmap = memo(({ measurements }: { measurements: GrowthMeasurement[]; activeMetric: MetricType }) => {
   const theme = useDashboardTheme();
-  
-  const heatmapData = useMemo(() => {
+  const data = useMemo(() => {
     const sorted = [...measurements].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const weeks: Record<string, { values: number[]; dates: Date[] }> = {};
-    
+    const weeks: Record<string, { values: number[] }> = {};
     sorted.forEach(m => {
       const d = safeParseDate(m.date);
       if (!d) return;
-      const weekKey = format(d, 'yyyy-w');
-      if (!weeks[weekKey]) weeks[weekKey] = { values: [], dates: [] };
-      weeks[weekKey].values.push(m.value);
-      weeks[weekKey].dates.push(d);
+      const key = format(d, 'yyyy-w');
+      if (!weeks[key]) weeks[key] = { values: [] };
+      weeks[key].values.push(m.value);
     });
-
     return Object.entries(weeks).slice(-8).map(([week, data]) => {
       const avg = data.values.reduce((a, b) => a + b, 0) / data.values.length;
-      const prevWeek = Object.entries(weeks).find(([w]) => w === String(parseInt(week) - 1));
-      const prevAvg = prevWeek ? prevWeek[1].values.reduce((a, b) => a + b, 0) / prevWeek[1].values.length : avg;
-      const change = ((avg - prevAvg) / prevAvg) * 100;
-      
-      let status: 'normal' | 'high' | 'low' | 'none' = 'normal';
+      const prev = Object.entries(weeks).find(([w]) => w === String(parseInt(week) - 1));
+      const prevAvg = prev ? prev[1].values.reduce((a, b) => a + b, 0) / prev[1].values.length : avg;
+      const change = prevAvg ? ((avg - prevAvg) / prevAvg) * 100 : 0;
+      let status: 'high' | 'low' | 'normal' = 'normal';
       if (Math.abs(change) > 15) status = change > 0 ? 'high' : 'low';
-      if (data.values.length === 0) status = 'none';
-
-      return {
-        week: `W${week.split('-')[1]}`,
-        value: avg,
-        status,
-      };
+      return { week: `W${week.split('-')[1]}`, value: avg, status };
     });
-  }, [measurements, activeMetric]);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'high': return '#10b981';
-      case 'low': return '#ef4444';
-      case 'normal': return theme.primary;
-      default: return theme.text.muted;
-    }
-  };
-
+  }, [measurements]);
+  const getColor = (s: string) => s === 'high' ? DS.success : s === 'low' ? DS.danger : theme.primary;
   return (
-    <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <GlassCard>
-        <View style={styles.heatmapHeader}>
-          <Text style={[styles.heatmapTitle, { color: theme.text.primary }]}>Weekly Velocity</Text>
-          <View style={styles.heatmapLegend}>
-            <View style={[styles.heatmapLegendDot, { backgroundColor: '#10b981' }]} />
-            <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>High</Text>
-            <View style={[styles.heatmapLegendDot, { backgroundColor: theme.primary }]} />
-            <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>Normal</Text>
-            <View style={[styles.heatmapLegendDot, { backgroundColor: '#ef4444' }]} />
-            <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>Low</Text>
+    <Animated.View entering={FadeInUp.delay(220).springify()}>
+      <View style={[styles.auraCard, { backgroundColor: theme.isDark ? DS.darkCard : DS.white, borderColor: theme.isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: DS.space.md }}>
+          <Text style={[styles.auraTitle, { color: theme.text.primary }]}>Weekly Velocity</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {[{ l: 'High', c: DS.success }, { l: 'Normal', c: theme.primary }, { l: 'Low', c: DS.danger }].map(x => (
+              <View key={x.l} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <View style={[styles.radarDot, { backgroundColor: x.c }]} />
+                <Text style={{ fontSize: 9, fontWeight: '600', color: theme.text.muted }}>{x.l}</Text>
+              </View>
+            ))}
           </View>
         </View>
-        <View style={styles.heatmapGrid}>
-          {heatmapData.map((week, i) => (
-            <View key={i} style={styles.heatmapCell}>
-              <View style={[
-                styles.heatmapBlock,
-                { backgroundColor: getStatusColor(week.status) + '20', borderColor: getStatusColor(week.status) }
-              ]}>
-                <Text style={[styles.heatmapValue, { color: getStatusColor(week.status) }]}>
-                  {week.value ? week.value.toFixed(1) : '—'}
-                </Text>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {data.map((w, i) => (
+            <View key={i} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+              <View style={[styles.heatCell, { borderColor: getColor(w.status), backgroundColor: `${getColor(w.status)}18` }]}>
+                <Text style={[styles.heatVal, { color: getColor(w.status) }]}>{w.value ? w.value.toFixed(1) : '—'}</Text>
               </View>
-              <Text style={[styles.heatmapWeek, { color: theme.text.muted }]}>{week.week}</Text>
+              <Text style={{ fontSize: 9, fontWeight: '600', color: theme.text.muted }}>{w.week}</Text>
             </View>
           ))}
         </View>
-      </GlassCard>
+      </View>
     </Animated.View>
   );
 });
 
 const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[]; baby: BabyProfile }) => {
   const theme = useDashboardTheme();
-  
   const correlations = useMemo(() => {
-    const sleepEntries = trackerEntries.filter((e: any) => e.trackerId === 'sleep' && e.babyId === baby?.id).slice(-7);
-    const feedEntries = trackerEntries.filter((e: any) => e.trackerId === 'feed' && e.babyId === baby?.id).slice(-7);
-    const allEntries = trackerEntries.filter((e: any) => e.babyId === baby?.id);
-    
-    const avgSleep = sleepEntries.length > 0 
-      ? sleepEntries.reduce((sum, e) => sum + (e.duration || e.data?.duration || 0), 0) / sleepEntries.length / 60
-      : 0;
-    const avgFeed = feedEntries.length > 0
-      ? feedEntries.reduce((sum, e) => sum + (e.amount || e.data?.amount || 0), 0) / feedEntries.length
-      : 0;
-    const avgActivities = allEntries.length > 0 ? allEntries.length / 7 : 0;
-
-    
+    const sleep = trackerEntries.filter((e: any) => e.trackerId === 'sleep' && e.babyId === baby?.id).slice(-7);
+    const feed = trackerEntries.filter((e: any) => e.trackerId === 'feed' && e.babyId === baby?.id).slice(-7);
+    const all = trackerEntries.filter((e: any) => e.babyId === baby?.id);
+    const avgSleep = sleep.length ? sleep.reduce((s, e) => s + (e.duration || 0), 0) / sleep.length / 60 : 0;
+    const avgFeed = feed.length ? feed.reduce((s, e) => s + (e.amount || 0), 0) / feed.length : 0;
+    const avgAct = all.length ? all.length / 7 : 0;
     const sleepScore = avgSleep > 12 ? 92 : avgSleep > 8 ? 78 : avgSleep > 4 ? 55 : avgSleep > 0 ? 30 : 0;
     const feedScore = avgFeed > 150 ? 88 : avgFeed > 100 ? 72 : avgFeed > 50 ? 50 : avgFeed > 0 ? 25 : 0;
-    const activityScore = Math.min(100, Math.round(avgActivities * 20));
-
+    const actScore = Math.min(100, Math.round(avgAct * 20));
     return [
-      {
-        label: 'Sleep → Growth',
-        value: sleepScore,
-        icon: '😴',
-        color: '#8b5cf6',
-        detail: avgSleep > 0 ? `${avgSleep.toFixed(1)}h avg sleep` : 'No sleep data',
-      },
-      {
-        label: 'Feed → Growth',
-        value: feedScore,
-        icon: '🍼',
-        color: '#f59e0b',
-        detail: avgFeed > 0 ? `${avgFeed.toFixed(0)}ml avg feed` : 'No feed data',
-      },
-      {
-        label: 'Activity → Growth',
-        value: activityScore,
-        icon: '🎾',
-        color: '#10b981',
-        detail: avgActivities > 0 ? `${avgActivities.toFixed(1)} activities/day` : 'No activity data',
-      },
+      { label: 'Sleep → Growth', value: sleepScore, icon: '😴', color: '#8b5cf6', detail: avgSleep > 0 ? `${avgSleep.toFixed(1)}h avg` : 'No data' },
+      { label: 'Feed → Growth', value: feedScore, icon: '🍼', color: '#f59e0b', detail: avgFeed > 0 ? `${avgFeed.toFixed(0)}ml avg` : 'No data' },
+      { label: 'Activity → Growth', value: actScore, icon: '🎾', color: '#10b981', detail: avgAct > 0 ? `${avgAct.toFixed(1)}/day` : 'No data' },
     ];
   }, [trackerEntries, baby]);
-
   return (
-    <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <GlassCard>
-        <View style={styles.correlationHeader}>
-          <Text style={[styles.correlationTitle, { color: theme.text.primary }]}>Health Correlations</Text>
-          <Text style={[styles.correlationSubtitle, { color: theme.text.muted }]}>How habits affect growth</Text>
+    <Animated.View entering={FadeInUp.delay(260).springify()}>
+      <View style={[styles.auraCard, { backgroundColor: theme.isDark ? DS.darkCard : DS.white, borderColor: theme.isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={{ marginBottom: DS.space.md }}>
+          <Text style={[styles.auraTitle, { color: theme.text.primary }]}>Health Correlations</Text>
+          <Text style={[styles.auraSub, { color: theme.text.muted }]}>How habits affect growth</Text>
         </View>
-        <View style={styles.correlationList}>
-          {correlations.map((corr, i) => (
-            <View key={i} style={styles.correlationItem}>
-              <View style={styles.correlationLeft}>
-                <Text style={styles.correlationIcon}>{corr.icon}</Text>
-                <View>
-                  <Text style={[styles.correlationLabel, { color: theme.text.primary }]}>{corr.label}</Text>
-                  <Text style={[styles.correlationDetail, { color: theme.text.muted }]}>{corr.detail}</Text>
-                </View>
-              </View>
-              <View style={styles.correlationRight}>
-                <View style={[styles.correlationBarBg, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
-                  <View style={[styles.correlationBarFill, { width: `${corr.value}%`, backgroundColor: corr.color }]} />
-                </View>
-                <Text style={[styles.correlationValue, { color: corr.color }]}>{corr.value}%</Text>
-              </View>
+        {correlations.map((c, i) => (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.md, paddingVertical: 8 }}>
+            <Text style={{ fontSize: 20 }}>{c.icon}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.corrLabel, { color: theme.text.primary }]}>{c.label}</Text>
+              <Text style={[styles.corrDetail, { color: theme.text.muted }]}>{c.detail}</Text>
             </View>
-          ))}
-        </View>
-      </GlassCard>
+            <View style={[styles.corrBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+              <View style={[styles.corrFill, { width: `${c.value}%`, backgroundColor: c.color }]} />
+            </View>
+            <Text style={[styles.corrVal, { color: c.color }]}>{c.value}%</Text>
+          </View>
+        ))}
+      </View>
     </Animated.View>
   );
 });
@@ -824,54 +701,35 @@ const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[
 const ActivitySuggestions = memo(({ baby, onPress }: { baby: BabyProfile; onPress: (a: ActivitySuggestion) => void }) => {
   const theme = useDashboardTheme();
   const ageMonths = safeDiffMonths(new Date(), baby.birthDate);
-  
   const suggestions = useMemo((): ActivitySuggestion[] => {
     const base: ActivitySuggestion[] = [];
-    if (ageMonths < 3) {
-      base.push({ id: 'tummy-time', title: 'Tummy Time', category: 'Physical', duration: '5-10 min', frequency: '3x daily', benefit: 'Strengthens neck & shoulders', emoji: '👶', color: '#10b981' });
-    }
-    if (ageMonths >= 3 && ageMonths < 6) {
-      base.push({ id: 'reach-grasp', title: 'Reach & Grasp', category: 'Motor', duration: '10 min', frequency: '2x daily', benefit: 'Develops hand-eye coordination', emoji: '👋', color: '#6366f1' });
-    }
-    if (ageMonths >= 6) {
-      base.push({ id: 'crawl-play', title: 'Crawl Exploration', category: 'Physical', duration: '15 min', frequency: 'Daily', benefit: 'Builds core strength', emoji: '🐛', color: '#ec4899' });
-    }
-    if (ageMonths >= 9) {
-      base.push({ id: 'peekaboo', title: 'Peek-a-Boo Games', category: 'Cognitive', duration: '10 min', frequency: 'Daily', benefit: 'Object permanence & social', emoji: '🙈', color: '#f59e0b' });
-    }
+    if (ageMonths < 3) base.push({ id: 'tummy', title: 'Tummy Time', category: 'Physical', duration: '5-10 min', frequency: '3x daily', benefit: 'Strengthens neck', emoji: '👶', color: '#10b981' });
+    if (ageMonths >= 3 && ageMonths < 6) base.push({ id: 'reach', title: 'Reach & Grasp', category: 'Motor', duration: '10 min', frequency: '2x daily', benefit: 'Hand-eye coordination', emoji: '👋', color: '#6366f1' });
+    if (ageMonths >= 6) base.push({ id: 'crawl', title: 'Crawl Exploration', category: 'Physical', duration: '15 min', frequency: 'Daily', benefit: 'Builds core strength', emoji: '🐛', color: '#ec4899' });
+    if (ageMonths >= 9) base.push({ id: 'peek', title: 'Peek-a-Boo', category: 'Cognitive', duration: '10 min', frequency: 'Daily', benefit: 'Object permanence', emoji: '🙈', color: '#f59e0b' });
     return base.slice(0, 3);
   }, [ageMonths]);
-
-  if (suggestions.length === 0) return null;
-
+  if (!suggestions.length) return null;
   return (
-    <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <View style={styles.suggestionsHeader}>
-        <Text style={[styles.suggestionsTitle, { color: theme.text.primary }]}>Recommended Activities</Text>
-        <Text style={[styles.suggestionsSubtitle, { color: theme.text.muted }]}>For {ageMonths} month old</Text>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionsScroll}>
-        {suggestions.map((suggestion) => (
-          <TouchableOpacity key={suggestion.id} onPress={() => onPress(suggestion)} style={styles.suggestionCard}>
-            <LinearGradient
-              colors={[suggestion.color + '15', suggestion.color + '05']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <View style={[styles.suggestionIconBg, { backgroundColor: suggestion.color + '20' }]}>
-              <Text style={styles.suggestionEmoji}>{suggestion.emoji}</Text>
+    <Animated.View entering={FadeInUp.delay(300).springify()}>
+      <SectionHeader title="Recommended Activities" subtitle={`For ${ageMonths} months old`} icon="fitness-outline" color={DS.success} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
+        {suggestions.map(s => (
+          <PressableScale key={s.id} onPress={() => onPress(s)} activeScale={0.94}>
+            <View style={[styles.suggestionCard, { backgroundColor: theme.isDark ? DS.darkCard : DS.white, borderColor: theme.isDark ? DS.darkBorder : DS.gray200 }]}>
+              <LinearGradient colors={[`${s.color}12`, `${s.color}03`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+              <View style={[styles.suggestionIcon, { backgroundColor: `${s.color}18` }]}>
+                <Text style={{ fontSize: 22 }}>{s.emoji}</Text>
+              </View>
+              <Text style={[styles.suggestionTitle, { color: theme.text.primary }]}>{s.title}</Text>
+              <Text style={[styles.suggestionCat, { color: s.color }]}>{s.category}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="time-outline" size={11} color={theme.text.muted} />
+                <Text style={[styles.suggestionMeta, { color: theme.text.muted }]}>{s.duration} · {s.frequency}</Text>
+              </View>
+              <Text style={[styles.suggestionBenefit, { color: theme.text.secondary }]} numberOfLines={2}>{s.benefit}</Text>
             </View>
-            <Text style={[styles.suggestionTitle, { color: theme.text.primary }]}>{suggestion.title}</Text>
-            <Text style={[styles.suggestionCategory, { color: suggestion.color }]}>{suggestion.category}</Text>
-            <View style={styles.suggestionMeta}>
-              <Ionicons name="time-outline" size={12} color={theme.text.muted} />
-              <Text style={[styles.suggestionMetaText, { color: theme.text.muted }]}>{suggestion.duration}</Text>
-              <Text style={[styles.suggestionDot, { color: theme.text.muted }]}>•</Text>
-              <Text style={[styles.suggestionMetaText, { color: theme.text.muted }]}>{suggestion.frequency}</Text>
-            </View>
-            <Text style={[styles.suggestionBenefit, { color: theme.text.secondary }]} numberOfLines={2}>{suggestion.benefit}</Text>
-          </TouchableOpacity>
+          </PressableScale>
         ))}
       </ScrollView>
     </Animated.View>
@@ -881,12 +739,9 @@ const ActivitySuggestions = memo(({ baby, onPress }: { baby: BabyProfile; onPres
 const PredictiveMilestoneCalendar = memo(({ baby, milestones, onPress }: { baby: BabyProfile; milestones: any[]; onPress: (m: PredictedMilestone) => void }) => {
   const theme = useDashboardTheme();
   const ageMonths = safeDiffMonths(new Date(), baby.birthDate);
-  
-  const predictedMilestones = useMemo((): PredictedMilestone[] => {
+  const preds = useMemo((): PredictedMilestone[] => {
     const achieved = new Set(milestones.map(m => m.title?.toLowerCase()));
-    const predictions: PredictedMilestone[] = [];
-    
-    const milestonesDB = [
+    const db = [
       { title: 'Rolling Over', category: 'Physical', typicalAge: 4, emoji: '🔄' },
       { title: 'Sitting Up', category: 'Physical', typicalAge: 6, emoji: '🪑' },
       { title: 'Crawling', category: 'Physical', typicalAge: 9, emoji: '🐛' },
@@ -894,69 +749,35 @@ const PredictiveMilestoneCalendar = memo(({ baby, milestones, onPress }: { baby:
       { title: 'First Words', category: 'Cognitive', typicalAge: 12, emoji: '🗣️' },
       { title: 'Waving Bye', category: 'Social', typicalAge: 9, emoji: '👋' },
       { title: 'Clapping', category: 'Social', typicalAge: 9, emoji: '👏' },
-      { title: 'Pointing', category: 'Cognitive', typicalAge: 12, emoji: '👉' },
     ];
-    
-    milestonesDB.forEach(m => {
+    const out: PredictedMilestone[] = [];
+    db.forEach(m => {
       if (!achieved.has(m.title.toLowerCase()) && m.typicalAge >= ageMonths) {
-        const diff = m.typicalAge - ageMonths;
-        predictions.push({
-          id: `pred-${m.title}`,
-          title: m.title,
-          category: m.category,
-          predictedAge: m.typicalAge,
-          confidence: Math.max(30, 100 - diff * 10),
-          description: `Typically achieved around ${m.typicalAge} months`,
-          emoji: m.emoji,
-        });
+        out.push({ id: `pred-${m.title}`, title: m.title, category: m.category, predictedAge: m.typicalAge, confidence: Math.max(30, 100 - (m.typicalAge - ageMonths) * 10), description: `Typically achieved around ${m.typicalAge} months`, emoji: m.emoji });
       }
     });
-    
-    return predictions.slice(0, 4);
+    return out.slice(0, 4);
   }, [milestones, ageMonths]);
-
-  if (predictedMilestones.length === 0) return null;
-
+  if (!preds.length) return null;
   return (
-    <Animated.View entering={FadeInUp.delay(450).springify()}>
-      <SectionHeader 
-        title="Upcoming Milestones" 
-        subtitle="Predicted based on WHO standards"
-        icon="trophy-outline"
-      />
-      <View style={styles.calendarTimeline}>
-        {predictedMilestones.map((milestone, i) => (
-          <TouchableOpacity key={milestone.id} onPress={() => onPress(milestone)} style={styles.calendarItem}>
-            <View style={styles.calendarLeft}>
-              <View style={[styles.calendarLine, { backgroundColor: theme.surface.border }]} />
-              <View style={[styles.calendarDot, { 
-                backgroundColor: milestone.confidence > 70 ? '#10b981' : milestone.confidence > 50 ? '#f59e0b' : '#ef4444' 
-              }]} />
-              {i === predictedMilestones.length - 1 && <View style={[styles.calendarLineEnd, { backgroundColor: 'transparent' }]} />}
-            </View>
-            <View style={[styles.calendarCard, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.95)' : 'rgba(255,255,255,0.98)' }]}>
-              <View style={styles.calendarHeader}>
-                <Text style={styles.calendarEmoji}>{milestone.emoji}</Text>
-                <View style={styles.calendarMeta}>
-                  <Text style={[styles.calendarTitle, { color: theme.text.primary }]}>{milestone.title}</Text>
-                  <Text style={[styles.calendarCategory, { color: theme.text.muted }]}>{milestone.category}</Text>
-                </View>
-                <View style={[styles.calendarBadge, { 
-                  backgroundColor: `${milestone.confidence > 70 ? '#10b981' : milestone.confidence > 50 ? '#f59e0b' : '#ef4444'}15` 
-                }]}>
-                  <Text style={[styles.calendarBadgeText, { 
-                    color: milestone.confidence > 70 ? '#10b981' : milestone.confidence > 50 ? '#f59e0b' : '#ef4444' 
-                  }]}>
-                    {milestone.confidence}% ready
-                  </Text>
-                </View>
+    <Animated.View entering={FadeInUp.delay(340).springify()}>
+      <SectionHeader title="Upcoming Milestones" subtitle="WHO-based predictions" icon="trophy-outline" color={DS.warning} />
+      <View style={{ paddingHorizontal: DS.space.lg }}>
+        {preds.map((m, i) => (
+          <PressableScale key={m.id} onPress={() => onPress(m)} activeScale={0.97}>
+            <View style={[styles.mileCard, { backgroundColor: theme.isDark ? DS.darkCard : DS.white, borderColor: theme.isDark ? DS.darkBorder : DS.gray200 }]}>
+              <View style={[styles.mileIcon, { backgroundColor: `${theme.primary}15` }]}>
+                <Text style={{ fontSize: 20 }}>{m.emoji}</Text>
               </View>
-              <Text style={[styles.calendarDesc, { color: theme.text.secondary }]}>{milestone.description}</Text>
-              <Text style={[styles.calendarAge, { color: theme.primary }]}>
-                Expected: {milestone.predictedAge} months
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.mileTitle, { color: theme.text.primary }]}>{m.title}</Text>
+                <Text style={[styles.mileMeta, { color: theme.text.muted }]}>{m.category} · ~{m.predictedAge}mo</Text>
+              </View>
+              <View style={[styles.mileConf, { backgroundColor: m.confidence > 70 ? `${DS.success}15` : m.confidence > 50 ? `${DS.warning}15` : `${DS.danger}15` }]}>
+                <Text style={[styles.mileConfText, { color: m.confidence > 70 ? DS.success : m.confidence > 50 ? DS.warning : DS.danger }]}>{m.confidence}%</Text>
+              </View>
             </View>
-          </TouchableOpacity>
+          </PressableScale>
         ))}
       </View>
     </Animated.View>
@@ -964,92 +785,43 @@ const PredictiveMilestoneCalendar = memo(({ baby, milestones, onPress }: { baby:
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PURE CHART (No SVG) — Kept from original, restyled
+   PureChart
    ═══════════════════════════════════════════════════════════════════════════ */
-
 const PureChart = memo(({ data, mode, width, height }: any) => {
   const theme = useDashboardTheme();
   if (!data || data.length === 0) return null;
-  
   const values = data.map((d: any) => d.value);
-  const maxVal = Math.max(...values, 0.1);
-  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values, 0.1), minVal = Math.min(...values);
   const range = maxVal - minVal || 1;
   const padding = { top: 20, right: 10, bottom: 30, left: 40 };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
-  
   const getX = (i: number) => padding.left + (i / (data.length - 1 || 1)) * chartW;
   const getY = (v: number) => padding.top + chartH - ((v - minVal) / range) * chartH;
-  
   if (mode === 'velocity') {
     const barW = Math.max(4, (chartW / data.length) * 0.6);
     return (
       <View style={{ width, height }}>
-        {[0, 0.33, 0.66, 1].map((r, i) => (
-          <Text key={`y-${i}`} style={{
-            position: 'absolute',
-            left: 0,
-            top: padding.top + chartH - r * chartH - 6,
-            width: padding.left - 4,
-            fontSize: 9,
-            color: theme.text.muted,
-            textAlign: 'right',
-          }}>
-            {(minVal + r * range).toFixed(1)}
-          </Text>
-        ))}
         {data.map((d: any, i: number) => (
           <View key={i} style={{
-            position: 'absolute',
-            left: getX(i) - barW / 2,
-            top: getY(d.value),
-            width: barW,
-            height: padding.top + chartH - getY(d.value),
-            backgroundColor: theme.primary,
-            borderRadius: 4,
-            opacity: 0.85,
+            position: 'absolute', left: getX(i) - barW / 2, top: getY(d.value),
+            width: barW, height: padding.top + chartH - getY(d.value),
+            backgroundColor: theme.primary, borderRadius: 4, opacity: 0.85,
           }} />
         ))}
-        {data.map((d: any, i: number) => (
-          <Text key={`x-${i}`} style={{
-            position: 'absolute',
-            left: getX(i) - 20,
-            top: padding.top + chartH + 4,
-            width: 40,
-            fontSize: 8,
-            color: theme.text.muted,
-            textAlign: 'center',
-          }} numberOfLines={1}>
-            {d.label}
-          </Text>
+        {data.filter((_: any, i: number) => i % Math.ceil(data.length / 6) === 0 || i === data.length - 1).map((d: any, i: number) => (
+          <Text key={`x-${i}`} style={{ position: 'absolute', left: getX(data.indexOf(d)) - 20, top: padding.top + chartH + 4, width: 40, fontSize: 8, color: theme.text.muted, textAlign: 'center' }} numberOfLines={1}>{d.label}</Text>
         ))}
       </View>
     );
   }
-  
   return (
     <View style={{ width, height }}>
       {[0, 0.25, 0.5, 0.75, 1].map((r, i) => (
-        <View key={`grid-${i}`} style={{
-          position: 'absolute',
-          left: padding.left,
-          right: padding.right,
-          top: padding.top + chartH - r * chartH,
-          height: 1,
-          backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-        }} />
+        <View key={`g-${i}`} style={{ position: 'absolute', left: padding.left, right: padding.right, top: padding.top + chartH - r * chartH, height: 1, backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }} />
       ))}
       {[0, 0.25, 0.5, 0.75, 1].map((r, i) => (
-        <Text key={`y-${i}`} style={{
-          position: 'absolute',
-          left: 0,
-          top: padding.top + chartH - r * chartH - 6,
-          width: padding.left - 4,
-          fontSize: 9,
-          color: theme.text.muted,
-          textAlign: 'right',
-        }}>
+        <Text key={`y-${i}`} style={{ position: 'absolute', left: 0, top: padding.top + chartH - r * chartH - 6, width: padding.left - 4, fontSize: 9, color: theme.text.muted, textAlign: 'right' }}>
           {(minVal + r * range).toFixed(1)}
         </Text>
       ))}
@@ -1060,54 +832,21 @@ const PureChart = memo(({ data, mode, width, height }: any) => {
         const x2 = getX(i), y2 = getY(d.value);
         const len = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
         const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
-        return (
-          <View key={`line-${i}`} style={{
-            position: 'absolute',
-            left: x1,
-            top: y1,
-            width: len,
-            height: 3,
-            backgroundColor: theme.primary,
-            transform: [{ translateX: 0 }, { translateY: -1.5 }, { rotate: `${angle}deg` }],
-            transformOrigin: '0% 50%',
-            borderRadius: 1.5,
-          }} />
-        );
+        return <View key={`l-${i}`} style={{ position: 'absolute', left: x1, top: y1, width: len, height: 2.5, backgroundColor: theme.primary, transform: [{ translateY: -1.25 }, { rotate: `${angle}deg` }], transformOrigin: '0% 50%', borderRadius: 1.5 }} />;
       })}
       {data.map((d: any, i: number) => (
-        <View key={`pt-${i}`} style={{
-          position: 'absolute',
-          left: getX(i) - 4,
-          top: getY(d.value) - 4,
-          width: 8,
-          height: 8,
-          borderRadius: 4,
-          backgroundColor: theme.primary,
-          borderWidth: 2,
-          borderColor: theme.surface.bg,
-        }} />
+        <View key={`p-${i}`} style={{ position: 'absolute', left: getX(i) - 4, top: getY(d.value) - 4, width: 8, height: 8, borderRadius: 4, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.isDark ? DS.darkCard : DS.white }} />
       ))}
       {data.filter((_: any, i: number) => i % Math.ceil(data.length / 6) === 0 || i === data.length - 1).map((d: any, i: number) => (
-        <Text key={`x-${i}`} style={{
-          position: 'absolute',
-          left: getX(data.indexOf(d)) - 20,
-          top: padding.top + chartH + 4,
-          width: 40,
-          fontSize: 8,
-          color: theme.text.muted,
-          textAlign: 'center',
-        }} numberOfLines={1}>
-          {d.label}
-        </Text>
+        <Text key={`x-${i}`} style={{ position: 'absolute', left: getX(data.indexOf(d)) - 20, top: padding.top + chartH + 4, width: 40, fontSize: 8, color: theme.text.muted, textAlign: 'center' }} numberOfLines={1}>{d.label}</Text>
       ))}
     </View>
   );
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   UNIFIED MODALS — TrackerHub style
+   Add Measurement Modal
    ═══════════════════════════════════════════════════════════════════════════ */
-
 const AddMeasurementModal = memo(({ visible, onClose, onSave, type, previousValue }: any) => {
   const theme = useDashboardTheme();
   const [value, setValue] = useState('');
@@ -1115,114 +854,76 @@ const AddMeasurementModal = memo(({ visible, onClose, onSave, type, previousValu
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const unit = type === 'weight' ? 'kg' : 'cm';
 
+  useEffect(() => {
+    if (visible) { setValue(''); setNotes(''); setDate(format(new Date(), 'yyyy-MM-dd')); }
+  }, [visible]);
+
   const handleSave = useCallback(() => {
     const num = parseFloat(value);
     if (isNaN(num) || num <= 0) return;
     onSave({ type, value: num, unit, date: new Date(date).toISOString(), notes: notes || undefined });
-    setValue(''); setNotes(''); onClose();
+    onClose();
   }, [value, notes, date, type, unit, onSave, onClose]);
 
-  useEffect(() => { 
-    if (visible) { setValue(''); setNotes(''); setDate(format(new Date(), 'yyyy-MM-dd')); } 
-  }, [visible]);
-
   if (!visible) return null;
-
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, { backgroundColor: theme.surface.bg }]}>
-          <LinearGradient 
-            colors={theme.isDark ? ['rgba(50,50,70,0.95)', 'rgba(40,40,60,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.95)']} 
-            style={StyleSheet.absoluteFill} 
-          />
-          <View style={styles.modalHeader}>
+        <Animated.View entering={FadeInUp.springify()} style={[styles.modalCard, { backgroundColor: theme.isDark ? DS.darkCard : DS.white }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <Text style={[styles.modalTitle, { color: theme.text.primary }]}>Add {type}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+            <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
               <Ionicons name="close" size={20} color={theme.text.secondary} />
             </TouchableOpacity>
           </View>
-
           {previousValue !== undefined && (
-            <View style={[styles.prevValueBox, { backgroundColor: `${theme.primary}10` }]}>
-              <Ionicons name="information-circle" size={18} color={theme.primary} />
-              <Text style={[styles.prevValueText, { color: theme.primary }]}>Previous: {previousValue} {unit}</Text>
+            <View style={[styles.prevBox, { backgroundColor: `${theme.primary}10` }]}>
+              <Ionicons name="information-circle" size={16} color={theme.primary} />
+              <Text style={[styles.prevText, { color: theme.primary }]}>Previous: {previousValue} {unit}</Text>
             </View>
           )}
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Value ({unit})</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: theme.text.primary }]}
-              keyboardType="decimal-pad"
-              value={value}
-              onChangeText={setValue}
-              placeholder={`Enter ${type}`}
-              placeholderTextColor={theme.text.muted}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Date</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: theme.text.primary }]}
-              value={date}
-              onChangeText={setDate}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Notes</Text>
-            <TextInput
-              style={[styles.input, styles.inputMultiline, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', color: theme.text.primary }]}
-              multiline
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Optional notes..."
-              placeholderTextColor={theme.text.muted}
-            />
-          </View>
-
-          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
-            <LinearGradient colors={[theme.primary, theme.secondary]} style={styles.saveButtonGradient}>
-              <Text style={styles.saveButtonText}>Save Measurement</Text>
+          <Text style={[styles.inputLabel, { color: theme.text.secondary }]}>Value ({unit})</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : DS.gray100, color: theme.text.primary }]}
+            keyboardType="decimal-pad" value={value} onChangeText={setValue}
+            placeholder={`Enter ${type}`} placeholderTextColor={theme.text.muted}
+          />
+          <Text style={[styles.inputLabel, { color: theme.text.secondary, marginTop: 12 }]}>Date</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : DS.gray100, color: theme.text.primary }]}
+            value={date} onChangeText={setDate}
+          />
+          <Text style={[styles.inputLabel, { color: theme.text.secondary, marginTop: 12 }]}>Notes</Text>
+          <TextInput
+            style={[styles.input, styles.inputMulti, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : DS.gray100, color: theme.text.primary }]}
+            multiline value={notes} onChangeText={setNotes}
+            placeholder="Optional..." placeholderTextColor={theme.text.muted}
+          />
+          <PressableScale onPress={handleSave} activeScale={0.97} style={{ marginTop: 20 }}>
+            <LinearGradient colors={[DS.primary, DS.accent]} style={styles.saveBtn}>
+              <Text style={styles.saveBtnText}>Save Measurement</Text>
             </LinearGradient>
-          </TouchableOpacity>
+          </PressableScale>
         </Animated.View>
       </Pressable>
     </Modal>
   );
 });
 
-
-
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — UNIFIED v5.0
+   MAIN SCREEN
    ═══════════════════════════════════════════════════════════════════════════ */
-
 export default function GrowthDashboardScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const theme = useDashboardTheme();
-  const { triggerHaptic } = useCustomization();
-
-
-  const {
-    currentBaby,
-    growthData,
-    milestones,
-    addGrowthMeasurement,
-    getGrowthData,
-  } = useBaby();
+  const { currentBaby, growthData, milestones, addGrowthMeasurement, getGrowthData } = useBaby();
   const { userProfile } = useAuth();
   const { entries: trackerEntries } = useTracker();
-
   const { growthIndex } = useGrowthIntelligence();
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { achievements, newlyUnlocked, streak: globalStreak } = useTrackerAchievements();
-  const { insights: progressiveInsights } = useTrackerProgressive('growth');
-  const { getPercentile, getStatus, getVelocity, getPrediction } = useWHOGrowthCalculator();
+  const { getPercentile, getStatus } = useWHOGrowthCalculator();
 
-  // ── State ──
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [activeMetric, setActiveMetric] = useState<MetricType>('height');
   const [timeRange, setTimeRange] = useState<TimeRange>('6m');
@@ -1231,255 +932,119 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
 
   const scrollY = useSharedValue(0);
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (e) => {
-      'worklet';
-      scrollY.value = e.contentOffset.y;
-    },
-  });
+  const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
+  const headerAnim = useAnimatedStyle(() => ({ opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP) }));
 
-  const headerOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
-  }));
+  const ageMonths = useMemo(() => currentBaby ? safeDiffMonths(new Date(), currentBaby.birthDate) : 0, [currentBaby]);
 
-  const ageMonths = useMemo(() => {
-    if (!currentBaby) return 0;
-    return safeDiffMonths(new Date(), currentBaby.birthDate);
-  }, [currentBaby]);
-
-  
-  const chartData = useMemo(() => {
-    if (!currentBaby) return [];
-    const ranges: Record<TimeRange, number> = { '1m': 30, '3m': 90, '6m': 180, '1y': 365, 'all': 3650 };
-    const cutoff = new Date(Date.now() - ranges[timeRange] * 24 * 60 * 60 * 1000);
-
-    let data = getGrowthData(activeMetric)
-      .filter(g => {
-        const d = safeParseDate(g.date);
-        return d && d >= cutoff;
-      })
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    if (activeMetric === 'bmi') {
-      const heights = getGrowthData('height').sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      const weights = getGrowthData('weight').sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      data = weights.map(w => {
-        const wDate = safeParseDate(w.date);
-        if (!wDate) return null;
-        const h = heights.reduce((best, curr) => {
-          const bestDate = safeParseDate(best?.date);
-          const currDate = safeParseDate(curr?.date);
-          if (!bestDate || !currDate) return curr;
-          return Math.abs(safeDiffDays(currDate, wDate)) < Math.abs(safeDiffDays(bestDate, wDate)) ? curr : best;
-        }, heights[0]);
-        if (!h) return null;
-        const bmi = w.value / Math.pow(h.value / 100, 2);
-        return { ...w, value: parseFloat(bmi.toFixed(2)), type: 'bmi' as const };
-      }).filter(Boolean) as GrowthMeasurement[];
-    }
-
-    return data.map((g, i) => ({
-      value: Number(g.value) || 0,
-      label: safeFmt(g.date, 'MMM d'),
-      dataPointText: String(g.value),
-      index: i,
-    }));
-  }, [growthData, activeMetric, timeRange, currentBaby, getGrowthData]);
-
-  const velocityData = useMemo(() => {
-    if (chartData.length < 2) return [];
-    const velocities: { value: number; label: string }[] = [];
-    for (let i = 1; i < chartData.length; i++) {
-      const days = safeDiffDays(
-        safeParseDate(growthData.find(g => g.date.includes(chartData[i].label))?.date) || new Date(),
-        safeParseDate(growthData.find(g => g.date.includes(chartData[i - 1].label))?.date) || new Date()
-      );
-      if (days <= 0) continue;
-      const velocity = (chartData[i].value - chartData[i - 1].value) / days * 30;
-      velocities.push({ value: parseFloat(velocity.toFixed(2)), label: chartData[i].label });
-    }
-    return velocities;
-  }, [chartData, growthData]);
-
-  
   const stats = useMemo(() => {
     if (!currentBaby) return null;
     const gender = safeGender(currentBaby.gender);
     const result: Record<string, any> = {};
-
     (['height', 'weight', 'head'] as MetricType[]).forEach(type => {
       const data = getGrowthData(type).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      const latest = data[0];
-      const prev = data[1];
-
+      const latest = data[0], prev = data[1];
       if (latest) {
         const ageAt = Math.max(0, safeDiffMonths(latest.date, currentBaby.birthDate));
-        const percentile = getPercentile(latest.value, ageAt, type, gender);
-        const status = getStatus(percentile);
-
-        result[type] = {
-          value: latest.value.toFixed(1),
-          unit: latest.unit,
-          change: prev ? (latest.value - prev.value).toFixed(1) : undefined,
-          percentile,
-          status,
-        };
+        const p = getPercentile(latest.value, ageAt, type, gender);
+        result[type] = { value: latest.value.toFixed(1), unit: latest.unit, change: prev ? (latest.value - prev.value).toFixed(1) : undefined, percentile: p, status: getStatus(p) };
       }
     });
-
     if (result.height && result.weight) {
       const h = parseFloat(result.height.value) / 100;
       const w = parseFloat(result.weight.value);
       const bmi = w / (h * h);
       const ageAt = Math.max(0, safeDiffMonths(new Date(), currentBaby.birthDate));
-      const percentile = getPercentile(bmi, ageAt, 'bmi', gender);
-      result.bmi = {
-        value: bmi.toFixed(1),
-        unit: '',
-        percentile,
-        status: getStatus(percentile),
-      };
+      const p = getPercentile(bmi, ageAt, 'bmi', gender);
+      result.bmi = { value: bmi.toFixed(1), unit: '', percentile: p, status: getStatus(p) };
     }
-
     return result;
   }, [growthData, currentBaby, getGrowthData, getPercentile, getStatus]);
 
-  
+  const chartData = useMemo(() => {
+    if (!currentBaby) return [];
+    const ranges: Record<TimeRange, number> = { '1m': 30, '3m': 90, '6m': 180, '1y': 365, 'all': 3650 };
+    const cutoff = new Date(Date.now() - ranges[timeRange] * 86400000);
+    let data = getGrowthData(activeMetric).filter(g => { const d = safeParseDate(g.date); return d && d >= cutoff; })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    if (activeMetric === 'bmi') {
+      const hs = getGrowthData('height').sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      data = getGrowthData('weight').map(w => {
+        const wd = safeParseDate(w.date); if (!wd) return null;
+        const h = hs.reduce((b, c) => {
+          const bd = safeParseDate(b?.date), cd = safeParseDate(c?.date);
+          if (!bd || !cd) return c;
+          return Math.abs(safeDiffDays(cd, wd)) < Math.abs(safeDiffDays(bd, wd)) ? c : b;
+        }, hs[0]);
+        if (!h) return null;
+        return { ...w, value: parseFloat((w.value / Math.pow(h.value / 100, 2)).toFixed(2)), type: 'bmi' as const };
+      }).filter(Boolean) as GrowthMeasurement[];
+    }
+    return data.map((g, i) => ({ value: Number(g.value) || 0, label: safeFmt(g.date, 'MMM d'), index: i }));
+  }, [growthData, activeMetric, timeRange, currentBaby, getGrowthData]);
+
+  const velocityData = useMemo(() => {
+    if (chartData.length < 2) return [];
+    const v: { value: number; label: string }[] = [];
+    for (let i = 1; i < chartData.length; i++) {
+      const d = safeDiffDays(
+        safeParseDate(growthData.find(g => g.date.includes(chartData[i].label))?.date) || new Date(),
+        safeParseDate(growthData.find(g => g.date.includes(chartData[i - 1].label))?.date) || new Date(),
+      );
+      if (d <= 0) continue;
+      v.push({ value: parseFloat(((chartData[i].value - chartData[i - 1].value) / d * 30).toFixed(2)), label: chartData[i].label });
+    }
+    return v;
+  }, [chartData, growthData]);
+
   const smartInsights = useMemo((): InsightItem[] => {
     if (!currentBaby) return [];
     const items: InsightItem[] = [];
     const now = Date.now();
-
     if (growthIndex) {
-      if (growthIndex.nutritionScore?.value < 50) {
-        items.push({
-          id: 'gi-nutrition', type: 'nutrition', title: 'Nutrition Needs Attention',
-          description: `Nutrition score is ${growthIndex.nutritionScore.value}/100. Consider reviewing feeding patterns.`,
-          emoji: '🍎', color: '#FF9F43', priority: 'high',
-          action: { label: 'Track Feed', screen: 'AddEntry', params: { trackerId: 'feed' } }, timestamp: now,
-        });
-      }
-      if (growthIndex.restScore?.value < 50) {
-        items.push({
-          id: 'gi-sleep', type: 'sleep', title: 'Sleep Quality Low',
-          description: `Rest score is ${growthIndex.restScore.value}/100. Check sleep schedule consistency.`,
-          emoji: '😴', color: '#5F27CD', priority: 'medium',
-          action: { label: 'Track Sleep', screen: 'AddEntry', params: { trackerId: 'sleep' } }, timestamp: now,
-        });
-      }
-      const readiness = Array.isArray(growthIndex.milestoneReadiness)
-        ? growthIndex.milestoneReadiness
-        : [];
-      if (readiness.length > 0) {
-        const top = readiness[0];
-        
-        items.push({
-          id: 'gi-milestone', type: 'milestone', title: `${top.category} Milestone Ready!`,
-          description: `${top.readinessPercent}% readiness for ${top.category} milestones.`,
-          emoji: '🎯', color: '#10AC84', priority: 'medium',
-          action: { label: 'Log Milestone', screen: 'AddEntry', params: { trackerId: 'milestone' } }, timestamp: now,
-        });
-      }
+      if (growthIndex.nutritionScore?.value < 50) items.push({ id: 'n', type: 'nutrition', title: 'Nutrition low', description: `${growthIndex.nutritionScore.value}/100 — review feeds`, emoji: '🍎', color: DS.warning, priority: 'high', action: { label: 'Track Feed', screen: 'AddEntry', params: { trackerId: 'feed' } }, timestamp: now });
+      if (growthIndex.restScore?.value < 50) items.push({ id: 's', type: 'sleep', title: 'Rest low', description: `${growthIndex.restScore.value}/100 — check sleep`, emoji: '😴', color: '#8b5cf6', priority: 'medium', action: { label: 'Track Sleep', screen: 'AddEntry', params: { trackerId: 'sleep' } }, timestamp: now });
     }
-
-    timelineCorrelations.slice(0, 2).forEach(c => {
-      items.push({
-        id: `corr-${c.id}`, type: 'correlation', title: 'Pattern Discovered',
-        description: c.insight, emoji: '🔗', color: '#54A0FF', priority: 'low', timestamp: now,
-      });
-    });
-
-    const recentMilestone = [...milestones].sort((a, b) => {
-      const da = safeParseDate(a.achievedAt);
-      const db = safeParseDate(b.achievedAt);
-      return (db?.getTime() || 0) - (da?.getTime() || 0);
-    })[0];
-    if (recentMilestone && safeParseDate(recentMilestone.achievedAt) && safeDiffDays(new Date(), recentMilestone.achievedAt) < 7) {
-      items.push({
-        id: 'recent-milestone', type: 'milestone', title: 'New Milestone! 🌟',
-        description: `${currentBaby.name} achieved "${recentMilestone.title}"`,
-        emoji: '🏆', color: '#f59e0b', priority: 'high',
-        timestamp: safeParseDate(recentMilestone.achievedAt)?.getTime() || now,
-      });
-    }
-
+    if (globalStreak?.streakAtRisk && globalStreak.currentStreak > 0) items.push({ id: 'str', type: 'achievement', title: 'Streak at risk', description: `Log in ${globalStreak.hoursUntilBreak}h`, emoji: '⏰', color: DS.danger, priority: 'high', action: { label: 'Log Now', screen: 'AddEntry' }, timestamp: now });
     const typeData = getGrowthData(activeMetric);
     if (typeData.length >= 2) {
       const sorted = [...typeData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      const latest = sorted[sorted.length - 1];
-      const prev = sorted[sorted.length - 2];
-      if (latest.value < prev.value) {
-        const drop = ((prev.value - latest.value) / prev.value) * 100;
-        if (drop > 5) {
-          items.push({
-            id: 'growth-drop', type: 'growth', title: 'Measurement Decrease',
-            description: `Latest ${activeMetric} dropped ${drop.toFixed(1)}% from previous. Please verify.`,
-            emoji: '⚠️', color: '#ef4444', priority: 'high',
-            action: { label: 'Re-measure', screen: 'AddEntry', params: { trackerId: 'growth' } }, timestamp: now,
-          });
-        }
+      const last = sorted[sorted.length - 1], prev = sorted[sorted.length - 2];
+      if (last.value < prev.value) {
+        const drop = ((prev.value - last.value) / prev.value) * 100;
+        if (drop > 5) items.push({ id: 'drop', type: 'growth', title: 'Decrease detected', description: `${activeMetric} dropped ${drop.toFixed(1)}%`, emoji: '⚠️', color: DS.danger, priority: 'high', action: { label: 'Re-measure', screen: 'AddEntry', params: { trackerId: 'growth' } }, timestamp: now });
       }
     }
+    return items.sort((a, b) => ({ high: 0, medium: 1, low: 2 })[a.priority] - ({ high: 0, medium: 1, low: 2 })[b.priority]).slice(0, 6);
+  }, [growthIndex, currentBaby, globalStreak, getGrowthData, activeMetric]);
 
-    if (globalStreak?.streakAtRisk && globalStreak.currentStreak > 0) {
-      items.push({
-        id: 'streak-risk', type: 'achievement', title: '🔥 Streak at Risk!',
-        description: `Log an entry in ${globalStreak.hoursUntilBreak}h to keep your ${globalStreak.currentStreak}-day streak alive.`,
-        emoji: '⏰', color: '#ef4444', priority: 'high',
-        action: { label: 'Log Now', screen: 'AddEntry' }, timestamp: now,
-      });
-    }
+  const topRibbon = useMemo(() => {
+    const high = smartInsights.filter(i => i.priority === 'high');
+    if (high.length) return { icon: 'alert-circle-outline' as const, color: DS.danger, label: 'Attention', text: high[0].title, onPress: () => handleInsightPress(high[0]) };
+    if (growthIndex?.compositeIndex) return { icon: 'sparkles' as const, color: DS.success, label: 'Growth Index', text: `${growthIndex.compositeIndex}/100 — ${growthIndex.compositeIndex >= 80 ? 'Excellent' : growthIndex.compositeIndex >= 60 ? 'Good' : 'Needs care'}`, onPress: () => navigation.navigate('GrowthIntelligence') };
+    return { icon: 'bulb-outline' as const, color: DS.primary, label: 'Tip', text: 'Log measurements consistently to unlock better predictions', onPress: () => setShowAddModal(true) };
+  }, [smartInsights, growthIndex, navigation]);
 
-    if (newlyUnlocked?.length > 0) {
-      items.push({
-        id: 'new-achievement', type: 'achievement', title: 'Achievement Unlocked! 🎉',
-        description: `${newlyUnlocked.length} new achievement${newlyUnlocked.length > 1 ? 's' : ''} earned!`,
-        emoji: '🏆', color: '#8b5cf6', priority: 'medium',
-        action: { label: 'View All', screen: 'Achievements' }, timestamp: now,
-      });
-    }
-
-    return items.sort((a, b) => {
-      const prioOrder = { high: 0, medium: 1, low: 2 };
-      return prioOrder[a.priority] - prioOrder[b.priority];
-    }).slice(0, 6);
-  }, [growthIndex, timelineCorrelations, milestones, currentBaby, activeMetric, getGrowthData, globalStreak, newlyUnlocked]);
-
-  
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      
-      
-      await new Promise(r => setTimeout(r, 400));
-    } finally {
-      setRefreshing(false);
-    }
+    await new Promise(r => setTimeout(r, 400));
+    setRefreshing(false);
   }, []);
 
   const handleAddMeasurement = useCallback(async (data: Partial<GrowthMeasurement>) => {
     if (!currentBaby) return;
-    const success = await addGrowthMeasurement({
-      babyId: currentBaby.id,
-      type: data.type as MetricType,
-      value: data.value ?? 0,
-      unit: data.unit || 'cm',
+    const ok = await addGrowthMeasurement({
+      babyId: currentBaby.id, type: data.type as MetricType,
+      value: data.value ?? 0, unit: data.unit || 'cm',
       date: data.date || new Date().toISOString(),
-      notes: data.notes,
-      recordedBy: userProfile?.fullName?.split(' ')[0] || 'Parent',
+      notes: data.notes, recordedBy: userProfile?.fullName?.split(' ')[0] || 'Parent',
     });
-    if (success) {
-      HAPTIC_SUCCESS();
-      setShowAddModal(false);
-    }
+    if (ok) { HAPTIC_SUCCESS(); setShowAddModal(false); }
   }, [currentBaby, addGrowthMeasurement, userProfile]);
 
   const handleInsightPress = useCallback((insight: InsightItem) => {
     HAPTIC_LIGHT();
-    if (insight.action?.screen) {
-      navigation.navigate(insight.action.screen, insight.action.params);
-    }
+    if (insight.action?.screen) navigation.navigate(insight.action.screen, insight.action.params);
   }, [navigation]);
 
   const getPreviousValue = useCallback(() => {
@@ -1493,18 +1058,19 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     HAPTIC_LIGHT();
   }, []);
 
-  
   if (!currentBaby) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.bgColors[0] }, styles.center]}>
-        <StatusBar barStyle={theme.statusBar} />
-        <LinearGradient colors={theme.bgColors} style={StyleSheet.absoluteFill} />
+      <View style={[styles.container, { backgroundColor: isDarkBg(theme) ? DS.darkBg : DS.gray50 }, { alignItems: 'center', justifyContent: 'center' }]}>
+        <StatusBar barStyle={isDarkBg(theme) ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+        <LinearGradient colors={isDarkBg(theme) ? ['#0c0a09', '#12121e'] : ['#f8faff', '#eef0f5']} style={StyleSheet.absoluteFill} />
         <Ionicons name="person-add" size={64} color={theme.primary} style={{ marginBottom: 16 }} />
         <Text style={[styles.noDataTitle, { color: theme.text.primary }]}>No Baby Profile</Text>
         <Text style={[styles.noDataText, { color: theme.text.secondary }]}>Create a profile to start tracking growth</Text>
-        <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={() => navigation.navigate('CreateBabyProfile')}>
-          <Text style={styles.createBtnText}>Create Profile</Text>
-        </TouchableOpacity>
+        <PressableScale onPress={() => navigation.navigate('CreateBabyProfile')} activeScale={0.97}>
+          <LinearGradient colors={[DS.primary, DS.accent]} style={styles.createBtn}>
+            <Text style={styles.createBtnText}>Create Profile</Text>
+          </LinearGradient>
+        </PressableScale>
       </View>
     );
   }
@@ -1512,473 +1078,312 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const tabs = [
     { key: 'overview' as DashboardTab, label: 'Overview', icon: 'grid-outline' as const },
     { key: 'growth' as DashboardTab, label: 'Growth', icon: 'trending-up-outline' as const },
-    { key: 'milestones' as DashboardTab, label: 'Milestones', icon: 'trophy-outline' as const },
+    { key: 'milestones' as DashboardTab, label: 'Awards', icon: 'trophy-outline' as const },
     { key: 'insights' as DashboardTab, label: 'Insights', icon: 'bulb-outline' as const },
     { key: 'photos' as DashboardTab, label: 'Photos', icon: 'images-outline' as const },
   ];
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.bgColors[0] }]}>
-      <StatusBar barStyle={theme.statusBar} />
-      <LinearGradient colors={theme.bgColors} style={StyleSheet.absoluteFill} />
+  const todayLogs = trackerEntries.filter((e: any) => e?.timestamp >= startOfDay(new Date()).getTime()).length;
 
-      {/* Sticky Header — matches TrackerHub exactly */}
-      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
-        <BlurView intensity={theme.isDark ? 40 : 80} tint={theme.blur} style={StyleSheet.absoluteFill} />
-        <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby.name}'s Growth</Text>
-        <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>{ageMonths} months</Text>
+  return (
+    <View style={[styles.container, { backgroundColor: isDarkBg(theme) ? DS.darkBg : DS.gray50 }]}>
+      <StatusBar barStyle={isDarkBg(theme) ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <LinearGradient colors={isDarkBg(theme) ? ['#0c0a09', '#12121e', '#0c0a09'] : ['#f8faff', '#eef0f5', '#e4e8f0']} style={StyleSheet.absoluteFill} />
+
+      {/* Sticky Header */}
+      <Animated.View style={[styles.stickyHeader, { paddingTop: HEADER_TOP_PADDING, backgroundColor: isDarkBg(theme) ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)', borderBottomColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200 }, headerAnim]}>
+        <BlurView intensity={isDarkBg(theme) ? 90 : 95} tint={isDarkBg(theme) ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <View style={styles.headerInner}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerIconBtn, { backgroundColor: isDarkBg(theme) ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+            <Ionicons name="arrow-back" size={20} color={isDarkBg(theme) ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>GROWTH</GradientText>
+            <Text style={[styles.headerSub, { color: isDarkBg(theme) ? DS.gray400 : DS.gray500 }]}>{currentBaby.name}</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('Achievements')} style={[styles.headerIconBtn, { backgroundColor: isDarkBg(theme) ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+            <Ionicons name="trophy-outline" size={20} color={isDarkBg(theme) ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+        </View>
       </Animated.View>
 
-      {/* Main Scroll */}
       <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{ paddingTop: HEADER_TOTAL_HEIGHT + 12, paddingBottom: insets.bottom + 120 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} progressViewOffset={HEADER_TOTAL_HEIGHT} />}
       >
-        {/* ── TOP HEADER ROW ── */}
-        <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
-            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
-          >
-            <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
-          </TouchableOpacity>
+        {/* Pulse Header */}
+        <GrowthPulse
+          isDark={isDarkBg(theme)}
+          baby={currentBaby}
+          ageMonths={ageMonths}
+          composite={growthIndex?.compositeIndex || 0}
+          topMetrics={{ height: stats?.height?.value, weight: stats?.weight?.value, head: stats?.head?.value }}
+          todayLogs={todayLogs}
+          onBabyPress={() => navigation.navigate('SwitchBaby', { returnTo: 'GrowthDashboard', returnLabel: 'Growth' })}
+          onPDF={() => navigation.navigate('PediatricianPDFExport')}
+          onAdd={() => setShowAddModal(true)}
+        />
 
-          <TouchableOpacity onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'GrowthDashboard', returnLabel: 'Growth' })} style={styles.babyPill}>
-            <LinearGradient
-             
-              colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <SafeAvatar avatar={currentBaby.avatar} size={36} fallbackIcon="person" borderColor={theme.primary} borderWidth={2} />
-            <View style={styles.babyPillText}>
-              <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{currentBaby.name}</Text>
-              <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>{ageMonths}mo</Text>
-            </View>
-            <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
-          </TouchableOpacity>
+        {/* Ribbon */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <AuraRibbon isDark={isDarkBg(theme)} {...topRibbon} />
+        </View>
 
-          <TouchableOpacity onPress={() => navigation.navigate('PediatricianPDFExport')} style={[styles.pdfBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}>
-            <Ionicons name="document-text" size={22} color={theme.primary} />
-          </TouchableOpacity>
+        {/* Tab bar */}
+        <View style={{ marginTop: DS.space.md }}>
+          <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
+        </View>
 
-          <TouchableOpacity onPress={() => setShowAddModal(true)} style={[styles.addBtn, { backgroundColor: theme.primary }]}>
-            <Ionicons name="add" size={24} color="#fff" />
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* ── COMPOSITE GROWTH SCORE (Hero) ── */}
-        {growthIndex && (
-          <Animated.View entering={FadeInUp.delay(100).springify()}>
-            <GlassCard onPress={() => navigation.navigate('GrowthIntelligence')}>
-              <View style={styles.heroScore}>
-                <View style={styles.heroScoreLeft}>
-                  <View style={[styles.heroScoreRing, { borderColor: `${theme.primary}30` }]}>
-                    <Text style={[styles.heroScoreValue, { color: theme.primary }]}>{growthIndex.compositeIndex || 0}</Text>
-                    <Text style={[styles.heroScoreMax, { color: theme.text.muted }]}>/100</Text>
-                  </View>
-                  <View style={styles.heroScoreLabels}>
-                    <Text style={[styles.heroScoreLabel, { color: theme.text.primary }]}>Growth Score</Text>
-                    <Text style={[styles.heroScoreSub, { color: theme.text.muted }]}>Composite Index</Text>
-                  </View>
-                </View>
-                <View style={styles.heroScoreRight}>
-                  {[
-                    { label: 'Nutrition', value: growthIndex.nutritionScore?.value, color: '#FF9F43', icon: '🍎' },
-                    { label: 'Rest', value: growthIndex.restScore?.value, color: '#5F27CD', icon: '😴' },
-                    { label: 'Physical', value: growthIndex.physicalScore?.value, color: '#10AC84', icon: '💪' },
-                    { label: 'Cognitive', value: growthIndex.cognitiveScore?.value, color: '#FFD700', icon: '🧠' },
-                  ].map(s => (
-                    <View key={s.label} style={styles.heroScoreMini}>
-                      <Text style={styles.heroScoreMiniIcon}>{s.icon}</Text>
-                      <View style={styles.heroScoreMiniBarWrap}>
-                        <View style={[styles.heroScoreMiniBarBg, { backgroundColor: `${s.color}15` }]}>
-                          <View style={[styles.heroScoreMiniBarFill, { width: `${Math.min(s.value || 0, 100)}%`, backgroundColor: s.color }]} />
-                        </View>
-                      </View>
-                      <Text style={[styles.heroScoreMiniValue, { color: s.color }]}>{s.value ?? '—'}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            </GlassCard>
-          </Animated.View>
-        )}
-
-        {/* ── TAB BAR ── */}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
-
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: OVERVIEW
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* ═══ OVERVIEW ═══ */}
         {activeTab === 'overview' && (
           <>
-            {/* ── KPI GRID (2x2) — TOP PRIORITY ── */}
-            <View style={styles.kpiGrid}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
               {[
-                { key: 'height', title: 'Height', icon: '📏', color: '#6366f1', size: 'large' },
-                { key: 'weight', title: 'Weight', icon: '⚖️', color: '#ec4899', size: 'large' },
-                { key: 'head', title: 'Head', icon: '🧠', color: '#06b6d4', size: 'normal' },
-                { key: 'bmi', title: 'BMI', icon: '📊', color: '#f59e0b', size: 'normal' },
+                { key: 'height', title: 'Height', icon: '📏', color: '#6366f1' },
+                { key: 'weight', title: 'Weight', icon: '⚖️', color: '#ec4899' },
+                { key: 'head', title: 'Head', icon: '🧠', color: '#06b6d4' },
+                { key: 'bmi', title: 'BMI', icon: '📊', color: '#f59e0b' },
               ].map((m, i) => {
                 const s = stats?.[m.key];
                 return (
-                  <Animated.View 
-                    key={m.key} 
-                    entering={FadeInUp.delay(150 + i * 80).springify()} 
-                    style={[styles.kpiGridItem, m.size === 'large' ? styles.kpiGridItemLarge : styles.kpiGridItemNormal]}
-                  >
+                  <Animated.View key={m.key} entering={FadeInUp.delay(80 + i * 60).springify()} style={{ width: (SCREEN_W - 40 - 10) / 2 }}>
                     <KpiCard
-                      title={m.title}
-                      value={s?.value || '—'}
+                      title={m.title} value={s?.value || '—'}
                       unit={s?.unit || (m.key === 'weight' ? 'kg' : m.key === 'bmi' ? '' : 'cm')}
                       change={s?.change ? parseFloat(s.change) : undefined}
-                      changeLabel="last"
-                      icon={m.icon}
-                      color={m.color}
-                      percentile={s?.percentile}
-                      status={s?.status}
+                      icon={m.icon} color={m.color}
+                      percentile={s?.percentile} status={s?.status}
                       onPress={() => { setActiveMetric(m.key as MetricType); setActiveTab('growth'); HAPTIC_LIGHT(); }}
-                      size={m.size}
                     />
                   </Animated.View>
                 );
               })}
             </View>
 
-            {/* ── AI Growth Predictor ── */}
-            <AIGrowthPredictor 
-              baby={currentBaby} 
-              growthIndex={growthIndex} 
-              onPress={() => navigation.navigate('GrowthIntelligence')} 
-            />
+            <View style={{ marginTop: DS.space.md }}>
+              <AIGrowthPredictor baby={currentBaby} growthIndex={growthIndex} onPress={() => navigation.navigate('GrowthIntelligence')} />
+            </View>
 
-            {/* ── Health Correlations ── */}
-            <HealthCorrelation 
-              trackerEntries={trackerEntries} 
-              baby={currentBaby} 
-            />
+            <View style={{ marginTop: DS.space.md }}>
+              <HealthCorrelation trackerEntries={trackerEntries} baby={currentBaby} />
+            </View>
 
-            {/* ── Activity Suggestions ── */}
-            <ActivitySuggestions 
-              baby={currentBaby} 
-              onPress={(a) => navigation.navigate('ActivityDetail', { activity: a })} 
-            />
+            <View style={{ marginTop: DS.space.lg }}>
+              <ActivitySuggestions baby={currentBaby} onPress={(a) => navigation.navigate('ActivityDetail', { activity: a })} />
+            </View>
 
-            {/* ── Predictive Milestone Calendar ── */}
-            <PredictiveMilestoneCalendar 
-              baby={currentBaby} 
-              milestones={milestones} 
-              onPress={(m) => navigation.navigate('MilestoneDetail', { milestone: m })} 
-            />
+            <View style={{ marginTop: DS.space.lg }}>
+              <PredictiveMilestoneCalendar baby={currentBaby} milestones={milestones} onPress={(m) => navigation.navigate('MilestoneDetail', { milestone: m })} />
+            </View>
 
-            {/* ── SMART INSIGHTS ── */}
             {smartInsights.length > 0 && (
-              <View style={styles.section}>
-                <SectionHeader 
-                  title="Smart Insights" 
-                  subtitle={`${smartInsights.filter(i => i.priority === 'high').length} need attention`}
-                  action={() => navigation.navigate('Insights')}
-                  actionLabel="View All"
-                  icon="sparkles-outline"
-                />
-                {smartInsights.slice(0, 3).map((insight, i) => (
-                  <InsightCard
-                    key={insight.id}
-                    insight={insight}
-                    onPress={() => handleInsightPress(insight)}
-                    index={i}
-                  />
-                ))}
+              <View style={{ marginTop: DS.space.lg, paddingHorizontal: DS.space.lg, gap: 8 }}>
+                <SectionHeader title="Smart Insights" subtitle={`${smartInsights.filter(i => i.priority === 'high').length} need attention`} icon="sparkles-outline" action={() => navigation.navigate('Insights')} actionLabel="View All" color={DS.accent} />
+                {smartInsights.slice(0, 3).map((insight, i) => <InsightCard key={insight.id} insight={insight} onPress={() => handleInsightPress(insight)} index={i} />)}
               </View>
             )}
 
-            {/* ── QUICK ACTIONS ── */}
-            <View style={styles.quickActionsGrid}>
+            <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: DS.space.lg, marginTop: DS.space.lg, marginBottom: DS.space.lg }}>
               {[
-                { icon: '🌟', label: `${currentBaby?.name || 'Baby'}'s Timeline`, screen: 'Timeline', params: { filter: 'milestone' }, gradient: ['#f59e0b', '#fbbf24'] },
-                { icon: '💉', label: 'Vaccines', screen: 'VaccinationSchedule', params: {}, gradient: [theme.primary, theme.secondary] },
-                { icon: '📸', label: 'Photos', screen: 'Gallery', params: {}, gradient: ['#10b981', '#34d399'] },
-                { icon: '🏆', label: 'Achievements', screen: 'Achievements', params: {}, gradient: ['#8b5cf6', '#a78bfa'] },
-              ].map((action, i) => (
-                <TouchableOpacity key={i} onPress={() => navigation.navigate(action.screen, action.params)} style={styles.quickAction}>
-                  <LinearGradient colors={action.gradient as [string, string]} style={styles.quickActionGradient}>
-                    <Text style={styles.quickActionIcon}>{action.icon}</Text>
-                    <Text style={styles.quickActionText}>{action.label}</Text>
+                { icon: '🌟', label: 'Timeline', screen: 'Timeline', grad: ['#f59e0b', '#fbbf24'] as [string, string] },
+                { icon: '💉', label: 'Vaccines', screen: 'VaccinationSchedule', grad: ['#6366f1', '#ec4899'] as [string, string] },
+                { icon: '📸', label: 'Photos', screen: 'Gallery', grad: ['#10b981', '#34d399'] as [string, string] },
+                { icon: '🏆', label: 'Awards', screen: 'Achievements', grad: ['#8b5cf6', '#a78bfa'] as [string, string] },
+              ].map((a, i) => (
+                <PressableScale key={i} onPress={() => navigation.navigate(a.screen)} activeScale={0.94} style={{ flex: 1 }}>
+                  <LinearGradient colors={a.grad} style={styles.quickAct} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                    <Text style={{ fontSize: 20 }}>{a.icon}</Text>
+                    <Text style={styles.quickActText}>{a.label}</Text>
                   </LinearGradient>
-                </TouchableOpacity>
+                </PressableScale>
               ))}
             </View>
           </>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: GROWTH
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* ═══ GROWTH ═══ */}
         {activeTab === 'growth' && (
-          <>
-            {/* ── WHO Percentile Radar ── */}
+          <View style={{ marginTop: DS.space.md, gap: 12 }}>
             <PercentileRadar stats={stats} />
 
-            {/* ── Metric Selector ── */}
-            <View style={styles.metricSelector}>
-              {(['height', 'weight', 'head', 'bmi'] as MetricType[]).map(m => (
-                <TouchableOpacity
-                  key={m}
-                  onPress={() => setActiveMetric(m)}
-                  style={[styles.metricSelectorChip, activeMetric === m && { backgroundColor: theme.primary }]}
-                >
-                  <Text style={[styles.metricSelectorText, { color: activeMetric === m ? '#fff' : theme.text.secondary }]}>
-                    {m.charAt(0).toUpperCase() + m.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+              {(['height', 'weight', 'head', 'bmi'] as MetricType[]).map(m => {
+                const active = activeMetric === m;
+                return (
+                  <TouchableOpacity key={m} onPress={() => setActiveMetric(m)} style={[styles.pill, { backgroundColor: active ? theme.primary : isDarkBg(theme) ? 'rgba(255,255,255,0.06)' : DS.white, borderColor: active ? theme.primary : isDarkBg(theme) ? DS.darkBorder : DS.gray200 }]} activeOpacity={0.8}>
+                    <Text style={[styles.pillText, { color: active ? DS.white : theme.text.secondary }, active && { fontWeight: '700' }]}>{m.charAt(0).toUpperCase() + m.slice(1)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+              {(['1m', '3m', '6m', '1y', 'all'] as TimeRange[]).map(r => {
+                const active = timeRange === r;
+                return (
+                  <TouchableOpacity key={r} onPress={() => setTimeRange(r)} style={[styles.pill, { backgroundColor: active ? theme.secondary : isDarkBg(theme) ? 'rgba(255,255,255,0.06)' : DS.white, borderColor: active ? theme.secondary : isDarkBg(theme) ? DS.darkBorder : DS.gray200 }]} activeOpacity={0.8}>
+                    <Text style={[styles.pillText, { color: active ? DS.white : theme.text.secondary }, active && { fontWeight: '700' }]}>{r === 'all' ? 'All' : r}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', paddingHorizontal: DS.space.lg, gap: 8 }}>
+              {[
+                { k: 'trend' as ChartMode, l: 'Trend', i: 'trending-up' },
+                { k: 'velocity' as ChartMode, l: 'Velocity', i: 'speedometer' },
+                { k: 'percentile' as ChartMode, l: 'Percentile', i: 'analytics' },
+              ].map(x => {
+                const active = chartMode === x.k;
+                return (
+                  <TouchableOpacity key={x.k} onPress={() => setChartMode(x.k)} style={[styles.modeChip, { flex: 1, backgroundColor: active ? theme.secondary : isDarkBg(theme) ? 'rgba(255,255,255,0.06)' : DS.white, borderColor: active ? theme.secondary : isDarkBg(theme) ? DS.darkBorder : DS.gray200 }]} activeOpacity={0.8}>
+                    <Ionicons name={x.i as any} size={13} color={active ? DS.white : theme.text.secondary} />
+                    <Text style={[styles.pillText, { color: active ? DS.white : theme.text.secondary, marginLeft: 4 }, active && { fontWeight: '700' }]}>{x.l}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            {/* ── Time Range ── */}
-            <View style={styles.timeRangeWrap}>
-              {(['1m', '3m', '6m', '1y', 'all'] as TimeRange[]).map(r => (
-                <TouchableOpacity
-                  key={r}
-                  onPress={() => setTimeRange(r)}
-                  style={[styles.timeRangeChip, timeRange === r && { backgroundColor: theme.primary }]}
-                >
-                  <Text style={[styles.timeRangeText, { color: timeRange === r ? '#fff' : theme.text.secondary }]}>{r === 'all' ? 'All' : r}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* ── Chart Mode ── */}
-            <View style={styles.chartModeWrap}>
-              {([
-                { key: 'trend' as ChartMode, label: 'Trend', icon: 'trending-up' },
-                { key: 'velocity' as ChartMode, label: 'Velocity', icon: 'speedometer' },
-                { key: 'percentile' as ChartMode, label: 'Percentile', icon: 'analytics' },
-              ]).map(m => (
-                <TouchableOpacity
-                  key={m.key}
-                  onPress={() => setChartMode(m.key)}
-                  style={[styles.chartModeChip, chartMode === m.key && { backgroundColor: theme.secondary }]}
-                >
-                  <Ionicons name={m.icon as any} size={14} color={chartMode === m.key ? '#fff' : theme.text.secondary} />
-                  <Text style={[styles.chartModeText, { color: chartMode === m.key ? '#fff' : theme.text.secondary }]}>{m.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* ── MAIN CHART ── */}
-            <Animated.View entering={FadeInUp.delay(200).springify()}>
-              <GlassCard style={styles.chartCard}>
-                <View style={styles.chartHeader}>
+            <Animated.View entering={FadeInUp.delay(120).springify()}>
+              <View style={[styles.auraCard, { backgroundColor: isDarkBg(theme) ? DS.darkCard : DS.white, borderColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                   <View>
-                    <Text style={[styles.chartTitle, { color: theme.text.primary }]}>
-                      {chartMode === 'trend' ? `${activeMetric.charAt(0).toUpperCase() + activeMetric.slice(1)} Trend` :
-                       chartMode === 'velocity' ? 'Growth Velocity' : 'Percentile Tracking'}
+                    <Text style={[styles.auraTitle, { color: theme.text.primary }]}>
+                      {chartMode === 'trend' ? `${activeMetric.charAt(0).toUpperCase() + activeMetric.slice(1)} Trend` : chartMode === 'velocity' ? 'Growth Velocity' : 'Percentile Tracking'}
                     </Text>
-                    <Text style={[styles.chartSubtitle, { color: theme.text.muted }]}>
-                      {chartData.length} measurements • WHO Standard
-                    </Text>
+                    <Text style={[styles.auraSub, { color: theme.text.muted }]}>{chartData.length} measurements • WHO</Text>
                   </View>
                   {stats?.[activeMetric]?.percentile !== undefined && (
-                    <View style={[styles.chartPercentileBadge, { backgroundColor: `${theme.primary}12` }]}>
-                      <Text style={[styles.chartPercentileText, { color: theme.primary }]}>
-                        P{stats[activeMetric].percentile}
-                      </Text>
+                    <View style={[styles.kpiP, { backgroundColor: `${theme.primary}18` }]}>
+                      <Text style={[styles.kpiPText, { color: theme.primary }]}>P{stats[activeMetric].percentile}</Text>
                     </View>
                   )}
                 </View>
-
                 {chartData.length > 0 ? (
-                  <PureChart
-                    data={chartMode === 'velocity' ? velocityData : chartData}
-                    mode={chartMode}
-                    width={SCREEN_W - 72}
-                    height={220}
-                  />
+                  <PureChart data={chartMode === 'velocity' ? velocityData : chartData} mode={chartMode} width={SCREEN_W - 72} height={220} />
                 ) : (
-                  <View style={styles.emptyChart}>
+                  <View style={{ height: 200, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
                     <MaterialCommunityIcons name="chart-line" size={48} color={theme.text.muted} />
-                    <Text style={[styles.emptyChartText, { color: theme.text.muted }]}>No data yet</Text>
-                    <TouchableOpacity onPress={() => setShowAddModal(true)} style={[styles.addDataBtn, { backgroundColor: theme.primary }]}>
-                      <Text style={styles.addDataBtnText}>Add First Measurement</Text>
-                    </TouchableOpacity>
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: theme.text.muted }}>No data yet</Text>
+                    <PressableScale onPress={() => setShowAddModal(true)} activeScale={0.96}>
+                      <LinearGradient colors={[DS.primary, DS.accent]} style={styles.addDataBtn}>
+                        <Text style={styles.addDataBtnText}>Add First Measurement</Text>
+                      </LinearGradient>
+                    </PressableScale>
                   </View>
                 )}
-              </GlassCard>
+              </View>
             </Animated.View>
 
-            {/* ── Velocity Heatmap ── */}
-            <VelocityHeatmap 
-              measurements={getGrowthData(activeMetric)} 
-              activeMetric={activeMetric}
-            />
+            <VelocityHeatmap measurements={getGrowthData(activeMetric)} activeMetric={activeMetric} />
 
-            {/* ── Recent Measurements ── */}
-            <View style={styles.section}>
-              <SectionHeader 
-                title="Recent Measurements" 
-                action={() => navigation.navigate('Timeline', { filter: 'growth' })}
-                actionLabel="History"
-                icon="time-outline"
-              />
-              <GlassCard style={styles.historyCard}>
-                {getGrowthData(activeMetric)
-                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                  .slice(0, 5)
-                  .map((m, i, arr) => {
-                    const ageAt = Math.max(0, safeDiffMonths(m.date, currentBaby.birthDate));
-                    const gender = safeGender(currentBaby.gender);
-                    const percentile = getPercentile(m.value, ageAt, m.type as MetricType, gender);
-                    return (
-                      <View key={m.id} style={[styles.historyRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]}>
-                        <View style={[styles.historyIcon, { backgroundColor: `${theme.primary}10` }]}>
-                          <Text style={{ fontSize: 16 }}>
-                            {m.type === 'height' ? '📏' : m.type === 'weight' ? '⚖️' : m.type === 'head' ? '🧠' : '📊'}
-                          </Text>
-                        </View>
-                        <View style={styles.historyInfo}>
-                          <Text style={[styles.historyType, { color: theme.text.primary }]}>{m.type.charAt(0).toUpperCase() + m.type.slice(1)}</Text>
-                          <Text style={[styles.historyDate, { color: theme.text.muted }]}>{safeFmt(m.date, 'MMM d, yyyy')}</Text>
-                        </View>
-                        <View style={styles.historyRight}>
-                          <Text style={[styles.historyValue, { color: theme.primary }]}>{m.value} {m.unit}</Text>
-                          <View style={[styles.historyPercentile, { backgroundColor: `${getStatus(percentile).color}12` }]}>
-                            <Text style={[styles.historyPercentileText, { color: getStatus(percentile).color }]}>P{percentile}</Text>
-                          </View>
+            <View style={{ marginTop: DS.space.sm }}>
+              <SectionHeader title="Recent Measurements" icon="time-outline" action={() => navigation.navigate('Timeline', { filter: 'growth' })} actionLabel="History" />
+              <View style={[styles.auraCard, { backgroundColor: isDarkBg(theme) ? DS.darkCard : DS.white, borderColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200, padding: 0 }]}>
+                {getGrowthData(activeMetric).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5).map((m, i, arr) => {
+                  const ageAt = Math.max(0, safeDiffMonths(m.date, currentBaby.birthDate));
+                  const gender = safeGender(currentBaby.gender);
+                  const p = getPercentile(m.value, ageAt, m.type as MetricType, gender);
+                  return (
+                    <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: i < arr.length - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200 }}>
+                      <View style={[styles.histIcon, { backgroundColor: `${theme.primary}15` }]}>
+                        <Text style={{ fontSize: 16 }}>{m.type === 'height' ? '📏' : m.type === 'weight' ? '⚖️' : m.type === 'head' ? '🧠' : '📊'}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.histType, { color: theme.text.primary }]}>{m.type.charAt(0).toUpperCase() + m.type.slice(1)}</Text>
+                        <Text style={[styles.histDate, { color: theme.text.muted }]}>{safeFmt(m.date, 'MMM d, yyyy')}</Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', gap: 3 }}>
+                        <Text style={[styles.histVal, { color: theme.primary }]}>{m.value} {m.unit}</Text>
+                        <View style={[styles.kpiP, { backgroundColor: `${getStatus(p).color}15` }]}>
+                          <Text style={[styles.kpiPText, { color: getStatus(p).color }]}>P{p}</Text>
                         </View>
                       </View>
-                    );
-                  })}
+                    </View>
+                  );
+                })}
                 {getGrowthData(activeMetric).length === 0 && (
-                  <View style={styles.emptyHistory}>
-                    <Text style={[styles.emptyHistoryText, { color: theme.text.muted }]}>No measurements yet</Text>
+                  <View style={{ padding: 24, alignItems: 'center' }}>
+                    <Text style={{ color: theme.text.muted, fontSize: 13 }}>No measurements yet</Text>
                   </View>
                 )}
-              </GlassCard>
+              </View>
             </View>
-          </>
+          </View>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: MILESTONES
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* ═══ MILESTONES ═══ */}
         {activeTab === 'milestones' && (
-          <>
-            {/* Milestone Readiness */}
+          <View style={{ marginTop: DS.space.md, gap: 12 }}>
             {growthIndex?.milestoneReadiness && growthIndex.milestoneReadiness.length > 0 && (
-              <View style={styles.section}>
+              <View>
                 <SectionHeader title="Milestone Readiness" icon="trophy-outline" />
-                <GlassCard>
+                <View style={[styles.auraCard, { backgroundColor: isDarkBg(theme) ? DS.darkCard : DS.white, borderColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200, padding: 0 }]}>
                   {growthIndex.milestoneReadiness.map((m: any, i: number) => (
-                    <View key={i} style={[styles.milestoneRow, i < growthIndex.milestoneReadiness.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]}>
-                      <View style={styles.milestoneLeft}>
-                        <Text style={[styles.milestoneCategory, { color: theme.text.primary }]}>{m.category}</Text>
-                        <View style={[styles.milestoneBarBg, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
-                          <View style={[styles.milestoneBarFill, { width: `${Math.min(m.readinessPercent, 100)}%`, backgroundColor: m.readinessPercent > 80 ? '#10b981' : m.readinessPercent > 50 ? '#f59e0b' : '#ef4444' }]} />
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: i < growthIndex.milestoneReadiness.length - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text.primary, marginBottom: 4 }}>{m.category}</Text>
+                        <View style={{ height: 6, backgroundColor: isDarkBg(theme) ? 'rgba(255,255,255,0.06)' : DS.gray100, borderRadius: 3, overflow: 'hidden' }}>
+                          <View style={{ height: '100%', width: `${Math.min(m.readinessPercent, 100)}%`, backgroundColor: m.readinessPercent > 80 ? DS.success : m.readinessPercent > 50 ? DS.warning : DS.danger }} />
                         </View>
                       </View>
-                      <Text style={[styles.milestonePercent, { color: theme.text.primary }]}>{m.readinessPercent}%</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: theme.text.primary, width: 40, textAlign: 'right' }}>{m.readinessPercent}%</Text>
                     </View>
                   ))}
-                </GlassCard>
+                </View>
               </View>
             )}
 
-            {/* Predictive Calendar */}
-            <PredictiveMilestoneCalendar 
-              baby={currentBaby} 
-              milestones={milestones} 
-              onPress={(m) => navigation.navigate('MilestoneDetail', { milestone: m })} 
-            />
+            <PredictiveMilestoneCalendar baby={currentBaby} milestones={milestones} onPress={(m) => navigation.navigate('MilestoneDetail', { milestone: m })} />
 
-            {/* Achieved Milestones */}
-            <View style={styles.section}>
-              <SectionHeader 
-                title="Achieved Milestones" 
-                subtitle={`${milestones.length} total`}
-                icon="checkmark-circle-outline"
-              />
-              {milestones
-                .sort((a, b) => {
-                  const da = safeParseDate(a.achievedAt);
-                  const db = safeParseDate(b.achievedAt);
+            <View>
+              <SectionHeader title="Achieved Milestones" subtitle={`${milestones.length} total`} icon="checkmark-circle-outline" color={DS.success} />
+              <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+                {milestones.sort((a, b) => {
+                  const da = safeParseDate(a.achievedAt), db = safeParseDate(b.achievedAt);
                   return (db?.getTime() || 0) - (da?.getTime() || 0);
-                })
-                .slice(0, 6)
-                .map((m, i) => (
-                  <Animated.View key={m.id} entering={FadeInUp.delay(i * 60).springify()}>
-                    <GlassCard style={styles.achievedCard}>
-                      <View style={styles.achievedRow}>
-                        <View style={[styles.achievedIconBg, { backgroundColor: `${theme.primary}12` }]}>
-                          <Text style={styles.achievedEmoji}>🌟</Text>
-                        </View>
-                        <View style={styles.achievedContent}>
-                          <Text style={[styles.achievedTitle, { color: theme.text.primary }]}>{m.title}</Text>
-                          <Text style={[styles.achievedDate, { color: theme.text.muted }]}>
-                            {safeFmt(m.achievedAt, 'MMM d, yyyy')} • {safeDiffMonths(m.achievedAt, currentBaby.birthDate)} months old
-                          </Text>
-                        </View>
-                        <Ionicons name="checkmark-circle" size={22} color="#10b981" />
+                }).slice(0, 6).map((m, i) => (
+                  <Animated.View key={m.id} entering={FadeInUp.delay(i * 50).springify()}>
+                    <View style={[styles.auraCard, { backgroundColor: isDarkBg(theme) ? DS.darkCard : DS.white, borderColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }]}>
+                      <View style={[styles.histIcon, { backgroundColor: `${DS.success}15` }]}>
+                        <Text style={{ fontSize: 18 }}>🌟</Text>
                       </View>
-                    </GlassCard>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: theme.text.primary }}>{m.title}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '500', color: theme.text.muted, marginTop: 2 }}>
+                          {safeFmt(m.achievedAt, 'MMM d, yyyy')} • {safeDiffMonths(m.achievedAt, currentBaby.birthDate)}mo
+                        </Text>
+                      </View>
+                      <Ionicons name="checkmark-circle" size={20} color={DS.success} />
+                    </View>
                   </Animated.View>
                 ))}
+              </View>
             </View>
-          </>
+          </View>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: INSIGHTS
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* ═══ INSIGHTS ═══ */}
         {activeTab === 'insights' && (
-          <>
-            <View style={styles.section}>
-              <SectionHeader 
-                title="Quick Insights" 
-                subtitle={`${smartInsights.length} items`}
-                action={() => navigation.navigate('Insights')}
-                actionLabel="View All"
-                icon="bulb-outline"
-              />
-              {smartInsights.slice(0, 3).map((insight, i) => (
-                <InsightCard
-                  key={insight.id}
-                  insight={insight}
-                  onPress={() => handleInsightPress(insight)}
-                  index={i}
-                />
-              ))}
-              {smartInsights.length === 0 && (
-                <GlassCard style={styles.emptyInsights}>
-                  <Ionicons name="bulb-outline" size={48} color={theme.text.muted} />
-                  <Text style={[styles.emptyInsightsText, { color: theme.text.muted }]}>No insights yet</Text>
-                  <Text style={[styles.emptyInsightsSub, { color: theme.text.secondary }]}>Keep tracking to get personalized insights</Text>
-                </GlassCard>
-              )}
-              {smartInsights.length > 3 && (
-                <TouchableOpacity 
-                  onPress={() => navigation.navigate('Insights')}
-                  style={[styles.viewAllInsightsBtn, { backgroundColor: `${theme.primary}10` }]}
-                >
-                  <Text style={[styles.viewAllInsightsText, { color: theme.primary }]}>
-                    View {smartInsights.length - 3} More Insights
-                  </Text>
-                  <Ionicons name="arrow-forward" size={14} color={theme.primary} />
-                </TouchableOpacity>
-              )}
-            </View>
+          <View style={{ marginTop: DS.space.md, gap: 12, paddingHorizontal: DS.space.lg }}>
+            <SectionHeader title="Quick Insights" subtitle={`${smartInsights.length} items`} icon="bulb-outline" color={DS.accent} action={() => navigation.navigate('Insights')} actionLabel="View All" />
+            {smartInsights.length > 0 ? smartInsights.map((insight, i) => (
+              <InsightCard key={insight.id} insight={insight} onPress={() => handleInsightPress(insight)} index={i} />
+            )) : (
+              <View style={[styles.auraCard, { backgroundColor: isDarkBg(theme) ? DS.darkCard : DS.white, borderColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200, alignItems: 'center', padding: 32, gap: 8 }]}>
+                <Ionicons name="bulb-outline" size={44} color={theme.text.muted} />
+                <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text.primary }}>No insights yet</Text>
+                <Text style={{ fontSize: 12, fontWeight: '500', color: theme.text.secondary, textAlign: 'center' }}>Keep tracking to unlock personalized insights</Text>
+              </View>
+            )}
 
-            {/* Velocity Trends */}
             {growthIndex?.velocityTrends && (
-              <View style={styles.section}>
-                <SectionHeader title="Velocity Trends" icon="trending-up-outline" />
-                <View style={styles.velocityGrid}>
+              <View style={{ marginTop: DS.space.lg }}>
+                <SectionHeader title="Velocity Trends" icon="trending-up-outline" color={DS.info} />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
                   {[
                     { key: 'height', label: 'Height', unit: 'cm/mo', color: '#6366f1' },
                     { key: 'weight', label: 'Weight', unit: 'kg/mo', color: '#ec4899' },
@@ -1986,44 +1391,39 @@ export default function GrowthDashboardScreen({ navigation }: any) {
                   ].map(v => {
                     const data = (growthIndex.velocityTrends as any)?.[v.key];
                     return (
-                      <GlassCard key={v.key} style={styles.velocityCard}>
-                        <Text style={[styles.velocityLabel, { color: theme.text.secondary }]}>{v.label}</Text>
-                        <Text style={[styles.velocityValue, { color: v.color }]}>{data?.perMonth?.toFixed(2) || '—'}</Text>
-                        <Text style={[styles.velocityUnit, { color: theme.text.muted }]}>{v.unit}</Text>
-                        <Text style={[styles.velocityPercentile, { color: theme.text.muted }]}>P{data?.percentile || '—'}</Text>
-                      </GlassCard>
+                      <View key={v.key} style={[styles.velCard, { backgroundColor: isDarkBg(theme) ? DS.darkCard : DS.white, borderColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200 }]}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: theme.text.muted, textTransform: 'uppercase' }}>{v.label}</Text>
+                        <Text style={{ fontSize: 20, fontWeight: '800', color: v.color }}>{data?.perMonth?.toFixed(2) || '—'}</Text>
+                        <Text style={{ fontSize: 10, fontWeight: '500', color: theme.text.muted }}>{v.unit}</Text>
+                      </View>
                     );
                   })}
                 </View>
               </View>
             )}
-          </>
+          </View>
         )}
 
-        {/* ═════════════════════════════════════════════════════════════════
-            TAB: PHOTOS
-           ═════════════════════════════════════════════════════════════════ */}
+        {/* ═══ PHOTOS ═══ */}
         {activeTab === 'photos' && (
-          <View style={styles.section}>
-            <SectionHeader 
-              title="Growth Memories" 
-              subtitle="Photos tied to measurements"
-              icon="images-outline"
-            />
-            <View style={styles.photoGrid}>
-              <TouchableOpacity onPress={() => {}} style={[styles.photoGridAdd, { borderColor: theme.primary }]}>
-                <LinearGradient colors={[theme.primary, theme.secondary]} style={styles.photoGridAddGradient}>
-                  <Ionicons name="camera" size={28} color="#fff" />
-                  <Text style={styles.photoGridAddText}>Add Photo</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+          <View style={{ marginTop: DS.space.md }}>
+            <SectionHeader title="Growth Memories" subtitle="Photos tied to measurements" icon="images-outline" color={DS.success} />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: DS.space.lg, gap: 10 }}>
+              <PressableScale onPress={() => {}} activeScale={0.94} style={{ width: (SCREEN_W - 40 - 20) / 3 }}>
+                <View style={styles.photoAdd}>
+                  <LinearGradient colors={[DS.primary, DS.accent]} style={styles.photoAddGrad}>
+                    <Ionicons name="camera" size={26} color={DS.white} />
+                    <Text style={styles.photoAddText}>Add</Text>
+                  </LinearGradient>
+                </View>
+              </PressableScale>
               {[1, 2, 3, 4, 5].map((_, i) => (
-                <View key={i} style={[styles.photoGridItem, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.95)' : 'rgba(255,255,255,0.98)' }]}>
-                  <View style={styles.photoGridPlaceholder}>
+                <View key={i} style={[styles.photoItem, { backgroundColor: isDarkBg(theme) ? DS.darkCard : DS.white, borderColor: isDarkBg(theme) ? DS.darkBorder : DS.gray200 }]}>
+                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                     <Ionicons name="image" size={32} color={theme.text.muted} />
                   </View>
-                  <View style={styles.photoGridOverlay}>
-                    <Text style={styles.photoGridAge}>{ageMonths - i}m</Text>
+                  <View style={styles.photoOverlay}>
+                    <Text style={styles.photoAge}>{ageMonths - i}mo</Text>
                   </View>
                 </View>
               ))}
@@ -2031,10 +1431,9 @@ export default function GrowthDashboardScreen({ navigation }: any) {
           </View>
         )}
 
-        <View style={{ height: insets.bottom + 20 }} />
+        <View style={{ height: 40 }} />
       </Animated.ScrollView>
 
-      {/* ── MODALS ── */}
       <AddMeasurementModal
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
@@ -2042,780 +1441,174 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         type={activeMetric}
         previousValue={getPreviousValue()}
       />
-
-
     </View>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — Unified with TrackerHub v5.0
+   STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { justifyContent: 'center', alignItems: 'center' },
 
-  
-  glassCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-    ...SHADOW.sm,
-  },
-  glassBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  glassContent: { flex: 1 },
+  /* Header */
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, paddingBottom: DS.space.md, borderBottomWidth: StyleSheet.hairlineWidth },
+  headerInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: DS.space.lg, height: 48 },
+  headerIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
+  headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
 
-  
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    marginTop: SPACING.md,
-  },
-  sectionHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  sectionHeaderIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  sectionActionText: { fontSize: 13, fontWeight: '700' },
+  /* Pulse */
+  pulseWrap: { marginHorizontal: DS.space.lg, marginTop: DS.space.md, borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden', borderWidth: 1, ...DS.shadow.md },
+  pulseGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  pulseGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  pulseAvatarWrap: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseAvatarGlow: { position: 'absolute', width: 66, height: 66, borderRadius: 33, backgroundColor: `${DS.primary}35` },
+  pulseAvatarRing: { position: 'absolute', width: 62, height: 62, borderRadius: 31, overflow: 'hidden' },
+  pulseAvatarInner: { width: 54, height: 54, borderRadius: 27, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  pulseName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, maxWidth: '70%' },
+  pulseAgePill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  pulseAgeText: { fontSize: 11, fontWeight: '700' },
+  pulseLiveDot: { width: 6, height: 6, borderRadius: 3 },
+  pulseSubText: { fontSize: 12, fontWeight: '500' },
+  pulseIconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  pulseAddBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  pulseStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: DS.space.md, paddingVertical: DS.space.sm, borderRadius: DS.radius.lg, marginTop: DS.space.md },
+  pulseStat: { alignItems: 'center', flex: 1 },
+  pulseStatVal: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  pulseStatLbl: { fontSize: 9, fontWeight: '700', marginTop: 1, textTransform: 'uppercase' },
+  pulseStatDiv: { width: 1, height: 22 },
 
-  
-  stickyHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    alignItems: 'center',
-    paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.sm,
-  },
-  stickyTitle: { fontSize: 17, fontWeight: '800' },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  /* Ribbon */
+  ribbon: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, paddingVertical: DS.space.md, paddingHorizontal: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 13, fontWeight: '600', marginTop: 1 },
 
-  
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-  },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  babyPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
-    borderRadius: RADIUS.full,
-    alignSelf: 'flex-start',
-    gap: 10,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(102,126,234,0.15)',
-    flex: 1,
-  },
-  babyPillText: { flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 },
-  babyPillName: { fontSize: 15, fontWeight: '700', maxWidth: 140 },
-  babyPillAge: { fontSize: 12, fontWeight: '600' },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  pdfBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  /* Section */
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: DS.space.lg, marginBottom: DS.space.md, marginTop: DS.space.sm },
+  sectionIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
+  sectionAction: { fontSize: 12, fontWeight: '700' },
 
-  
-  heroScore: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 18, 
-    gap: 16 
-  },
-  heroScoreLeft: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 14 
-  },
-  heroScoreRing: { 
-    width: 72, 
-    height: 72, 
-    borderRadius: 36, 
-    borderWidth: 4, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  heroScoreValue: { fontSize: 24, fontWeight: '800' },
-  heroScoreMax: { fontSize: 12, fontWeight: '600' },
-  heroScoreLabels: { gap: 2 },
-  heroScoreLabel: { fontSize: 14, fontWeight: '800' },
-  heroScoreSub: { fontSize: 12, fontWeight: '500' },
-  heroScoreRight: { flex: 1, gap: 8 },
-  heroScoreMini: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  heroScoreMiniIcon: { fontSize: 14, width: 20 },
-  heroScoreMiniBarWrap: { flex: 1 },
-  heroScoreMiniBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  heroScoreMiniBarFill: { height: '100%', borderRadius: 3 },
-  heroScoreMiniValue: { fontSize: 12, fontWeight: '700', width: 28, textAlign: 'right' },
+  /* Tabs */
+  tabBar: { flexDirection: 'row', marginHorizontal: DS.space.lg, padding: 4, borderRadius: DS.radius.full, gap: 2 },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 9, borderRadius: DS.radius.full },
+  tabLabel: { fontSize: 11, fontWeight: '600' },
 
-  
-  tabBar: { 
-    flexDirection: 'row', 
-    marginHorizontal: SPACING.lg, 
-    marginBottom: SPACING.lg, 
-    padding: 4, 
-    borderRadius: 16, 
-    gap: 2 
-  },
-  tabItem: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 6, 
-    paddingVertical: 10, 
-    borderRadius: 12 
-  },
-  tabLabel: { fontSize: 12, fontWeight: '600' },
-
-  
-  kpiGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    gap: 10, 
-    marginHorizontal: SPACING.lg, 
-    marginBottom: SPACING.lg 
-  },
-  kpiGridItem: { marginBottom: 0 },
-  kpiGridItemLarge: { width: (SCREEN_W - 56) / 2, height: 140 },
-  kpiGridItemNormal: { width: (SCREEN_W - 56) / 2, height: 120 },
-
-  
-  kpiCard: { 
-    flex: 1, 
-    borderRadius: RADIUS.lg, 
-    overflow: 'hidden', 
-    padding: 16, 
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    alignItems: 'center',
-  },
-  kpiCardLarge: { padding: 20 },
-  kpiInner: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    width: '100%',
-  },
-  kpiIconBg: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: RADIUS.md, 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  kpiIcon: { fontSize: 22 },
-  kpiPercentileBadge: { 
-    paddingHorizontal: 10, 
-    paddingVertical: 4, 
-    borderRadius: RADIUS.sm,
-    marginTop: 8,
-  },
-  kpiPercentileText: { fontSize: 11, fontWeight: '800' },
-  kpiBody: { 
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 4,
-  },
-  kpiValue: { 
-    fontWeight: '800', 
-    letterSpacing: -0.5,
-    textAlign: 'center',
-  },
-  kpiUnit: { 
-    fontSize: 13, 
-    fontWeight: '700', 
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  kpiTitle: { 
-    fontSize: 12, 
-    fontWeight: '700', 
-    textTransform: 'uppercase', 
-    letterSpacing: 0.5,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  kpiFooter: { marginTop: 10, gap: 4, alignItems: 'center' },
-  kpiChangeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  kpiChange: { fontSize: 11, fontWeight: '700' },
-  kpiChangeLabel: { fontSize: 10, fontWeight: '500', marginLeft: 2 },
-  kpiStatusBadge: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 4, 
-    paddingHorizontal: 8, 
-    paddingVertical: 3, 
-    borderRadius: RADIUS.xs, 
-  },
+  /* KPI */
+  kpiCard: { borderRadius: DS.radius.lg, padding: DS.space.md, borderWidth: 1, overflow: 'hidden', minHeight: 130, ...DS.shadow.sm },
+  kpiIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  kpiP: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  kpiPText: { fontSize: 9, fontWeight: '800' },
+  kpiVal: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  kpiUnit: { fontSize: 11, fontWeight: '700' },
+  kpiTitle: { fontSize: 10, fontWeight: '700', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
+  kpiChange: { fontSize: 10, fontWeight: '700' },
+  kpiStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, alignSelf: 'flex-start', marginTop: 6 },
   kpiStatusDot: { width: 5, height: 5, borderRadius: 3 },
-  kpiStatusText: { fontSize: 10, fontWeight: '700' },
+  kpiStatusText: { fontSize: 9, fontWeight: '700' },
 
-  
-  insightCard: {
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.sm,
-  },
-  insightTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  insightEmoji: { fontSize: 22 },
-  insightPriorityDot: { width: 8, height: 8, borderRadius: 4 },
-  insightTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
-  insightDesc: { fontSize: 11, fontWeight: '500', lineHeight: 16, marginBottom: 8 },
-  insightActionBadge: { 
-    alignSelf: 'flex-start', 
-    paddingHorizontal: 10, 
-    paddingVertical: 5, 
-    borderRadius: RADIUS.sm 
-  },
-  insightActionText: { fontSize: 11, fontWeight: '700' },
+  /* Aura card */
+  auraCard: { marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg, padding: DS.space.md, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  auraTitle: { fontSize: 14, fontWeight: '800' },
+  auraSub: { fontSize: 11, fontWeight: '500', marginTop: 1 },
 
-  
-  predictorHeader: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 12, 
-    padding: 16, 
-    paddingBottom: 12 
-  },
-  predictorIconBg: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: RADIUS.sm, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  predictorTitleWrap: { flex: 1 },
-  predictorTitle: { fontSize: 16, fontWeight: '800' },
-  predictorSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  predictorList: { paddingHorizontal: 16, paddingBottom: 16 },
-  predictorItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 12, 
-    gap: 12 
-  },
-  predictorLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  predictorEmoji: { fontSize: 22 },
-  predictorMilestone: { fontSize: 14, fontWeight: '700' },
-  predictorCategory: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  predictorRight: { alignItems: 'flex-end', gap: 4 },
-  predictorBarBg: { width: 60, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.06)', overflow: 'hidden' },
-  predictorBarFill: { height: '100%', borderRadius: 2 },
-  predictorConfidence: { fontSize: 10, fontWeight: '600' },
-  predictorAge: { fontSize: 12, fontWeight: '700' },
+  /* Insight */
+  insightCard: { padding: DS.space.md, borderRadius: DS.radius.lg, borderLeftWidth: 3, borderWidth: 1, overflow: 'hidden' },
+  insightTitle: { fontSize: 13, fontWeight: '700', marginBottom: 3 },
+  insightDesc: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
+  insightAction: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginTop: 8 },
+  insightActionText: { fontSize: 10, fontWeight: '700' },
 
-  
-  radarHeader: { padding: 16, paddingBottom: 8 },
-  radarTitle: { fontSize: 16, fontWeight: '800' },
-  radarSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  radarContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 16, 
-    paddingBottom: 16, 
-    gap: 16 
-  },
-  radarCanvas: { 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  radarRing: { 
-    position: 'absolute', 
-    borderWidth: 1 
-  },
-  radarAxis: { 
-    position: 'absolute', 
-    height: 1, 
-    transformOrigin: '0% 50%' 
-  },
-  radarPoint: { 
-    position: 'absolute', 
-    width: 8, 
-    height: 8, 
-    borderRadius: 4, 
-    borderWidth: 2, 
-    borderColor: '#fff' 
-  },
-  radarLegend: { flex: 1, gap: 10 },
-  radarLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  radarLegendDot: { width: 8, height: 8, borderRadius: 4 },
-  radarLegendLabel: { fontSize: 12, fontWeight: '600', flex: 1 },
-  radarLegendValue: { fontSize: 12, fontWeight: '700' },
+  /* Predictor */
+  predictorRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, paddingVertical: 10 },
+  predLabel: { fontSize: 12, fontWeight: '700' },
+  predSub: { fontSize: 10, fontWeight: '500', marginTop: 1 },
+  predConf: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  predConfText: { fontSize: 10, fontWeight: '800' },
 
-  
-  heatmapHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    padding: 16, 
-    paddingBottom: 12 
-  },
-  heatmapTitle: { fontSize: 16, fontWeight: '800' },
-  heatmapLegend: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  heatmapLegendDot: { width: 8, height: 8, borderRadius: 4 },
-  heatmapLegendText: { fontSize: 10, fontWeight: '600' },
-  heatmapGrid: { 
-    flexDirection: 'row', 
-    paddingHorizontal: 16, 
-    paddingBottom: 16, 
-    gap: 8 
-  },
-  heatmapCell: { flex: 1, alignItems: 'center', gap: 4 },
-  heatmapBlock: { 
-    width: '100%', 
-    aspectRatio: 1, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    borderWidth: 2 
-  },
-  heatmapValue: { fontSize: 13, fontWeight: '700' },
-  heatmapWeek: { fontSize: 10, fontWeight: '600' },
+  /* Radar */
+  radarRing: { position: 'absolute', borderWidth: 1 },
+  radarPoint: { position: 'absolute', width: 8, height: 8, borderRadius: 4 },
+  radarDot: { width: 6, height: 6, borderRadius: 3 },
+  radarLabel: { flex: 1, fontSize: 11, fontWeight: '600' },
+  radarVal: { fontSize: 11, fontWeight: '800' },
 
-  
-  correlationHeader: { padding: 16, paddingBottom: 8 },
-  correlationTitle: { fontSize: 16, fontWeight: '800' },
-  correlationSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  correlationList: { paddingHorizontal: 16, paddingBottom: 16, gap: 12 },
-  correlationItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  correlationLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  correlationIcon: { fontSize: 20 },
-  correlationLabel: { fontSize: 13, fontWeight: '700' },
-  correlationDetail: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  correlationRight: { alignItems: 'flex-end', gap: 4, width: 80 },
-  correlationBarBg: { width: '100%', height: 4, borderRadius: 2, overflow: 'hidden' },
-  correlationBarFill: { height: '100%', borderRadius: 2 },
-  correlationValue: { fontSize: 12, fontWeight: '700' },
+  /* Heatmap */
+  heatCell: { width: '100%', aspectRatio: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5 },
+  heatVal: { fontSize: 11, fontWeight: '800' },
 
-  
-  suggestionsHeader: { marginHorizontal: SPACING.lg, marginBottom: SPACING.md, marginTop: SPACING.md },
-  suggestionsTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  suggestionsSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  suggestionsScroll: { paddingHorizontal: SPACING.lg, gap: 12, paddingBottom: 4 },
-  suggestionCard: { 
-    width: 160, 
-    padding: 16, 
-    borderRadius: RADIUS.lg, 
-    overflow: 'hidden', 
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
-    alignItems: 'center',
-  },
-  suggestionIconBg: { 
-    width: 48, 
-    height: 48, 
-    borderRadius: RADIUS.md, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginBottom: 12,
-  },
-  suggestionEmoji: { fontSize: 26 },
-  suggestionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4, textAlign: 'center' },
-  suggestionCategory: { fontSize: 11, fontWeight: '700', marginBottom: 8, textAlign: 'center' },
-  suggestionMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 8 },
-  suggestionMetaText: { fontSize: 10, fontWeight: '600' },
-  suggestionDot: { fontSize: 10 },
-  suggestionBenefit: { fontSize: 11, fontWeight: '500', lineHeight: 15, textAlign: 'center' },
+  /* Correlation */
+  corrLabel: { fontSize: 12, fontWeight: '700' },
+  corrDetail: { fontSize: 10, fontWeight: '500', marginTop: 1 },
+  corrBar: { width: 50, height: 5, borderRadius: 3, overflow: 'hidden' },
+  corrFill: { height: '100%', borderRadius: 3 },
+  corrVal: { fontSize: 11, fontWeight: '800', width: 32, textAlign: 'right' },
 
-  
-  calendarTimeline: { marginHorizontal: SPACING.lg, gap: 0 },
-  calendarItem: { flexDirection: 'row', gap: 12 },
-  calendarLeft: { 
-    width: 24, 
-    alignItems: 'center', 
-    paddingTop: 16 
-  },
-  calendarLine: { 
-    position: 'absolute', 
-    top: 0, 
-    bottom: 0, 
-    width: 2, 
-    left: 11 
-  },
-  calendarLineEnd: { 
-    position: 'absolute', 
-    top: 0, 
-    bottom: '50%', 
-    width: 2, 
-    left: 11 
-  },
-  calendarDot: { 
-    width: 12, 
-    height: 12, 
-    borderRadius: 6, 
-    borderWidth: 2, 
-    borderColor: '#fff', 
-    zIndex: 1 
-  },
-  calendarCard: { 
-    flex: 1, 
-    padding: 14, 
-    borderRadius: RADIUS.lg, 
-    marginBottom: 12, 
-    ...SHADOW.sm 
-  },
-  calendarHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  calendarEmoji: { fontSize: 20 },
-  calendarMeta: { flex: 1 },
-  calendarTitle: { fontSize: 14, fontWeight: '700' },
-  calendarCategory: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  calendarBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: RADIUS.xs },
-  calendarBadgeText: { fontSize: 10, fontWeight: '700' },
-  calendarDesc: { fontSize: 12, fontWeight: '500', marginBottom: 4, lineHeight: 17 },
-  calendarAge: { fontSize: 11, fontWeight: '600' },
+  /* Suggestions */
+  suggestionCard: { width: 155, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  suggestionIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  suggestionTitle: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
+  suggestionCat: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 6 },
+  suggestionMeta: { fontSize: 10, fontWeight: '500' },
+  suggestionBenefit: { fontSize: 10, fontWeight: '500', lineHeight: 14, marginTop: 4 },
 
-  
-  metricSelector: { 
-    flexDirection: 'row', 
-    marginHorizontal: SPACING.lg, 
-    marginBottom: 10, 
-    gap: 8 
-  },
-  metricSelectorChip: { 
-    flex: 1, 
-    paddingVertical: 10, 
-    borderRadius: RADIUS.sm, 
-    backgroundColor: 'rgba(100,116,139,0.08)', 
-    alignItems: 'center' 
-  },
-  metricSelectorText: { fontSize: 13, fontWeight: '600' },
+  /* Milestone */
+  mileCard: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, marginBottom: 8, ...DS.shadow.sm },
+  mileIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  mileTitle: { fontSize: 13, fontWeight: '700' },
+  mileMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  mileConf: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  mileConfText: { fontSize: 10, fontWeight: '800' },
 
-  
-  timeRangeWrap: { 
-    flexDirection: 'row', 
-    marginHorizontal: SPACING.lg, 
-    marginBottom: 10, 
-    gap: 8 
-  },
-  timeRangeChip: { 
-    flex: 1, 
-    paddingVertical: 10, 
-    borderRadius: RADIUS.sm, 
-    backgroundColor: 'rgba(100,116,139,0.08)', 
-    alignItems: 'center' 
-  },
-  timeRangeText: { fontSize: 12, fontWeight: '600' },
+  /* Pills */
+  pill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: DS.radius.full, borderWidth: 1 },
+  pillText: { fontSize: 12, fontWeight: '600' },
+  modeChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 9, paddingHorizontal: 10, borderRadius: DS.radius.full, borderWidth: 1 },
 
-  
-  chartModeWrap: { 
-    flexDirection: 'row', 
-    marginHorizontal: SPACING.lg, 
-    marginBottom: SPACING.lg, 
-    gap: 8 
-  },
-  chartModeChip: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    paddingVertical: 10, 
-    borderRadius: RADIUS.sm, 
-    backgroundColor: 'rgba(100,116,139,0.08)', 
-    gap: 6 
-  },
-  chartModeText: { fontSize: 12, fontWeight: '600' },
+  /* Hist */
+  histIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  histType: { fontSize: 13, fontWeight: '700' },
+  histDate: { fontSize: 10, fontWeight: '500', marginTop: 1 },
+  histVal: { fontSize: 14, fontWeight: '800' },
 
-  
-  chartCard: { padding: SPACING.lg, marginBottom: SPACING.lg },
-  chartHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'flex-start', 
-    marginBottom: 14 
-  },
-  chartTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  chartSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  chartPercentileBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.sm },
-  chartPercentileText: { fontSize: 13, fontWeight: '800' },
-  emptyChart: { height: 200, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  emptyChartText: { fontSize: 14, fontWeight: '500' },
-  addDataBtn: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: RADIUS.sm },
-  addDataBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  /* Velocity cards */
+  velCard: { flex: 1, padding: 12, borderRadius: DS.radius.lg, borderWidth: 1, alignItems: 'center', gap: 3 },
 
-  
-  section: { marginBottom: SPACING.xl },
+  /* Quick actions */
+  quickAct: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 14, borderRadius: DS.radius.md },
+  quickActText: { color: DS.white, fontSize: 10, fontWeight: '700' },
 
-  
-  historyCard: { padding: 8 },
-  historyRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 10, 
-    gap: 12 
-  },
-  historyIcon: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: RADIUS.xs, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  historyInfo: { flex: 1, gap: 2 },
-  historyType: { fontSize: 14, fontWeight: '700' },
-  historyDate: { fontSize: 11, fontWeight: '500' },
-  historyRight: { alignItems: 'flex-end', gap: 4 },
-  historyValue: { fontSize: 16, fontWeight: '800' },
-  historyPercentile: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.xs },
-  historyPercentileText: { fontSize: 10, fontWeight: '800' },
-  emptyHistory: { padding: 24, alignItems: 'center' },
-  emptyHistoryText: { fontSize: 14, fontWeight: '500' },
+  /* Photo */
+  photoAdd: { width: '100%', aspectRatio: 1, borderRadius: DS.radius.lg, overflow: 'hidden' },
+  photoAddGrad: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  photoAddText: { color: DS.white, fontSize: 11, fontWeight: '700' },
+  photoItem: { width: (SCREEN_W - 40 - 20) / 3, aspectRatio: 1, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden' },
+  photoOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 6, backgroundColor: 'rgba(0,0,0,0.4)' },
+  photoAge: { color: DS.white, fontSize: 10, fontWeight: '700' },
 
-  
-  milestoneRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 12, 
-    gap: 12, 
-    paddingHorizontal: 16 
-  },
-  milestoneLeft: { flex: 1, gap: 6 },
-  milestoneCategory: { fontSize: 13, fontWeight: '700', textTransform: 'capitalize' },
-  milestoneBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  milestoneBarFill: { height: '100%', borderRadius: 3 },
-  milestonePercent: { fontSize: 14, fontWeight: '800', width: 40, textAlign: 'right' },
+  /* Chart */
+  addDataBtn: { marginTop: 8, paddingHorizontal: 18, paddingVertical: 10, borderRadius: DS.radius.full },
+  addDataBtnText: { color: DS.white, fontSize: 13, fontWeight: '700' },
 
-  
-  achievedCard: { padding: 14, marginBottom: 8, marginHorizontal: 16 },
-  achievedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  achievedIconBg: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: RADIUS.sm, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  achievedEmoji: { fontSize: 20 },
-  achievedContent: { flex: 1, gap: 2 },
-  achievedTitle: { fontSize: 14, fontWeight: '700' },
-  achievedDate: { fontSize: 11, fontWeight: '500' },
+  /* Modals */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalCard: { width: '100%', maxWidth: 400, borderRadius: DS.radius.xl, padding: DS.space.lg, ...DS.shadow.lg },
+  modalTitle: { fontSize: 18, fontWeight: '800' },
+  prevBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, marginBottom: 12 },
+  prevText: { fontSize: 12, fontWeight: '600' },
+  inputLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+  input: { height: 48, borderRadius: 12, paddingHorizontal: 14, fontSize: 15, fontWeight: '600' },
+  inputMulti: { height: 76, paddingTop: 12, textAlignVertical: 'top' },
+  saveBtn: { paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  saveBtnText: { color: DS.white, fontSize: 15, fontWeight: '700' },
 
-  
-  velocityGrid: { flexDirection: 'row', gap: 10, marginHorizontal: 16 },
-  velocityCard: { flex: 1, padding: 14, alignItems: 'center', gap: 4 },
-  velocityLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  velocityValue: { fontSize: 22, fontWeight: '800' },
-  velocityUnit: { fontSize: 11, fontWeight: '500' },
-  velocityPercentile: { fontSize: 12, fontWeight: '600' },
-
-  
-  emptyInsights: { 
-    padding: 40, 
-    alignItems: 'center', 
-    gap: 12, 
-    marginHorizontal: 16 
-  },
-  emptyInsightsText: { fontSize: 16, fontWeight: '700' },
-  emptyInsightsSub: { fontSize: 13, fontWeight: '500', textAlign: 'center' },
-  viewAllInsightsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginHorizontal: 16,
-    marginTop: 8,
-    paddingVertical: 12,
-    borderRadius: RADIUS.sm,
-  },
-  viewAllInsightsText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  
-  photoGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    marginHorizontal: SPACING.lg, 
-    gap: 10 
-  },
-  photoGridAdd: { 
-    width: (SCREEN_W - 56) / 3, 
-    aspectRatio: 1, 
-    borderRadius: RADIUS.lg, 
-    borderWidth: 2, 
-    borderStyle: 'dashed', 
-    overflow: 'hidden' 
-  },
-  photoGridAddGradient: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    gap: 6 
-  },
-  photoGridAddText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  photoGridItem: { 
-    width: (SCREEN_W - 56) / 3, 
-    aspectRatio: 1, 
-    borderRadius: RADIUS.lg, 
-    overflow: 'hidden', 
-    ...SHADOW.sm 
-  },
-  photoGridPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  photoGridOverlay: { 
-    position: 'absolute', 
-    bottom: 0, 
-    left: 0, 
-    right: 0, 
-    padding: 8, 
-    backgroundColor: 'rgba(0,0,0,0.4)' 
-  },
-  photoGridAge: { color: '#fff', fontSize: 11, fontWeight: '700' },
-
-  
-  quickActionsGrid: { 
-    flexDirection: 'row', 
-    gap: SPACING.md, 
-    marginHorizontal: SPACING.lg, 
-    marginBottom: SPACING.xxl, 
-    marginTop: 8 
-  },
-  quickAction: { 
-    flex: 1, 
-    borderRadius: RADIUS.lg, 
-    overflow: 'hidden', 
-    ...SHADOW.md 
-  },
-  quickActionGradient: { 
-    paddingVertical: 16, 
-    alignItems: 'center', 
-    gap: 6 
-  },
-  quickActionIcon: { fontSize: 22 },
-  quickActionText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-
-  
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalContent: { 
-    width: '100%', 
-    maxWidth: 400, 
-    borderRadius: RADIUS.xl, 
-    padding: SPACING.xxl, 
-    overflow: 'hidden', 
-    ...SHADOW.lg 
-  },
-  modalHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    marginBottom: 20 
-  },
-  modalTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
-  modalClose: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: RADIUS.xs, 
-    backgroundColor: 'rgba(100,116,139,0.1)', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  prevValueBox: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 8, 
-    padding: 12, 
-    borderRadius: RADIUS.sm, 
-    marginBottom: 16 
-  },
-  prevValueText: { fontSize: 13, fontWeight: '600' },
-  inputGroup: { marginBottom: 14 },
-  inputLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
-  input: { 
-    height: 50, 
-    borderRadius: RADIUS.sm, 
-    paddingHorizontal: 16, 
-    fontSize: 16, 
-    fontWeight: '600' 
-  },
-  inputMultiline: { height: 80, paddingTop: 12, textAlignVertical: 'top' },
-  saveButton: { marginTop: 6, borderRadius: RADIUS.sm, overflow: 'hidden' },
-  saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  
-  babySwitcherModal: { 
-    width: '85%', 
-    maxWidth: 360, 
-    borderRadius: RADIUS.xl, 
-    padding: 20, 
-    overflow: 'hidden' 
-  },
-  babySwitcherTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16, textAlign: 'center' },
-  babySwitcherItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 14, 
-    padding: 12, 
-    borderRadius: RADIUS.lg, 
-    marginBottom: 8 
-  },
-  babySwitcherInfo: { flex: 1 },
-  babySwitcherName: { fontSize: 16, fontWeight: '700' },
-  babySwitcherMeta: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-
-  
-  noDataTitle: { fontSize: 24, fontWeight: '800', marginBottom: 8 },
-  noDataText: { fontSize: 15, fontWeight: '500', textAlign: 'center', marginHorizontal: 40, marginBottom: 24 },
-  createBtn: { 
-    paddingHorizontal: 32, 
-    paddingVertical: 16, 
-    borderRadius: RADIUS.lg, 
-    shadowColor: '#667eea', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.3, 
-    shadowRadius: 12, 
-    elevation: 8 
-  },
-  createBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  /* Empty */
+  noDataTitle: { fontSize: 22, fontWeight: '800', marginBottom: 6 },
+  noDataText: { fontSize: 14, fontWeight: '500', textAlign: 'center', marginHorizontal: 40, marginBottom: 20 },
+  createBtn: { paddingHorizontal: 28, paddingVertical: 14, borderRadius: DS.radius.md },
+  createBtnText: { color: DS.white, fontSize: 14, fontWeight: '700' },
 });

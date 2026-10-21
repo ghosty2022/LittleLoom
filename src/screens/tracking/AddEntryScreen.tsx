@@ -1,14 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
 import React, { memo, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -24,6 +13,7 @@ import {
   Pressable,
   Image,
   UIManager,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -33,10 +23,13 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Animated, {
   FadeInUp,
   FadeInDown,
+  FadeIn,
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withRepeat,
+  withSequence,
 } from 'react-native-reanimated';
 import {
   differenceInMinutes,
@@ -49,12 +42,11 @@ import {
 } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { useDateTimePicker } from '../../hooks/useDateTimePicker';
 import { isFieldVisible } from '../../utils/form';
-
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
-import { useUnifiedTrackerTheme } from '../../hooks/useUnifiedTrackerTheme';
 import { useTracker } from '../../hooks';
 import { useBaby } from '../../context/BabyContext';
 import { UnifiedTrackerConfig } from '../../types/trackers';
@@ -64,35 +56,63 @@ import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm';
 import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
-
 import { useAnomalyFeedback } from '../../hooks/useAnomalyFeedback';
 import type { ProgressiveCorrelation } from '../../hooks/useTrackerProgressive';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
+const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
+const HEADER_TOP_PADDING = 52;
+const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 
 const IS_FABRIC =
   (global as any).nativeFabricUIManager != null ||
   typeof (global as any).RN$Bridgeless !== 'undefined' ||
   typeof (global as any).__turboModuleProxy !== 'undefined';
 
-if (
-  Platform.OS === 'android' &&
-  !IS_FABRIC &&
-  typeof UIManager.setLayoutAnimationEnabledExperimental === 'function'
-) {
+if (Platform.OS === 'android' && !IS_FABRIC && typeof UIManager.setLayoutAnimationEnabledExperimental === 'function') {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-
-const DESIGN = {
-  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  primaryGhost: 'rgba(99,102,241,0.08)',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
 };
 
 type AddEntryRouteProp = RouteProp<RootStackParamList, 'AddEntry'>;
 type AddEntryNavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
 
 interface YesterdayEntry {
   id: string;
@@ -103,7 +123,6 @@ interface YesterdayEntry {
   title?: string;
   photoUris?: string[];
 }
-
 interface QuickTemplate {
   id: string;
   label: string;
@@ -111,7 +130,6 @@ interface QuickTemplate {
   data: Record<string, unknown>;
   color: string;
 }
-
 interface SmartSuggestion {
   id: string;
   fieldId: string;
@@ -120,7 +138,6 @@ interface SmartSuggestion {
   confidence: number;
   reason: string;
 }
-
 interface ContextInsight {
   id: string;
   type: 'pattern' | 'anomaly' | 'tip' | 'trend';
@@ -130,30 +147,25 @@ interface ContextInsight {
   priority: 'high' | 'medium' | 'low';
 }
 
-const SPRING_CONFIG = { damping: 15, stiffness: 300 };
-const MODAL_BACKDROP_OPACITY = 0.5;
-const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-
-
-/** Flatten any photo URI shape into a deduped string[]. */
+/* ═══════════════════════════════════════════════════════════════════════════
+   SAFE HELPERS
+   ═══════════════════════════════════════════════════════════════════════════ */
 const cleanImageUris = (raw: unknown): string[] => {
   if (!Array.isArray(raw)) return [];
   const flat = (raw as unknown[]).flat(Infinity);
   const strings = flat
     .map((u) => {
       if (typeof u === 'string') return u;
-      if (u && typeof u === 'object' && typeof (u as any).uri === 'string') {
-        return (u as any).uri as string;
-      }
+      if (u && typeof u === 'object' && typeof (u as any).uri === 'string') return (u as any).uri as string;
       return '';
     })
     .filter((u): u is string => u.length > 0);
   return [...new Set(strings)];
 };
-
 
 const formatFieldValue = (key: string, value: unknown): string | null => {
   if (value === undefined || value === null || value === '') return null;
@@ -178,15 +190,8 @@ const getEntryFields = (entry: YesterdayEntry) => {
 const shouldFilterField = (k: string) =>
   ['id', 'timestamp', 'babyId', 'type', 'title', 'icon', 'photoUris'].includes(k);
 
-/** Turn "2024-01-15T10:30" or "10:30" into a display string. */
 const prettifyFieldKey = (k: string) =>
-  k
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^\w/, (c) => c.toUpperCase());
-
+  k.replace(/([A-Z])/g, ' $1').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\w/, (c) => c.toUpperCase());
 
 const formatDuration = (seconds: unknown): string => {
   const s = Number(seconds);
@@ -198,976 +203,474 @@ const formatDuration = (seconds: unknown): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   GradientText + PressableScale
+   ═══════════════════════════════════════════════════════════════════════════ */
+const GradientText = memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: {
+  children: React.ReactNode; style?: any; colors?: string[];
+}) => {
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>{l}</Text>;
+      })}
+    </View>
+  );
+});
 
-const GlassCard = memo(
-  ({
-    children,
-    style,
-    onPress,
-    active = false,
-  }: {
-    children: React.ReactNode;
-    style?: any;
-    onPress?: () => void;
-    active?: boolean;
-  }) => {
-    const theme = useUnifiedTrackerTheme();
-    const Wrapper = onPress ? TouchableOpacity : View;
-    return (
-      <Wrapper
-        onPress={onPress}
-        activeOpacity={onPress ? 0.85 : 1}
-        style={[
-          glassStyles.glassCard,
-          active && { borderColor: theme.primary, borderWidth: 2 },
-          style,
-        ]}
-      >
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = memo<{
+  children: React.ReactNode; onPress?: () => void; disabled?: boolean; style?: any; activeScale?: number;
+}>(({ children, onPress, disabled, style, activeScale = 0.96 }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={() => { if (!disabled) { HAPTIC_LIGHT(); onPress?.(); } }}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SectionHeader
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SectionHeader = memo(({ title, subtitle, icon, color = DS.primary, action, actionLabel }: {
+  title: string; subtitle?: string; icon?: keyof typeof Ionicons.glyphMap; color?: string;
+  action?: () => void; actionLabel?: string;
+}) => (
+  <View style={styles.sectionHeader}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+      {icon && (
+        <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+      )}
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <Text style={[styles.sectionActionText, { color }]}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={13} color={color} />
+      </TouchableOpacity>
+    )}
+  </View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Context Pulse Header — replaces SmartContextHeader
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ContextPulse = memo(({
+  isDark, tracker, baby, entriesToday, lastEntryTime, onBabyPress,
+}: {
+  isDark: boolean;
+  tracker: UnifiedTrackerConfig;
+  baby: any;
+  entriesToday: number;
+  lastEntryTime: Date | null;
+  onBabyPress: () => void;
+}) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 9000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.8, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, [pulse, rotate, glow]);
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
+
+  const hour = new Date().getHours();
+  const timeLabel = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
+  const timeIcon = hour < 12 ? 'sunny-outline' : hour < 17 ? 'partly-sunny-outline' : 'moon-outline';
+  const timeSinceLast = lastEntryTime ? differenceInMinutes(new Date(), lastEntryTime) : null;
+  const timeSinceText = timeSinceLast !== null
+    ? timeSinceLast < 60
+      ? `${timeSinceLast}m ago`
+      : timeSinceLast < 1440
+      ? `${Math.floor(timeSinceLast / 60)}h ago`
+      : `${Math.floor(timeSinceLast / 1440)}d ago`
+    : 'No entries yet';
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View style={[styles.pulseWrap, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
         <LinearGradient
-          colors={
-            theme.isDark
-              ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']
-              : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']
-          }
+          colors={isDark
+            ? [`${tracker.gradient[0]}25`, `${tracker.gradient[1]}10`, 'rgba(139,92,246,0.04)']
+            : [`${tracker.gradient[0]}12`, `${tracker.gradient[1]}06`, 'rgba(255,255,255,0.4)']}
           style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
         />
-        <View
-          style={[
-            glassStyles.glassBorder,
-            {
-              backgroundColor: theme.isDark
-                ? 'rgba(255,255,255,0.06)'
-                : 'rgba(255,255,255,0.5)',
-            },
-          ]}
-        />
-        <View style={glassStyles.glassContent}>{children}</View>
-      </Wrapper>
-    );
-  }
-);
-GlassCard.displayName = 'GlassCard';
+        <LinearGradient colors={[`${tracker.gradient[0]}${isDark ? '45' : '28'}`, 'transparent']}
+          style={styles.pulseGlowL} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} pointerEvents="none" />
+        <LinearGradient colors={[`${tracker.gradient[1]}${isDark ? '35' : '22'}`, 'transparent']}
+          style={styles.pulseGlowR} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} pointerEvents="none" />
 
-const glassStyles = StyleSheet.create({
-  glassCard: {
-    borderRadius: DESIGN.radius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
-  glassContent: { flex: 1 },
-});
-
-
-const SmartContextHeader = memo(
-  ({
-    tracker,
-    currentBaby,
-    lastEntryTime,
-    entriesToday,
-    colors,
-    fontSizeMultiplier,
-  }: any) => {
-    const now = new Date();
-    const hour = now.getHours();
-    const timeLabel = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
-    const timeIcon =
-      hour < 12 ? 'sunny-outline' : hour < 17 ? 'partly-sunny-outline' : 'moon-outline';
-
-    const timeSinceLast = lastEntryTime
-      ? differenceInMinutes(now, lastEntryTime)
-      : null;
-    const timeSinceText =
-      timeSinceLast !== null
-        ? timeSinceLast < 60
-          ? `${timeSinceLast}m ago`
-          : timeSinceLast < 1440
-          ? `${Math.floor(timeSinceLast / 60)}h ago`
-          : `${Math.floor(timeSinceLast / 1440)}d ago`
-        : 'No recent entries';
-
-    return (
-      <Animated.View entering={FadeInUp.springify()}>
-        <GlassCard>
-          <View style={contextStyles.container}>
-            <View style={contextStyles.topRow}>
-              <View
-                style={[
-                  contextStyles.timeBadge,
-                  { backgroundColor: `${tracker.gradient[0]}15` },
-                ]}
-              >
-                <Ionicons name={timeIcon as any} size={16} color={tracker.gradient[0]} />
-                <Text
-                  style={[contextStyles.timeBadgeText, { color: tracker.gradient[0] }]}
-                >
-                  {timeLabel}
-                </Text>
-              </View>
-              <View
-                style={[
-                  contextStyles.countBadge,
-                  { backgroundColor: colors.glassBg },
-                ]}
-              >
-                <Text
-                  style={[contextStyles.countText, { color: colors.textSecondary }]}
-                >{`${entriesToday} today`}</Text>
+        <View style={styles.pulseRow}>
+          <PressableScale onPress={onBabyPress} activeScale={0.94}>
+            <View style={styles.pulseAvatarWrap}>
+              <Animated.View style={[styles.pulseAvatarGlow, { backgroundColor: `${tracker.gradient[0]}35` }, glowStyle]} />
+              <Animated.View style={[styles.pulseAvatarRing, ringStyle]}>
+                <LinearGradient
+                  colors={[tracker.gradient[0], tracker.gradient[1], DS.warning, tracker.gradient[0]]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill}
+                />
+              </Animated.View>
+              <View style={[styles.pulseAvatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+                <SafeAvatar avatar={baby?.avatar} gender={baby?.gender} size={44} fallbackIcon="happy-outline" fallbackColor={tracker.gradient[0]} />
               </View>
             </View>
-            <View style={contextStyles.middleRow}>
-              <SafeAvatar
-                avatar={currentBaby?.avatar}
-                gender={currentBaby?.gender}
-                size={48}
-                fallbackIcon="happy-outline"
-                fallbackColor={tracker.gradient[0]}
-              />
-              <View style={contextStyles.infoColumn}>
-                <Text
-                  style={[
-                    contextStyles.babyName,
-                    { color: colors.text, fontSize: 18 * fontSizeMultiplier },
-                  ]}
-                >
-                  {currentBaby?.name || 'Baby'}
-                </Text>
-                <Text
-                  style={[contextStyles.trackerLabel, { color: colors.textSecondary }]}
-                >{`${tracker.emoji} ${tracker.name}`}</Text>
+          </PressableScale>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[styles.pulseName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                {baby?.name || 'Baby'}
+              </Text>
+              <View style={[styles.pulseAgePill, { backgroundColor: `${tracker.gradient[0]}18` }]}>
+                <Ionicons name={timeIcon as any} size={10} color={tracker.gradient[0]} />
+                <Text style={[styles.pulseAgeText, { color: tracker.gradient[0] }]}>{timeLabel}</Text>
               </View>
-              {lastEntryTime ? (
-                <View style={contextStyles.lastEntryBox}>
-                  <Ionicons
-                    name="time-outline"
-                    size={14}
-                    color={colors.textMuted || colors.textSecondary}
-                  />
-                  <Text
-                    style={[
-                      contextStyles.lastEntryText,
-                      { color: colors.textMuted || colors.textSecondary },
-                    ]}
-                  >
-                    {timeSinceText}
-                  </Text>
-                </View>
-              ) : null}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <Text style={{ fontSize: 13 }}>{tracker.emoji}</Text>
+              <Text style={[styles.pulseSubText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                {tracker.name} · {entriesToday} today
+              </Text>
             </View>
           </View>
-        </GlassCard>
-      </Animated.View>
-    );
-  }
-);
-SmartContextHeader.displayName = 'SmartContextHeader';
-
-const contextStyles = StyleSheet.create({
-  container: { padding: DESIGN.spacing.lg },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: DESIGN.spacing.md,
-  },
-  timeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: DESIGN.radius.sm,
-  },
-  timeBadgeText: { fontSize: 13, fontWeight: '700' },
-  countBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: DESIGN.radius.sm },
-  countText: { fontSize: 12, fontWeight: '600' },
-  middleRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  infoColumn: { flex: 1 },
-  babyName: { fontWeight: '800', letterSpacing: -0.3 },
-  trackerLabel: { fontSize: 13, fontWeight: '600', marginTop: 2 },
-  lastEntryBox: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  lastEntryText: { fontSize: 12, fontWeight: '500' },
-});
-
-// ─── QuickTemplateStrip ─────────────────────────────────────────────────
-const QuickTemplateStrip = memo(
-  ({ templates, onSelect, colors, borderRadiusValue }: any) => {
-    if (!templates || templates.length === 0) return null;
-    return (
-      <Animated.View entering={FadeInUp.delay(100).springify()}>
-        <View style={templateStyles.header}>
-          <Text style={[templateStyles.headerTitle, { color: colors.text }]}>
-            Quick Templates
-          </Text>
-          <Text
-            style={[templateStyles.headerSubtitle, { color: colors.textSecondary }]}
-          >
-            Tap to prefill
-          </Text>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={templateStyles.scrollContent}
-        >
-          {templates.map((tmpl: QuickTemplate) => (
-            <TouchableOpacity
-              key={tmpl.id}
-              onPress={() => {
-                HAPTIC_LIGHT();
-                onSelect(tmpl);
-              }}
-              style={[
-                templateStyles.chip,
-                {
-                  backgroundColor: `${tmpl.color}12`,
-                  borderColor: `${tmpl.color}30`,
-                  borderWidth: 1,
-                  borderRadius: borderRadiusValue,
-                },
-              ]}
-              activeOpacity={0.8}
-            >
-              <Text style={templateStyles.chipIcon}>{tmpl.icon}</Text>
-              <Text style={[templateStyles.chipLabel, { color: colors.text }]}>
-                {tmpl.label}
-              </Text>
-              <Ionicons name="flash-outline" size={12} color={tmpl.color} />
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </Animated.View>
-    );
-  }
-);
-QuickTemplateStrip.displayName = 'QuickTemplateStrip';
-
-const templateStyles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.sm,
-    marginTop: DESIGN.spacing.lg,
-  },
-  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  headerSubtitle: { fontSize: 12, fontWeight: '500' },
-  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginRight: 8,
-  },
-  chipIcon: { fontSize: 18 },
-  chipLabel: { fontSize: 13, fontWeight: '700' },
-});
-
-// ─── SmartSuggestionChips ───────────────────────────────────────────────
-const SmartSuggestionChips = memo(
-  ({
-    suggestions,
-    appliedSuggestions,
-    onApply,
-    onDismiss,
-    theme,
-    colors,
-    borderRadiusValue,
-  }: any) => {
-    const visible = suggestions.filter(
-      (s: SmartSuggestion) =>
-        !appliedSuggestions.has(s.id) && s.confidence >= 60
-    );
-    if (visible.length === 0) return null;
-    return (
-      <Animated.View entering={FadeInUp.delay(150).springify()}>
-        <View style={suggestionStyles.header}>
-          <Ionicons name="sparkles" size={16} color={theme.primary} />
-          <Text style={[suggestionStyles.headerTitle, { color: colors.text }]}>
-            Smart Suggestions
-          </Text>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={suggestionStyles.scrollContent}
-        >
-          {visible.map((s: SmartSuggestion) => (
-            <TouchableOpacity
-              key={s.id}
-              onPress={() => {
-                HAPTIC_LIGHT();
-                // Apply the suggestion — merge into pendingData
-                onApply(s);
-              }}
-              activeOpacity={0.75}
-              style={[
-                suggestionStyles.chip,
-                {
-                  backgroundColor:
-                    s.confidence >= 90
-                      ? `${theme.primary}15`
-                      : `${theme.primary}08`,
-                  borderColor:
-                    s.confidence >= 90
-                      ? `${theme.primary}40`
-                      : `${theme.primary}20`,
-                  borderWidth: 1,
-                  borderRadius: borderRadiusValue,
-                },
-              ]}
-              activeOpacity={0.8}
-            >
-              <View
-                style={[
-                  suggestionStyles.confidenceDot,
-                  {
-                    backgroundColor:
-                      s.confidence >= 90
-                        ? '#10b981'
-                        : s.confidence >= 75
-                        ? '#f59e0b'
-                        : '#ef4444',
-                  },
-                ]}
-              />
-              <Text style={[suggestionStyles.chipLabel, { color: colors.text }]}>
-                {s.label}
-              </Text>
-              <Text
-                style={[suggestionStyles.chipValue, { color: colors.textSecondary }]}
-              >
-                {String(s.value)}
-              </Text>
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onDismiss(s.id);
-                }}
-                style={suggestionStyles.dismissBtn}
-              >
-                <Ionicons
-                  name="close"
-                  size={14}
-                  color={colors.textMuted || colors.textSecondary}
-                />
-              </TouchableOpacity>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </Animated.View>
-    );
-  }
-);
-SmartSuggestionChips.displayName = 'SmartSuggestionChips';
-
-const suggestionStyles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.sm,
-    marginTop: DESIGN.spacing.lg,
-  },
-  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-  },
-  confidenceDot: { width: 6, height: 6, borderRadius: 3 },
-  chipLabel: { fontSize: 12, fontWeight: '700' },
-  chipValue: { fontSize: 12, fontWeight: '600' },
-  dismissBtn: { marginLeft: 4, padding: 2 },
-});
-
-
-const TimeWheelSelector = memo(
-  ({
-    date,
-    onDateChange,
-    onTimeChange,
-    trackerColor,
-    colors,
-    borderRadiusValue,
-    fontSizeMultiplier,
-  }: any) => {
-    const timeBlocks = useMemo(() => {
-      const blocks: {
-        label: string;
-        time: string;
-        period: string;
-        isSuggested: boolean;
-      }[] = [];
-      for (let h = 6; h <= 22; h += 2) {
-        const d = new Date(date);
-        d.setHours(h, 0, 0, 0);
-        const label = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
-        const isSuggested = Math.abs(d.getHours() - date.getHours()) <= 1;
-        blocks.push({
-          label,
-          time: format(d, 'h:mm a'),
-          period: h < 12 ? 'AM' : 'PM',
-          isSuggested,
-        });
-      }
-      return blocks;
-    }, [date]);
-
-    const isTodayDate = isToday(date);
-    const isYesterdayDate = isYesterday(date);
-
-    return (
-      <Animated.View entering={FadeInUp.delay(200).springify()}>
-        <View style={timeWheelStyles.header}>
-          <Text style={[timeWheelStyles.headerTitle, { color: colors.text }]}>
-            When
-          </Text>
-          <View style={timeWheelStyles.dateRow}>
-            <TouchableOpacity
-              onPress={onDateChange}
-              style={[
-                timeWheelStyles.dateChip,
-                { backgroundColor: colors.glassBg, borderRadius: borderRadiusValue },
-              ]}
-            >
-              <Ionicons name="calendar-outline" size={16} color={trackerColor} />
-              <Text style={[timeWheelStyles.dateChipText, { color: colors.text }]}>
-                {isTodayDate
-                  ? 'Today'
-                  : isYesterdayDate
-                  ? 'Yesterday'
-                  : format(date, 'EEE, MMM d')}
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onDateChange}
-              style={[
-                timeWheelStyles.timeChip,
-                { backgroundColor: `${trackerColor}12`, borderRadius: borderRadiusValue },
-              ]}
-            >
-              <Ionicons name="time-outline" size={16} color={trackerColor} />
-              <Text
-                style={[
-                  timeWheelStyles.timeChipText,
-                  { color: trackerColor, fontWeight: '800' },
-                ]}
-              >
-                {format(date, 'h:mm a')}
-              </Text>
-            </TouchableOpacity>
+          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+            <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+              <Ionicons name="time-outline" size={14} color={isDark ? DS.gray300 : DS.gray600} />
+            </View>
+            <Text style={[styles.pulseLastText, { color: isDark ? DS.gray500 : DS.gray400 }]}>{timeSinceText}</Text>
           </View>
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={timeWheelStyles.scrollContent}
-        >
-          {timeBlocks.map((block, i) => (
-            <TouchableOpacity
-              key={`block-${i}`}
-              onPress={() => {
-                HAPTIC_LIGHT();
-                const newDate = new Date(date);
-                const hourPart = parseInt(block.time.split(':')[0]);
-                const isPM = block.period === 'PM' && hourPart !== 12;
-                const isAM = block.period === 'AM' && hourPart === 12;
-                const h = isPM ? hourPart + 12 : isAM ? 0 : hourPart;
-                newDate.setHours(h, 0, 0, 0);
-                onTimeChange(newDate);
-              }}
-              style={[
-                timeWheelStyles.block,
-                {
-                  backgroundColor: block.isSuggested
-                    ? `${trackerColor}15`
-                    : colors.glassBg,
-                  borderColor: block.isSuggested
-                    ? `${trackerColor}40`
-                    : `${colors.border}60`,
-                  borderWidth: 1,
-                  borderRadius: borderRadiusValue,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  timeWheelStyles.blockLabel,
-                  { color: colors.textSecondary, fontSize: 11 * fontSizeMultiplier },
-                ]}
-              >
-                {block.label}
-              </Text>
-              <Text
-                style={[
-                  timeWheelStyles.blockTime,
-                  {
-                    color: block.isSuggested ? trackerColor : colors.text,
-                    fontSize: 14 * fontSizeMultiplier,
-                  },
-                ]}
-              >
-                {block.time}
-              </Text>
-              {block.isSuggested ? (
-                <View
-                  style={[
-                    timeWheelStyles.suggestedBadge,
-                    { backgroundColor: trackerColor },
-                  ]}
-                >
-                  <Text style={timeWheelStyles.suggestedText}>Now</Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </Animated.View>
-    );
-  }
-);
-TimeWheelSelector.displayName = 'TimeWheelSelector';
-
-const timeWheelStyles = StyleSheet.create({
-  header: {
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.sm,
-    marginTop: DESIGN.spacing.lg,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-    marginBottom: DESIGN.spacing.sm,
-  },
-  dateRow: { flexDirection: 'row', gap: 10, marginBottom: DESIGN.spacing.md },
-  dateChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flex: 1,
-  },
-  dateChipText: { fontSize: 14, fontWeight: '700', flex: 1 },
-  timeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  timeChipText: { fontSize: 14, fontWeight: '800' },
-  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
-  block: {
-    width: 80,
-    height: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-    gap: 4,
-  },
-  blockLabel: { fontWeight: '600' },
-  blockTime: { fontWeight: '800' },
-  suggestedBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, marginTop: 2 },
-  suggestedText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+      </View>
+    </Animated.View>
+  );
 });
 
-// ─── ContextInsightsStrip ───────────────────────────────────────────────
-const ContextInsightsStrip = memo(
-  ({ insights, onAction, colors, borderRadiusValue }: any) => {
-    if (!insights || insights.length === 0) return null;
-    return (
-      <Animated.View entering={FadeInUp.delay(250).springify()}>
-        <View style={insightStripStyles.header}>
-          <Ionicons name="analytics-outline" size={16} color={colors.textSecondary} />
-          <Text style={[insightStripStyles.headerTitle, { color: colors.text }]}>
-            Context Insights
-          </Text>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Aura Ribbon (for learning mode, urgent, etc.)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AuraRibbon = memo<{
+  isDark: boolean; icon: keyof typeof Ionicons.glyphMap; color: string;
+  label: string; text: string; onPress?: () => void;
+}>(({ isDark, icon, color, label, text, onPress }) => (
+  <Animated.View entering={FadeInUp.delay(80).springify()}>
+    <PressableScale onPress={onPress} activeScale={0.98}>
+      <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={insightStripStyles.scrollContent}
-        >
-          {insights.map((insight: ContextInsight) => (
-            <TouchableOpacity
-              key={insight.id}
-              onPress={() => onAction(insight)}
-              style={[
-                insightStripStyles.card,
-                {
-                  backgroundColor: `${insight.color}08`,
-                  borderLeftWidth: 3,
-                  borderLeftColor: insight.color,
-                  borderRadius: borderRadiusValue,
-                },
-              ]}
-              activeOpacity={0.85}
-            >
-              <Text style={insightStripStyles.cardEmoji}>{insight.emoji}</Text>
-              <Text
-                style={[insightStripStyles.cardMessage, { color: colors.text }]}
-                numberOfLines={2}
-              >
-                {insight.message}
-              </Text>
-              <View
-                style={[
-                  insightStripStyles.priorityBadge,
-                  { backgroundColor: `${insight.color}15` },
-                ]}
-              >
-                <Text
-                  style={[insightStripStyles.priorityText, { color: insight.color }]}
-                >
-                  {insight.priority}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </Animated.View>
-    );
-  }
-);
-ContextInsightsStrip.displayName = 'ContextInsightsStrip';
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+          <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={2}>{text}</Text>
+        </View>
+        {onPress && <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />}
+      </View>
+    </PressableScale>
+  </Animated.View>
+));
 
-const insightStripStyles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.sm,
-    marginTop: DESIGN.spacing.lg,
-  },
-  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
-  card: { width: 200, padding: 14, marginRight: 8, gap: 6 },
-  cardEmoji: { fontSize: 22 },
-  cardMessage: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
-  priorityBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  priorityText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+/* ═══════════════════════════════════════════════════════════════════════════
+   Quick Templates
+   ═══════════════════════════════════════════════════════════════════════════ */
+const QuickTemplates = memo(({ templates, onSelect, isDark }: { templates: QuickTemplate[]; onSelect: (t: QuickTemplate) => void; isDark: boolean }) => {
+  if (!templates.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
+      <SectionHeader title="Quick Templates" subtitle="Tap to prefill" icon="flash-outline" color={DS.warning} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
+        {templates.map(t => (
+          <PressableScale key={t.id} onPress={() => onSelect(t)} activeScale={0.94}>
+            <View style={[styles.chip, { backgroundColor: `${t.color}12`, borderColor: `${t.color}30` }]}>
+              <Text style={{ fontSize: 18 }}>{t.icon}</Text>
+              <Text style={[styles.chipText, { color: isDark ? DS.gray200 : DS.gray800 }]}>{t.label}</Text>
+              <Ionicons name="flash" size={12} color={t.color} />
+            </View>
+          </PressableScale>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
 });
 
-
-const StreakGoalRing = memo(
-  ({
-    streak,
-    isAtRisk,
-    hoursUntilBreak,
-    streakMessage,
-    entriesToday,
-    dailyGoal,
-    trackerColor,
-    colors,
-    borderRadiusValue,
-    onLogNow,
-  }: any) => {
-    if (!streak || streak.currentStreak === 0) return null;
-    const progress = Math.min(entriesToday / (dailyGoal || 3), 1);
-    return (
-      <Animated.View entering={FadeInUp.delay(300).springify()}>
-        <GlassCard>
-          <View style={ringStyles.container}>
-            <View style={ringStyles.ringWrap}>
-              <View
-                style={[
-                  ringStyles.ringOuter,
-                  { borderColor: `${trackerColor}20` },
-                ]}
-              >
-                <View
-                  style={[
-                    ringStyles.ringInner,
-                    {
-                      borderColor: isAtRisk ? '#FF6B6B' : trackerColor,
-                      borderTopColor: 'transparent',
-                      transform: [{ rotate: `${-90 + progress * 360}deg` }],
-                    },
-                  ]}
-                />
-                <View style={ringStyles.ringCenter}>
-                  <Text
-                    style={[
-                      ringStyles.ringValue,
-                      { color: isAtRisk ? '#FF6B6B' : trackerColor },
-                    ]}
-                  >
-                    {String(entriesToday)}
-                  </Text>
-                  <Text
-                    style={[ringStyles.ringLabel, { color: colors.textSecondary }]}
-                  >{`of ${dailyGoal || 3}`}</Text>
-                </View>
-              </View>
-            </View>
-            <View style={ringStyles.infoColumn}>
-              <View style={ringStyles.streakRow}>
-                <Ionicons
-                  name={isAtRisk ? 'flame-outline' : 'flame'}
-                  size={22}
-                  color={isAtRisk ? '#FF6B6B' : trackerColor}
-                />
-                <Text
-                  style={[
-                    ringStyles.streakText,
-                    { color: isAtRisk ? '#FF6B6B' : trackerColor },
-                  ]}
-                >{`${streak.currentStreak} day${
-                  streak.currentStreak !== 1 ? 's' : ''
-                }`}</Text>
-              </View>
-              <Text
-                style={[ringStyles.message, { color: colors.textSecondary }]}
-                numberOfLines={2}
-              >
-                {streakMessage || ''}
-              </Text>
-              {isAtRisk ? (
-                <TouchableOpacity
-                  style={[
-                    ringStyles.actionBtn,
-                    { backgroundColor: '#FF6B6B', borderRadius: borderRadiusValue },
-                  ]}
-                  onPress={onLogNow}
-                  activeOpacity={0.85}
-                >
-                  <Text style={ringStyles.actionText}>Log Now</Text>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Smart Suggestions
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SmartSuggestions = memo(({
+  suggestions, applied, onApply, onDismiss, primaryColor, isDark,
+}: {
+  suggestions: SmartSuggestion[];
+  applied: Set<string>;
+  onApply: (s: SmartSuggestion) => void;
+  onDismiss: (id: string) => void;
+  primaryColor: string;
+  isDark: boolean;
+}) => {
+  const visible = suggestions.filter(s => !applied.has(s.id) && s.confidence >= 60);
+  if (!visible.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(140).springify()}>
+      <SectionHeader title="Smart Suggestions" icon="sparkles-outline" color={primaryColor} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
+        {visible.map(s => {
+          const confColor = s.confidence >= 90 ? DS.success : s.confidence >= 75 ? DS.warning : DS.danger;
+          return (
+            <PressableScale key={s.id} onPress={() => onApply(s)} activeScale={0.94}>
+              <View style={[styles.suggChip, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.white, borderColor: `${primaryColor}25` }]}>
+                <View style={[styles.suggDot, { backgroundColor: confColor }]} />
+                <Text style={[styles.suggLabel, { color: isDark ? DS.gray200 : DS.gray800 }]}>{s.label}</Text>
+                <Text style={[styles.suggValue, { color: isDark ? DS.gray400 : DS.gray500 }]}>{String(s.value)}</Text>
+                <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDismiss(s.id); }} style={{ padding: 2 }}>
+                  <Ionicons name="close" size={13} color={isDark ? DS.gray500 : DS.gray400} />
                 </TouchableOpacity>
-              ) : null}
-            </View>
-          </View>
-        </GlassCard>
-      </Animated.View>
-    );
-  }
-);
-StreakGoalRing.displayName = 'StreakGoalRing';
-
-const ringStyles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: DESIGN.spacing.lg,
-    gap: 16,
-  },
-  ringWrap: { alignItems: 'center', justifyContent: 'center' },
-  ringOuter: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringInner: {
-    position: 'absolute',
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-  },
-  ringCenter: { alignItems: 'center' },
-  ringValue: { fontSize: 22, fontWeight: '800' },
-  ringLabel: { fontSize: 11, fontWeight: '600' },
-  infoColumn: { flex: 1, gap: 4 },
-  streakRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  streakText: { fontSize: 18, fontWeight: '800' },
-  message: { fontSize: 12, fontWeight: '500', lineHeight: 17 },
-  actionBtn: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginTop: 4,
-  },
-  actionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+              </View>
+            </PressableScale>
+          );
+        })}
+      </ScrollView>
+    </Animated.View>
+  );
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Time Wheel
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TimeWheel = memo(({
+  date, onDateChange, onTimeChange, trackerColor, isDark,
+}: {
+  date: Date; onDateChange: () => void; onTimeChange: (d: Date) => void; trackerColor: string; isDark: boolean;
+}) => {
+  const blocks = useMemo(() => {
+    const out: { label: string; time: string; period: string; isSuggested: boolean }[] = [];
+    for (let h = 6; h <= 22; h += 2) {
+      const d = new Date(date);
+      d.setHours(h, 0, 0, 0);
+      out.push({
+        label: h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening',
+        time: format(d, 'h:mm a'),
+        period: h < 12 ? 'AM' : 'PM',
+        isSuggested: Math.abs(d.getHours() - date.getHours()) <= 1,
+      });
+    }
+    return out;
+  }, [date]);
 
-const YesterdayStrip = memo(
-  ({
-    entries,
-    tracker,
-    onCopyEntry,
-    onViewAll,
-    colors,
-    borderRadiusValue,
-  }: any) => {
-    if (!entries || entries.length === 0) return null;
-    return (
-      <Animated.View entering={FadeInUp.delay(350).springify()}>
-        <View style={yesterdayStyles.header}>
-          <View style={yesterdayStyles.headerLeft}>
-            <Ionicons name="calendar-outline" size={18} color={tracker.gradient[0]} />
-            <Text style={[yesterdayStyles.headerTitle, { color: colors.text }]}>
-              Yesterday
+  const isTodayDate = isToday(date);
+  const isYesterdayDate = isYesterday(date);
+
+  return (
+    <Animated.View entering={FadeInUp.delay(180).springify()}>
+      <SectionHeader title="When" icon="time-outline" color={trackerColor} />
+      <View style={{ flexDirection: 'row', paddingHorizontal: DS.space.lg, gap: 10, marginBottom: DS.space.md }}>
+        <PressableScale onPress={onDateChange} activeScale={0.97} style={{ flex: 1 }}>
+          <View style={[styles.dateChip, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+            <Ionicons name="calendar-outline" size={15} color={trackerColor} />
+            <Text style={[styles.dateChipText, { color: isDark ? DS.white : DS.gray900 }]}>
+              {isTodayDate ? 'Today' : isYesterdayDate ? 'Yesterday' : format(date, 'EEE, MMM d')}
             </Text>
-            <View
-              style={[
-                yesterdayStyles.countBadge,
-                { backgroundColor: `${tracker.gradient[0]}15` },
-              ]}
-            >
-              <Text
-                style={[yesterdayStyles.countText, { color: tracker.gradient[0] }]}
-              >
-                {String(entries.length)}
-              </Text>
+            <Ionicons name="chevron-forward" size={13} color={isDark ? DS.gray500 : DS.gray400} />
+          </View>
+        </PressableScale>
+        <PressableScale onPress={onDateChange} activeScale={0.97}>
+          <View style={[styles.timeChip, { backgroundColor: `${trackerColor}15` }]}>
+            <Ionicons name="time-outline" size={15} color={trackerColor} />
+            <Text style={[styles.timeChipText, { color: trackerColor }]}>{format(date, 'h:mm a')}</Text>
+          </View>
+        </PressableScale>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 8, paddingVertical: 4 }}>
+        {blocks.map((b, i) => (
+          <PressableScale key={i} onPress={() => {
+            const newD = new Date(date);
+            const hourPart = parseInt(b.time.split(':')[0]);
+            const isPM = b.period === 'PM' && hourPart !== 12;
+            const isAM = b.period === 'AM' && hourPart === 12;
+            const h = isPM ? hourPart + 12 : isAM ? 0 : hourPart;
+            newD.setHours(h, 0, 0, 0);
+            onTimeChange(newD);
+          }} activeScale={0.94}>
+            <View style={[styles.timeBlock, {
+              backgroundColor: b.isSuggested ? `${trackerColor}15` : isDark ? DS.darkCard : DS.white,
+              borderColor: b.isSuggested ? `${trackerColor}45` : isDark ? DS.darkBorder : DS.gray200,
+            }]}>
+              <Text style={[styles.timeBlockLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{b.label}</Text>
+              <Text style={[styles.timeBlockTime, { color: b.isSuggested ? trackerColor : isDark ? DS.white : DS.gray900 }]}>{b.time}</Text>
+              {b.isSuggested && (
+                <View style={[styles.nowBadge, { backgroundColor: trackerColor }]}>
+                  <Text style={styles.nowBadgeText}>NOW</Text>
+                </View>
+              )}
+            </View>
+          </PressableScale>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Context Insights Strip
+   ═══════════════════════════════════════════════════════════════════════════ */
+const InsightsStrip = memo(({ insights, isDark }: { insights: ContextInsight[]; isDark: boolean }) => {
+  if (!insights.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(220).springify()}>
+      <SectionHeader title="Context Insights" icon="analytics-outline" color={DS.info} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
+        {insights.map(i => (
+          <View key={i.id} style={[styles.insightCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200, borderLeftColor: i.color }]}>
+            <LinearGradient colors={[`${i.color}10`, `${i.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+            <Text style={{ fontSize: 20 }}>{i.emoji}</Text>
+            <Text style={[styles.insightMsg, { color: isDark ? DS.gray200 : DS.gray800 }]} numberOfLines={2}>{i.message}</Text>
+            <View style={[styles.insightPriority, { backgroundColor: `${i.color}18` }]}>
+              <Text style={[styles.insightPriorityText, { color: i.color }]}>{i.priority}</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={onViewAll}>
-            <Text style={[yesterdayStyles.viewAll, { color: tracker.gradient[0] }]}>
-              View All
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Streak Ring
+   ═══════════════════════════════════════════════════════════════════════════ */
+const StreakRing = memo(({
+  streak, isAtRisk, entriesToday, dailyGoal, trackerColor, isDark, onLogNow,
+}: {
+  streak: any; isAtRisk: boolean; entriesToday: number; dailyGoal: number; trackerColor: string;
+  isDark: boolean; onLogNow: () => void;
+}) => {
+  if (!streak || streak.currentStreak === 0) return null;
+  const progress = Math.min(entriesToday / dailyGoal, 1);
+  return (
+    <Animated.View entering={FadeInUp.delay(260).springify()}>
+      <View style={[styles.card, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.lg }}>
+          <View style={{ width: 72, height: 72, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={[styles.ringOuter, { borderColor: `${trackerColor}20` }]} />
+            <View style={[styles.ringInner, {
+              borderColor: isAtRisk ? DS.danger : trackerColor,
+              borderTopColor: 'transparent',
+              transform: [{ rotate: `${-90 + progress * 360}deg` }],
+            }]} />
+            <View style={{ alignItems: 'center', position: 'absolute' }}>
+              <Text style={[styles.ringValue, { color: isAtRisk ? DS.danger : trackerColor }]}>{entriesToday}</Text>
+              <Text style={[styles.ringLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>of {dailyGoal}</Text>
+            </View>
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name={isAtRisk ? 'flame-outline' : 'flame'} size={20} color={isAtRisk ? DS.danger : trackerColor} />
+              <Text style={[styles.streakText, { color: isAtRisk ? DS.danger : trackerColor }]}>
+                {streak.currentStreak} day{streak.currentStreak !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            <Text style={[styles.streakMsg, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>
+              {isAtRisk
+                ? `Log in the next few hours to keep your streak`
+                : `You're on a roll! Keep logging consistently.`}
             </Text>
-          </TouchableOpacity>
+            {isAtRisk && (
+              <PressableScale onPress={onLogNow} activeScale={0.94}>
+                <LinearGradient colors={[DS.danger, DS.danger + 'CC']} style={styles.streakBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  <Text style={styles.streakBtnText}>Log Now</Text>
+                </LinearGradient>
+              </PressableScale>
+            )}
+          </View>
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={yesterdayStyles.scrollContent}
-        >
-          {entries.map((entry: YesterdayEntry) => {
-            const fields = getEntryFields(entry);
-            const entryDate = new Date(entry.timestamp);
-            return (
-              <TouchableOpacity
-                key={entry.id}
-                onPress={() => {
-                  HAPTIC_MEDIUM();
-                  onCopyEntry(entry);
-                }}
-                style={[
-                  yesterdayStyles.card,
-                  {
-                    backgroundColor: colors.glassBg,
-                    borderColor: colors.border,
-                    borderWidth: 1,
-                    borderRadius: borderRadiusValue,
-                  },
-                ]}
-                activeOpacity={0.85}
-              >
-                <View style={yesterdayStyles.cardHeader}>
-                  <View
-                    style={[
-                      yesterdayStyles.timeBadge,
-                      { backgroundColor: `${tracker.gradient[0]}15` },
-                    ]}
-                  >
-                    <Ionicons
-                      name="time-outline"
-                      size={12}
-                      color={tracker.gradient[0]}
-                    />
-                    <Text
-                      style={[
-                        yesterdayStyles.timeText,
-                        { color: tracker.gradient[0] },
-                      ]}
-                    >
-                      {format(entryDate, 'h:mm a')}
-                    </Text>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Yesterday Strip
+   ═══════════════════════════════════════════════════════════════════════════ */
+const YesterdayStrip = memo(({
+  entries, trackerColor, isDark, onCopy, onViewAll,
+}: {
+  entries: YesterdayEntry[]; trackerColor: string; isDark: boolean;
+  onCopy: (e: YesterdayEntry) => void; onViewAll: () => void;
+}) => {
+  if (!entries.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(300).springify()}>
+      <View style={styles.sectionHeader}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+          <View style={[styles.sectionIcon, { backgroundColor: `${trackerColor}18` }]}>
+            <Ionicons name="calendar-outline" size={16} color={trackerColor} />
+          </View>
+          <View>
+            <Text style={styles.sectionTitle}>Yesterday</Text>
+            <Text style={styles.sectionSub}>{entries.length} record{entries.length !== 1 ? 's' : ''}</Text>
+          </View>
+        </View>
+        <TouchableOpacity onPress={onViewAll} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+          <Text style={[styles.sectionActionText, { color: trackerColor }]}>View All</Text>
+          <Ionicons name="chevron-forward" size={13} color={trackerColor} />
+        </TouchableOpacity>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
+        {entries.map(e => {
+          const fields = getEntryFields(e);
+          const entryDate = new Date(e.timestamp);
+          return (
+            <PressableScale key={e.id} onPress={() => onCopy(e)} activeScale={0.94}>
+              <View style={[styles.yestCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <View style={[styles.yestTime, { backgroundColor: `${trackerColor}15` }]}>
+                    <Ionicons name="time-outline" size={11} color={trackerColor} />
+                    <Text style={[styles.yestTimeText, { color: trackerColor }]}>{format(entryDate, 'h:mm a')}</Text>
                   </View>
-                  <Ionicons
-                    name="copy-outline"
-                    size={16}
-                    color={colors.textSecondary}
-                  />
+                  <Ionicons name="copy-outline" size={14} color={isDark ? DS.gray500 : DS.gray400} />
                 </View>
                 {fields.slice(0, 2).map(([key, value]) => (
-                  <View key={key} style={yesterdayStyles.fieldRow}>
-                    <Text
-                      style={[
-                        yesterdayStyles.fieldLabel,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      {prettifyFieldKey(key)}
-                    </Text>
-                    <Text
-                      style={[yesterdayStyles.fieldValue, { color: colors.text }]}
-                      numberOfLines={1}
-                    >
-                      {formatFieldValue(key, value)}
-                    </Text>
+                  <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={[styles.yestFieldLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>{prettifyFieldKey(key)}</Text>
+                    <Text style={[styles.yestFieldValue, { color: isDark ? DS.gray200 : DS.gray800 }]} numberOfLines={1}>{formatFieldValue(key, value)}</Text>
                   </View>
                 ))}
-                {fields.length > 2 ? (
-                  <Text
-                    style={[
-                      yesterdayStyles.moreText,
-                      { color: colors.textMuted || colors.textSecondary },
-                    ]}
-                  >{`+${fields.length - 2} more`}</Text>
-                ) : null}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </Animated.View>
-    );
-  }
-);
-YesterdayStrip.displayName = 'YesterdayStrip';
-
-const yesterdayStyles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.sm,
-    marginTop: DESIGN.spacing.lg,
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  countBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  countText: { fontSize: 12, fontWeight: '800' },
-  viewAll: { fontSize: 13, fontWeight: '700' },
-  scrollContent: { paddingHorizontal: DESIGN.spacing.lg, gap: 10, paddingBottom: 4 },
-  card: { width: 160, padding: 14, marginRight: 8 },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  timeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  timeText: { fontSize: 11, fontWeight: '700' },
-  fieldRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  fieldLabel: { fontSize: 11, fontWeight: '500', flex: 1 },
-  fieldValue: { fontSize: 11, fontWeight: '700', maxWidth: 80 },
-  moreText: { fontSize: 10, fontWeight: '600', marginTop: 4 },
+                {fields.length > 2 && (
+                  <Text style={[styles.yestMore, { color: isDark ? DS.gray500 : DS.gray400 }]}>+{fields.length - 2} more</Text>
+                )}
+              </View>
+            </PressableScale>
+          );
+        })}
+      </ScrollView>
+    </Animated.View>
+  );
 });
 
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   Confirm Modal
+   ═══════════════════════════════════════════════════════════════════════════ */
 interface ConfirmModalProps {
   visible: boolean;
   onClose: () => void;
@@ -1182,816 +685,184 @@ interface ConfirmModalProps {
   photoUris?: string[];
 }
 
-const ConfirmModal = memo<ConfirmModalProps>(
-  ({
-    visible,
-    onClose,
-    onConfirm,
-    data,
-    tracker,
-    babyName,
-    babyAvatar,
-    date,
-    notes,
-    tags,
-    photoUris = [],
-  }) => {
-    const { fullThemeColors, borderRadiusValue, fontSizeMultiplier } =
-      useCustomization();
-    const scale = useSharedValue(0.9);
-    const opacity = useSharedValue(0);
+const ConfirmModal = memo<ConfirmModalProps>(({
+  visible, onClose, onConfirm, data, tracker, babyName, babyAvatar, date, notes, tags, photoUris = [],
+}) => {
+  const { isDark } = useCustomization();
+  const scale = useSharedValue(0.9);
+  const opacity = useSharedValue(0);
 
-    useEffect(() => {
-      if (visible) {
-        scale.value = withSpring(1, SPRING_CONFIG);
-        opacity.value = withTiming(1, { duration: 250 });
-      } else {
-        scale.value = withTiming(0.9, { duration: 200 });
-        opacity.value = withTiming(0, { duration: 200 });
-      }
-    }, [visible, scale, opacity]);
+  useEffect(() => {
+    if (visible) { scale.value = withSpring(1, { damping: 15, stiffness: 300 }); opacity.value = withTiming(1, { duration: 250 }); }
+    else { scale.value = withTiming(0.9, { duration: 200 }); opacity.value = withTiming(0, { duration: 200 }); }
+  }, [visible]);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
 
-    const animStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: scale.value }],
-      opacity: opacity.value,
-    }));
+  const preview = useMemo(
+    () => Object.entries(data).filter(([k, v]) => !shouldFilterField(k) && formatFieldValue(k, v) !== null),
+    [data],
+  );
+  const uris = useMemo(() => cleanImageUris(photoUris.length ? photoUris : (data as any)?.photoUris), [photoUris, data]);
 
-    const preview = useMemo(
-      () =>
-        Object.entries(data).filter(([k, v]) => {
-          if (shouldFilterField(k)) return false;
-          return formatFieldValue(k, v) !== null;
-        }),
-      [data]
-    );
-
-    const displayPhotoUris = useMemo(
-      () => cleanImageUris(photoUris.length > 0 ? photoUris : (data as any)?.photoUris),
-      [photoUris, data]
-    );
-
-    const handleConfirm = useCallback(() => {
-      HAPTIC_SUCCESS();
-      onConfirm();
-    }, [onConfirm]);
-
-    return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType="none"
-        onRequestClose={onClose}
-        statusBarTranslucent
-      >
-        <Pressable
-          style={[
-            modalStyles.modalOverlay,
-            { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` },
-          ]}
-          onPress={onClose}
-        >
-          <Animated.View
-            style={[
-              modalStyles.modalContent,
-              animStyle,
-              { borderRadius: borderRadiusValue * 2 },
-            ]}
-            onStartShouldSetResponder={() => true}
-            onTouchEnd={(e) => e.stopPropagation()}
-          >
-            <LinearGradient
-              colors={[fullThemeColors.surface, fullThemeColors.background]}
-              style={[
-                modalStyles.modalGradient,
-                { borderRadius: borderRadiusValue * 2 },
-              ]}
-            >
-              <View style={modalStyles.modalHeader}>
-                <View
-                  style={[
-                    modalStyles.modalIconContainer,
-                    {
-                      backgroundColor: `${tracker.gradient[0]}20`,
-                      borderRadius: borderRadiusValue,
-                    },
-                  ]}
-                >
-                  <Text style={modalStyles.modalIcon}>{tracker.emoji}</Text>
-                </View>
-                <Text
-                  style={[
-                    modalStyles.modalTitle,
-                    {
-                      color: fullThemeColors.text,
-                      fontSize: 22 * fontSizeMultiplier,
-                    },
-                  ]}
-                >{`Confirm ${tracker.name}`}</Text>
-                <View style={modalStyles.modalBabyRow}>
-                  <SafeAvatar
-                    avatar={babyAvatar}
-                    size={28}
-                    fallbackIcon="person"
-                    borderWidth={0}
-                    animated={false}
-                  />
-                  <Text
-                    style={[
-                      modalStyles.modalSubtitle,
-                      { color: fullThemeColors.textSecondary },
-                    ]}
-                  >{`For ${babyName}`}</Text>
-                </View>
-              </View>
-              <Animated.ScrollView
-                style={modalStyles.modalBody}
-                showsVerticalScrollIndicator={false}
-              >
-                <View
-                  style={[
-                    modalStyles.previewCard,
-                    {
-                      backgroundColor: fullThemeColors.glassBg,
-                      borderColor: fullThemeColors.border,
-                      borderRadius: borderRadiusValue,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      modalStyles.previewTime,
-                      { color: fullThemeColors.textSecondary },
-                    ]}
-                  >
-                    {format(date, 'MMM d, yyyy • h:mm a')}
-                  </Text>
-                  {displayPhotoUris.length > 0 ? (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={{ marginBottom: 12 }}
-                      contentContainerStyle={{ gap: 8 }}
-                    >
-                      {displayPhotoUris.map((uri: string, idx: number) => (
-                        <Image
-                          key={`preview-photo-${idx}`}
-                          source={{ uri }}
-                          style={{
-                            width: 80,
-                            height: 80,
-                            borderRadius: borderRadiusValue,
-                            backgroundColor: fullThemeColors.border,
-                          }}
-                          resizeMode="cover"
-                        />
-                      ))}
-                    </ScrollView>
-                  ) : null}
-                  <Text
-                    style={[
-                      modalStyles.previewTitle,
-                      {
-                        color: fullThemeColors.text,
-                        fontSize: 18 * fontSizeMultiplier,
-                      },
-                    ]}
-                  >{`${tracker.emoji} ${tracker.name}`}</Text>
-                  {notes ? (
-                    <Text
-                      style={[
-                        modalStyles.previewDetails,
-                        { color: fullThemeColors.textSecondary },
-                      ]}
-                    >
-                      {notes}
-                    </Text>
-                  ) : null}
-                  {preview.length > 0 ? (
-                    <View style={modalStyles.previewFields}>
-                      {preview.map(([k, v]) => (
-                        <View key={k} style={modalStyles.previewField}>
-                          <Text
-                            style={[
-                              modalStyles.previewFieldLabel,
-                              { color: fullThemeColors.textSecondary },
-                            ]}
-                          >
-                            {prettifyFieldKey(k)}
-                          </Text>
-                          <Text
-                            style={[
-                              modalStyles.previewFieldValue,
-                              { color: fullThemeColors.text },
-                            ]}
-                          >
-                            {formatFieldValue(k, v)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                  {tags.length > 0 ? (
-                    <View style={modalStyles.previewNotes}>
-                      <Ionicons
-                        name="pricetag-outline"
-                        size={16}
-                        color={fullThemeColors.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          modalStyles.previewNotesText,
-                          { color: fullThemeColors.textSecondary },
-                        ]}
-                      >
-                        {tags.join(', ')}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              </Animated.ScrollView>
-              <View style={modalStyles.modalActions}>
-                <TouchableOpacity
-                  onPress={onClose}
-                  style={[
-                    modalStyles.cancelButton,
-                    { borderRadius: borderRadiusValue },
-                  ]}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Edit entry"
-                >
-                  <Text
-                    style={[
-                      modalStyles.cancelButtonText,
-                      { color: fullThemeColors.textSecondary },
-                    ]}
-                  >
-                    Edit
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleConfirm}
-                  style={[
-                    modalStyles.confirmButton,
-                    { borderRadius: borderRadiusValue },
-                  ]}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel="Save entry"
-                >
-                  <LinearGradient
-                    colors={tracker.gradient}
-                    style={modalStyles.confirmGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                    <Text style={modalStyles.confirmButtonText}>Save Entry</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
+  if (!visible) return null;
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Animated.View style={[styles.confirmCard, anim, { backgroundColor: isDark ? DS.darkCard : DS.white }]} onStartShouldSetResponder={() => true}>
+          <View style={{ alignItems: 'center', marginBottom: 16 }}>
+            <LinearGradient colors={tracker.gradient} style={styles.confirmIcon}>
+              <Text style={{ fontSize: 28 }}>{tracker.emoji}</Text>
             </LinearGradient>
-          </Animated.View>
-        </Pressable>
-      </Modal>
-    );
-  }
-);
-ConfirmModal.displayName = 'ConfirmModal';
-
-const modalStyles = StyleSheet.create({
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
-  modalContent: {
-    width: '100%',
-    maxHeight: '80%',
-    overflow: 'hidden',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.25,
-    shadowRadius: 30,
-  },
-  modalGradient: { padding: 24 },
-  modalHeader: { alignItems: 'center', marginBottom: 20 },
-  modalIconContainer: {
-    width: 64,
-    height: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  modalIcon: { fontSize: 32 },
-  modalTitle: { fontWeight: '800', marginBottom: 4 },
-  modalBabyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  modalSubtitle: { fontSize: 14, fontWeight: '500' },
-  modalBody: { maxHeight: 300 },
-  previewCard: { padding: 20, borderWidth: StyleSheet.hairlineWidth },
-  previewTime: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  previewTitle: { fontWeight: '800', marginBottom: 8 },
-  previewDetails: { fontSize: 14, marginBottom: 12, lineHeight: 20 },
-  previewFields: { gap: 8, marginTop: 8 },
-  previewField: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  previewFieldLabel: { fontSize: 13, fontWeight: '500' },
-  previewFieldValue: { fontSize: 13, fontWeight: '600' },
-  previewNotes: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  previewNotesText: { flex: 1, fontSize: 14, fontStyle: 'italic', lineHeight: 20 },
-  modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
-  cancelButton: { flex: 1, paddingVertical: 16, alignItems: 'center' },
-  cancelButtonText: { fontSize: 16, fontWeight: '700' },
-  confirmButton: { flex: 2, overflow: 'hidden' },
-  confirmGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-  },
-  confirmButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+            <Text style={[styles.confirmTitle, { color: isDark ? DS.white : DS.gray900 }]}>Confirm {tracker.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <SafeAvatar avatar={babyAvatar} size={22} fallbackIcon="person" borderWidth={0} />
+              <Text style={[styles.confirmSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>For {babyName}</Text>
+            </View>
+          </View>
+          <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+            <View style={[styles.confirmPreview, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.gray50, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <Text style={[styles.confirmTime, { color: isDark ? DS.gray400 : DS.gray500 }]}>{format(date, 'MMM d, yyyy • h:mm a')}</Text>
+              {uris.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 10 }} contentContainerStyle={{ gap: 8 }}>
+                  {uris.map((u, i) => <Image key={i} source={{ uri: u }} style={styles.confirmPhoto} resizeMode="cover" />)}
+                </ScrollView>
+              )}
+              <Text style={[styles.confirmPreviewTitle, { color: isDark ? DS.white : DS.gray900 }]}>{tracker.emoji} {tracker.name}</Text>
+              {notes ? <Text style={[styles.confirmNotes, { color: isDark ? DS.gray400 : DS.gray500 }]}>{notes}</Text> : null}
+              {preview.length > 0 && (
+                <View style={{ marginTop: 8 }}>
+                  {preview.map(([k, v]) => (
+                    <View key={k} style={[styles.confirmRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                      <Text style={[styles.confirmRowLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{prettifyFieldKey(k)}</Text>
+                      <Text style={[styles.confirmRowValue, { color: isDark ? DS.gray200 : DS.gray800 }]}>{formatFieldValue(k, v)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {tags.length > 0 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: isDark ? DS.darkBorder : DS.gray200 }}>
+                  <Ionicons name="pricetag-outline" size={14} color={isDark ? DS.gray500 : DS.gray400} />
+                  <Text style={[styles.confirmTags, { color: isDark ? DS.gray400 : DS.gray500 }]}>{tags.join(', ')}</Text>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 18 }}>
+            <PressableScale onPress={onClose} activeScale={0.96} style={{ flex: 1 }}>
+              <View style={[styles.confirmCancel, { borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <Text style={[styles.confirmCancelText, { color: isDark ? DS.gray300 : DS.gray600 }]}>Edit</Text>
+              </View>
+            </PressableScale>
+            <PressableScale onPress={() => { HAPTIC_SUCCESS(); onConfirm(); }} activeScale={0.96} style={{ flex: 2 }}>
+              <LinearGradient colors={tracker.gradient} style={styles.confirmSave} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                <Ionicons name="checkmark-circle" size={18} color={DS.white} />
+                <Text style={styles.confirmSaveText}>Save Entry</Text>
+              </LinearGradient>
+            </PressableScale>
+          </View>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
 });
 
-
-interface YesterdayEntriesModalProps {
-  visible: boolean;
-  onClose: () => void;
-  entries: YesterdayEntry[];
-  tracker: UnifiedTrackerConfig;
-  onCopyEntry: (entry: YesterdayEntry) => void;
-  colors: Record<string, string>;
-  borderRadiusValue: number;
-  fontSizeMultiplier: number;
-}
-
-const YesterdayEntriesModal = memo<YesterdayEntriesModalProps>(
-  ({
-    visible,
-    onClose,
-    entries,
-    tracker,
-    onCopyEntry,
-    colors,
-    borderRadiusValue,
-    fontSizeMultiplier,
-  }) => {
-    const scale = useSharedValue(0.9);
-    const opacity = useSharedValue(0);
-
-    useEffect(() => {
-      if (visible) {
-        scale.value = withSpring(1, SPRING_CONFIG);
-        opacity.value = withTiming(1, { duration: 250 });
-      } else {
-        scale.value = withTiming(0.9, { duration: 200 });
-        opacity.value = withTiming(0, { duration: 200 });
-      }
-    }, [visible, scale, opacity]);
-
-    const animStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: scale.value }],
-      opacity: opacity.value,
-    }));
-
-    const handleCopy = useCallback(
-      (entry: YesterdayEntry) => {
-        HAPTIC_MEDIUM();
-        onCopyEntry(entry);
-        onClose();
-      },
-      [onCopyEntry, onClose]
-    );
-
-    return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType="none"
-        onRequestClose={onClose}
-        statusBarTranslucent
-      >
-        <Pressable
-          style={[
-            yesterdayModalStyles.overlay,
-            { backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})` },
-          ]}
-          onPress={onClose}
-        >
-          <Animated.View
-            style={[
-              yesterdayModalStyles.content,
-              animStyle,
-              { borderRadius: borderRadiusValue * 2 },
-            ]}
-            onStartShouldSetResponder={() => true}
-            onTouchEnd={(e) => e.stopPropagation()}
-          >
-            <LinearGradient
-              colors={[colors.surface, colors.background]}
-              style={[
-                yesterdayModalStyles.gradient,
-                { borderRadius: borderRadiusValue * 2 },
-              ]}
-            >
-              <View style={yesterdayModalStyles.header}>
-                <View
-                  style={[
-                    yesterdayModalStyles.iconContainer,
-                    {
-                      backgroundColor: `${tracker.gradient[0]}20`,
-                      borderRadius: borderRadiusValue,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="calendar-outline"
-                    size={28}
-                    color={tracker.gradient[0]}
-                  />
-                </View>
-                <Text
-                  style={[
-                    yesterdayModalStyles.title,
-                    { color: colors.text, fontSize: 20 * fontSizeMultiplier },
-                  ]}
-                >{`Yesterday's ${tracker.name}`}</Text>
-                <Text
-                  style={[
-                    yesterdayModalStyles.subtitle,
-                    { color: colors.textSecondary },
-                  ]}
-                >{`${entries.length} record${
-                  entries.length !== 1 ? 's' : ''
-                } from yesterday`}</Text>
-                <TouchableOpacity
-                  onPress={onClose}
-                  style={[
-                    yesterdayModalStyles.closeBtn,
-                    { borderRadius: borderRadiusValue },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Close modal"
-                >
-                  <BlurView
-                    intensity={40}
-                    style={[
-                      yesterdayModalStyles.closeBlur,
-                      { borderRadius: borderRadiusValue },
-                    ]}
-                    tint="dark"
-                  >
-                    <Ionicons name="close" size={22} color={colors.text} />
-                  </BlurView>
-                </TouchableOpacity>
-              </View>
-              <Animated.ScrollView
-                style={yesterdayModalStyles.scrollView}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={yesterdayModalStyles.scrollContent}
-              >
-                {entries.map((entry, index) => {
-                  const fields = getEntryFields(entry);
-                  const entryDate = new Date(entry.timestamp);
-                  const entryPhotoUris = cleanImageUris((entry as any)?.photoUris);
-                  return (
-                    <Animated.View
-                      key={entry.id}
-                      entering={FadeInUp.delay(index * 80).springify()}
-                      style={[
-                        yesterdayModalStyles.entryCard,
-                        {
-                          backgroundColor: colors.glassBg,
-                          borderColor: colors.border,
-                          borderRadius: borderRadiusValue,
-                          borderWidth: 1,
-                        },
-                      ]}
-                    >
-                      <View style={yesterdayModalStyles.entryHeader}>
-                        <View
-                          style={[
-                            yesterdayModalStyles.timeBadge,
-                            { backgroundColor: `${tracker.gradient[0]}15` },
-                          ]}
-                        >
-                          <Ionicons
-                            name="time-outline"
-                            size={14}
-                            color={tracker.gradient[0]}
-                          />
-                          <Text
-                            style={[
-                              yesterdayModalStyles.timeText,
-                              { color: tracker.gradient[0] },
-                            ]}
-                          >
-                            {format(entryDate, 'h:mm a')}
-                          </Text>
-                        </View>
-                        {entry.title ? (
-                          <Text
-                            style={[
-                              yesterdayModalStyles.entryTitle,
-                              { color: colors.text },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {entry.title}
-                          </Text>
-                        ) : null}
+/* ═══════════════════════════════════════════════════════════════════════════
+   Yesterday Entries Modal
+   ═══════════════════════════════════════════════════════════════════════════ */
+const YesterdayModal = memo(({
+  visible, onClose, entries, tracker, onCopy, isDark,
+}: {
+  visible: boolean; onClose: () => void; entries: YesterdayEntry[];
+  tracker: UnifiedTrackerConfig; onCopy: (e: YesterdayEntry) => void; isDark: boolean;
+}) => {
+  const scale = useSharedValue(0.9);
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    if (visible) { scale.value = withSpring(1, { damping: 15, stiffness: 300 }); opacity.value = withTiming(1, { duration: 250 }); }
+    else { scale.value = withTiming(0.9); opacity.value = withTiming(0); }
+  }, [visible]);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
+  if (!visible) return null;
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Animated.View style={[styles.yestModalCard, anim, { backgroundColor: isDark ? DS.darkCard : DS.white }]} onStartShouldSetResponder={() => true}>
+          <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+            <LinearGradient colors={tracker.gradient} style={styles.yestModalIcon}>
+              <Ionicons name="calendar-outline" size={26} color={DS.white} />
+            </LinearGradient>
+            <Text style={[styles.confirmTitle, { color: isDark ? DS.white : DS.gray900 }]}>Yesterday's {tracker.name}</Text>
+            <Text style={[styles.confirmSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              {entries.length} record{entries.length !== 1 ? 's' : ''}
+            </Text>
+            <TouchableOpacity onPress={onClose} style={{ position: 'absolute', top: 14, right: 14, padding: 6 }}>
+              <Ionicons name="close" size={22} color={isDark ? DS.gray400 : DS.gray500} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 400, paddingHorizontal: 16 }} showsVerticalScrollIndicator={false}>
+            {entries.map((e, idx) => {
+              const fields = getEntryFields(e);
+              const entryDate = new Date(e.timestamp);
+              const ePhotos = cleanImageUris((e as any)?.photoUris);
+              return (
+                <Animated.View key={e.id} entering={FadeInUp.delay(idx * 50).springify()}>
+                  <View style={[styles.yestModalEntry, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.gray50, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <View style={[styles.yestTime, { backgroundColor: `${tracker.gradient[0]}15` }]}>
+                        <Ionicons name="time-outline" size={12} color={tracker.gradient[0]} />
+                        <Text style={[styles.yestTimeText, { color: tracker.gradient[0] }]}>{format(entryDate, 'h:mm a')}</Text>
                       </View>
-                      {fields.length > 0 ? (
-                        <View style={yesterdayModalStyles.fieldsContainer}>
-                          {fields.map(([key, value]) => (
-                            <View key={key} style={yesterdayModalStyles.fieldRow}>
-                              <Text
-                                style={[
-                                  yesterdayModalStyles.fieldLabel,
-                                  { color: colors.textSecondary },
-                                ]}
-                              >
-                                {prettifyFieldKey(key)}
-                              </Text>
-                              <Text
-                                style={[
-                                  yesterdayModalStyles.fieldValue,
-                                  { color: colors.text },
-                                ]}
-                              >
-                                {formatFieldValue(key, value)}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : null}
-                      {entry.notes ? (
-                        <View
-                          style={[
-                            yesterdayModalStyles.notesContainer,
-                            { borderTopColor: `${colors.border}40` },
-                          ]}
-                        >
-                          <Ionicons
-                            name="document-text-outline"
-                            size={14}
-                            color={colors.textSecondary}
-                          />
-                          <Text
-                            style={[
-                              yesterdayModalStyles.notesText,
-                              { color: colors.textSecondary },
-                            ]}
-                          >
-                            {entry.notes}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {entry.tags && entry.tags.length > 0 ? (
-                        <View style={yesterdayModalStyles.tagsContainer}>
-                          {entry.tags.map((tag, idx) => (
-                            <View
-                              key={`tag-${idx}`}
-                              style={[
-                                yesterdayModalStyles.tag,
-                                { backgroundColor: `${tracker.gradient[0]}15` },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  yesterdayModalStyles.tagText,
-                                  { color: tracker.gradient[0] },
-                                ]}
-                              >
-                                {tag}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : null}
-                      {entryPhotoUris.length > 0 ? (
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          style={{ marginTop: 8 }}
-                          contentContainerStyle={{ gap: 6 }}
-                        >
-                          {entryPhotoUris.map((uri, idx) => (
-                            <Image
-                              key={`entry-photo-${idx}`}
-                              source={{ uri }}
-                              style={{
-                                width: 48,
-                                height: 48,
-                                borderRadius: borderRadiusValue / 2,
-                              }}
-                              resizeMode="cover"
-                            />
-                          ))}
-                        </ScrollView>
-                      ) : null}
-                      <TouchableOpacity
-                        style={[
-                          yesterdayModalStyles.copyBtn,
-                          {
-                            backgroundColor: tracker.gradient[0],
-                            borderRadius: borderRadiusValue,
-                          },
-                        ]}
-                        onPress={() => handleCopy(entry)}
-                        activeOpacity={0.85}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Copy ${tracker.name} entry from ${format(
-                          entryDate,
-                          'h:mm a'
-                        )}`}
-                      >
-                        <Ionicons name="copy-outline" size={16} color="#fff" />
-                        <Text style={yesterdayModalStyles.copyBtnText}>
-                          Copy to Today
-                        </Text>
-                      </TouchableOpacity>
-                    </Animated.View>
-                  );
-                })}
-              </Animated.ScrollView>
-              <View style={yesterdayModalStyles.footer}>
-                <TouchableOpacity
-                  style={[
-                    yesterdayModalStyles.doneBtn,
-                    { borderRadius: borderRadiusValue, borderColor: colors.border },
-                  ]}
-                  onPress={onClose}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                >
-                  <Text
-                    style={[
-                      yesterdayModalStyles.doneBtnText,
-                      { color: colors.text },
-                    ]}
-                  >
-                    Close
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                      {e.title && <Text style={[styles.yestModalTitle, { color: isDark ? DS.gray200 : DS.gray800 }]} numberOfLines={1}>{e.title}</Text>}
+                    </View>
+                    {fields.map(([k, v]) => (
+                      <View key={k} style={[styles.confirmRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                        <Text style={[styles.confirmRowLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{prettifyFieldKey(k)}</Text>
+                        <Text style={[styles.confirmRowValue, { color: isDark ? DS.gray200 : DS.gray800 }]}>{formatFieldValue(k, v)}</Text>
+                      </View>
+                    ))}
+                    {e.notes && (
+                      <Text style={{ fontSize: 12, fontStyle: 'italic', color: isDark ? DS.gray400 : DS.gray500, marginTop: 8 }}>{e.notes}</Text>
+                    )}
+                    {ePhotos.length > 0 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 6 }}>
+                        {ePhotos.map((u, i) => <Image key={i} source={{ uri: u }} style={{ width: 48, height: 48, borderRadius: 8 }} />)}
+                      </ScrollView>
+                    )}
+                    <PressableScale onPress={() => { HAPTIC_MEDIUM(); onCopy(e); onClose(); }} activeScale={0.94}>
+                      <LinearGradient colors={tracker.gradient} style={styles.yestCopyBtn}>
+                        <Ionicons name="copy-outline" size={14} color={DS.white} />
+                        <Text style={styles.yestCopyText}>Copy to Today</Text>
+                      </LinearGradient>
+                    </PressableScale>
+                  </View>
+                </Animated.View>
+              );
+            })}
+          </ScrollView>
+          <PressableScale onPress={onClose} activeScale={0.97} style={{ margin: 16 }}>
+            <LinearGradient colors={[DS.primary, DS.accent]} style={styles.yestDoneBtn}>
+              <Text style={styles.yestDoneText}>Close</Text>
             </LinearGradient>
-          </Animated.View>
-        </Pressable>
-      </Modal>
-    );
-  }
-);
-YesterdayEntriesModal.displayName = 'YesterdayEntriesModal';
-
-const yesterdayModalStyles = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  content: {
-    width: '100%',
-    maxHeight: '85%',
-    overflow: 'hidden',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.25,
-    shadowRadius: 30,
-  },
-  gradient: { padding: 0 },
-  header: {
-    alignItems: 'center',
-    padding: 24,
-    paddingBottom: 16,
-    position: 'relative',
-  },
-  iconContainer: {
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  title: { fontWeight: '800', marginBottom: 4 },
-  subtitle: { fontSize: 14, fontWeight: '500' },
-  closeBtn: { position: 'absolute', top: 16, right: 16, overflow: 'hidden' },
-  closeBlur: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  scrollView: { maxHeight: 400 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 8, gap: 12 },
-  entryCard: { padding: 16, marginBottom: 4 },
-  entryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
-  },
-  timeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  timeText: { fontSize: 13, fontWeight: '700' },
-  entryTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
-  fieldsContainer: { gap: 8, marginBottom: 12 },
-  fieldRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.04)',
-  },
-  fieldLabel: { fontSize: 13, fontWeight: '500', flex: 1 },
-  fieldValue: { fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'right' },
-  notesContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingTop: 10,
-    marginBottom: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.06)',
-  },
-  notesText: { flex: 1, fontSize: 13, fontStyle: 'italic', lineHeight: 18 },
-  tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-  tag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  tagText: { fontSize: 12, fontWeight: '600' },
-  copyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    marginTop: 4,
-  },
-  copyBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  footer: { padding: 20, paddingTop: 12 },
-  doneBtn: { paddingVertical: 14, alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
-  doneBtnText: { fontSize: 16, fontWeight: '700' },
+          </PressableScale>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
 });
 
-// (DatePickerModal removed — the picker is now driven by useDateTimePicker)
-
-
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   TrackerContent
+   ═══════════════════════════════════════════════════════════════════════════ */
 function TrackerContent({
-  tracker,
-  selectedTrackerId,
-  date,
-  setDate,
-  pendingData,
-  setPendingData,
-  pendingOptions,
-  setPendingOptions,
-  showConfirm,
-  setShowConfirm,
-  showYesterdayModal,
-  setShowYesterdayModal,
-  yesterdayEntries,
-  setYesterdayEntries,
-  errors,
-  setErrors,
-  dismissedCorrelations,
-  setDismissedCorrelations,
-  dismissedReminders,
-  setDismissedReminders,
-  appliedCorrelationPrefill,
-  setAppliedCorrelationPrefill,
-  appliedSuggestions,
-  setAppliedSuggestions,
-  editEntryId,
-  navigation,
-  setShowPicker,
+  tracker, selectedTrackerId, date, setDate, pendingData, setPendingData, pendingOptions, setPendingOptions,
+  showConfirm, setShowConfirm, showYesterdayModal, setShowYesterdayModal,
+  yesterdayEntries, setYesterdayEntries, errors, setErrors,
+  dismissedCorrelations, setDismissedCorrelations, dismissedReminders, setDismissedReminders,
+  appliedCorrelationPrefill, setAppliedCorrelationPrefill, appliedSuggestions, setAppliedSuggestions,
+  editEntryId, navigation, setShowPicker,
 }: any) {
-  const theme = useUnifiedTrackerTheme();
   const scrollViewRef = useRef<Animated.ScrollView>(null);
-
-  const {
-    fullThemeColors,
-    themeColors,
-    isDark,
-    triggerHaptic,
-    borderRadiusValue,
-    fontSizeMultiplier,
-    shouldReduceMotion,
-  } = useCustomization();
+  const { fullThemeColors, isDark, borderRadiusValue, fontSizeMultiplier, shouldReduceMotion } = useCustomization();
   const { success, error } = useSweetAlert();
   const { getEntries, addEntry } = useTracker();
   const { currentBaby } = useBaby();
@@ -2005,1422 +876,618 @@ function TrackerContent({
 
   const anomalyFeedback = useAnomalyFeedback();
   const progressive = useTrackerProgressive(selectedTrackerId || '');
-
   const {
-    prefillData,
-    suggestions,
-    streak,
-    isAtRisk,
-    hoursUntilBreak,
-    streakMessage,
-    insights,
-    correlations,
-    activeReminders,
-    hasUrgentReminders,
-    templates,
-    trends,
-    timeContext,
-    refresh: refreshProgressive,
+    prefillData, suggestions, streak, isAtRisk, hoursUntilBreak, streakMessage,
+    insights, correlations, activeReminders, hasUrgentReminders, templates, trends, timeContext, refresh: refreshProgressive,
   } = progressive;
 
-  
   const recentEntries = useMemo(() => {
     if (!tracker || !currentBaby) return [];
     return getEntries(tracker.id, 3);
   }, [tracker, getEntries, currentBaby]);
 
-  const visibleCorrelations = useMemo(
-    () => (correlations || []).filter((c: any) => !dismissedCorrelations.has(c.id)),
-    [correlations, dismissedCorrelations]
-  );
-
-  const visibleReminders = useMemo(
-    () => (activeReminders || []).filter((r: any) => !dismissedReminders.has(r.id)),
-    [activeReminders, dismissedReminders]
-  );
+  const visibleCorrelations = useMemo(() => (correlations || []).filter((c: any) => !dismissedCorrelations.has(c.id)), [correlations, dismissedCorrelations]);
+  const visibleReminders = useMemo(() => (activeReminders || []).filter((r: any) => !dismissedReminders.has(r.id)), [activeReminders, dismissedReminders]);
 
   const entriesToday = useMemo(() => {
     if (!tracker || !currentBaby) return 0;
-    const todayStart = startOfDay(new Date()).getTime();
-    const todayEnd = endOfDay(new Date()).getTime();
-    return getEntries(tracker.id).filter((e: any) => {
-      const t = e.timestamp;
-      return t >= todayStart && t <= todayEnd;
-    }).length;
+    const s = startOfDay(new Date()).getTime(), e = endOfDay(new Date()).getTime();
+    return getEntries(tracker.id).filter((x: any) => x.timestamp >= s && x.timestamp <= e).length;
   }, [tracker, getEntries, currentBaby]);
 
   const lastEntryTime = useMemo(() => {
     if (!tracker || !currentBaby) return null;
-    const entries = getEntries(tracker.id).sort(
-      (a: any, b: any) => b.timestamp - a.timestamp
-    );
-    return entries.length > 0 ? new Date(entries[0].timestamp) : null;
+    const list = getEntries(tracker.id).sort((a: any, b: any) => b.timestamp - a.timestamp);
+    return list.length ? new Date(list[0].timestamp) : null;
   }, [tracker, getEntries, currentBaby]);
 
-  
   const quickTemplates = useMemo((): QuickTemplate[] => {
     if (!tracker) return [];
-    const base: QuickTemplate[] = [];
     switch (tracker.id) {
-      case 'feed':
-        base.push(
-          {
-            id: 'breast-left',
-            label: 'Breast Left',
-            icon: '🤱',
-            data: { feedType: 'breast', side: 'left' },
-            color: '#ec4899',
-          },
-          {
-            id: 'breast-right',
-            label: 'Breast Right',
-            icon: '🤱',
-            data: { feedType: 'breast', side: 'right' },
-            color: '#ec4899',
-          },
-          {
-            id: 'bottle-4oz',
-            label: 'Bottle 4oz',
-            icon: '🍼',
-            data: { feedType: 'bottle', bottleAmount: 4, bottleAmount_unit: 'oz' },
-            color: '#6366f1',
-          },
-          {
-            id: 'bottle-6oz',
-            label: 'Bottle 6oz',
-            icon: '🍼',
-            data: { feedType: 'bottle', bottleAmount: 6, bottleAmount_unit: 'oz' },
-            color: '#6366f1',
-          }
-        );
-        break;
-      case 'sleep':
-        base.push(
-          {
-            id: 'nap-30',
-            label: 'Short Nap',
-            icon: '😴',
-            data: { sleepType: 'nap', status: 'completed' },
-            color: '#8b5cf6',
-          },
-          {
-            id: 'nap-60',
-            label: 'Long Nap',
-            icon: '😴',
-            data: { sleepType: 'nap', status: 'completed' },
-            color: '#8b5cf6',
-          },
-          {
-            id: 'night-sleep',
-            label: 'Night Sleep',
-            icon: '🌙',
-            data: { sleepType: 'night', status: 'completed' },
-            color: '#5F27CD',
-          }
-        );
-        break;
-      case 'diaper':
-        base.push(
-          {
-            id: 'wet',
-            label: 'Wet',
-            icon: '💧',
-            data: { type: 'wet' },
-            color: '#06b6d4',
-          },
-          {
-            id: 'dirty',
-            label: 'Dirty',
-            icon: '💩',
-            data: { type: 'dirty' },
-            color: '#f59e0b',
-          },
-          {
-            id: 'both',
-            label: 'Both',
-            icon: '💧💩',
-            data: { type: 'both' },
-            color: '#ef4444',
-          }
-        );
-        break;
-      case 'potty':
-        base.push(
-          {
-            id: 'pee',
-            label: 'Pee',
-            icon: '💧',
-            data: { type: 'pee', successful: true },
-            color: '#06b6d4',
-          },
-          {
-            id: 'poop',
-            label: 'Poop',
-            icon: '💩',
-            data: { type: 'poop', successful: true },
-            color: '#f59e0b',
-          }
-        );
-        break;
+      case 'feed': return [
+        { id: 'bl', label: 'Breast L', icon: '🤱', data: { feedType: 'breast', side: 'left' }, color: '#ec4899' },
+        { id: 'br', label: 'Breast R', icon: '🤱', data: { feedType: 'breast', side: 'right' }, color: '#ec4899' },
+        { id: 'b4', label: 'Bottle 4oz', icon: '🍼', data: { feedType: 'bottle', bottleAmount: 4, bottleAmount_unit: 'oz' }, color: DS.primary },
+        { id: 'b6', label: 'Bottle 6oz', icon: '🍼', data: { feedType: 'bottle', bottleAmount: 6, bottleAmount_unit: 'oz' }, color: DS.primary },
+      ];
+      case 'sleep': return [
+        { id: 's30', label: 'Short Nap', icon: '😴', data: { sleepType: 'nap', status: 'completed' }, color: '#8b5cf6' },
+        { id: 's60', label: 'Long Nap', icon: '😴', data: { sleepType: 'nap', status: 'completed' }, color: '#8b5cf6' },
+        { id: 'sn', label: 'Night', icon: '🌙', data: { sleepType: 'night', status: 'completed' }, color: '#5F27CD' },
+      ];
+      case 'diaper': return [
+        { id: 'wet', label: 'Wet', icon: '💧', data: { type: 'wet' }, color: '#06b6d4' },
+        { id: 'dirty', label: 'Dirty', icon: '💩', data: { type: 'dirty' }, color: DS.warning },
+        { id: 'both', label: 'Both', icon: '💧💩', data: { type: 'both' }, color: DS.danger },
+      ];
+      case 'potty': return [
+        { id: 'p', label: 'Pee', icon: '💧', data: { type: 'pee', successful: true }, color: '#06b6d4' },
+        { id: 'po', label: 'Poop', icon: '💩', data: { type: 'poop', successful: true }, color: DS.warning },
+      ];
+      default: return [];
     }
-    return base;
   }, [tracker]);
 
-  
   const smartSuggestions = useMemo((): SmartSuggestion[] => {
     if (!tracker) return [];
-    const items: SmartSuggestion[] = [];
+    const out: SmartSuggestion[] = [];
     (suggestions || []).forEach((s: any, i: number) => {
-      if (!s.fieldId || s.value === undefined || s.value === null || s.value === '')
-        return;
+      if (!s.fieldId || s.value == null || s.value === '') return;
       if ((s.confidence || 0) < 60) return;
-      items.push({
-        id: `sugg-${i}`,
-        fieldId: s.fieldId,
-        label: prettifyFieldKey(s.fieldId),
-        value: s.value,
-        confidence: s.confidence,
-        reason: s.reason || 'Based on your patterns',
-      });
+      out.push({ id: `sugg-${i}`, fieldId: s.fieldId, label: prettifyFieldKey(s.fieldId), value: s.value, confidence: s.confidence, reason: s.reason || 'Based on your patterns' });
     });
-    return items;
+    return out;
   }, [tracker, suggestions]);
 
-  
   const contextInsights = useMemo((): ContextInsight[] => {
     if (!tracker || !currentBaby) return [];
-    const items: ContextInsight[] = [];
-    if (entriesToday === 0) {
-      items.push({
-        id: 'first-entry',
-        type: 'tip',
-        message: `First ${tracker.name.toLowerCase()} of the day. Great time to log!`,
-        emoji: '✨',
-        color: '#10b981',
-        priority: 'low',
-      });
-    }
-    if (isAtRisk && streak?.currentStreak > 0) {
-      items.push({
-        id: 'streak-risk',
-        type: 'anomaly',
-        message: `Streak at risk! Log within ${hoursUntilBreak}h to keep ${streak.currentStreak} days.`,
-        emoji: '🔥',
-        color: '#ef4444',
-        priority: 'high',
-      });
-    }
-    if (timeContext?.nextSuggestedTime) {
-      items.push({
-        id: 'next-suggested',
-        type: 'pattern',
-        message: `Usually logged around ${timeContext.nextSuggestedTime}`,
-        emoji: '⏰',
-        color: '#6366f1',
-        priority: 'medium',
-      });
-    }
-    return items;
+    const out: ContextInsight[] = [];
+    if (entriesToday === 0) out.push({ id: 'first', type: 'tip', message: `First ${tracker.name.toLowerCase()} of the day. Great time to log!`, emoji: '✨', color: DS.success, priority: 'low' });
+    if (isAtRisk && streak?.currentStreak > 0) out.push({ id: 'risk', type: 'anomaly', message: `Streak at risk! Log within ${hoursUntilBreak}h`, emoji: '🔥', color: DS.danger, priority: 'high' });
+    if (timeContext?.nextSuggestedTime) out.push({ id: 'next', type: 'pattern', message: `Usually logged around ${timeContext.nextSuggestedTime}`, emoji: '⏰', color: DS.primary, priority: 'medium' });
+    return out;
   }, [tracker, currentBaby, entriesToday, isAtRisk, streak, hoursUntilBreak, timeContext]);
 
-  
   useEffect(() => {
-    if (selectedTrackerId) {
-      refreshProgressive();
-    }
+    if (selectedTrackerId) refreshProgressive();
   }, [selectedTrackerId, refreshProgressive]);
 
   useEffect(() => {
     if (!tracker || editEntryId || !currentBaby) return;
     const yesterday = subDays(new Date(), 1);
-    const yesterdayStart = startOfDay(yesterday).getTime();
-    const yesterdayEnd = endOfDay(yesterday).getTime();
+    const s = startOfDay(yesterday).getTime(), e = endOfDay(yesterday).getTime();
     const filtered = getEntries(tracker.id)
-      .filter((entry: any) => {
-        const entryTime = entry.timestamp;
-        return entryTime >= yesterdayStart && entryTime <= yesterdayEnd;
-      })
+      .filter((x: any) => x.timestamp >= s && x.timestamp <= e)
       .sort((a: any, b: any) => b.timestamp - a.timestamp)
-      .map((entry: any) => ({
-        id: entry.id,
-        timestamp: entry.timestamp,
-        data: entry.data || {},
-        notes: entry.notes,
-        tags: entry.tags,
-        title: entry.title,
-        photoUris: cleanImageUris(entry.photoUris),
+      .map((x: any) => ({
+        id: x.id, timestamp: x.timestamp, data: x.data || {}, notes: x.notes, tags: x.tags, title: x.title,
+        photoUris: cleanImageUris(x.photoUris),
       }));
     setYesterdayEntries(filtered);
   }, [tracker, getEntries, editEntryId, currentBaby, setYesterdayEntries]);
 
-  
   useEffect(() => {
     if (!tracker) return;
     let didApplyCorrelation = false;
     setPendingData((prev: any) => {
-      const newData = { ...prev };
-      let hasChanges = false;
-
-      
+      const nd = { ...prev };
+      let changed = false;
       const TIME_SENSITIVE = ['sleep', 'feed', 'dream_feed'];
-      if (
-        TIME_SENSITIVE.includes(tracker.id) &&
-        newData.startTime === undefined
-      ) {
-        newData.startTime = date.toISOString();
-        hasChanges = true;
+      if (TIME_SENSITIVE.includes(tracker.id) && nd.startTime === undefined) {
+        nd.startTime = date.toISOString();
+        changed = true;
       }
-
-      Object.entries(prefillData || {}).forEach(([key, value]) => {
-        if (newData[key] === undefined && value !== undefined && value !== '') {
-          newData[key] = value;
-          hasChanges = true;
-        }
+      Object.entries(prefillData || {}).forEach(([k, v]) => {
+        if (nd[k] === undefined && v !== undefined && v !== '') { nd[k] = v; changed = true; }
       });
       (suggestions || []).forEach((s: any) => {
-        if (newData[s.fieldId] === undefined && s.confidence >= 80) {
-          newData[s.fieldId] = s.value;
-          hasChanges = true;
-        }
+        if (nd[s.fieldId] === undefined && s.confidence >= 80) { nd[s.fieldId] = s.value; changed = true; }
       });
       if (appliedCorrelationPrefill) {
-        Object.entries(appliedCorrelationPrefill).forEach(([key, value]) => {
-          newData[key] = value;
-          hasChanges = true;
-        });
+        Object.entries(appliedCorrelationPrefill).forEach(([k, v]) => { nd[k] = v; changed = true; });
         didApplyCorrelation = true;
       }
-      return hasChanges ? newData : prev;
+      return changed ? nd : prev;
     });
-    if (didApplyCorrelation) {
-      setAppliedCorrelationPrefill(null);
-    }
-  }, [
-    prefillData,
-    suggestions,
-    appliedCorrelationPrefill,
-    tracker,
-    setPendingData,
-    setAppliedCorrelationPrefill,
-    date,
-  ]);
+    if (didApplyCorrelation) setAppliedCorrelationPrefill(null);
+  }, [prefillData, suggestions, appliedCorrelationPrefill, tracker, setPendingData, setAppliedCorrelationPrefill, date]);
 
-  
   useEffect(() => {
     if (!editEntryId || !tracker) return;
     const entry = getEntries(tracker.id).find((e: any) => e.id === editEntryId);
     if (entry) {
       setDate(new Date(entry.timestamp));
       setPendingData(entry.data || {});
-      setPendingOptions({
-        notes: entry.notes,
-        tags: entry.tags,
-        photoUris: cleanImageUris(entry.photoUris),
-      });
+      setPendingOptions({ notes: entry.notes, tags: entry.tags, photoUris: cleanImageUris(entry.photoUris) });
     }
   }, [editEntryId, tracker, getEntries, setDate, setPendingData, setPendingOptions]);
 
-  
   useEffect(() => {
     if (!currentBaby?.id || !tracker) return;
-
-    const checkAnomalies = async () => {
+    const check = async () => {
       try {
         const { detectAnomaly, extractMetricValue } = require('../../services/ai/BayesianEngine');
-
         const checks: Array<{ metric: any }> = [];
         if (tracker.id === 'temperature') checks.push({ metric: 'temperature_c' });
-        if (tracker.id === 'growth') {
-          checks.push({ metric: 'weight_kg' });
-          checks.push({ metric: 'height_cm' });
-        }
+        if (tracker.id === 'growth') { checks.push({ metric: 'weight_kg' }); checks.push({ metric: 'height_cm' }); }
         if (tracker.id === 'feed') checks.push({ metric: 'feeding_ml' });
-
         for (const { metric } of checks) {
           const value = extractMetricValue(metric, pendingData);
           if (value === null) continue;
           const result = await detectAnomaly(currentBaby.id, metric, value);
           if (result.isAnomaly && result.severity !== 'low') {
             setAnomalyWarning(result.explanation || 'Value looks unusual for this baby.');
-            setAnomalyMetric(metric);
-            setAnomalyValue(value);
-            setAnomalyZ(result.zScore);
+            setAnomalyMetric(metric); setAnomalyValue(value); setAnomalyZ(result.zScore);
             return;
           }
         }
-        setAnomalyWarning(null);
-        setAnomalyMetric(null);
-        setAnomalyValue(null);
-        setAnomalyZ(null);
-      } catch {
-        setAnomalyWarning(null);
-      }
+        setAnomalyWarning(null); setAnomalyMetric(null); setAnomalyValue(null); setAnomalyZ(null);
+      } catch { setAnomalyWarning(null); }
     };
-
-    const timeout = setTimeout(checkAnomalies, 500);
-    return () => clearTimeout(timeout);
+    const t = setTimeout(check, 500);
+    return () => clearTimeout(t);
   }, [pendingData, currentBaby?.id, tracker?.id]);
 
-  
   const dateRef = useRef(date);
   dateRef.current = date;
 
-  const handleCopyYesterdayEntry = useCallback(
-    (entry: YesterdayEntry) => {
-      HAPTIC_SUCCESS();
-      const copiedData = { ...entry.data };
-      const now = new Date();
-      setDate(now);
-      setPendingData(copiedData);
-      if (entry.notes || entry.tags || entry.photoUris) {
-        setPendingOptions((prev: any) => ({
-          ...prev,
-          notes: entry.notes || prev.notes,
-          tags: entry.tags || prev.tags,
-          photoUris: cleanImageUris(entry.photoUris || prev.photoUris || []),
-        }));
-      }
-      success(
-        'Copied!',
-        `Yesterday's ${tracker?.name || 'entry'} data loaded. Time set to now.`
-      );
-    },
-    [success, tracker?.name, setDate, setPendingData, setPendingOptions]
-  );
+  const handleCopyYesterday = useCallback((entry: YesterdayEntry) => {
+    HAPTIC_SUCCESS();
+    setDate(new Date());
+    setPendingData({ ...entry.data });
+    if (entry.notes || entry.tags || entry.photoUris) {
+      setPendingOptions((prev: any) => ({
+        ...prev,
+        notes: entry.notes || prev.notes,
+        tags: entry.tags || prev.tags,
+        photoUris: cleanImageUris(entry.photoUris || prev.photoUris || []),
+      }));
+    }
+    success('Copied!', `Yesterday's ${tracker?.name || 'entry'} data loaded.`);
+  }, [success, tracker?.name, setDate, setPendingData, setPendingOptions]);
 
   const handleDatePress = useCallback(() => {
     HAPTIC_LIGHT();
-    datePicker.open(
-      {
-        value: dateRef.current instanceof Date ? dateRef.current : new Date(),
-        mode: 'datetime',
-      },
-      (picked) => {
-        if (picked) {
-          setDate(picked);
-        }
-      }
-    );
+    datePicker.open({ value: dateRef.current instanceof Date ? dateRef.current : new Date(), mode: 'datetime' }, (picked) => {
+      if (picked) setDate(picked);
+    });
   }, [datePicker, setDate]);
 
-  
-  
-  
-
-  const buildTitle = useCallback(
-    (data: Record<string, unknown>): string => {
-      if (!tracker) return 'Entry';
-      const d = data;
-      const dur = formatDuration(d.duration);
-      switch (tracker.id) {
-        case 'potty':
-          return `${d.type || 'Potty'}${d.successful ? ' ✓' : ''}`;
-        case 'feed': {
-          if (d.feedType === 'solid') {
-            const solid = d.solidAmount
-              ? ` (${d.solidAmount}${
-                  d.solidAmount_unit ? ` ${d.solidAmount_unit}` : ''
-                })`
-              : '';
-            return `Solid Food${d.food ? `: ${d.food}` : ''}${solid}`;
-          }
-          const amount = d.bottleAmount
-            ? ` (${d.bottleAmount}${
-                d.bottleAmount_unit === 'oz' ? ' oz' : ' ml'
-              })`
-            : '';
-          return `${d.feedType || 'Feed'}${amount}${dur ? ` • ${dur}` : ''}`;
-        }
-        case 'sleep': {
-          const sleepLabel =
-            d.sleepType === 'nap'
-              ? 'Nap'
-              : d.sleepType === 'night'
-              ? 'Night Sleep'
-              : d.sleepType || 'Sleep';
-
-          
-          
-          
-          const durationText = dur ? ` • ${dur}` : '';
-          return `${sleepLabel}${durationText}`.trim();
-        }
-        case 'growth': {
-          const unit = d.value_unit || d.unit || '';
-          return `${d.measurementType || 'Measurement'}: ${d.value || ''}${
-            unit ? ` ${unit}` : ''
-          }`;
-        }
-        case 'medication':
-          return `${d.name || 'Medicine'}${d.dosage ? ` ${d.dosage}` : ''}`;
-        case 'milestone':
-          return `🌟 ${d.title || 'New Milestone'}`;
-        case 'diaper':
-          return `${d.type || 'Diaper'} Change`;
-        case 'temperature': {
-          const unit = d.unit === 'fahrenheit' ? '°F' : '°C';
-          return `🌡️ ${d.value || ''}${unit}`;
-        }
-        case 'note':
-          return (d.title as string) || 'Note';
-        case 'bath':
-          return `🛁 Bath${dur ? ` • ${dur}` : ''}`;
-        case 'pumping': {
-          const amount = d.amount
-            ? ` (${d.amount}${d.amount_unit === 'oz' ? ' oz' : ' ml'})`
-            : '';
-          return `🤱 Pumping${amount}${dur ? ` • ${dur}` : ''}`;
-        }
-        case 'tummy_time':
-          return `😤 Tummy Time${dur ? ` • ${dur}` : ''}`;
-        default:
-          return `${tracker.emoji} ${tracker.name}${dur ? ` • ${dur}` : ''}`;
+  const buildTitle = useCallback((data: Record<string, unknown>): string => {
+    if (!tracker) return 'Entry';
+    const d = data;
+    const dur = formatDuration(d.duration);
+    switch (tracker.id) {
+      case 'potty': return `${d.type || 'Potty'}${d.successful ? ' ✓' : ''}`;
+      case 'feed': {
+        if (d.feedType === 'solid') return `Solid Food${d.food ? `: ${d.food}` : ''}`;
+        const amount = d.bottleAmount ? ` (${d.bottleAmount}${d.bottleAmount_unit === 'oz' ? ' oz' : ' ml'})` : '';
+        return `${d.feedType || 'Feed'}${amount}${dur ? ` • ${dur}` : ''}`;
       }
-    },
-    [tracker]
-  );
+      case 'sleep': return `${d.sleepType === 'nap' ? 'Nap' : d.sleepType === 'night' ? 'Night Sleep' : d.sleepType || 'Sleep'}${dur ? ` • ${dur}` : ''}`;
+      case 'growth': return `${d.measurementType || 'Measurement'}: ${d.value || ''}${d.value_unit ? ` ${d.value_unit}` : d.unit ? ` ${d.unit}` : ''}`;
+      case 'medication': return `${d.name || 'Medicine'}${d.dosage ? ` ${d.dosage}` : ''}`;
+      case 'milestone': return `🌟 ${d.title || 'New Milestone'}`;
+      case 'diaper': return `${d.type || 'Diaper'} Change`;
+      case 'temperature': return `🌡️ ${d.value || ''}${d.unit === 'fahrenheit' ? '°F' : '°C'}`;
+      case 'note': return (d.title as string) || 'Note';
+      case 'bath': return `🛁 Bath${dur ? ` • ${dur}` : ''}`;
+      case 'pumping': return `🤱 Pumping${d.amount ? ` (${d.amount}${d.amount_unit === 'oz' ? ' oz' : ' ml'})` : ''}${dur ? ` • ${dur}` : ''}`;
+      case 'tummy_time': return `😤 Tummy Time${dur ? ` • ${dur}` : ''}`;
+      default: return `${tracker.emoji} ${tracker.name}${dur ? ` • ${dur}` : ''}`;
+    }
+  }, [tracker]);
 
-  const handleFormSubmit = useCallback(
-    (
-      data: Record<string, unknown>,
-      options: { title?: string; notes?: string; photoUris?: string[]; tags?: string[] }
-    ) => {
-      setPendingData(data);
-      setPendingOptions((prev: any) => ({
-        notes: options?.notes || prev?.notes || '',
-        tags: options?.tags || prev?.tags || [],
-        photoUris: cleanImageUris(options?.photoUris || prev?.photoUris || []),
-      }));
-      setShowConfirm(true);
-    },
-    [setPendingData, setPendingOptions, setShowConfirm]
-  );
+  const handleFormSubmit = useCallback((data: Record<string, unknown>, options: { title?: string; notes?: string; photoUris?: string[]; tags?: string[] }) => {
+    setPendingData(data);
+    setPendingOptions((prev: any) => ({
+      notes: options?.notes || prev?.notes || '',
+      tags: options?.tags || prev?.tags || [],
+      photoUris: cleanImageUris(options?.photoUris || prev?.photoUris || []),
+    }));
+    setShowConfirm(true);
+  }, [setPendingData, setPendingOptions, setShowConfirm]);
 
   const confirmSave = useCallback(async () => {
     if (!tracker) return;
     try {
-      // ── Start with a clean copy of what the user actually entered ──
       const finalData: Record<string, unknown> = { ...pendingData };
-
-      // ── Ongoing Timer fix ──────────────────────────────────────────
-      // If the user tapped "Start Nap" / "Start Bedtime" / "Left Breast"
-      // from a quick action, `pendingData` has `status: 'started'` but
-      // no `startTime`. Without a persisted startTime, the Ongoing pill
-      // in TrackerEntryCard never renders because isOngoing() bails on
-      // the missing timestamp. Stamp `date` (the user-selected start)
-      // as the actual start now.
-      const ONGOING_TRACKERS = ['sleep', 'feed', 'dream_feed', 'nap'];
-      if (ONGOING_TRACKERS.includes(tracker.id)) {
-        const wantsStarted =
-          finalData.status === 'started' || finalData.status === 'ongoing';
-        const hasStart =
-          finalData.startTime && String(finalData.startTime).length > 0;
-
-        if (wantsStarted && !hasStart) {
-          finalData.startTime = date.toISOString();
-          finalData.status = 'started'; // canonical Ongoing marker
-        }
+      const ONGOING = ['sleep', 'feed', 'dream_feed', 'nap'];
+      if (ONGOING.includes(tracker.id)) {
+        const wantsStarted = finalData.status === 'started' || finalData.status === 'ongoing';
+        const hasStart = finalData.startTime && String(finalData.startTime).length > 0;
+        if (wantsStarted && !hasStart) { finalData.startTime = date.toISOString(); finalData.status = 'started'; }
       }
-
-      // ── Strip fields hidden by showIf for the FINAL pendingData ───
-      // Without this, stale values from an earlier branch (e.g. a bottle
-      // amount left over after switching to breast) get saved and then
-      // fail downstream validation in TrackerContext.addEntry().
       try {
         const visibleIds = new Set(
-          (tracker.fields || [])
-            .filter((f) => {
-              try {
-                return typeof isFieldVisible === 'function'
-                  ? isFieldVisible(f, finalData)
-                  : true;
-              } catch {
-                return true;
-              }
-            })
-            .map((f) => f.id)
+          (tracker.fields || []).filter((f) => {
+            try { return typeof isFieldVisible === 'function' ? isFieldVisible(f, finalData) : true; } catch { return true; }
+          }).map(f => f.id),
         );
-        Object.keys(finalData).forEach((key) => {
-          const isUnitCompanion = key.endsWith('_unit');
-          const baseId = isUnitCompanion ? key.slice(0, -5) : key;
-          if (!visibleIds.has(key) && !visibleIds.has(baseId)) {
-            delete finalData[key];
-          }
+        Object.keys(finalData).forEach((k) => {
+          const isUnit = k.endsWith('_unit');
+          const baseId = isUnit ? k.slice(0, -5) : k;
+          if (!visibleIds.has(k) && !visibleIds.has(baseId)) delete finalData[k];
         });
-      } catch {
-        // never let cleanup block the save
-      }
-
-      // ── Derive duration + status for duration-based trackers ──────
-      const durationTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
-      if (durationTrackers.includes(tracker.id)) {
+      } catch {}
+      const durTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
+      if (durTrackers.includes(tracker.id)) {
         const hasStart = finalData.startTime && String(finalData.startTime).length > 0;
         const hasEnd = finalData.endTime && String(finalData.endTime).length > 0;
-
         if (hasStart && hasEnd) {
-          const startMs = new Date(String(finalData.startTime)).getTime();
-          const endMs = new Date(String(finalData.endTime)).getTime();
-          if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-            const durationSeconds = Math.round((endMs - startMs) / 1000);
-
-            if (durationSeconds >= 60) {
-              finalData.duration = durationSeconds;
-              finalData.status = 'completed';
-            } else {
-              delete finalData.duration;
-              finalData.status = 'completed';
-            }
+          const sMs = new Date(String(finalData.startTime)).getTime();
+          const eMs = new Date(String(finalData.endTime)).getTime();
+          if (!isNaN(sMs) && !isNaN(eMs) && eMs > sMs) {
+            const secs = Math.round((eMs - sMs) / 1000);
+            if (secs >= 60) { finalData.duration = secs; finalData.status = 'completed'; }
+            else { delete finalData.duration; finalData.status = 'completed'; }
           } else {
-            // Invalid range (end before start) → keep it Ongoing
             delete finalData.duration;
-            if (finalData.status !== 'started') {
-              finalData.status = 'ongoing';
-            }
+            if (finalData.status !== 'started') finalData.status = 'ongoing';
           }
         } else if (hasStart && !hasEnd) {
           delete finalData.duration;
-          if (finalData.status !== 'started') {
-            finalData.status = 'ongoing';
-          }
+          if (finalData.status !== 'started') finalData.status = 'ongoing';
         } else if (hasEnd && !hasStart) {
           delete finalData.duration;
           finalData.status = 'completed';
         }
       }
-
       const safePhotoUris = cleanImageUris(pendingOptions?.photoUris || []);
-      const safeTags = Array.isArray(pendingOptions?.tags)
-        ? pendingOptions.tags.filter(
-            (t): t is string => typeof t === 'string' && t.length > 0
-          )
-        : [];
-
+      const safeTags = Array.isArray(pendingOptions?.tags) ? pendingOptions.tags.filter((t): t is string => typeof t === 'string' && t.length > 0) : [];
       const entry = await addEntry(tracker.id, finalData, {
         title: buildTitle(finalData),
         notes: pendingOptions?.notes || '',
         tags: safeTags,
         photoUris: safePhotoUris,
       });
-
       if (entry) {
-        triggerHaptic('success');
+        HAPTIC_SUCCESS();
         setShowConfirm(false);
         success('Saved!', `${tracker.name} entry added successfully.`);
-        if (navigation.canGoBack()) {
-          navigation.goBack();
-        } else {
-          navigation.navigate('UniversalTrackerHub' as never);
-        }
+        if (navigation.canGoBack()) navigation.goBack();
+        else navigation.navigate('UniversalTrackerHub' as never);
       }
     } catch (err) {
       console.error('Save error:', err);
       error('Error', 'Failed to save entry. Please try again.');
     }
-  }, [
-    tracker,
-    pendingData,
-    pendingOptions,
-    addEntry,
-    triggerHaptic,
-    success,
-    error,
-    navigation,
-    buildTitle,
-    setShowConfirm,
-    date,
-  ]);
+  }, [tracker, pendingData, pendingOptions, addEntry, success, error, navigation, buildTitle, setShowConfirm, date]);
 
-  const handleTemplateSelect = useCallback(
-    (tmpl: QuickTemplate) => {
-      HAPTIC_MEDIUM();
-      setPendingData((prev: any) => ({ ...prev, ...tmpl.data }));
-      success('Template Applied', `${tmpl.label} prefill loaded.`);
-    },
-    [success, setPendingData]
-  );
+  const handleTemplateSelect = useCallback((tmpl: QuickTemplate) => {
+    HAPTIC_MEDIUM();
+    setPendingData((prev: any) => ({ ...prev, ...tmpl.data }));
+    success('Template Applied', `${tmpl.label} prefill loaded.`);
+  }, [success, setPendingData]);
 
-  const handleApplySuggestion = useCallback(
-    (suggestion: SmartSuggestion) => {
-      HAPTIC_LIGHT();
-      
-      setPendingData((prev: any) => {
-        const next = { ...prev };
-        if (suggestion.fieldId && suggestion.value !== undefined) {
-          next[suggestion.fieldId] = suggestion.value;
-        }
-        return next;
-      });
-      
-      setAppliedSuggestions((prev: Set<string>) => {
-        const next = new Set(prev);
-        next.add(suggestion.id);
-        return next;
-      });
-    },
-    [setPendingData, setAppliedSuggestions]
-  );
-
-  const handleDismissSuggestion = useCallback(
-    (id: string) => {
-      setAppliedSuggestions((prev: Set<string>) => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-    },
-    [setAppliedSuggestions]
-  );
-
-  const handleCorrelationAction = useCallback(
-    (correlation: ProgressiveCorrelation) => {
-      HAPTIC_LIGHT();
-      if (correlation.prefillData) {
-        setAppliedCorrelationPrefill(correlation.prefillData);
-      }
-    },
-    [setAppliedCorrelationPrefill]
-  );
-
-  const handleDismissCorrelation = useCallback(
-    (id: string) => {
-      setDismissedCorrelations((prev: Set<string>) => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-    },
-    [setDismissedCorrelations]
-  );
-
-  const handleDismissReminder = useCallback(
-    (id: string) => {
-      setDismissedReminders((prev: Set<string>) => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-    },
-    [setDismissedReminders]
-  );
-
-  const handleInsightAction = useCallback((_insight: ContextInsight) => {
+  const handleApplySuggestion = useCallback((s: SmartSuggestion) => {
     HAPTIC_LIGHT();
-  }, []);
+    setPendingData((prev: any) => {
+      const nd = { ...prev };
+      if (s.fieldId && s.value !== undefined) nd[s.fieldId] = s.value;
+      return nd;
+    });
+    setAppliedSuggestions((prev: Set<string>) => new Set([...prev, s.id]));
+  }, [setPendingData, setAppliedSuggestions]);
 
-  const progressiveState = useMemo(
-    () => ({
-      prefillData,
-      suggestions,
-      streak,
-      insights,
-      correlations,
-      activeReminders,
-      templates,
-      trends,
-      timeContext,
-      
-      yesterdayEntries: yesterdayEntries.slice(0, 5),
-      todayEntries: getEntries(tracker?.id ?? '').filter((e: any) => {
-        const t = e.timestamp;
-        const todayStart = new Date().setHours(0, 0, 0, 0);
-        return t >= todayStart;
-      }).slice(0, 5),
-    }),
-    [
-      prefillData,
-      suggestions,
-      streak,
-      insights,
-      correlations,
-      activeReminders,
-      templates,
-      trends,
-      timeContext,
-      yesterdayEntries,
-      getEntries,
-      tracker?.id,
-    ]
-  );
+  const handleDismissSuggestion = useCallback((id: string) => {
+    setAppliedSuggestions((prev: Set<string>) => new Set([...prev, id]));
+  }, [setAppliedSuggestions]);
 
-  const gradientColors: [string, string, string] = [
-    tracker.gradient[0] + '08',
-    tracker.gradient[1] + '04',
-    fullThemeColors.background,
-  ];
+  const handleCorrelationAction = useCallback((c: ProgressiveCorrelation) => {
+    HAPTIC_LIGHT();
+    if (c.prefillData) setAppliedCorrelationPrefill(c.prefillData);
+  }, [setAppliedCorrelationPrefill]);
 
-  const urgentReminders = visibleReminders.filter(
-    (r: any) => r.priority === 'urgent' || r.priority === 'high'
-  );
+  const handleDismissCorrelation = useCallback((id: string) => {
+    setDismissedCorrelations((prev: Set<string>) => new Set([...prev, id]));
+  }, [setDismissedCorrelations]);
+
+  const handleDismissReminder = useCallback((id: string) => {
+    setDismissedReminders((prev: Set<string>) => new Set([...prev, id]));
+  }, [setDismissedReminders]);
+
+  const progressiveState = useMemo(() => ({
+    prefillData, suggestions, streak, insights, correlations, activeReminders, templates, trends, timeContext,
+    yesterdayEntries: yesterdayEntries.slice(0, 5),
+    todayEntries: getEntries(tracker?.id ?? '').filter((e: any) => e.timestamp >= new Date().setHours(0, 0, 0, 0)).slice(0, 5),
+  }), [prefillData, suggestions, streak, insights, correlations, activeReminders, templates, trends, timeContext, yesterdayEntries, getEntries, tracker?.id]);
+
+  const urgentReminders = visibleReminders.filter((r: any) => r.priority === 'urgent' || r.priority === 'high');
 
   return (
-    <LinearGradient colors={gradientColors} style={styles.container}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <LinearGradient
+        colors={isDark
+          ? ['#0c0a09', `${tracker.gradient[0]}08`, '#0c0a09']
+          : ['#f8faff', `${tracker.gradient[0]}08`, '#eef0f5']}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Sticky Header */}
+      <Animated.View
+        entering={FadeIn.duration(400)}
+        style={[styles.stickyHeader, {
+          paddingTop: HEADER_TOP_PADDING,
+          backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)',
+          borderBottomColor: isDark ? DS.darkBorder : DS.gray200,
+        }]}
       >
+        <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <View style={styles.headerInner}>
+          <TouchableOpacity
+            onPress={() => { HAPTIC_LIGHT(); if (navigation.canGoBack()) navigation.goBack(); else navigation.navigate('UniversalTrackerHub' as never); }}
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+          >
+            <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { HAPTIC_LIGHT(); setShowPicker(true); }}
+            style={[styles.headerPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+          >
+            <Text style={{ fontSize: 16 }}>{tracker.emoji}</Text>
+            <Text style={[styles.headerPillText, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+              {editEntryId ? 'Edit' : 'Add'} {tracker.name}
+            </Text>
+            <Ionicons name="chevron-down" size={14} color={isDark ? DS.gray400 : DS.gray500} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { HAPTIC_LIGHT(); setShowPicker(true); }}
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+          >
+            <Ionicons name="swap-horizontal" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
         <Animated.ScrollView
           ref={scrollViewRef}
-          contentContainerStyle={[styles.content, { paddingTop: insets.top + 20 }]}
+          contentContainerStyle={{ paddingTop: HEADER_TOTAL_HEIGHT + 12, paddingBottom: insets.bottom + 120 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Top Nav Row */}
-          <Animated.View
-            entering={shouldReduceMotion ? undefined : FadeInDown.springify()}
-            style={styles.headerRow}
-          >
-            <TouchableOpacity
-              onPress={() => {
-                HAPTIC_LIGHT();
-                if (navigation.canGoBack()) {
-                  navigation.goBack();
-                } else {
-                  navigation.navigate('UniversalTrackerHub' as never);
-                }
-              }}
-              style={[styles.iconBtn, { borderRadius: borderRadiusValue }]}
-              activeOpacity={0.8}
-            >
-              <BlurView
-                intensity={isDark ? 40 : 80}
-                style={[styles.iconBlur, { borderRadius: borderRadiusValue }]}
-                tint={isDark ? 'dark' : 'light'}
-              >
-                <Ionicons name="arrow-back" size={22} color={fullThemeColors.text} />
-              </BlurView>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.trackerChip, { borderRadius: borderRadiusValue }]}
-              onPress={() => {
-                HAPTIC_LIGHT();
-                setShowPicker(true);
-              }}
-              activeOpacity={0.8}
-            >
-              <BlurView
-                intensity={isDark ? 40 : 80}
-                style={[styles.trackerChipBlur, { borderRadius: borderRadiusValue }]}
-                tint={isDark ? 'dark' : 'light'}
-              >
-                <Text style={styles.trackerChipEmoji}>{tracker.emoji}</Text>
-                <Text style={[styles.trackerChipText, { color: fullThemeColors.text }]}>
-                  {`${editEntryId ? 'Edit' : 'Add'} ${tracker.name}`}
-                </Text>
-                <Ionicons
-                  name="chevron-down"
-                  size={16}
-                  color={fullThemeColors.textSecondary}
-                />
-              </BlurView>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.iconBtn, { borderRadius: borderRadiusValue }]}
-              onPress={() => {
-                HAPTIC_LIGHT();
-                setShowPicker(true);
-              }}
-              activeOpacity={0.8}
-            >
-              <BlurView
-                intensity={isDark ? 40 : 80}
-                style={[styles.iconBlur, { borderRadius: borderRadiusValue }]}
-                tint={isDark ? 'dark' : 'light'}
-              >
-                <Ionicons name="swap-horizontal" size={20} color={fullThemeColors.text} />
-              </BlurView>
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* Smart Context Header */}
-          <View style={styles.sectionMargin}>
-            <SmartContextHeader
-              tracker={tracker}
-              currentBaby={currentBaby}
-              lastEntryTime={lastEntryTime}
-              entriesToday={entriesToday}
-              colors={fullThemeColors}
-              borderRadiusValue={borderRadiusValue}
-              fontSizeMultiplier={fontSizeMultiplier}
-            />
-          </View>
-
-          {/* Streak & Goal Ring */}
-          {streak && streak.currentStreak > 0 ? (
-            <View style={styles.sectionMargin}>
-              <StreakGoalRing
-                streak={streak}
-                isAtRisk={isAtRisk}
-                hoursUntilBreak={hoursUntilBreak}
-                streakMessage={streakMessage}
-                entriesToday={entriesToday}
-                dailyGoal={3}
-                trackerColor={tracker.gradient[0]}
-                colors={fullThemeColors}
-                borderRadiusValue={borderRadiusValue}
-                onLogNow={() => {
-                  scrollViewRef.current?.scrollTo({ y: 500, animated: true });
-                }}
-              />
-            </View>
-          ) : null}
-
-          {/* Quick Template Strip */}
-          <QuickTemplateStrip
-            templates={quickTemplates}
-            onSelect={handleTemplateSelect}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
+          {/* Pulse Header */}
+          <ContextPulse
+            isDark={isDark}
+            tracker={tracker}
+            baby={currentBaby}
+            entriesToday={entriesToday}
+            lastEntryTime={lastEntryTime}
+            onBabyPress={() => navigation.navigate('SwitchBaby', { returnTo: 'AddEntry', returnLabel: 'Log' })}
           />
 
-          {/* Smart Suggestion Chips */}
-          <SmartSuggestionChips
-            suggestions={smartSuggestions}
-            appliedSuggestions={appliedSuggestions}
-            onApply={handleApplySuggestion}
-            onDismiss={handleDismissSuggestion}
-            theme={theme}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
-
-          {/* Time Wheel Selector */}
-          <TimeWheelSelector
-            date={date}
-            onDateChange={handleDatePress}
-            onTimeChange={(newDate: Date) => setDate(newDate)}
-            trackerColor={tracker.gradient[0]}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-            fontSizeMultiplier={fontSizeMultiplier}
-          />
-
-          {/* Learning-mode banner — shown when we don't have enough data */}
+          {/* Learning mode ribbon */}
           {(() => {
-            
-            const hasRealData =
-              typeof progressive?.hasRealData === 'boolean'
-                ? progressive.hasRealData
-                : false;
-            const entryCount =
-              typeof progressive?.entryCount === 'number'
-                ? progressive.entryCount
-                : (yesterdayEntries?.length ?? 0) + (todayEntries?.length ?? 0);
-
-            if (hasRealData || entryCount >= 5) return null;
-
-            const remaining = Math.max(0, 5 - entryCount);
+            const hasData = typeof progressive?.hasRealData === 'boolean' ? progressive.hasRealData : false;
+            const count = typeof progressive?.entryCount === 'number' ? progressive.entryCount : (yesterdayEntries?.length ?? 0) + (todayEntries?.length ?? 0);
+            if (hasData || count >= 5) return null;
+            const remaining = Math.max(0, 5 - count);
             return (
-              <View
-                style={{
-                  marginHorizontal: 16,
-                  marginBottom: 12,
-                  padding: 12,
-                  borderRadius: borderRadiusValue,
-                  backgroundColor: `${tracker.gradient[0]}08`,
-                  borderLeftWidth: 3,
-                  borderLeftColor: tracker.gradient[0],
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 10,
-                }}
-              >
-                <Ionicons name="sparkles-outline" size={18} color={tracker.gradient[0]} />
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      color: tracker.gradient[0],
-                      fontWeight: '700',
-                      fontSize: 13,
-                    }}
-                  >
-                    Learning mode
-                  </Text>
-                  <Text
-                    style={{
-                      color: fullThemeColors.textSecondary,
-                      fontSize: 12,
-                      marginTop: 2,
-                    }}
-                  >
-                    Log {remaining} more {tracker.name.toLowerCase()}{' '}
-                    {remaining === 1 ? 'entry' : 'entries'} to unlock smart suggestions
-                  </Text>
-                </View>
+              <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+                <AuraRibbon
+                  isDark={isDark}
+                  icon="sparkles-outline"
+                  color={tracker.gradient[0]}
+                  label="Learning mode"
+                  text={`Log ${remaining} more ${tracker.name.toLowerCase()} ${remaining === 1 ? 'entry' : 'entries'} to unlock smart suggestions`}
+                />
               </View>
             );
           })()}
 
-          {/* Context Insights Strip */}
-          <ContextInsightsStrip
-            insights={contextInsights}
-            onAction={handleInsightAction}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
+          {/* Urgent ribbon */}
+          {hasUrgentReminders && urgentReminders.length > 0 && (
+            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+              <AuraRibbon isDark={isDark} icon="alert-circle-outline" color={DS.danger} label="Urgent" text={`${urgentReminders.length} reminder${urgentReminders.length !== 1 ? 's' : ''} need attention`} />
+            </View>
+          )}
 
-          {/* Related Tracker Suggestions — deduplicated by trackerId */}
+          {/* Streak Ring */}
+          {streak && streak.currentStreak > 0 && (
+            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+              <StreakRing streak={streak} isAtRisk={isAtRisk} entriesToday={entriesToday} dailyGoal={3} trackerColor={tracker.gradient[0]} isDark={isDark}
+                onLogNow={() => scrollViewRef.current?.scrollTo({ y: 500, animated: true })} />
+            </View>
+          )}
+
+          {/* Quick Templates */}
+          <View style={{ marginTop: DS.space.lg }}>
+            <QuickTemplates templates={quickTemplates} onSelect={handleTemplateSelect} isDark={isDark} />
+          </View>
+
+          {/* Smart Suggestions */}
+          <View style={{ marginTop: DS.space.md }}>
+            <SmartSuggestions suggestions={smartSuggestions} applied={appliedSuggestions} onApply={handleApplySuggestion} onDismiss={handleDismissSuggestion} primaryColor={tracker.gradient[0]} isDark={isDark} />
+          </View>
+
+          {/* Time Wheel */}
+          <View style={{ marginTop: DS.space.lg }}>
+            <TimeWheel date={date} onDateChange={handleDatePress} onTimeChange={(d: Date) => setDate(d)} trackerColor={tracker.gradient[0]} isDark={isDark} />
+          </View>
+
+          {/* Context Insights */}
+          <View style={{ marginTop: DS.space.lg }}>
+            <InsightsStrip insights={contextInsights} isDark={isDark} />
+          </View>
+
+          {/* Related tracker suggestions */}
           {(() => {
             const suggestions = progressive?.relatedTrackerSuggestions;
-            if (!Array.isArray(suggestions) || suggestions.length === 0) return null;
-            
-            
+            if (!Array.isArray(suggestions) || !suggestions.length) return null;
             const seen = new Set<string>();
-            const unique = suggestions.filter((s: any) => {
+            const uniq = suggestions.filter((s: any) => {
               if (!s?.trackerId || seen.has(s.trackerId)) return false;
               seen.add(s.trackerId);
               return true;
             });
-            
-            if (unique.length === 0) return null;
-            
+            if (!uniq.length) return null;
             return (
-              <View
-                style={{
-                  marginHorizontal: 16,
-                  marginTop: 12,
-                  marginBottom: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    color: fullThemeColors.textSecondary,
-                    fontSize: 13,
-                    fontWeight: '600',
-                    marginBottom: 8,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  Often logged together
-                </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {unique.slice(0, 3).map((s: any) => (
-                    <TouchableOpacity
-                      key={s.id}
-                      onPress={() => {
-                        HAPTIC_LIGHT();
-                        navigation.navigate('AddEntry', { trackerId: s.trackerId });
-                      }}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: borderRadiusValue,
-                        backgroundColor: `${tracker.gradient[0]}10`,
-                        borderWidth: 1,
-                        borderColor: `${tracker.gradient[0]}30`,
-                      }}
-                    >
-                      <Text style={{ fontSize: 16 }}>{s.emoji}</Text>
-                      <Text
-                        style={{
-                          color: tracker.gradient[0],
-                          fontSize: 13,
-                          fontWeight: '600',
-                        }}
-                      >
-                        {s.label}
-                      </Text>
-                    </TouchableOpacity>
+              <View style={{ marginTop: DS.space.lg }}>
+                <SectionHeader title="Often Logged Together" icon="link-outline" color={DS.info} />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 8, paddingVertical: 4 }}>
+                  {uniq.slice(0, 3).map((s: any) => (
+                    <PressableScale key={s.id} onPress={() => navigation.navigate('AddEntry', { trackerId: s.trackerId })} activeScale={0.94}>
+                      <View style={[styles.relChip, { backgroundColor: `${tracker.gradient[0]}10`, borderColor: `${tracker.gradient[0]}30` }]}>
+                        <Text style={{ fontSize: 15 }}>{s.emoji}</Text>
+                        <Text style={[styles.relChipText, { color: tracker.gradient[0] }]}>{s.label}</Text>
+                      </View>
+                    </PressableScale>
                   ))}
-                </View>
+                </ScrollView>
               </View>
             );
           })()}
 
-          {/* Urgent Reminders Banner */}
-          {hasUrgentReminders && urgentReminders.length > 0 ? (
-            <Animated.View
-              entering={FadeInUp.springify()}
-              style={[
-                styles.urgentBanner,
-                {
-                  backgroundColor: 'rgba(255,107,107,0.08)',
-                  borderRadius: borderRadiusValue,
-                },
-              ]}
-            >
-              <Ionicons name="alert-circle" size={20} color="#FF6B6B" />
-              <Text style={[styles.urgentText, { color: '#FF6B6B' }]}>
-                {`${urgentReminders.length} urgent reminder(s)`}
-              </Text>
-            </Animated.View>
-          ) : null}
-
           {/* Reminders */}
-          {visibleReminders.length > 0 ? (
-            <View style={styles.remindersSection}>
-              {visibleReminders.slice(0, 2).map((reminder: any) => (
-                <View
-                  key={reminder.id}
-                  style={[
-                    styles.reminderPill,
-                    {
-                      backgroundColor:
-                        reminder.priority === 'urgent' || reminder.priority === 'high'
-                          ? 'rgba(255,107,107,0.08)'
-                          : `${tracker.gradient[0]}08`,
-                      borderRadius: borderRadiusValue,
-                      borderLeftWidth: 3,
-                      borderLeftColor:
-                        reminder.priority === 'urgent' || reminder.priority === 'high'
-                          ? '#FF6B6B'
-                          : tracker.gradient[0],
-                    },
-                  ]}
-                >
-                  <Text style={styles.reminderEmoji}>{reminder.emoji || '🔔'}</Text>
-                  <View style={styles.reminderTextContainer}>
-                    <Text
-                      style={[styles.reminderTitle, { color: fullThemeColors.text }]}
-                      numberOfLines={1}
-                    >
-                      {reminder.title || ''}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.reminderBody,
-                        { color: fullThemeColors.textSecondary },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {reminder.body || ''}
-                    </Text>
-                  </View>
-                  {(reminder.actionButtons || []).map((btn: any) => (
-                    <TouchableOpacity
-                      key={btn.id}
-                      style={[
-                        styles.reminderActionBtn,
-                        {
-                          backgroundColor:
-                            btn.action === 'log_now'
-                              ? tracker.gradient[0]
-                              : fullThemeColors.surface,
-                          borderRadius: borderRadiusValue / 2,
-                        },
-                      ]}
-                      onPress={() => {}}
-                      activeOpacity={0.85}
-                    >
-                      <Text
-                        style={[
-                          styles.reminderActionText,
-                          {
-                            color:
-                              btn.action === 'log_now'
-                                ? '#fff'
-                                : fullThemeColors.text,
-                          },
-                        ]}
-                      >
-                        {btn.label || ''}
-                      </Text>
+          {visibleReminders.length > 0 && (
+            <View style={{ marginTop: DS.space.lg }}>
+              <SectionHeader title="Reminders" icon="notifications-outline" color={DS.warning} />
+              <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+                {visibleReminders.slice(0, 2).map((r: any) => (
+                  <View key={r.id} style={[styles.reminderCard, {
+                    backgroundColor: isDark ? DS.darkCard : DS.white,
+                    borderColor: isDark ? DS.darkBorder : DS.gray200,
+                    borderLeftColor: r.priority === 'urgent' || r.priority === 'high' ? DS.danger : tracker.gradient[0],
+                  }]}>
+                    <Text style={{ fontSize: 20 }}>{r.emoji || '🔔'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.reminderTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{r.title || ''}</Text>
+                      <Text style={[styles.reminderBody, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>{r.body || ''}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleDismissReminder(r.id)} style={{ padding: 4 }}>
+                      <Ionicons name="close" size={16} color={isDark ? DS.gray500 : DS.gray400} />
                     </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    onPress={() => handleDismissReminder(reminder.id)}
-                    style={styles.correlationDismiss}
-                  >
-                    <Ionicons
-                      name="close"
-                      size={18}
-                      color={fullThemeColors.textSecondary}
-                    />
-                  </TouchableOpacity>
-                </View>
-              ))}
+                  </View>
+                ))}
+              </View>
             </View>
-          ) : null}
+          )}
 
           {/* Correlations */}
-          {visibleCorrelations.length > 0 ? (
-            <View style={styles.correlationsSection}>
-              {visibleCorrelations.slice(0, 2).map((correlation: any) => (
-                <Animated.View
-                  key={correlation.id}
-                  entering={FadeInUp.springify()}
-                  style={[
-                    styles.correlationAlert,
-                    {
-                      backgroundColor: `${tracker.gradient[0]}08`,
-                      borderRadius: borderRadiusValue,
-                      borderLeftWidth: 3,
-                      borderLeftColor: tracker.gradient[0],
-                    },
-                  ]}
-                >
-                  <View style={styles.correlationIconContainer}>
-                    <Text style={styles.correlationEmoji}>
-                      {correlation.emoji || '🔗'}
-                    </Text>
-                  </View>
-                  <View style={styles.correlationTextContainer}>
-                    <Text
-                      style={[styles.correlationMessage, { color: fullThemeColors.text }]}
-                      numberOfLines={2}
-                    >
-                      {correlation.message || ''}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.correlationMeta,
-                        { color: fullThemeColors.textSecondary },
-                      ]}
-                    >
-                      {`${correlation.trackerEmoji || ''} ${
-                        correlation.trackerName || ''
-                      } • ${correlation.confidence ?? 0}% match`}
-                    </Text>
-                  </View>
-                  <View style={styles.correlationActions}>
-                    {correlation.action !== 'none' ? (
-                      <TouchableOpacity
-                        style={[
-                          styles.correlationActionBtn,
-                          { backgroundColor: tracker.gradient[0] },
-                        ]}
-                        onPress={() => handleCorrelationAction(correlation)}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={styles.correlationActionText}>
-                          {correlation.action === 'log_now'
-                            ? 'Log'
-                            : correlation.action === 'prefill'
-                            ? 'Apply'
-                            : 'View'}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    <TouchableOpacity
-                      onPress={() => handleDismissCorrelation(correlation.id)}
-                      style={styles.correlationDismiss}
-                    >
-                      <Ionicons
-                        name="close"
-                        size={18}
-                        color={fullThemeColors.textSecondary}
-                      />
+          {visibleCorrelations.length > 0 && (
+            <View style={{ marginTop: DS.space.lg }}>
+              <SectionHeader title="Correlations" icon="git-branch-outline" color={DS.accent} />
+              <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+                {visibleCorrelations.slice(0, 2).map((c: any) => (
+                  <View key={c.id} style={[styles.corrCard, {
+                    backgroundColor: isDark ? DS.darkCard : DS.white,
+                    borderColor: isDark ? DS.darkBorder : DS.gray200,
+                    borderLeftColor: tracker.gradient[0],
+                  }]}>
+                    <Text style={{ fontSize: 20 }}>{c.emoji || '🔗'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.reminderTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={2}>{c.message || ''}</Text>
+                      <Text style={[styles.reminderBody, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                        {c.trackerEmoji || ''} {c.trackerName || ''} · {c.confidence ?? 0}% match
+                      </Text>
+                    </View>
+                    {c.action !== 'none' && (
+                      <PressableScale onPress={() => handleCorrelationAction(c)} activeScale={0.94}>
+                        <LinearGradient colors={[tracker.gradient[0], tracker.gradient[1]]} style={styles.corrApply}>
+                          <Text style={styles.corrApplyText}>{c.action === 'log_now' ? 'Log' : c.action === 'prefill' ? 'Apply' : 'View'}</Text>
+                        </LinearGradient>
+                      </PressableScale>
+                    )}
+                    <TouchableOpacity onPress={() => handleDismissCorrelation(c.id)} style={{ padding: 4 }}>
+                      <Ionicons name="close" size={16} color={isDark ? DS.gray500 : DS.gray400} />
                     </TouchableOpacity>
                   </View>
-                </Animated.View>
-              ))}
-            </View>
-          ) : null}
-
-          {/* Yesterday Entries Strip */}
-          <YesterdayStrip
-            entries={yesterdayEntries}
-            tracker={tracker}
-            onCopyEntry={handleCopyYesterdayEntry}
-            onViewAll={() => setShowYesterdayModal(true)}
-            colors={fullThemeColors}
-            borderRadiusValue={borderRadiusValue}
-          />
-
-          {/* Recent entries */}
-          {recentEntries.length > 0 && !editEntryId ? (
-            <Animated.View
-              entering={
-                shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()
-              }
-              style={styles.recentSection}
-            >
-              <View style={styles.sectionHeader}>
-                <Text
-                  style={[
-                    styles.sectionTitle,
-                    {
-                      color: fullThemeColors.textSecondary,
-                      fontSize: 13 * fontSizeMultiplier,
-                    },
-                  ]}
-                >{`Recent ${tracker.name}`}</Text>
+                ))}
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            </View>
+          )}
+
+          {/* Yesterday */}
+          <View style={{ marginTop: DS.space.lg }}>
+            <YesterdayStrip entries={yesterdayEntries} trackerColor={tracker.gradient[0]} isDark={isDark} onCopy={handleCopyYesterday} onViewAll={() => setShowYesterdayModal(true)} />
+          </View>
+
+          {/* Recent */}
+          {recentEntries.length > 0 && !editEntryId && (
+            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()} style={{ marginTop: DS.space.lg }}>
+              <SectionHeader title={`Recent ${tracker.name}`} icon="time-outline" color={tracker.gradient[0]} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 8, paddingVertical: 4 }}>
                 {recentEntries.map((entry: any) => (
                   <TrackerEntryCard
                     key={entry.id}
                     entry={entry}
                     compact={true}
-                    onPress={() => {
-                      navigation.navigate('EntryDetail', {
-                        entryId: entry.id,
-                        trackerId: entry.trackerId,
-                      });
-                    }}
+                    onPress={() => navigation.navigate('EntryDetail', { entryId: entry.id, trackerId: entry.trackerId })}
                   />
                 ))}
               </ScrollView>
             </Animated.View>
-          ) : null}
+          )}
+
+          {/* Anomaly warning */}
+          {anomalyWarning && (
+            <Animated.View entering={FadeInUp.springify()} style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
+              <View style={[styles.anomalyCard, { backgroundColor: isDark ? 'rgba(245,158,11,0.08)' : 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.3)' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                  <Ionicons name="sparkles" size={18} color={DS.warning} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: DS.warning, fontWeight: '700', fontSize: 13 }}>AI noticed something</Text>
+                    <Text style={{ color: isDark ? DS.gray400 : DS.gray500, fontSize: 12, marginTop: 3, lineHeight: 17 }}>{anomalyWarning}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setAnomalyWarning(null)} style={{ padding: 4 }}>
+                    <Ionicons name="close" size={16} color={DS.warning} />
+                  </TouchableOpacity>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                  <PressableScale onPress={async () => {
+                    if (currentBaby?.id && anomalyMetric) await anomalyFeedback.recordFeedback(currentBaby.id, anomalyMetric, anomalyValue ?? 0, anomalyZ ?? 0, 'dismissed_normal');
+                    setAnomalyWarning(null);
+                  }} activeScale={0.94} style={{ flex: 1 }}>
+                    <View style={[styles.anomalyBtn, { backgroundColor: `${DS.success}15` }]}>
+                      <Text style={{ color: DS.success, fontWeight: '700', fontSize: 12 }}>Normal for us</Text>
+                    </View>
+                  </PressableScale>
+                  <PressableScale onPress={async () => {
+                    if (currentBaby?.id && anomalyMetric) await anomalyFeedback.recordFeedback(currentBaby.id, anomalyMetric, anomalyValue ?? 0, anomalyZ ?? 0, 'confirmed_anomaly');
+                    setAnomalyWarning(null);
+                  }} activeScale={0.94} style={{ flex: 1 }}>
+                    <View style={[styles.anomalyBtn, { backgroundColor: `${DS.danger}15` }]}>
+                      <Text style={{ color: DS.danger, fontWeight: '700', fontSize: 12 }}>Concern</Text>
+                    </View>
+                  </PressableScale>
+                </View>
+              </View>
+            </Animated.View>
+          )}
 
           {/* Errors */}
-          {errors.length > 0 ? (
-            <Animated.View
-              entering={
-                shouldReduceMotion ? undefined : FadeInDown.springify()
-              }
-              style={[
-                styles.errorsContainer,
-                {
-                  backgroundColor: `${fullThemeColors.error}15`,
-                  borderLeftColor: fullThemeColors.error,
-                  borderRadius: borderRadiusValue,
-                },
-              ]}
-            >
-              {errors.map((err: string, idx: number) => (
-                <View key={`error-${idx}`} style={styles.errorRow}>
-                  <Ionicons
-                    name="alert-circle"
-                    size={16}
-                    color={fullThemeColors.error}
-                  />
-                  <Text
-                    style={[styles.errorText, { color: fullThemeColors.error }]}
-                  >
-                    {String(err)}
-                  </Text>
-                </View>
-              ))}
-            </Animated.View>
-          ) : null}
-
-          {/* AI Anomaly Warning */}
-          {anomalyWarning ? (
-            <Animated.View
-              entering={FadeInUp.springify()}
-              style={{
-                marginHorizontal: 16,
-                marginBottom: 12,
-                padding: 14,
-                borderRadius: borderRadiusValue,
-                backgroundColor: 'rgba(245,158,11,0.10)',
-                borderLeftWidth: 3,
-                borderLeftColor: '#f59e0b',
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 10,
-              }}
-            >
-              <Ionicons name="sparkles" size={20} color="#f59e0b" />
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{ color: '#f59e0b', fontWeight: '700', marginBottom: 2 }}
-                >
-                  AI noticed something
-                </Text>
-                <Text
-                  style={{
-                    color: fullThemeColors.textSecondary,
-                    fontSize: 13,
-                    lineHeight: 18,
-                  }}
-                >
-                  {anomalyWarning}
-                </Text>
+          {errors.length > 0 && (
+            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+              <View style={[styles.errorsCard, { backgroundColor: `${DS.danger}10`, borderColor: `${DS.danger}30` }]}>
+                {errors.map((err: string, i: number) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Ionicons name="alert-circle" size={14} color={DS.danger} />
+                    <Text style={{ color: DS.danger, fontSize: 12, fontWeight: '500', flex: 1 }}>{err}</Text>
+                  </View>
+                ))}
               </View>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                <TouchableOpacity
-                  onPress={async () => {
-                    if (currentBaby?.id && anomalyMetric) {
-                      await anomalyFeedback.recordFeedback(
-                        currentBaby.id,
-                        anomalyMetric,
-                        anomalyValue ?? 0,
-                        anomalyZ ?? 0,
-                        'dismissed_normal'
-                      );
-                    }
-                    setAnomalyWarning(null);
-                  }}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    backgroundColor: 'rgba(16,185,129,0.15)',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text
-                    style={{ color: '#10b981', fontWeight: '700', fontSize: 12 }}
-                  >
-                    Normal for us
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={async () => {
-                    if (currentBaby?.id && anomalyMetric) {
-                      await anomalyFeedback.recordFeedback(
-                        currentBaby.id,
-                        anomalyMetric,
-                        anomalyValue ?? 0,
-                        anomalyZ ?? 0,
-                        'confirmed_anomaly'
-                      );
-                    }
-                    setAnomalyWarning(null);
-                  }}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    backgroundColor: 'rgba(239,68,68,0.15)',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text
-                    style={{ color: '#ef4444', fontWeight: '700', fontSize: 12 }}
-                  >
-                    Concern
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <TouchableOpacity
-                onPress={() => setAnomalyWarning(null)}
-                style={{ position: 'absolute', top: 8, right: 8 }}
-              >
-                <Ionicons
-                  name="close"
-                  size={18}
-                  color={fullThemeColors.textSecondary}
-                />
-              </TouchableOpacity>
-            </Animated.View>
-          ) : null}
+            </View>
+          )}
 
-          {/* Form — DynamicTrackerForm renders the photo picker when the
-              tracker has a `photo` field. Do not render one here. */}
-          <View style={styles.formWrapper}>
+          {/* Form */}
+          <View style={{ marginTop: DS.space.lg, paddingHorizontal: DS.space.lg }}>
             <DynamicTrackerForm
               tracker={tracker}
               initialData={pendingData}
               progressiveState={progressiveState}
               onSubmit={handleFormSubmit}
-              onCancel={() => {
-                if (navigation.canGoBack()) {
-                  navigation.goBack();
-                } else {
-                  setShowPicker(true);
-                }
-              }}
-              // Prevent the form from re-seeding state on every render
-              
+              onCancel={() => { if (navigation.canGoBack()) navigation.goBack(); else setShowPicker(true); }}
               key={selectedTrackerId || 'no-tracker'}
             />
           </View>
 
-          <View style={styles.bottomPadding} />
+          <View style={{ height: 40 }} />
         </Animated.ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Modals */}
       <ConfirmModal
         visible={showConfirm}
         onClose={() => setShowConfirm(false)}
@@ -3432,185 +1499,79 @@ function TrackerContent({
         babyAvatar={currentBaby?.avatar}
         date={date}
         notes={pendingOptions.notes}
-        tags={
-          Array.isArray(pendingOptions.tags)
-            ? pendingOptions.tags.filter(
-                (t: unknown): t is string =>
-                  typeof t === 'string' && t.length > 0
-              )
-            : []
-        }
+        tags={Array.isArray(pendingOptions.tags) ? pendingOptions.tags.filter((t: unknown): t is string => typeof t === 'string' && t.length > 0) : []}
       />
 
-      <YesterdayEntriesModal
+      <YesterdayModal
         visible={showYesterdayModal}
         onClose={() => setShowYesterdayModal(false)}
         entries={yesterdayEntries}
         tracker={tracker}
-        onCopyEntry={handleCopyYesterdayEntry}
-        colors={fullThemeColors}
-        borderRadiusValue={borderRadiusValue}
-        fontSizeMultiplier={fontSizeMultiplier}
+        onCopy={handleCopyYesterday}
+        isDark={isDark}
       />
 
-      {/* iOS DateTimePicker Modal — rendered by useDateTimePicker.
-          Android NEVER reaches this block because Platform.OS !== 'ios'. */}
-      {Platform.OS === 'ios' && datePicker.iosPicker.visible ? (
-        <Modal
-          transparent
-          animationType="slide"
-          visible={datePicker.iosPicker.visible}
-          statusBarTranslucent
-          onRequestClose={datePicker.dismissIos}
-        >
-          <Pressable
-            style={{
-              flex: 1,
-              justifyContent: 'flex-end',
-              backgroundColor: `rgba(0,0,0,${MODAL_BACKDROP_OPACITY})`,
-            }}
-            onPress={datePicker.dismissIos}
-          >
-            <View
-              style={{
-                backgroundColor: fullThemeColors.surface,
-                borderTopLeftRadius: borderRadiusValue * 2,
-                borderTopRightRadius: borderRadiusValue * 2,
-                paddingBottom: 40,
-              }}
-              onStartShouldSetResponder={() => true}
-              onTouchEnd={(e) => e.stopPropagation()}
-            >
-              <View
-                style={{
-                  alignItems: 'flex-end',
-                  padding: 16,
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: fullThemeColors.border,
-                }}
-              >
-                <TouchableOpacity
-                  onPress={datePicker.dismissIos}
-                  accessibilityRole="button"
-                >
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: '600',
-                      color: themeColors.primary,
-                    }}
-                  >
-                    Done
-                  </Text>
+      {Platform.OS === 'ios' && datePicker.iosPicker.visible && (
+        <Modal transparent animationType="slide" visible={datePicker.iosPicker.visible} statusBarTranslucent onRequestClose={datePicker.dismissIos}>
+          <Pressable style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={datePicker.dismissIos}>
+            <View style={{ backgroundColor: isDark ? DS.darkCard : DS.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingBottom: 40 }}>
+              <View style={{ alignItems: 'flex-end', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }}>
+                <TouchableOpacity onPress={datePicker.dismissIos}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: DS.primary }}>Done</Text>
                 </TouchableOpacity>
               </View>
-              {/* Lazy-require to keep the native module off the Android bundle */}
               {(() => {
                 try {
-                  
                   const DateTimePicker = require('@react-native-community/datetimepicker').default;
-                  return (
-                    <DateTimePicker
-                      value={datePicker.iosPicker.value}
-                      mode={datePicker.iosPicker.mode}
-                      display="spinner"
-                      onValueChange={datePicker.handleIosChange}
-                      textColor={fullThemeColors.text}
-                    />
-                  );
-                } catch {
-                  return null;
-                }
+                  return <DateTimePicker value={datePicker.iosPicker.value} mode={datePicker.iosPicker.mode} display="spinner" onValueChange={datePicker.handleIosChange} textColor={isDark ? DS.white : DS.gray900} />;
+                } catch { return null; }
               })()}
             </View>
           </Pressable>
         </Modal>
-      ) : null}
-    </LinearGradient>
+      )}
+    </View>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   Main screen
+   ═══════════════════════════════════════════════════════════════════════════ */
 export default function AddEntryScreen() {
   const navigation = useNavigation<AddEntryNavigationProp>();
   const route = useRoute<AddEntryRouteProp>();
-
-  const { fullThemeColors, themeColors, isDark } = useCustomization();
+  const { isDark } = useCustomization();
   const { getTracker } = useTracker();
   const { currentBaby, babyLoading } = useBaby();
 
-  const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(
-    route.params?.trackerId || null
-  );
+  const [selectedTrackerId, setSelectedTrackerId] = useState<string | null>(route.params?.trackerId || null);
   const [showPicker, setShowPicker] = useState(!route.params?.trackerId);
   const [date, setDate] = useState(new Date());
   const [showConfirm, setShowConfirm] = useState(false);
   const [showYesterdayModal, setShowYesterdayModal] = useState(false);
   const [yesterdayEntries, setYesterdayEntries] = useState<YesterdayEntry[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
-  const [dismissedCorrelations, setDismissedCorrelations] = useState<Set<string>>(
-    new Set()
-  );
-  const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(
-    new Set()
-  );
-  const [appliedCorrelationPrefill, setAppliedCorrelationPrefill] = useState<Record<
-    string,
-    unknown
-  > | null>(null);
-  const [appliedSuggestions, setAppliedSuggestions] = useState<Set<string>>(
-    new Set()
-  );
+  const [dismissedCorrelations, setDismissedCorrelations] = useState<Set<string>>(new Set());
+  const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
+  const [appliedCorrelationPrefill, setAppliedCorrelationPrefill] = useState<Record<string, unknown> | null>(null);
+  const [appliedSuggestions, setAppliedSuggestions] = useState<Set<string>>(new Set());
 
-  const [pendingData, setPendingData] = useState<Record<string, unknown>>(() => {
-    const preset = route.params?.presetData;
-    return { ...preset };
-  });
-
-  const [pendingOptions, setPendingOptions] = useState<{
-    notes?: string;
-    tags?: string[];
-    photoUris?: string[];
-  }>({
-    photoUris: [],
-  });
-
+  const [pendingData, setPendingData] = useState<Record<string, unknown>>(() => ({ ...route.params?.presetData }));
+  const [pendingOptions, setPendingOptions] = useState<{ notes?: string; tags?: string[]; photoUris?: string[] }>({ photoUris: [] });
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    if (!babyLoading && !currentBaby) {
-      timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
-    }
-    return () => clearTimeout(timer);
+    let t: ReturnType<typeof setTimeout>;
+    if (!babyLoading && !currentBaby) t = setTimeout(() => setShowBabyRequiredModal(true), 400);
+    return () => clearTimeout(t);
   }, [babyLoading, currentBaby]);
 
-  const tracker = useMemo(
-    () => (selectedTrackerId ? getTracker(selectedTrackerId) : undefined),
-    [selectedTrackerId, getTracker]
-  );
-
-  const editEntryId = useMemo(
-    () =>
-      (route.params as any)?.editMode
-        ? (route.params as any)?.eventId
-        : undefined,
-    [route.params]
-  );
-
-  
-  
-  
-  const [formInstanceKey, setFormInstanceKey] = useState(0);
+  const tracker = useMemo(() => (selectedTrackerId ? getTracker(selectedTrackerId) : undefined), [selectedTrackerId, getTracker]);
+  const editEntryId = useMemo(() => (route.params as any)?.editMode ? (route.params as any)?.eventId : undefined, [route.params]);
+  const [, setFormInstanceKey] = useState(0);
 
   const handleTrackerSelect = useCallback((trackerId: string) => {
-    if (!trackerId) {
-      console.warn('[AddEntryScreen] No tracker selected');
-      return;
-    }
+    if (!trackerId) return;
     setSelectedTrackerId(trackerId);
     setShowPicker(false);
     setPendingOptions({ photoUris: [] });
@@ -3622,44 +1583,24 @@ export default function AddEntryScreen() {
     setAppliedSuggestions(new Set());
     setShowYesterdayModal(false);
     setYesterdayEntries([]);
-    
-    setFormInstanceKey((k) => k + 1);
+    setFormInstanceKey(k => k + 1);
     setDate(new Date());
   }, []);
 
   const handlePickerClose = useCallback(() => {
     if (!selectedTrackerId) {
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
-        navigation.navigate('UniversalTrackerHub' as never);
-      }
-    } else {
-      setShowPicker(false);
-    }
+      if (navigation.canGoBack()) navigation.goBack();
+      else navigation.navigate('UniversalTrackerHub' as never);
+    } else setShowPicker(false);
   }, [selectedTrackerId, navigation]);
 
   if (showPicker) {
     return (
-      <View
-        style={[
-          styles.container,
-          { backgroundColor: fullThemeColors.background, flex: 1 },
-        ]}
-      >
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <TimelinePicker
-          visible={true}
-          onClose={handlePickerClose}
-          onSelect={handleTrackerSelect}
-          currentBabyName={currentBaby?.name}
-          currentBabyAvatar={currentBaby?.avatar}
-        />
-        <TouchableOpacity
-          style={{ position: 'absolute', top: 50, right: 20, padding: 10, zIndex: 999 }}
-          onPress={handlePickerClose}
-        >
-          <Ionicons name="close" size={28} color={fullThemeColors.text} />
+      <View style={{ flex: 1, backgroundColor: isDark ? DS.darkBg : DS.gray50 }}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+        <TimelinePicker visible onClose={handlePickerClose} onSelect={handleTrackerSelect} currentBabyName={currentBaby?.name} currentBabyAvatar={currentBaby?.avatar} />
+        <TouchableOpacity onPress={handlePickerClose} style={{ position: 'absolute', top: 50, right: 20, padding: 10, zIndex: 999 }}>
+          <Ionicons name="close" size={26} color={isDark ? DS.white : DS.gray900} />
         </TouchableOpacity>
       </View>
     );
@@ -3667,30 +1608,10 @@ export default function AddEntryScreen() {
 
   if (!tracker) {
     return (
-      <View
-        style={[
-          styles.container,
-          {
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: fullThemeColors.background,
-          },
-        ]}
-      >
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <Ionicons
-          name="alert-circle-outline"
-          size={48}
-          color={fullThemeColors.textSecondary}
-        />
-        <Text
-          style={[
-            styles.errorText,
-            { color: fullThemeColors.textSecondary, fontSize: 18 },
-          ]}
-        >
-          Tracker not found
-        </Text>
+      <View style={{ flex: 1, backgroundColor: isDark ? DS.darkBg : DS.gray50, alignItems: 'center', justifyContent: 'center' }}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+        <Ionicons name="alert-circle-outline" size={48} color={isDark ? DS.gray500 : DS.gray400} />
+        <Text style={{ color: isDark ? DS.gray500 : DS.gray400, fontSize: 16, marginTop: 8 }}>Tracker not found</Text>
       </View>
     );
   }
@@ -3726,80 +1647,24 @@ export default function AddEntryScreen() {
         navigation={navigation}
         setShowPicker={setShowPicker}
       />
-
-      {/* Baby Required Modal */}
-      <Modal
-        visible={showBabyRequiredModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowBabyRequiredModal(false)}
-      >
-        <Pressable
-          style={styles.babyModalOverlay}
-          onPress={() => setShowBabyRequiredModal(false)}
-        >
-          <View
-            style={[
-              styles.babyModalContent,
-              {
-                backgroundColor: isDark
-                  ? 'rgba(26,26,42,0.98)'
-                  : 'rgba(255,255,255,0.98)',
-              },
-            ]}
-          >
-            <View style={styles.babyModalIconWrap}>
-              <LinearGradient
-                colors={[
-                  themeColors?.secondary || '#fa709a',
-                  themeColors?.primary || '#667eea',
-                ]}
-                style={styles.babyModalIconGradient}
-              >
-                <Ionicons name="people-outline" size={32} color="#fff" />
+      <Modal visible={showBabyRequiredModal} transparent animationType="fade" onRequestClose={() => setShowBabyRequiredModal(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowBabyRequiredModal(false)}>
+          <View style={[styles.babyReqCard, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+            <LinearGradient colors={[DS.primary, DS.accent]} style={styles.babyReqIcon}>
+              <Ionicons name="people-outline" size={28} color={DS.white} />
+            </LinearGradient>
+            <Text style={[styles.confirmTitle, { color: isDark ? DS.white : DS.gray900 }]}>Baby Profile Needed</Text>
+            <Text style={[styles.confirmSub, { color: isDark ? DS.gray400 : DS.gray500, marginBottom: 20 }]}>
+              Create a baby profile to start tracking.
+            </Text>
+            <PressableScale onPress={() => { setShowBabyRequiredModal(false); navigation.navigate('CreateBabyProfile'); }} activeScale={0.97} style={{ width: '100%' }}>
+              <LinearGradient colors={[DS.primary, DS.accent]} style={styles.babyReqBtn}>
+                <Text style={styles.babyReqBtnText}>Create Baby Profile</Text>
+                <Ionicons name="arrow-forward" size={16} color={DS.white} />
               </LinearGradient>
-            </View>
-            <Text
-              style={[
-                styles.babyModalTitle,
-                { color: fullThemeColors?.text || '#1a1a1a' },
-              ]}
-            >
-              Baby Profile Needed
-            </Text>
-            <Text
-              style={[
-                styles.babyModalDesc,
-                { color: fullThemeColors?.textSecondary || '#64748b' },
-              ]}
-            >
-              Create a baby profile to start tracking activities and unlock all features.
-            </Text>
-            <TouchableOpacity
-              style={[
-                styles.babyModalPrimaryBtn,
-                { backgroundColor: themeColors?.primary || '#667eea' },
-              ]}
-              onPress={() => {
-                setShowBabyRequiredModal(false);
-                navigation.navigate('CreateBabyProfile');
-              }}
-            >
-              <Text style={styles.babyModalPrimaryBtnText}>Create Baby Profile</Text>
-              <Ionicons name="arrow-forward" size={16} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.babyModalSecondaryBtn}
-              onPress={() => setShowBabyRequiredModal(false)}
-            >
-              <Text
-                style={[
-                  styles.babyModalSecondaryBtnText,
-                  { color: fullThemeColors?.textMuted || '#94a3b8' },
-                ]}
-              >
-                Maybe Later
-              </Text>
+            </PressableScale>
+            <TouchableOpacity onPress={() => setShowBabyRequiredModal(false)} style={{ paddingVertical: 10 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? DS.gray500 : DS.gray400 }}>Maybe later</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -3808,180 +1673,146 @@ export default function AddEntryScreen() {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  keyboardView: { flex: 1 },
-  content: { paddingHorizontal: 0, paddingBottom: 40 },
-  sectionMargin: {
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.lg,
-  },
 
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-  },
-  iconBtn: { overflow: 'hidden' },
-  iconBlur: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trackerChip: { overflow: 'hidden', flex: 1, marginHorizontal: 12 },
-  trackerChipBlur: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  trackerChipEmoji: { fontSize: 18 },
-  trackerChipText: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  /* Header */
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, paddingBottom: DS.space.md, borderBottomWidth: StyleSheet.hairlineWidth },
+  headerInner: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: DS.space.lg, height: 48 },
+  headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerPill: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 38, paddingHorizontal: 14, borderRadius: 19 },
+  headerPillText: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
 
-  urgentBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    marginBottom: 16,
-    marginHorizontal: 16,
-  },
-  urgentText: { fontSize: 13, fontWeight: '600' },
+  /* Pulse */
+  pulseWrap: { marginHorizontal: DS.space.lg, marginTop: DS.space.md, borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden', borderWidth: 1, ...DS.shadow.md },
+  pulseGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  pulseGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  pulseAvatarWrap: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseAvatarGlow: { position: 'absolute', width: 66, height: 66, borderRadius: 33 },
+  pulseAvatarRing: { position: 'absolute', width: 62, height: 62, borderRadius: 31, overflow: 'hidden' },
+  pulseAvatarInner: { width: 54, height: 54, borderRadius: 27, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  pulseName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, maxWidth: '70%' },
+  pulseAgePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  pulseAgeText: { fontSize: 11, fontWeight: '700' },
+  pulseSubText: { fontSize: 12, fontWeight: '500' },
+  pulseIconBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  pulseLastText: { fontSize: 10, fontWeight: '600' },
 
-  remindersSection: { gap: 10, marginBottom: 16, marginHorizontal: 16 },
-  reminderPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    gap: 10,
-  },
-  reminderEmoji: { fontSize: 20 },
-  reminderTextContainer: { flex: 1 },
-  reminderTitle: { fontSize: 14, fontWeight: '600' },
-  reminderBody: { fontSize: 12, marginTop: 2 },
-  reminderActionBtn: { paddingHorizontal: 12, paddingVertical: 6 },
-  reminderActionText: { fontSize: 12, fontWeight: '600' },
+  /* Ribbon */
+  ribbon: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1, lineHeight: 16 },
 
-  correlationsSection: { gap: 10, marginBottom: 16, marginHorizontal: 16 },
-  correlationAlert: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    gap: 12,
-  },
-  correlationIconContainer: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  correlationEmoji: { fontSize: 24 },
-  correlationTextContainer: { flex: 1 },
-  correlationMessage: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
-  correlationMeta: { fontSize: 11, marginTop: 2 },
-  correlationActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  correlationActionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  correlationActionText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  correlationDismiss: { padding: 4 },
+  /* Section */
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: DS.space.lg, marginBottom: DS.space.sm, marginTop: DS.space.xs },
+  sectionIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
+  sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
+  sectionActionText: { fontSize: 12, fontWeight: '700' },
 
-  recentSection: { marginBottom: 20, marginHorizontal: 16 },
-  sectionHeader: { marginBottom: 10 },
-  sectionTitle: {
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
+  /* Chips */
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: DS.radius.full, borderWidth: 1 },
+  chipText: { fontSize: 12, fontWeight: '700' },
+  suggChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: DS.radius.full, borderWidth: 1 },
+  suggDot: { width: 6, height: 6, borderRadius: 3 },
+  suggLabel: { fontSize: 11, fontWeight: '700' },
+  suggValue: { fontSize: 11, fontWeight: '600' },
 
-  errorsContainer: {
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    marginHorizontal: 16,
-  },
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  errorText: { fontSize: 13, fontWeight: '500' },
+  /* Date & Time */
+  dateChip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: DS.radius.md, borderWidth: 1 },
+  dateChipText: { flex: 1, fontSize: 13, fontWeight: '700' },
+  timeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: DS.radius.md },
+  timeChipText: { fontSize: 13, fontWeight: '800' },
+  timeBlock: { width: 80, height: 80, borderRadius: DS.radius.md, alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1 },
+  timeBlockLabel: { fontSize: 10, fontWeight: '600' },
+  timeBlockTime: { fontSize: 13, fontWeight: '800' },
+  nowBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, marginTop: 2 },
+  nowBadgeText: { color: DS.white, fontSize: 8, fontWeight: '800' },
 
-  formWrapper: { marginTop: 8, paddingHorizontal: 16 },
-  bottomPadding: { height: 100 },
+  /* Insight */
+  insightCard: { width: 200, padding: DS.space.md, borderRadius: DS.radius.lg, borderLeftWidth: 3, borderWidth: 1, overflow: 'hidden', gap: 6 },
+  insightMsg: { fontSize: 12, fontWeight: '600', lineHeight: 16 },
+  insightPriority: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  insightPriorityText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
 
-  babyModalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  babyModalContent: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: 28,
-    padding: 28,
-    alignItems: 'center',
-  },
-  babyModalIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 24,
-    marginBottom: 16,
-    overflow: 'hidden',
-  },
-  babyModalIconGradient: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  babyModalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 8,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  babyModalDesc: {
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
-    paddingHorizontal: 8,
-  },
-  babyModalPrimaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    paddingVertical: 16,
-    borderRadius: 18,
-    gap: 8,
-    marginBottom: 12,
-  },
-  babyModalPrimaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  babyModalSecondaryBtn: {
-    width: '100%',
-    paddingVertical: 14,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  babyModalSecondaryBtnText: { fontSize: 15, fontWeight: '600' },
+  /* Card */
+  card: { marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg, padding: DS.space.md, borderWidth: 1, ...DS.shadow.sm },
+
+  /* Ring */
+  ringOuter: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 4 },
+  ringInner: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 4 },
+  ringValue: { fontSize: 22, fontWeight: '800' },
+  ringLabel: { fontSize: 10, fontWeight: '600' },
+  streakText: { fontSize: 16, fontWeight: '800' },
+  streakMsg: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
+  streakBtn: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10, marginTop: 4 },
+  streakBtnText: { color: DS.white, fontSize: 11, fontWeight: '700' },
+
+  /* Yesterday strip */
+  yestCard: { width: 160, padding: 12, borderRadius: DS.radius.lg, borderWidth: 1 },
+  yestTime: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  yestTimeText: { fontSize: 10, fontWeight: '700' },
+  yestFieldLabel: { fontSize: 10, fontWeight: '500', flex: 1 },
+  yestFieldValue: { fontSize: 10, fontWeight: '700', maxWidth: 80 },
+  yestMore: { fontSize: 9, fontWeight: '600', marginTop: 3 },
+
+  /* Reminder / corr cards */
+  reminderCard: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, borderLeftWidth: 3 },
+  reminderTitle: { fontSize: 13, fontWeight: '700' },
+  reminderBody: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  corrCard: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, borderLeftWidth: 3 },
+  corrApply: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  corrApplyText: { color: DS.white, fontSize: 11, fontWeight: '700' },
+
+  /* Related chips */
+  relChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: DS.radius.full, borderWidth: 1 },
+  relChipText: { fontSize: 12, fontWeight: '600' },
+
+  /* Anomaly */
+  anomalyCard: { padding: 12, borderRadius: DS.radius.md, borderWidth: 1 },
+  anomalyBtn: { paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
+
+  /* Errors */
+  errorsCard: { padding: 12, borderRadius: DS.radius.md, borderWidth: 1 },
+
+  /* Modal */
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  confirmCard: { width: '100%', maxWidth: 400, borderRadius: DS.radius['2xl'], padding: DS.space.lg, ...DS.shadow.lg },
+  confirmIcon: { width: 60, height: 60, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  confirmTitle: { fontSize: 19, fontWeight: '800', letterSpacing: -0.3 },
+  confirmSub: { fontSize: 12, fontWeight: '500' },
+  confirmPreview: { padding: 14, borderRadius: DS.radius.lg, borderWidth: 1 },
+  confirmTime: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  confirmPhoto: { width: 72, height: 72, borderRadius: 12 },
+  confirmPreviewTitle: { fontSize: 16, fontWeight: '800', marginBottom: 6 },
+  confirmNotes: { fontSize: 12, fontStyle: 'italic', marginBottom: 8, lineHeight: 17 },
+  confirmRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  confirmRowLabel: { fontSize: 12, fontWeight: '500' },
+  confirmRowValue: { fontSize: 12, fontWeight: '700' },
+  confirmTags: { fontSize: 12, fontStyle: 'italic', flex: 1 },
+  confirmCancel: { flex: 1, paddingVertical: 14, borderRadius: DS.radius.md, alignItems: 'center', borderWidth: 1 },
+  confirmCancelText: { fontSize: 14, fontWeight: '700' },
+  confirmSave: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: DS.radius.md },
+  confirmSaveText: { color: DS.white, fontSize: 14, fontWeight: '700' },
+
+  /* Yesterday modal */
+  yestModalCard: { width: '100%', maxWidth: 420, borderRadius: DS.radius['2xl'], overflow: 'hidden', maxHeight: '85%', ...DS.shadow.lg },
+  yestModalIcon: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  yestModalEntry: { padding: 14, borderRadius: DS.radius.lg, borderWidth: 1, marginBottom: 10 },
+  yestModalTitle: { fontSize: 13, fontWeight: '700', flex: 1 },
+  yestCopyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, marginTop: 10 },
+  yestCopyText: { color: DS.white, fontSize: 12, fontWeight: '700' },
+  yestDoneBtn: { paddingVertical: 14, borderRadius: DS.radius.md, alignItems: 'center' },
+  yestDoneText: { color: DS.white, fontSize: 14, fontWeight: '700' },
+
+  /* Baby required */
+  babyReqCard: { width: '100%', maxWidth: 340, borderRadius: DS.radius['2xl'], padding: DS.space['2xl'], alignItems: 'center', ...DS.shadow.lg },
+  babyReqIcon: { width: 60, height: 60, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
+  babyReqBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, width: '100%' },
+  babyReqBtnText: { color: DS.white, fontSize: 14, fontWeight: '700' },
 });

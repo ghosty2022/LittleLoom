@@ -18,7 +18,6 @@ import {
   View,
   Vibration,
 } from 'react-native';
-
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,8 +25,6 @@ import Animated, {
   FadeIn,
   FadeInUp,
   FadeInDown,
-  FadeInLeft,
-  FadeInRight,
   Layout,
   useSharedValue,
   useAnimatedStyle,
@@ -36,41 +33,34 @@ import Animated, {
   interpolate,
   Extrapolation,
   useAnimatedScrollHandler,
-  runOnJS,
+  withRepeat,
+  withSequence,
 } from 'react-native-reanimated';
 import * as Notifications from 'expo-notifications';
-import { useDateTimePicker } from '../../hooks/useDateTimePicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   format,
   addDays,
   isSameDay,
-  parseISO,
   startOfDay,
   differenceInDays,
   differenceInHours,
-  isToday,
-  isTomorrow,
   addMinutes,
   set,
-  subDays,
-  isValid,
 } from 'date-fns';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import { useBaby } from '../../context/BabyContext';
 import { useActivity } from '../../context/ActivityContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { SafeBabyAvatar } from '../../components/SafeAvatar';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useDateTimePicker } from '../../hooks/useDateTimePicker';
 import type { RootStackParamList } from '../../types/navigation';
 
-
-let Svg: any = null;
-let Circle: any = null;
-let Defs: any = null;
-let SvgLinearGradient: any = null;
-let Stop: any = null;
+let Svg: any = null, Circle: any = null, Defs: any = null, SvgLinearGradient: any = null, Stop: any = null;
 try {
   const SvgModule = require('react-native-svg');
   Svg = SvgModule.default ?? SvgModule;
@@ -78,111 +68,86 @@ try {
   Defs = SvgModule.Defs;
   SvgLinearGradient = SvgModule.LinearGradient;
   Stop = SvgModule.Stop;
-} catch (e) {
-  console.warn('[Reminders] react-native-svg not available — using fallback ring');
-}
+} catch { /* fallback */ }
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
+const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
+const HEADER_TOP_PADDING = 52;
+const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Matching Achievements/GrowthDashboard exactly
-   ═══════════════════════════════════════════════════════════════ */
-
-const DESIGN = {
-  radius: {
-    xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999,
-  },
-  spacing: {
-    xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32,
-  },
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
   shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 8 },
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
   },
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   NOTIFICATION HANDLER
-   ═══════════════════════════════════════════════════════════════ */
-
-// NOTE: setNotificationHandler is called EXACTLY ONCE per app launch,
-
-
-
-
-/* ═══════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
    TYPES
-   ═══════════════════════════════════════════════════════════════ */
-
+   ═══════════════════════════════════════════════════════════════════════════ */
 type RepeatType = 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'once' | 'custom';
 type CategoryType = 'potty' | 'feed' | 'sleep' | 'milestone' | 'medication' | 'play' | 'custom' | 'growth' | 'diaper' | 'symptom';
 type ViewMode = 'today' | 'upcoming' | 'all' | 'smart' | 'analytics';
 
 interface Reminder {
-  id: string;
-  title: string;
-  time: string;
-  emoji: string;
-  enabled: boolean;
-  repeat: RepeatType;
-  category: CategoryType;
-  babyId?: string;
-  babyName?: string;
-  notes?: string;
-  lastTriggered?: string;
-  streakDay?: number;
-  isAchievementRelated?: boolean;
-  achievementId?: string;
-  smartSuggestion?: boolean;
-  notificationId?: string;
-  createdAt: string;
-  color?: string;
-  daysOfWeek?: number[];
-  endDate?: string;
-  completedDates?: string[];
+  id: string; title: string; time: string; emoji: string; enabled: boolean;
+  repeat: RepeatType; category: CategoryType; babyId?: string; babyName?: string;
+  notes?: string; lastTriggered?: string; streakDay?: number;
+  isAchievementRelated?: boolean; achievementId?: string; smartSuggestion?: boolean;
+  notificationId?: string; createdAt: string; color?: string;
+  daysOfWeek?: number[]; endDate?: string; completedDates?: string[];
 }
 
 interface SmartSuggestion {
-  id: string;
-  type: CategoryType;
-  title: string;
-  description: string;
-  emoji: string;
-  reason: string;
-  optimalTime: string;
-  confidence: number;
-  basedOn: string;
-  action?: string;
-  priority: 'high' | 'medium' | 'low';
+  id: string; type: CategoryType; title: string; description: string; emoji: string;
+  reason: string; optimalTime: string; confidence: number; basedOn: string;
+  action?: string; priority: 'high' | 'medium' | 'low';
 }
 
 interface DailyInsight {
-  id: string;
-  type: 'pattern' | 'streak' | 'health' | 'milestone' | 'urgent';
-  title: string;
-  message: string;
-  emoji: string;
-  color: string;
-  actionLabel?: string;
-  actionScreen?: string;
+  id: string; type: 'pattern' | 'streak' | 'health' | 'milestone' | 'urgent';
+  title: string; message: string; emoji: string; color: string;
+  actionLabel?: string; actionScreen?: string;
 }
 
 interface AlertState {
-  visible: boolean;
-  type: 'success' | 'error' | 'info' | 'warning' | 'achievement';
-  title: string;
-  message: string;
-  emoji?: string;
+  visible: boolean; type: 'success' | 'error' | 'info' | 'warning' | 'achievement';
+  title: string; message: string; emoji?: string;
 }
-
-/* ═══════════════════════════════════════════════════════════════
-   CONSTANTS
-   ═══════════════════════════════════════════════════════════════ */
 
 const STORAGE_KEYS = {
   REMINDERS: '@littleloom_reminders_v4',
@@ -206,530 +171,224 @@ const CATEGORY_CONFIG: Record<CategoryType, { emoji: string; color: string; labe
 };
 
 const REPEAT_LABELS: Record<RepeatType, string> = {
-  daily: 'Every day',
-  weekdays: 'Mon-Fri',
-  weekends: 'Sat-Sun',
-  weekly: 'Weekly',
-  once: 'One time',
-  custom: 'Custom',
+  daily: 'Every day', weekdays: 'Mon-Fri', weekends: 'Sat-Sun',
+  weekly: 'Weekly', once: 'One time', custom: 'Custom',
 };
 
 const WEEKDAYS = [
-  { id: 1, label: 'M', full: 'Monday' },
-  { id: 2, label: 'T', full: 'Tuesday' },
-  { id: 3, label: 'W', full: 'Wednesday' },
-  { id: 4, label: 'T', full: 'Thursday' },
-  { id: 5, label: 'F', full: 'Friday' },
-  { id: 6, label: 'S', full: 'Saturday' },
-  { id: 0, label: 'S', full: 'Sunday' },
+  { id: 1, label: 'M' }, { id: 2, label: 'T' }, { id: 3, label: 'W' },
+  { id: 4, label: 'T' }, { id: 5, label: 'F' }, { id: 6, label: 'S' }, { id: 0, label: 'S' },
 ];
 
-/* ═══════════════════════════════════════════════════════════════
-   GLASS CARD — Matching Achievements screen
-   ═══════════════════════════════════════════════════════════════ */
+const HAPTIC_LIGHT = () => Vibration.vibrate(20);
 
-const GlassCard = React.memo(({ children, style, onPress, active = false }: any) => {
-  const { darkMode: isDark } = useCustomization();
-  const Wrapper = onPress ? TouchableOpacity : View;
-  return (
-    <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={[
-      styles.glassCard,
-      active && { borderColor: '#6366f1', borderWidth: 2 },
-      style,
-    ]}>
-      <LinearGradient
-        colors={isDark
-          ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)']
-          : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <View style={[styles.glassBorder, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)' }]} />
-      <View style={styles.glassContent}>{children}</View>
-    </Wrapper>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   SECTION HEADER — Matching Achievements screen
-   ═══════════════════════════════════════════════════════════════ */
-
-
-const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark }: any) => {
-  
-  const safeTitle = title != null ? String(title) : '';
-  const safeSubtitle = subtitle != null ? String(subtitle) : '';
-  
-  return (
-    <View style={styles.sectionHeader}>
-      <View>
-        <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{safeTitle}</Text>
-        {safeSubtitle !== '' && <Text style={[styles.sectionSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>{safeSubtitle}</Text>}
-      </View>
-      {action && (
-        <TouchableOpacity onPress={action} style={styles.sectionAction}>
-          <Text style={[styles.sectionActionText, { color: '#6366f1' }]}>{actionLabel || 'See All'}</Text>
-          <Ionicons name="chevron-forward" size={14} color="#6366f1" />
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   SWEET ALERT — Matching Achievements screen
-   ═══════════════════════════════════════════════════════════════ */
-
-const SweetAlert = React.memo(({ visible, type, title, message, emoji, onClose, isDark }: any) => {
-  const opacity = useSharedValue(0);
-  const scale = useSharedValue(0.8);
-
-  useEffect(() => {
-    if (visible) {
-      opacity.value = withTiming(1, { duration: 300 });
-      scale.value = withSpring(1, { damping: 12 });
-      const timer = setTimeout(() => {
-        opacity.value = withTiming(0, { duration: 300 });
-        scale.value = withTiming(0.8, { duration: 300 });
-        setTimeout(onClose, 300);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [visible]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ scale: scale.value }],
-  }));
-
-  if (!visible) return null;
-
-  const config: any = {
-    success: { colors: ['#11998e', '#38ef7d'], icon: 'checkmark-circle' },
-    error: { colors: ['#ef4444', '#f87171'], icon: 'alert-circle' },
-    info: { colors: ['#3b82f6', '#60a5fa'], icon: 'information-circle' },
-    warning: { colors: ['#f59e0b', '#fbbf24'], icon: 'warning' },
-    achievement: { colors: ['#f59e0b', '#fbbf24'], icon: 'trophy' },
-  }[type];
-
-  return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 9999, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 100 }]} pointerEvents="none">
-      <Animated.View style={[style, styles.alertContainer, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
-        <LinearGradient colors={config.colors} style={styles.alertIconBg}>
-          {emoji ? <Text style={{ fontSize: 28 }}>{emoji}</Text> : <Ionicons name={config.icon} size={28} color="#fff" />}
-        </LinearGradient>
-        <View style={styles.alertTextContainer}>
-          <Text style={[styles.alertTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
-          <Text style={styles.alertMessage}>{message}</Text>
-        </View>
-      </Animated.View>
-    </View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   NEW FEATURE 1: Reminder Stats Ring — Like Achievements Streak Ring
-   ═══════════════════════════════════════════════════════════════ */
-
-const ReminderStatsRing = React.memo(({ total, active, isDark }: { total: number; active: number; isDark: boolean }) => {
-  const size = 120;
-  const strokeWidth = 8;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = total > 0 ? (active / total) * 100 : 0;
-  const strokeDashoffset = circumference - (Math.min(progress, 100) / 100) * circumference;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.statsRingContainer}>
-      <View style={[styles.statsRingWrap, { width: size, height: size }]}>
-        {Svg ? (
-        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          <Defs>
-            <SvgLinearGradient id="statsRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <Stop offset="0%" stopColor="#6366f1" />
-              <Stop offset="100%" stopColor="#a78bfa" />
-            </SvgLinearGradient>
-          </Defs>
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}
-            strokeWidth={strokeWidth}
-            fill="none"
-          />
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke="url(#statsRingGrad)"
-            strokeWidth={strokeWidth}
-            fill="none"
-            strokeDasharray={circumference}
-            strokeDashoffset={strokeDashoffset}
-            strokeLinecap="round"
-            transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          />
-        </Svg>
-        ) : (
-          <View style={{
-            width: size, height: size, borderRadius: size / 2,
-            borderWidth: strokeWidth, borderColor: '#6366f1',
-            alignItems: 'center', justifyContent: 'center',
-          }} />
-        )}
-        <View style={styles.statsRingInner}>
-          <Text style={[styles.statsRingValue, { color: isDark ? '#fff' : '#1e293b' }]}>{active}</Text>
-          <Text style={[styles.statsRingLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>active</Text>
-        </View>
-      </View>
-      <View style={styles.statsRingMeta}>
-        <View style={styles.statsRingMetaItem}>
-          <View style={[styles.statsRingMetaDot, { backgroundColor: '#6366f1' }]} />
-          <Text style={[styles.statsRingMetaText, { color: isDark ? '#94a3b8' : '#64748b' }]}>{active} active</Text>
-        </View>
-        <View style={styles.statsRingMetaItem}>
-          <View style={[styles.statsRingMetaDot, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' }]} />
-          <Text style={[styles.statsRingMetaText, { color: isDark ? '#94a3b8' : '#64748b' }]}>{total - active} paused</Text>
-        </View>
-      </View>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   NEW FEATURE 2: Category Breakdown — Like Rarity Showcase
-   ═══════════════════════════════════════════════════════════════ */
-
-const CategoryBreakdown = React.memo(({ reminders, isDark }: { reminders: Reminder[]; isDark: boolean }) => {
-  const categories = useMemo(() => {
-    const counts: Record<string, { label: string; color: string; count: number }> = {};
-    Object.entries(CATEGORY_CONFIG).forEach(([key, config]) => {
-      counts[key] = { label: config.label, color: config.color, count: 0 };
-    });
-    reminders.forEach(r => {
-      if (counts[r.category]) counts[r.category].count++;
-    });
-    return Object.entries(counts)
-      .filter(([_, data]) => data.count > 0)
-      .sort((a, b) => b[1].count - a[1].count);
-  }, [reminders]);
-
-  if (categories.length === 0) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(150).springify()}>
-      <SectionHeader title="Categories" subtitle="Your reminder breakdown" isDark={isDark} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryBreakdownScroll}>
-        {categories.map(([key, data]) => (
-          <View key={key} style={[
-            styles.categoryBreakdownCard,
-            { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' },
-          ]}>
-            <LinearGradient
-              colors={[`${data.color}15`, `${data.color}05`]}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <View style={[styles.categoryBreakdownIcon, { backgroundColor: `${data.color}15` }]}>
-              <Text style={styles.categoryBreakdownEmoji}>{CATEGORY_CONFIG[key as CategoryType]?.emoji || '⏰'}</Text>
-            </View>
-            <Text style={[styles.categoryBreakdownCount, { color: isDark ? '#fff' : '#1e293b' }]}>{data.count}</Text>
-            <Text style={[styles.categoryBreakdownLabel, { color: data.color }]}>{data.label}</Text>
-          </View>
-        ))}
-      </ScrollView>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   NEW FEATURE 3: Upcoming Timeline — Enhanced with visual flair
-   ═══════════════════════════════════════════════════════════════ */
-
-const UpcomingTimeline = React.memo(({ reminders, onPress, isDark }: { reminders: Reminder[]; onPress: (r: Reminder) => void; isDark: boolean }) => {
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  const upcoming = useMemo(() => {
-    return reminders
-      .filter(r => r.enabled)
-      .sort((a, b) => {
-        const [ah, am] = a.time.split(':').map(Number);
-        const [bh, bm] = b.time.split(':').map(Number);
-        return (ah * 60 + am) - (bh * 60 + bm);
-      })
-      .map(r => {
-        const [h, m] = r.time.split(':').map(Number);
-        const minutes = h * 60 + m;
-        const isPast = minutes < currentMinutes;
-        const isNext = !isPast && minutes <= currentMinutes + 60;
-        return { ...r, isPast, isNext, minutes };
-      });
-  }, [reminders, currentMinutes]);
-
-  if (upcoming.length === 0) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <SectionHeader title="Today's Timeline" subtitle={`${upcoming.filter(r => !r.isPast).length} remaining`} isDark={isDark} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timelineScroll}>
-        {upcoming.map((item, index) => {
-          const config = CATEGORY_CONFIG[item.category];
-          return (
-            <TouchableOpacity
-              key={item.id}
-              onPress={() => onPress(item)}
-              activeOpacity={0.85}
-              style={[styles.timelineNode, item.isNext && styles.timelineNodeNext]}
-            >
-              <View style={[styles.timelineDot, {
-                backgroundColor: item.isPast ? config.color : '#fff',
-                borderColor: config.color,
-                borderWidth: item.isPast ? 0 : 3,
-              }]}>
-                {item.isPast && <Ionicons name="checkmark" size={10} color="#fff" />}
-              </View>
-              {index < upcoming.length - 1 && (
-                <View style={[styles.timelineConnector, item.isPast && { backgroundColor: config.color }]} />
-              )}
-              <View style={styles.timelineNodeContent}>
-                <Text style={[styles.timelineTime, { color: item.isPast ? '#94a3b8' : isDark ? '#fff' : '#1e293b' }]}>{item.time}</Text>
-                <Text style={[styles.timelineLabel, { color: item.isPast ? '#94a3b8' : isDark ? '#94a3b8' : '#64748b' }]} numberOfLines={1}>{item.title}</Text>
-                {item.isNext && (
-                  <View style={[styles.timelineNextBadge, { backgroundColor: config.color }]}>
-                    <Text style={styles.timelineNextText}>NEXT</Text>
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   NEW FEATURE 4: Daily Insights — Matching Achievements style
-   ═══════════════════════════════════════════════════════════════ */
-
-const DailyInsights = memo(({ insights, isDark, onAction }: { insights: DailyInsight[]; isDark: boolean; onAction: (insight: DailyInsight) => void }) => {
-  const scrollRef = useRef<ScrollView>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveIndex((prev) => {
-        const next = (prev + 1) % insights.length;
-        scrollRef.current?.scrollTo({ x: next * (width - 48), animated: true });
-        return next;
-      });
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [insights.length]);
-
-  if (insights.length === 0) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(50).springify()}>
-      <SectionHeader title="Daily Insights" subtitle={`${insights.length} smart suggestions`} isDark={isDark} />
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={(e) => {
-          const index = Math.round(e.nativeEvent.contentOffset.x / (width - 48));
-          setActiveIndex(index);
-        }}
-        contentContainerStyle={styles.insightsScroll}
-      >
-        {insights.map((insight, i) => (
-          <TouchableOpacity
-            key={insight.id}
-            onPress={() => onAction(insight)}
-            activeOpacity={0.9}
-            style={[styles.insightCard, { borderLeftColor: insight.color }]}
-          >
-            <LinearGradient
-              colors={[`${insight.color}08`, `${insight.color}02`]}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <View style={styles.insightRow}>
-              <View style={[styles.insightIconBg, { backgroundColor: `${insight.color}15` }]}>
-                <Text style={styles.insightEmoji}>{insight.emoji}</Text>
-              </View>
-              <View style={styles.insightContent}>
-                <Text style={[styles.insightTitle, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>
-                  {insight.title}
-                </Text>
-                <Text style={[styles.insightMessage, { color: isDark ? '#94a3b8' : '#64748b' }]} numberOfLines={2}>
-                  {insight.message}
-                </Text>
-                {insight.actionLabel && (
-                  <View style={[styles.insightActionBadge, { backgroundColor: 'rgba(99,102,241,0.1)' }]}>
-                    <Text style={[styles.insightActionText, { color: '#6366f1' }]}>{insight.actionLabel} →</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-      <View style={styles.insightDots}>
-        {insights.map((_, i) => (
-          <View key={i} style={[styles.insightDot, i === activeIndex && { backgroundColor: '#6366f1', width: 16 }]} />
-        ))}
-      </View>
-    </Animated.View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   REMINDER LIST ITEM — Matching Achievements card style
-   ═══════════════════════════════════════════════════════════════ */
-
-const ReminderListItem = memo(({ item, index, isNext, onToggle, onPress, onLongPress, isDark }: {
-  item: Reminder;
-  index: number;
-  isNext: boolean;
-  onToggle: (id: string) => void;
-  onPress: (item: Reminder) => void;
-  onLongPress: (id: string) => void;
-  isDark: boolean;
+/* ═══════════════════════════════════════════════════════════════════════════
+   GradientText + PressableScale
+   ═══════════════════════════════════════════════════════════════════════════ */
+const GradientText = memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: {
+  children: React.ReactNode; style?: any; colors?: string[];
 }) => {
-  const config = CATEGORY_CONFIG[item.category] || CATEGORY_CONFIG.custom;
-  const [h, m] = item.time.split(':').map(Number);
-  const timeDate = set(new Date(), { hours: h, minutes: m });
-  const isPast = !item.enabled || timeDate < new Date();
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>{l}</Text>;
+      })}
+    </View>
+  );
+});
+
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = memo<{
+  children: React.ReactNode; onPress?: () => void; disabled?: boolean; style?: any; activeScale?: number;
+}>(({ children, onPress, disabled, style, activeScale = 0.96 }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={() => { if (!disabled) { HAPTIC_LIGHT(); onPress?.(); } }}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >{children}</AnimatedTouchable>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SectionHeader
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SectionHeader = memo(({ title, subtitle, icon, color = DS.primary, action, actionLabel, isDark }: {
+  title: string; subtitle?: string; icon?: keyof typeof Ionicons.glyphMap; color?: string;
+  action?: () => void; actionLabel?: string; isDark: boolean;
+}) => (
+  <View style={styles.sectionHeader}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+      {icon && (
+        <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+      )}
+      <View>
+        <Text style={[styles.sectionTitle, { color: isDark ? DS.white : DS.gray900 }]}>{title}</Text>
+        {subtitle && <Text style={[styles.sectionSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>{subtitle}</Text>}
+      </View>
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <Text style={[styles.sectionAction, { color }]}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={13} color={color} />
+      </TouchableOpacity>
+    )}
+  </View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reminders Pulse Header
+   ═══════════════════════════════════════════════════════════════════════════ */
+const RemindersPulse = memo(({
+  isDark, baby, activeCount, totalCount, streak, atRisk, nextReminder, onBabyPress, onShare,
+}: {
+  isDark: boolean; baby: any; activeCount: number; totalCount: number;
+  streak: number; atRisk: boolean; nextReminder: Reminder | null;
+  onBabyPress: () => void; onShare: () => void;
+}) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 9000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.8, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, [pulse, rotate, glow]);
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
+
+  const nextText = nextReminder
+    ? `${nextReminder.time} · ${nextReminder.title}`
+    : 'All caught up';
 
   return (
-    <Animated.View entering={FadeInUp.delay(index * 30).springify()} layout={Layout.springify()}>
-      <TouchableOpacity
-        onPress={() => onPress(item)}
-        onLongPress={() => { Vibration.vibrate(50); onLongPress(item.id); }}
-        activeOpacity={0.85}
-        style={[
-          styles.reminderItem,
-          isNext && styles.reminderItemNext,
-          !item.enabled && styles.reminderItemDisabled,
-          { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' },
-        ]}
-      >
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View style={[styles.pulseWrap, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
         <LinearGradient
-          colors={[`${config.color}08`, `${config.color}02`]}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          colors={isDark
+            ? ['rgba(99,102,241,0.20)', 'rgba(236,72,153,0.10)', 'rgba(139,92,246,0.05)']
+            : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']}
+          style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
         />
-        
-        {/* Left: Emoji/Icon */}
-        <View style={[styles.reminderEmojiWrap, { backgroundColor: `${config.color}15` }]}>
-          <Text style={styles.reminderEmoji}>{item.emoji || config.emoji}</Text>
+        <LinearGradient colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']}
+          style={styles.pulseGlowL} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} pointerEvents="none" />
+        <LinearGradient colors={[`${DS.accent}${isDark ? '35' : '22'}`, 'transparent']}
+          style={styles.pulseGlowR} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} pointerEvents="none" />
+
+        <View style={styles.pulseRow}>
+          <PressableScale onPress={onBabyPress} activeScale={0.94}>
+            <View style={styles.pulseAvatarWrap}>
+              <Animated.View style={[styles.pulseAvatarGlow, glowStyle]} />
+              <Animated.View style={[styles.pulseAvatarRing, ringStyle]}>
+                <LinearGradient colors={[DS.primary, DS.accent, DS.warning, DS.primary]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+              </Animated.View>
+              <View style={[styles.pulseAvatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+                <SafeBabyAvatar avatar={baby?.avatar} gender={baby?.gender} size={44} showBadge={false} />
+              </View>
+            </View>
+          </PressableScale>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[styles.pulseName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                {baby?.name || 'Reminders'}
+              </Text>
+              <View style={[styles.pulseAgePill, { backgroundColor: atRisk ? `${DS.danger}18` : `${DS.success}18` }]}>
+                <Ionicons name={atRisk ? 'flame-outline' : 'flame'} size={10} color={atRisk ? DS.danger : DS.success} />
+                <Text style={[styles.pulseAgeText, { color: atRisk ? DS.danger : DS.success }]}>{streak}d</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <View style={[styles.pulseLiveDot, { backgroundColor: atRisk ? DS.danger : DS.success }]} />
+              <Text style={[styles.pulseSubText, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                {activeCount}/{totalCount} active · {nextText}
+              </Text>
+            </View>
+          </View>
+          <PressableScale onPress={onShare} activeScale={0.9}>
+            <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+              <Ionicons name="share-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
+            </View>
+          </PressableScale>
         </View>
 
-        {/* Center: Content */}
-        <View style={styles.reminderContent}>
-          <View style={styles.reminderTopRow}>
-            <Text style={[styles.reminderTitle, isDark && styles.textDark, !item.enabled && styles.reminderTitleDisabled]} numberOfLines={1}>
-              {item.title}
-            </Text>
-            <Text style={[styles.reminderTime, { color: isDark ? '#94a3b8' : '#64748b' }]}>{item.time}</Text>
+        <View style={[styles.pulseStats, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' }]}>
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.primary }]}>{activeCount}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>active</Text>
           </View>
-          <View style={styles.reminderMetaRow}>
-            <View style={[styles.categoryTag, { backgroundColor: `${config.color}15` }]}>
-              <Text style={[styles.categoryTagText, { color: config.color }]}>{config.label}</Text>
-            </View>
-            <Text style={[styles.metaDot, { color: isDark ? '#64748b' : '#94a3b8' }]}>•</Text>
-            <Text style={[styles.metaText, { color: isDark ? '#94a3b8' : '#64748b' }]}>{REPEAT_LABELS[item.repeat]}</Text>
-            {item.smartSuggestion && (
-              <>
-                <Text style={[styles.metaDot, { color: isDark ? '#64748b' : '#94a3b8' }]}>•</Text>
-                <View style={styles.aiBadge}>
-                  <Ionicons name="sparkles" size={10} color="#f59e0b" />
-                  <Text style={styles.aiBadgeText}>AI</Text>
-                </View>
-              </>
-            )}
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.gray500 }]}>{totalCount - activeCount}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>paused</Text>
           </View>
-          {item.notes && (
-            <Text style={[styles.reminderNotes, { color: isDark ? '#94a3b8' : '#64748b' }]} numberOfLines={1}>{item.notes}</Text>
-          )}
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: atRisk ? DS.danger : DS.success }]}>{streak}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>streak</Text>
+          </View>
         </View>
-
-        {/* Right: Toggle */}
-        <View style={styles.reminderRight}>
-          <Switch
-            value={item.enabled}
-            onValueChange={() => onToggle(item.id)}
-            trackColor={{ false: isDark ? '#334155' : '#e2e8f0', true: `${config.color}40` }}
-            thumbColor={item.enabled ? config.color : isDark ? '#64748b' : '#fff'}
-            ios_backgroundColor={isDark ? '#334155' : '#e2e8f0'}
-          />
-          {isNext && item.enabled && (
-            <View style={[styles.nextIndicator, { backgroundColor: config.color }]}>
-              <Text style={styles.nextIndicatorText}>NEXT</Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
+      </View>
     </Animated.View>
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   VIEW MODE TABS — Matching Achievements tab bar
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Aura Ribbon
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AuraRibbon = memo<{
+  isDark: boolean; icon: keyof typeof Ionicons.glyphMap; color: string;
+  label: string; text: string; onPress?: () => void;
+}>(({ isDark, icon, color, label, text, onPress }) => (
+  <Animated.View entering={FadeInUp.delay(120).springify()}>
+    <PressableScale onPress={onPress} activeScale={0.98}>
+      <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+          <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={2}>{text}</Text>
+        </View>
+        {onPress && <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />}
+      </View>
+    </PressableScale>
+  </Animated.View>
+));
 
-const ViewModeTabs = React.memo(({
-  tabs,
-  activeTab,
-  onChange,
-  isDark,
-}: {
-  tabs: { key: ViewMode; label: string; icon: string; badge?: number }[];
-  activeTab: ViewMode;
-  onChange: (t: ViewMode) => void;
-  isDark: boolean;
+/* ═══════════════════════════════════════════════════════════════════════════
+   View Tabs
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ViewTabs = memo(({ tabs, activeTab, onChange, isDark }: {
+  tabs: { key: ViewMode; label: string; icon: keyof typeof Ionicons.glyphMap; badge?: number }[];
+  activeTab: ViewMode; onChange: (t: ViewMode) => void; isDark: boolean;
 }) => (
-  <View style={[
-    styles.viewTabBar,
-    { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
-  ]}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
+  <View style={[styles.tabBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+    {tabs.map(t => {
+      const active = activeTab === t.key;
       return (
-        <TouchableOpacity
-          key={tab.key}
-          onPress={() => onChange(tab.key)}
-          style={[
-            styles.viewTab,
-            isActive && {
-              backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#fff',
-            },
-          ]}
-        >
-          <Ionicons
-            name={tab.icon as any}
-            size={16}
-            color={isActive ? '#6366f1' : isDark ? '#94a3b8' : '#64748b'}
-          />
-          <Text style={[
-            styles.viewTabLabel,
-            { color: isActive ? '#6366f1' : isDark ? '#94a3b8' : '#64748b' },
-            isActive && { fontWeight: '700' },
-          ]}>
-            {tab.label}
-          </Text>
-          {!!tab.badge && tab.badge > 0 && !isActive && (
-            <View style={[styles.viewTabBadge, { backgroundColor: '#6366f1' }]}>
-              <Text style={styles.viewTabBadgeText}>{tab.badge}</Text>
-            </View>
+        <TouchableOpacity key={t.key} onPress={() => onChange(t.key)} style={[styles.tabItem, active && { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : DS.white, ...DS.shadow.sm }]}>
+          <Ionicons name={t.icon} size={15} color={active ? DS.primary : isDark ? DS.gray400 : DS.gray500} />
+          <Text style={[styles.tabLabel, { color: active ? DS.primary : isDark ? DS.gray400 : DS.gray500 }, active && { fontWeight: '700' }]}>{t.label}</Text>
+          {!!t.badge && t.badge > 0 && !active && (
+            <View style={styles.tabBadge}><Text style={styles.tabBadgeText}>{t.badge}</Text></View>
           )}
         </TouchableOpacity>
       );
@@ -737,69 +396,41 @@ const ViewModeTabs = React.memo(({
   </View>
 ));
 
-/* ═══════════════════════════════════════════════════════════════
-   CATEGORY FILTER — Matching Achievements filter
-   ═══════════════════════════════════════════════════════════════ */
-
-const CategoryFilter = React.memo(({
-  selectedCategory,
-  onChange,
-  reminders,
-  isDark,
-}: {
-  selectedCategory: string;
-  onChange: (c: string) => void;
-  reminders: Reminder[];
-  isDark: boolean;
+/* ═══════════════════════════════════════════════════════════════════════════
+   Category Filter (horizontal pills)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const CategoryFilter = memo(({ selected, onChange, reminders, isDark }: {
+  selected: string; onChange: (c: string) => void; reminders: Reminder[]; isDark: boolean;
 }) => {
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: reminders.length };
-    Object.keys(CATEGORY_CONFIG).forEach((key) => {
-      counts[key] = reminders.filter((r) => r.category === key).length;
-    });
-    return counts;
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: reminders.length };
+    Object.keys(CATEGORY_CONFIG).forEach(k => { c[k] = reminders.filter(r => r.category === k).length; });
+    return c;
   }, [reminders]);
-
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 8, paddingVertical: 4 }}>
       <TouchableOpacity
-        style={[
-          styles.filterChip,
-          selectedCategory === 'all' && { backgroundColor: '#6366f1', borderColor: 'transparent' },
-        ]}
         onPress={() => onChange('all')}
+        style={[styles.filterChip, { backgroundColor: selected === 'all' ? DS.primary : isDark ? DS.darkCard : DS.white, borderColor: selected === 'all' ? DS.primary : isDark ? DS.darkBorder : DS.gray200 }]}
       >
-        <Text style={[styles.filterText, selectedCategory === 'all' && styles.filterTextActive]}>
-          All
-        </Text>
-        <View style={[styles.filterBadge, { backgroundColor: selectedCategory === 'all' ? 'rgba(255,255,255,0.2)' : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-          <Text style={[styles.filterBadgeText, { color: selectedCategory === 'all' ? '#fff' : isDark ? '#94a3b8' : '#64748b' }]}>
-            {categoryCounts.all}
-          </Text>
+        <Text style={[styles.filterText, { color: selected === 'all' ? DS.white : isDark ? DS.gray300 : DS.gray600 }, selected === 'all' && { fontWeight: '700' }]}>All</Text>
+        <View style={[styles.filterBadge, { backgroundColor: selected === 'all' ? 'rgba(255,255,255,0.25)' : isDark ? 'rgba(255,255,255,0.08)' : DS.gray100 }]}>
+          <Text style={[styles.filterBadgeText, { color: selected === 'all' ? DS.white : isDark ? DS.gray400 : DS.gray500 }]}>{counts.all}</Text>
         </View>
       </TouchableOpacity>
       {Object.entries(CATEGORY_CONFIG).map(([key, cat]) => {
-        const isActive = selectedCategory === key;
-        const count = categoryCounts[key] || 0;
+        const active = selected === key;
+        const count = counts[key] || 0;
         if (count === 0) return null;
         return (
           <TouchableOpacity
-            key={key}
-            style={[
-              styles.filterChip,
-              isActive && { backgroundColor: cat.color, borderColor: 'transparent' },
-            ]}
-            onPress={() => onChange(key)}
+            key={key} onPress={() => onChange(key)}
+            style={[styles.filterChip, { backgroundColor: active ? cat.color : isDark ? DS.darkCard : DS.white, borderColor: active ? cat.color : isDark ? DS.darkBorder : DS.gray200 }]}
           >
-            <Text style={styles.filterChipEmoji}>{cat.emoji}</Text>
-            <Text style={[
-              styles.filterText,
-              { color: isActive ? '#fff' : isDark ? '#cbd5e1' : '#475569' },
-            ]}>
-              {cat.label}
-            </Text>
-            {!isActive && (
-              <View style={[styles.filterBadge, { backgroundColor: `${cat.color}20` }]}>
+            <Text style={{ fontSize: 13 }}>{cat.emoji}</Text>
+            <Text style={[styles.filterText, { color: active ? DS.white : isDark ? DS.gray300 : DS.gray600 }, active && { fontWeight: '700' }]}>{cat.label}</Text>
+            {!active && (
+              <View style={[styles.filterBadge, { backgroundColor: `${cat.color}18` }]}>
                 <Text style={[styles.filterBadgeText, { color: cat.color }]}>{count}</Text>
               </View>
             )}
@@ -810,210 +441,364 @@ const CategoryFilter = React.memo(({
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   QUICK ADD FAB — Matching Achievements style
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Stats Ring
+   ═══════════════════════════════════════════════════════════════════════════ */
+const StatsRing = memo(({ total, active, isDark }: { total: number; active: number; isDark: boolean }) => {
+  const size = 120;
+  const strokeWidth = 8;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = total > 0 ? (active / total) * 100 : 0;
+  const offset = circumference - (Math.min(progress, 100) / 100) * circumference;
 
-const QuickAddFAB = React.memo(({ onPress, themeColors }: { onPress: () => void; themeColors: any }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={styles.fab}>
-    <LinearGradient colors={[themeColors?.primary || '#6366f1', themeColors?.secondary || '#a78bfa']} style={styles.fabGradient}>
-      <Ionicons name="add" size={28} color="#fff" />
-    </LinearGradient>
-  </TouchableOpacity>
-));
+  return (
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
+      <View style={[styles.auraCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200, alignItems: 'center' }]}>
+        <View style={{ width: size, height: size }}>
+          {Svg ? (
+            <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+              <Defs>
+                <SvgLinearGradient id="statsRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <Stop offset="0%" stopColor={DS.primary} />
+                  <Stop offset="100%" stopColor={DS.accent} />
+                </SvgLinearGradient>
+              </Defs>
+              <Circle cx={size / 2} cy={size / 2} r={radius} stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'} strokeWidth={strokeWidth} fill="none" />
+              <Circle cx={size / 2} cy={size / 2} r={radius} stroke="url(#statsRingGrad)" strokeWidth={strokeWidth} fill="none"
+                strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
+                transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+            </Svg>
+          ) : (
+            <View style={{ width: size, height: size, borderRadius: size / 2, borderWidth: strokeWidth, borderColor: DS.primary }} />
+          )}
+          <View style={styles.ringInner}>
+            <Text style={[styles.ringVal, { color: isDark ? DS.white : DS.gray900 }]}>{active}</Text>
+            <Text style={[styles.ringLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>active</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 16, marginTop: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={[styles.ringDot, { backgroundColor: DS.primary }]} />
+            <Text style={[styles.ringMetaText, { color: isDark ? DS.gray400 : DS.gray500 }]}>{active} active</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={[styles.ringDot, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : DS.gray300 }]} />
+            <Text style={[styles.ringMetaText, { color: isDark ? DS.gray400 : DS.gray500 }]}>{total - active} paused</Text>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
 
-/* ═══════════════════════════════════════════════════════════════
-   INTELLIGENT REMINDER ENGINE
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Category Breakdown
+   ═══════════════════════════════════════════════════════════════════════════ */
+const CategoryBreakdown = memo(({ reminders, isDark }: { reminders: Reminder[]; isDark: boolean }) => {
+  const cats = useMemo(() => {
+    const c: Record<string, { label: string; color: string; count: number }> = {};
+    Object.entries(CATEGORY_CONFIG).forEach(([k, v]) => { c[k] = { label: v.label, color: v.color, count: 0 }; });
+    reminders.forEach(r => { if (c[r.category]) c[r.category].count++; });
+    return Object.entries(c).filter(([_, d]) => d.count > 0).sort((a, b) => b[1].count - a[1].count);
+  }, [reminders]);
 
+  if (!cats.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(140).springify()}>
+      <SectionHeader title="Categories" subtitle="Your reminder breakdown" icon="grid-outline" color={DS.info} isDark={isDark} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
+        {cats.map(([key, d]) => (
+          <View key={key} style={[styles.catCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+            <LinearGradient colors={[`${d.color}15`, `${d.color}04`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+            <View style={[styles.catIcon, { backgroundColor: `${d.color}18` }]}>
+              <Text style={{ fontSize: 20 }}>{CATEGORY_CONFIG[key as CategoryType].emoji}</Text>
+            </View>
+            <Text style={[styles.catCount, { color: isDark ? DS.white : DS.gray900 }]}>{d.count}</Text>
+            <Text style={[styles.catLabel, { color: d.color }]}>{d.label}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Timeline
+   ═══════════════════════════════════════════════════════════════════════════ */
+const Timeline = memo(({ reminders, onPress, isDark }: { reminders: Reminder[]; onPress: (r: Reminder) => void; isDark: boolean }) => {
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const upcoming = useMemo(() => {
+    return reminders.filter(r => r.enabled).sort((a, b) => {
+      const [ah, am] = a.time.split(':').map(Number);
+      const [bh, bm] = b.time.split(':').map(Number);
+      return (ah * 60 + am) - (bh * 60 + bm);
+    }).map(r => {
+      const [h, m] = r.time.split(':').map(Number);
+      const minutes = h * 60 + m;
+      return { ...r, isPast: minutes < currentMinutes, isNext: minutes >= currentMinutes && minutes <= currentMinutes + 60, minutes };
+    });
+  }, [reminders, currentMinutes]);
+
+  if (!upcoming.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(180).springify()}>
+      <SectionHeader title="Today's Timeline" subtitle={`${upcoming.filter(r => !r.isPast).length} remaining`} icon="time-outline" color={DS.accent} isDark={isDark} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 12, paddingVertical: 4 }}>
+        {upcoming.map((r, i) => {
+          const cfg = CATEGORY_CONFIG[r.category];
+          return (
+            <PressableScale key={r.id} onPress={() => onPress(r)} activeScale={0.94}>
+              <View style={[styles.tlNode, {
+                backgroundColor: isDark ? DS.darkCard : DS.white,
+                borderColor: r.isNext ? cfg.color : isDark ? DS.darkBorder : DS.gray200,
+                borderWidth: r.isNext ? 2 : 1,
+              }]}>
+                <View style={[styles.tlDot, { backgroundColor: r.isPast ? `${cfg.color}30` : `${cfg.color}18` }]}>
+                  <Text style={{ fontSize: 16 }}>{r.emoji || cfg.emoji}</Text>
+                </View>
+                <Text style={[styles.tlTime, { color: r.isPast ? isDark ? DS.gray500 : DS.gray400 : cfg.color }]}>{r.time}</Text>
+                <Text style={[styles.tlLabel, { color: isDark ? DS.gray300 : DS.gray600 }]} numberOfLines={1}>{r.title}</Text>
+                {r.isNext && (
+                  <View style={[styles.tlNextBadge, { backgroundColor: cfg.color }]}>
+                    <Text style={styles.tlNextText}>NEXT</Text>
+                  </View>
+                )}
+              </View>
+            </PressableScale>
+          );
+        })}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Daily Insights
+   ═══════════════════════════════════════════════════════════════════════════ */
+const Insights = memo(({ insights, isDark, onAction }: { insights: DailyInsight[]; isDark: boolean; onAction: (i: DailyInsight) => void }) => {
+  if (!insights.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(60).springify()}>
+      <SectionHeader title="Daily Insights" subtitle={`${insights.length} smart tips`} icon="sparkles-outline" color={DS.warning} isDark={isDark} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
+        {insights.map(i => (
+          <PressableScale key={i.id} onPress={() => onAction(i)} activeScale={0.97}>
+            <View style={[styles.insightCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200, borderLeftColor: i.color }]}>
+              <LinearGradient colors={[`${i.color}10`, `${i.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+              <Text style={{ fontSize: 20 }}>{i.emoji}</Text>
+              <Text style={[styles.insightTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{i.title}</Text>
+              <Text style={[styles.insightDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>{i.message}</Text>
+              {i.actionLabel && (
+                <View style={[styles.insightAction, { backgroundColor: `${i.color}18` }]}>
+                  <Text style={[styles.insightActionText, { color: i.color }]}>{i.actionLabel} →</Text>
+                </View>
+              )}
+            </View>
+          </PressableScale>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reminder Item
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ReminderItem = memo(({ item, index, isNext, onToggle, onPress, onLongPress, isDark }: {
+  item: Reminder; index: number; isNext: boolean;
+  onToggle: (id: string) => void; onPress: (r: Reminder) => void;
+  onLongPress: (id: string) => void; isDark: boolean;
+}) => {
+  const cfg = CATEGORY_CONFIG[item.category] || CATEGORY_CONFIG.custom;
+  return (
+    <Animated.View entering={FadeInUp.delay(index * 30).springify()} layout={Layout.springify()}>
+      <PressableScale onPress={() => onPress(item)} activeScale={0.98}>
+        <TouchableOpacity
+          onLongPress={() => { Vibration.vibrate(50); onLongPress(item.id); }}
+          activeOpacity={0.95}
+          style={[styles.reminderCard, {
+            backgroundColor: isDark ? DS.darkCard : DS.white,
+            borderColor: isNext ? `${cfg.color}50` : isDark ? DS.darkBorder : DS.gray200,
+            borderWidth: isNext ? 2 : 1,
+            opacity: item.enabled ? 1 : 0.6,
+          }]}
+        >
+          <LinearGradient colors={[`${cfg.color}08`, `${cfg.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+          <View style={[styles.remIcon, { backgroundColor: `${cfg.color}15` }]}>
+            <Text style={{ fontSize: 22 }}>{item.emoji || cfg.emoji}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[styles.remTitle, { color: isDark ? DS.white : DS.gray900 }, !item.enabled && { textDecorationLine: 'line-through' }]} numberOfLines={1}>
+                {item.title}
+              </Text>
+              <Text style={[styles.remTime, { color: cfg.color }]}>{item.time}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+              <View style={[styles.catBadge, { backgroundColor: `${cfg.color}15` }]}>
+                <Text style={[styles.catBadgeText, { color: cfg.color }]}>{cfg.label}</Text>
+              </View>
+              <Text style={[styles.metaText, { color: isDark ? DS.gray500 : DS.gray400 }]}>• {REPEAT_LABELS[item.repeat]}</Text>
+              {item.smartSuggestion && (
+                <View style={[styles.aiBadge, { backgroundColor: `${DS.warning}15` }]}>
+                  <Ionicons name="sparkles" size={9} color={DS.warning} />
+                  <Text style={[styles.aiBadgeText, { color: DS.warning }]}>AI</Text>
+                </View>
+              )}
+              {isNext && item.enabled && (
+                <View style={[styles.nextBadge, { backgroundColor: cfg.color }]}>
+                  <Text style={styles.nextBadgeText}>NEXT</Text>
+                </View>
+              )}
+            </View>
+            {item.notes && <Text style={[styles.remNotes, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>{item.notes}</Text>}
+          </View>
+          <Switch
+            value={item.enabled}
+            onValueChange={() => onToggle(item.id)}
+            trackColor={{ false: isDark ? DS.gray700 : DS.gray200, true: `${cfg.color}50` }}
+            thumbColor={item.enabled ? cfg.color : isDark ? DS.gray500 : DS.white}
+            ios_backgroundColor={isDark ? DS.gray700 : DS.gray200}
+          />
+        </TouchableOpacity>
+      </PressableScale>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Smart Suggestion Card
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SmartCard = memo(({ suggestion, onApply, onDismiss, isDark, index }: {
+  suggestion: SmartSuggestion; onApply: (s: SmartSuggestion) => void;
+  onDismiss: (id: string) => void; isDark: boolean; index: number;
+}) => {
+  const cfg = CATEGORY_CONFIG[suggestion.type];
+  const confColor = suggestion.confidence > 85 ? DS.success : suggestion.confidence > 70 ? DS.warning : DS.info;
+  return (
+    <Animated.View entering={FadeInUp.delay(index * 60).springify()}>
+      <View style={[styles.smartCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient colors={[`${cfg.color}10`, `${cfg.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: DS.space.md }}>
+          <View style={[styles.smartIcon, { backgroundColor: `${cfg.color}18` }]}>
+            <Text style={{ fontSize: 22 }}>{suggestion.emoji}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={[styles.smartTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{suggestion.title}</Text>
+              <View style={[styles.confBadge, { backgroundColor: `${confColor}18` }]}>
+                <Text style={[styles.confText, { color: confColor }]}>{suggestion.confidence}%</Text>
+              </View>
+            </View>
+            <Text style={[styles.smartDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>{suggestion.description}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              <Ionicons name="time-outline" size={11} color={isDark ? DS.gray500 : DS.gray400} />
+              <Text style={[styles.smartTime, { color: isDark ? DS.gray500 : DS.gray400 }]}>Best at {suggestion.optimalTime}</Text>
+              {suggestion.priority === 'high' && (
+                <View style={[styles.priBadge, { backgroundColor: `${DS.danger}18` }]}>
+                  <Text style={[styles.priText, { color: DS.danger }]}>URGENT</Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => onDismiss(suggestion.id)} style={{ padding: 4 }}>
+            <Ionicons name="close" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+          </TouchableOpacity>
+        </View>
+        <PressableScale onPress={() => onApply(suggestion)} activeScale={0.97} style={{ marginTop: 12 }}>
+          <LinearGradient colors={cfg.gradient} style={styles.smartApply} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+            <Ionicons name="add-circle" size={16} color={DS.white} />
+            <Text style={styles.smartApplyText}>Add Reminder</Text>
+          </LinearGradient>
+        </PressableScale>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Intelligent Engine (unchanged logic)
+   ═══════════════════════════════════════════════════════════════════════════ */
 class IntelligentReminderEngine {
-  constructor(
-    private activities: any[],
-    private baby: any,
-    private milestones: any[],
-    private existingReminders: Reminder[]
-  ) {}
-
+  constructor(private activities: any[], private baby: any, private milestones: any[], private existingReminders: Reminder[]) {}
   analyzePatterns(): SmartSuggestion[] {
-    const suggestions: SmartSuggestion[] = [];
-    if (!this.baby) return suggestions;
+    const s: SmartSuggestion[] = [];
+    if (!this.baby) return s;
+    const babyActs = this.activities.filter(a => a.babyId === this.baby.id);
+    const now = new Date(), currentHour = now.getHours();
 
-    const babyActs = this.activities.filter((a) => a.babyId === this.baby.id);
-    const now = new Date();
-    const currentHour = now.getHours();
-
-    const pottyActs = babyActs.filter((a) => a.type === 'potty' || a.trackerId === 'potty');
-    if (pottyActs.length >= 3) {
-      const avgInterval = this.calculateAverageInterval(pottyActs, 2);
-      const lastPotty = pottyActs[pottyActs.length - 1];
-      const hoursSince = lastPotty ? differenceInHours(now, new Date(lastPotty.timestamp)) : 999;
-      const nextPottyTime = lastPotty ? addMinutes(new Date(lastPotty.timestamp), avgInterval * 60) : null;
-
-      if (hoursSince > avgInterval * 0.8) {
-        suggestions.push({
-          id: 'potty_urgent',
-          type: 'potty',
-          title: 'Potty Break Soon',
-          description: `Last potty was ${hoursSince}h ago. Usual interval: ${Math.round(avgInterval)}h.`,
-          emoji: '🚽',
-          reason: 'Pattern detected from your logs',
-          optimalTime: nextPottyTime ? format(nextPottyTime, 'HH:mm') : format(addMinutes(now, 30), 'HH:mm'),
-          confidence: Math.min(95, 60 + hoursSince * 5),
-          basedOn: `${pottyActs.length} potty logs`,
-          action: 'Log potty now',
-          priority: hoursSince > avgInterval ? 'high' : 'medium',
-        });
+    const potty = babyActs.filter(a => a.type === 'potty' || a.trackerId === 'potty');
+    if (potty.length >= 3) {
+      const avg = this.calcInterval(potty, 2);
+      const last = potty[potty.length - 1];
+      const hSince = last ? differenceInHours(now, new Date(last.timestamp)) : 999;
+      const next = last ? addMinutes(new Date(last.timestamp), avg * 60) : null;
+      if (hSince > avg * 0.8) {
+        s.push({ id: 'potty_urgent', type: 'potty', title: 'Potty Break Soon', description: `Last potty was ${hSince}h ago. Usual: ${Math.round(avg)}h.`, emoji: '🚽', reason: 'Pattern detected', optimalTime: next ? format(next, 'HH:mm') : format(addMinutes(now, 30), 'HH:mm'), confidence: Math.min(95, 60 + hSince * 5), basedOn: `${potty.length} potty logs`, action: 'Log now', priority: hSince > avg ? 'high' : 'medium' });
       }
     }
-
-    const sleepActs = babyActs.filter((a) => a.type === 'sleep' || a.trackerId === 'sleep');
-    if (sleepActs.length >= 2) {
-      const bedtimes = sleepActs
-        .filter((a) => a.data?.sleepType === 'night' || a.data?.sleepType === 'nap')
-        .map((a) => new Date(a.timestamp).getHours());
-      if (bedtimes.length > 0) {
-        const avgBedtime = Math.round(bedtimes.reduce((a, b) => a + b, 0) / bedtimes.length);
-        const bedtimeStr = `${String(avgBedtime).padStart(2, '0')}:00`;
-        const isNearBedtime = currentHour >= avgBedtime - 1 && currentHour < avgBedtime + 1;
-
-        if (!this.hasReminderFor('sleep', bedtimeStr)) {
-          suggestions.push({
-            id: 'sleep_routine',
-            type: 'sleep',
-            title: 'Bedtime Routine',
-            description: `Start winding down around ${bedtimeStr} for better sleep.`,
-            emoji: '😴',
-            reason: 'Consistent bedtime improves sleep quality',
-            optimalTime: `${String(Math.max(0, avgBedtime - 1)).padStart(2, '0')}:30`,
-            confidence: 90,
-            basedOn: `${sleepActs.length} sleep sessions`,
-            action: 'Start bedtime routine',
-            priority: isNearBedtime ? 'high' : 'medium',
-          });
+    const sleep = babyActs.filter(a => a.type === 'sleep' || a.trackerId === 'sleep');
+    if (sleep.length >= 2) {
+      const bedtimes = sleep.map((a: any) => new Date(a.timestamp).getHours());
+      if (bedtimes.length) {
+        const avg = Math.round(bedtimes.reduce((a: number, b: number) => a + b, 0) / bedtimes.length);
+        const str = `${String(avg).padStart(2, '0')}:00`;
+        if (!this.hasReminderFor('sleep', str)) {
+          s.push({ id: 'sleep_routine', type: 'sleep', title: 'Bedtime Routine', description: `Start winding down around ${str}.`, emoji: '😴', reason: 'Consistent bedtime', optimalTime: `${String(Math.max(0, avg - 1)).padStart(2, '0')}:30`, confidence: 90, basedOn: `${sleep.length} sleep sessions`, action: 'Start routine', priority: currentHour >= avg - 1 && currentHour < avg + 1 ? 'high' : 'medium' });
         }
       }
     }
-
-    const feedActs = babyActs.filter((a) => a.type === 'feed' || a.trackerId === 'feed');
-    if (feedActs.length >= 3) {
-      const avgInterval = this.calculateAverageInterval(feedActs);
-      const lastFeed = feedActs[feedActs.length - 1];
-      const hoursSince = lastFeed ? differenceInHours(now, new Date(lastFeed.timestamp)) : 999;
-
-      if (hoursSince > avgInterval * 0.7) {
-        suggestions.push({
-          id: 'feed_soon',
-          type: 'feed',
-          title: 'Feeding Time',
-          description: `Average gap: ${Math.round(avgInterval)}h. Last feed: ${hoursSince}h ago.`,
-          emoji: '🍼',
-          reason: 'Regular feeding schedule detected',
-          optimalTime: format(addMinutes(now, 15), 'HH:mm'),
-          confidence: Math.min(90, 50 + hoursSince * 8),
-          basedOn: `${feedActs.length} feeding logs`,
-          action: 'Prepare feeding',
-          priority: hoursSince > avgInterval ? 'high' : 'medium',
-        });
+    const feed = babyActs.filter(a => a.type === 'feed' || a.trackerId === 'feed');
+    if (feed.length >= 3) {
+      const avg = this.calcInterval(feed);
+      const last = feed[feed.length - 1];
+      const hSince = last ? differenceInHours(now, new Date(last.timestamp)) : 999;
+      if (hSince > avg * 0.7) {
+        s.push({ id: 'feed_soon', type: 'feed', title: 'Feeding Time', description: `Average gap: ${Math.round(avg)}h. Last: ${hSince}h ago.`, emoji: '🍼', reason: 'Regular feeding', optimalTime: format(addMinutes(now, 15), 'HH:mm'), confidence: Math.min(90, 50 + hSince * 8), basedOn: `${feed.length} feeds`, action: 'Prepare', priority: hSince > avg ? 'high' : 'medium' });
       }
     }
-
-    const streak = this.calculateStreak();
+    const streak = this.calcStreak();
     if (streak >= 3) {
-      const hasTodayActivity = babyActs.some((a) => isSameDay(new Date(a.timestamp), now));
-      if (!hasTodayActivity && currentHour >= 18) {
-        suggestions.push({
-          id: 'streak_protect',
-          type: 'custom',
-          title: `🔥 Protect ${streak}-Day Streak!`,
-          description: `${24 - currentHour} hours left to log something today.`,
-          emoji: '🔥',
-          reason: "Don't break your tracking streak",
-          optimalTime: `${String(currentHour + 1).padStart(2, '0')}:00`,
-          confidence: 95,
-          basedOn: `${streak} day activity streak`,
-          action: 'Quick log',
-          priority: 'high',
-        });
+      const hasToday = babyActs.some(a => isSameDay(new Date(a.timestamp), now));
+      if (!hasToday && currentHour >= 18) {
+        s.push({ id: 'streak_protect', type: 'custom', title: `🔥 Protect ${streak}-Day Streak!`, description: `${24 - currentHour}h left to log.`, emoji: '🔥', reason: "Don't break it", optimalTime: `${String(currentHour + 1).padStart(2, '0')}:00`, confidence: 95, basedOn: `${streak}-day streak`, action: 'Quick log', priority: 'high' });
       }
     }
-
-    const growthActs = babyActs.filter((a) => a.type === 'growth');
-    const daysSinceGrowth = growthActs.length > 0
-      ? differenceInDays(now, new Date(growthActs[growthActs.length - 1].timestamp))
-      : 999;
-    if (daysSinceGrowth > 30) {
-      suggestions.push({
-        id: 'growth_check',
-        type: 'growth',
-        title: 'Monthly Growth Check',
-        description: `Last measurement was ${daysSinceGrowth} days ago.`,
-        emoji: '📏',
-        reason: 'Monthly growth tracking recommended',
-        optimalTime: '09:00',
-        confidence: 70,
-        basedOn: `${growthActs.length} growth measurements`,
-        action: 'Measure now',
-        priority: 'medium',
-      });
-    }
-
-    return suggestions.sort((a, b) => {
-      const priorityWeight = { high: 3, medium: 2, low: 1 };
-      return priorityWeight[b.priority] - priorityWeight[a.priority] || b.confidence - a.confidence;
-    });
+    return s.sort((a, b) => ({ high: 3, medium: 2, low: 1 }[b.priority]) - ({ high: 3, medium: 2, low: 1 }[a.priority]));
   }
-
-  private calculateAverageInterval(activities: any[], fallbackHours = 3): number {
-    if (activities.length < 2) return fallbackHours;
-    let totalDiff = 0;
-    let count = 0;
-    for (let i = 1; i < activities.length; i++) {
-      const diff = differenceInHours(new Date(activities[i].timestamp), new Date(activities[i - 1].timestamp));
-      if (diff > 0 && diff < 24) {
-        totalDiff += diff;
-        count++;
-      }
-    }
-    return count > 0 ? totalDiff / count : fallbackHours;
+  private calcInterval(acts: any[], fallback = 3) {
+    if (acts.length < 2) return fallback;
+    let t = 0, c = 0;
+    for (let i = 1; i < acts.length; i++) { const d = differenceInHours(new Date(acts[i].timestamp), new Date(acts[i - 1].timestamp)); if (d > 0 && d < 24) { t += d; c++; } }
+    return c > 0 ? t / c : fallback;
   }
-
-  private calculateStreak(): number {
-    const dailyActivities = this.activities.filter((a) => a.babyId === this.baby?.id);
-    let streak = 0;
-    let currentDate = new Date();
+  private calcStreak() {
+    const acts = this.activities.filter(a => a.babyId === this.baby?.id);
+    let s = 0, d = new Date();
     while (true) {
-      const hasActivity = dailyActivities.some((a) => isSameDay(new Date(a.timestamp), currentDate));
-      if (hasActivity) {
-        streak++;
-        currentDate = addDays(currentDate, -1);
-      } else {
-        break;
-      }
+      if (acts.some(a => isSameDay(new Date(a.timestamp), d))) { s++; d = addDays(d, -1); } else break;
     }
-    return streak;
+    return s;
   }
-
-  private hasReminderFor(category: CategoryType, time: string): boolean {
-    return this.existingReminders.some(
-      (r) => r.category === category && r.time === time && r.enabled
-    );
+  private hasReminderFor(cat: CategoryType, time: string) {
+    return this.existingReminders.some(r => r.category === cat && r.time === time && r.enabled);
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   MAIN SCREEN — COMPLETE REDESIGN with Achievements UI
-   ═══════════════════════════════════════════════════════════════ */
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN SCREEN
+   ═══════════════════════════════════════════════════════════════════════════ */
 type Props = NativeStackScreenProps<RootStackParamList, 'TrackerReminders'>;
 
 export default function RemindersScreen({ navigation, route }: Props) {
-  const scrollY = useSharedValue(0);
-  const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
+  const insets = useSafeAreaInsets();
+  const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
-  const { currentBaby, babies, loadBabies, isLoading: babyLoading } = useBaby();
-  const { entries: activities, isLoading: activityLoading } = useActivity();
+  const { currentBaby, babies, loadBabies } = useBaby();
+  const { entries: activities } = useActivity();
 
-  /* ---- State ---- */
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -1024,9 +809,6 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [streakData, setStreakData] = useState({ current: 0, atRisk: false, hoursLeft: 0 });
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSearch, setShowSearch] = useState(false);
   const [analytics, setAnalytics] = useState<any>({});
   const [dailyInsights, setDailyInsights] = useState<DailyInsight[]>([]);
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
@@ -1038,378 +820,191 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const [formTime, setFormTime] = useState(new Date());
   const [formNotes, setFormNotes] = useState('');
   const [formDaysOfWeek, setFormDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
-  const datePicker = useDateTimePicker();
   const [formColor, setFormColor] = useState(CATEGORY_CONFIG.custom.color);
+  const datePicker = useDateTimePicker();
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
+  const headerAnim = useAnimatedStyle(() => ({ opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP) }));
 
-  /* ---- Scroll handler ---- */
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      'worklet';
-      scrollY.value = event.contentOffset.y;
-    },
-  });
-
-  const headerAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
-  }));
-
-  /* ---- Derived ---- */
   const baby = useMemo(() => {
-    if (route.params?.babyId) {
-      return babies.find((b) => b.id === route.params?.babyId) || currentBaby;
-    }
+    if (route.params?.babyId) return babies.find(b => b.id === route.params?.babyId) || currentBaby;
     return currentBaby;
   }, [route.params?.babyId, babies, currentBaby]);
 
-  /* ---- Focus effect ---- */
-  useFocusEffect(
-    useCallback(() => {
-      loadBabies();
-      loadData();
-      checkStreakStatus();
-      generateSmartSuggestions();
-      generateDailyInsights();
-    }, [baby?.id, loadBabies])
-  );
+  useFocusEffect(useCallback(() => {
+    loadBabies();
+    loadData();
+    checkStreakStatus();
+    generateSmartSuggestions();
+    generateDailyInsights();
+  }, [baby?.id, loadBabies]));
 
-  /* ---- Initial load ---- */
   useEffect(() => {
     loadData();
     loadAnalytics();
     requestNotificationPermissions();
     loadDismissedSuggestions();
-
-    if (route.params?.suggestedType || route.params?.fromAchievement) {
-      handleAchievementSuggestion();
-    }
+    if (route.params?.suggestedType || route.params?.fromAchievement) handleAchievementSuggestion();
   }, [baby?.id]);
 
-  /* ---- Notification listener ---- */
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
   useEffect(() => {
-    const reminderId = (route.params as any)?.reminderId;
-    if (reminderId) {
-      
-      
-    }
-  }, [route.params]);
-
-  /* ---- Baby required modal ---- */
-  useEffect(() => {
-    if (!baby && !isInitialLoad) {
-      setShowBabyRequiredModal(true);
-    } else {
-      setShowBabyRequiredModal(false);
-    }
+    if (!baby && !isInitialLoad) setShowBabyRequiredModal(true);
+    else setShowBabyRequiredModal(false);
   }, [baby]);
 
-  /* ---- Data loading with instant display ---- */
   const loadData = async () => {
-    setIsLoading(true);
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEYS.REMINDERS);
       if (saved) {
         const parsed: Reminder[] = JSON.parse(saved);
-        const filtered = baby ? parsed.filter((r) => !r.babyId || r.babyId === baby.id) : parsed;
-        setReminders(filtered);
-      } else {
-        setReminders(getDefaultReminders());
-      }
-    } catch (error) {
-      console.warn('Failed to load reminders:', error);
-      setReminders(getDefaultReminders());
-    } finally {
-      setIsLoading(false);
-      setIsInitialLoad(false);
-    }
+        setReminders(baby ? parsed.filter(r => !r.babyId || r.babyId === baby.id) : parsed);
+      } else setReminders(getDefaultReminders());
+    } catch { setReminders(getDefaultReminders()); }
+    finally { setIsInitialLoad(false); }
   };
 
   const loadAnalytics = async () => {
-    try {
-      const saved = await AsyncStorage.getItem(STORAGE_KEYS.ANALYTICS);
-      if (saved) setAnalytics(JSON.parse(saved));
-    } catch (e) {
-      console.warn('Failed to load analytics:', e);
-    }
+    try { const s = await AsyncStorage.getItem(STORAGE_KEYS.ANALYTICS); if (s) setAnalytics(JSON.parse(s)); } catch {}
   };
-
   const loadDismissedSuggestions = async () => {
-    try {
-      const saved = await AsyncStorage.getItem(STORAGE_KEYS.SMART_DISMISSED);
-      if (saved) setDismissedSuggestions(new Set(JSON.parse(saved)));
-    } catch (e) {
-      console.warn('Failed to load dismissed suggestions:', e);
-    }
+    try { const s = await AsyncStorage.getItem(STORAGE_KEYS.SMART_DISMISSED); if (s) setDismissedSuggestions(new Set(JSON.parse(s))); } catch {}
   };
-
   const saveDismissedSuggestions = async (set: Set<string>) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.SMART_DISMISSED, JSON.stringify([...set]));
-    } catch (e) {
-      console.warn('Failed to save dismissed suggestions:', e);
-    }
+    try { await AsyncStorage.setItem(STORAGE_KEYS.SMART_DISMISSED, JSON.stringify([...set])); } catch {}
   };
-
   const requestNotificationPermissions = async () => {
     const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') {
-      sweetAlert.error(
-        'Notifications Required',
-        'Please enable notifications in Settings to receive reminder alerts.'
-      );
-    }
+    if (status !== 'granted') sweetAlert.error('Notifications Required', 'Please enable notifications in Settings.');
   };
 
-  /* ---- Default reminders ---- */
   const getDefaultReminders = (): Reminder[] => {
     if (!baby) return [];
-    const babyId = baby.id;
-    const babyName = baby.name;
+    const babyId = baby.id, babyName = baby.name;
+    const now = new Date().toISOString();
     return [
-      {
-        id: 'default_1', title: 'Morning Potty', time: '08:00', emoji: '🚽', enabled: true,
-        repeat: 'daily', category: 'potty', babyId, babyName,
-        createdAt: new Date().toISOString(), color: CATEGORY_CONFIG.potty.color,
-      },
-      {
-        id: 'default_2', title: 'First Feed', time: '07:00', emoji: '🍼', enabled: true,
-        repeat: 'daily', category: 'feed', babyId, babyName,
-        createdAt: new Date().toISOString(), color: CATEGORY_CONFIG.feed.color,
-      },
-      {
-        id: 'default_3', title: 'Bedtime Routine', time: '19:30', emoji: '🌙', enabled: true,
-        repeat: 'daily', category: 'sleep', babyId, babyName,
-        createdAt: new Date().toISOString(), color: CATEGORY_CONFIG.sleep.color,
-      },
-      {
-        id: 'default_4', title: 'Vitamin D', time: '08:30', emoji: '💊', enabled: true,
-        repeat: 'daily', category: 'medication', babyId, babyName,
-        createdAt: new Date().toISOString(), color: CATEGORY_CONFIG.medication.color,
-      },
+      { id: 'default_1', title: 'Morning Potty', time: '08:00', emoji: '🚽', enabled: true, repeat: 'daily', category: 'potty', babyId, babyName, createdAt: now, color: CATEGORY_CONFIG.potty.color },
+      { id: 'default_2', title: 'First Feed', time: '07:00', emoji: '🍼', enabled: true, repeat: 'daily', category: 'feed', babyId, babyName, createdAt: now, color: CATEGORY_CONFIG.feed.color },
+      { id: 'default_3', title: 'Bedtime Routine', time: '19:30', emoji: '🌙', enabled: true, repeat: 'daily', category: 'sleep', babyId, babyName, createdAt: now, color: CATEGORY_CONFIG.sleep.color },
+      { id: 'default_4', title: 'Vitamin D', time: '08:30', emoji: '💊', enabled: true, repeat: 'daily', category: 'medication', babyId, babyName, createdAt: now, color: CATEGORY_CONFIG.medication.color },
     ];
   };
 
   const saveReminders = async (newReminders: Reminder[]) => {
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEYS.REMINDERS);
-      const allReminders: Reminder[] = saved ? JSON.parse(saved) : [];
-      const otherReminders = allReminders.filter((r) => r.babyId && r.babyId !== baby?.id);
-      const merged = [...otherReminders, ...newReminders];
-      await AsyncStorage.setItem(STORAGE_KEYS.REMINDERS, JSON.stringify(merged));
-    } catch (error) {
-      console.warn('Failed to save reminders:', error);
-      showToast('error', 'Save Failed', 'Could not save reminders');
-    }
+      const all: Reminder[] = saved ? JSON.parse(saved) : [];
+      const other = all.filter(r => r.babyId && r.babyId !== baby?.id);
+      await AsyncStorage.setItem(STORAGE_KEYS.REMINDERS, JSON.stringify([...other, ...newReminders]));
+    } catch { showToast('error', 'Save Failed', 'Could not save'); }
   };
 
-  /* ---- Smart suggestions ---- */
   const generateSmartSuggestions = useCallback(() => {
     if (!baby) { setSmartSuggestions([]); return; }
     const engine = new IntelligentReminderEngine(activities, baby, [], reminders);
-    const suggestions = engine.analyzePatterns();
-    setSmartSuggestions(suggestions.filter((s) => !dismissedSuggestions.has(s.id)));
+    setSmartSuggestions(engine.analyzePatterns().filter(s => !dismissedSuggestions.has(s.id)));
   }, [activities, baby, reminders, dismissedSuggestions]);
 
-  /* ---- Daily insights generation ---- */
   const generateDailyInsights = useCallback(() => {
     if (!baby) { setDailyInsights([]); return; }
-    const insights: DailyInsight[] = [];
+    const list: DailyInsight[] = [];
     const now = new Date();
-
-    
-    const babyActs = activities.filter((a) => a.babyId === baby.id);
-    let streak = 0;
-    let currentDate = new Date();
+    const babyActs = activities.filter(a => a.babyId === baby.id);
+    let streak = 0, d = new Date();
     while (true) {
-      const hasActivity = babyActs.some((a) => isSameDay(new Date(a.timestamp), currentDate));
-      if (hasActivity) { streak++; currentDate = addDays(currentDate, -1); }
-      else break;
+      if (babyActs.some(a => isSameDay(new Date(a.timestamp), d))) { streak++; d = addDays(d, -1); } else break;
     }
-    if (streak >= 3) {
-      insights.push({
-        id: 'streak-insight', type: 'streak', title: `${streak}-Day Streak!`,
-        message: "You're on fire! Keep logging to maintain your streak.",
-        emoji: '🔥', color: '#f59e0b', actionLabel: 'Quick Log', actionScreen: 'Timeline',
-      });
-    }
-
-    
-    const overdueCount = reminders.filter(r => {
+    if (streak >= 3) list.push({ id: 'streak-insight', type: 'streak', title: `${streak}-Day Streak!`, message: "You're on fire!", emoji: '🔥', color: DS.warning, actionLabel: 'Quick Log', actionScreen: 'Timeline' });
+    const overdue = reminders.filter(r => {
       const [h, m] = r.time.split(':').map(Number);
-      const reminderMinutes = h * 60 + m;
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      return r.enabled && reminderMinutes < currentMinutes && !r.lastTriggered;
+      return r.enabled && (h * 60 + m) < (now.getHours() * 60 + now.getMinutes()) && !r.lastTriggered;
     }).length;
-    if (overdueCount > 0) {
-      insights.push({
-        id: 'overdue-insight', type: 'urgent', title: `${overdueCount} Reminders Overdue`,
-        message: 'Some reminders have passed their scheduled time today.',
-        emoji: '⚠️', color: '#ef4444', actionLabel: 'View All', actionScreen: 'Reminders',
-      });
-    }
-
-    
-    const upcomingCount = reminders.filter(r => {
+    if (overdue > 0) list.push({ id: 'overdue', type: 'urgent', title: `${overdue} Overdue`, message: 'Some passed their time', emoji: '⚠️', color: DS.danger, actionLabel: 'View All', actionScreen: 'Reminders' });
+    const upcoming = reminders.filter(r => {
       const [h, m] = r.time.split(':').map(Number);
-      const reminderMinutes = h * 60 + m;
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      return r.enabled && reminderMinutes > currentMinutes && reminderMinutes <= currentMinutes + 120;
+      const t = h * 60 + m, c = now.getHours() * 60 + now.getMinutes();
+      return r.enabled && t > c && t <= c + 120;
     }).length;
-    if (upcomingCount > 0) {
-      insights.push({
-        id: 'upcoming-insight', type: 'pattern', title: `${upcomingCount} Coming Up`,
-        message: 'You have reminders scheduled in the next 2 hours.',
-        emoji: '⏰', color: '#3b82f6', actionLabel: 'Prepare', actionScreen: 'Reminders',
-      });
-    }
-
-    setDailyInsights(insights);
+    if (upcoming > 0) list.push({ id: 'upcoming', type: 'pattern', title: `${upcoming} Coming Up`, message: 'In next 2 hours', emoji: '⏰', color: DS.info, actionLabel: 'Prepare', actionScreen: 'Reminders' });
+    setDailyInsights(list);
   }, [activities, baby, reminders]);
 
-  /* ---- Streak status ---- */
   const checkStreakStatus = useCallback(() => {
     if (!baby) return;
-    const babyActs = activities.filter((a) => a.babyId === baby.id);
-    let streak = 0;
-    let currentDate = new Date();
-    while (true) {
-      const hasActivity = babyActs.some((a) => isSameDay(new Date(a.timestamp), currentDate));
-      if (hasActivity) { streak++; currentDate = addDays(currentDate, -1); }
-      else break;
-    }
-    const todayActivity = babyActs.some((a) => isSameDay(new Date(a.timestamp), new Date()));
+    const babyActs = activities.filter(a => a.babyId === baby.id);
+    let streak = 0, d = new Date();
+    while (true) { if (babyActs.some(a => isSameDay(new Date(a.timestamp), d))) { streak++; d = addDays(d, -1); } else break; }
+    const today = babyActs.some(a => isSameDay(new Date(a.timestamp), new Date()));
     const hour = new Date().getHours();
-    const atRisk = !todayActivity && hour >= 18 && streak > 0;
-    const hoursLeft = atRisk ? 24 - hour : 0;
-    setStreakData({ current: streak, atRisk, hoursLeft });
+    const atRisk = !today && hour >= 18 && streak > 0;
+    setStreakData({ current: streak, atRisk, hoursLeft: atRisk ? 24 - hour : 0 });
   }, [baby, activities]);
 
-  /* ---- Achievement suggestion handler ---- */
   const handleAchievementSuggestion = () => {
     const { suggestedType, fromAchievement } = route.params || {};
-    let title = 'Achievement Reminder';
-    let emoji = '🎯';
-    let category: CategoryType = 'custom';
-
+    let title = 'Achievement Reminder', emoji = '🎯', category: CategoryType = 'custom';
     switch (suggestedType) {
-      case 'potty': title = 'Potty Training Goal'; emoji = '🚽'; category = 'potty'; break;
+      case 'potty': title = 'Potty Goal'; emoji = '🚽'; category = 'potty'; break;
       case 'feed': title = 'Feeding Goal'; emoji = '🍼'; category = 'feed'; break;
-      case 'sleep': title = 'Sleep Routine Goal'; emoji = '😴'; category = 'sleep'; break;
+      case 'sleep': title = 'Sleep Routine'; emoji = '😴'; category = 'sleep'; break;
       case 'milestone': title = 'Record Milestone'; emoji = '🌟'; category = 'milestone'; break;
-      case 'streak': title = 'Protect Your Streak'; emoji = '🔥'; category = 'custom'; break;
+      case 'streak': title = 'Protect Streak'; emoji = '🔥'; category = 'custom'; break;
     }
-
     openAddModal({ title, category, emoji, isAchievementRelated: true, achievementId: fromAchievement });
   };
 
-  /* ---- Notification scheduling ---- */
   const scheduleNotification = async (reminder: Reminder): Promise<string | undefined> => {
     try {
       const [hours, minutes] = reminder.time.split(':').map(Number);
       const now = new Date();
-
       let trigger: Notifications.NotificationTriggerInput;
-
       switch (reminder.repeat) {
-        case 'daily':
-          trigger = { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: hours, minute: minutes };
-          break;
-        case 'weekdays':
-          trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 2, hour: hours, minute: minutes };
-          break;
-        case 'weekends':
-          trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 7, hour: hours, minute: minutes };
-          break;
-        case 'weekly':
-          trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: (now.getDay() + 1) || 7, hour: hours, minute: minutes };
-          break;
+        case 'daily': trigger = { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: hours, minute: minutes }; break;
+        case 'weekdays': trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 2, hour: hours, minute: minutes }; break;
+        case 'weekends': trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 7, hour: hours, minute: minutes }; break;
+        case 'weekly': trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: (now.getDay() + 1) || 7, hour: hours, minute: minutes }; break;
         case 'custom':
-          if (reminder.daysOfWeek && reminder.daysOfWeek.length > 0) {
+          if (reminder.daysOfWeek?.length) {
             const today = now.getDay();
-            const nextDay = reminder.daysOfWeek.find((d) => d > today) || reminder.daysOfWeek[0];
-            const daysUntil = nextDay > today ? nextDay - today : 7 - today + nextDay;
-            const targetDate = addDays(now, daysUntil);
-            targetDate.setHours(hours, minutes, 0, 0);
-            trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: targetDate };
-          } else {
-            trigger = { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: hours, minute: minutes };
-          }
+            const nd = reminder.daysOfWeek.find(d => d > today) || reminder.daysOfWeek[0];
+            const days = nd > today ? nd - today : 7 - today + nd;
+            const target = addDays(now, days); target.setHours(hours, minutes, 0, 0);
+            trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: target };
+          } else trigger = { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: hours, minute: minutes };
           break;
         default:
-          const scheduledDate = new Date();
-          scheduledDate.setHours(hours, minutes, 0, 0);
-          if (scheduledDate < now) scheduledDate.setDate(scheduledDate.getDate() + 1);
-          trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: scheduledDate };
+          const d = new Date(); d.setHours(hours, minutes, 0, 0);
+          if (d < now) d.setDate(d.getDate() + 1);
+          trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: d };
       }
-
-      const id = await Notifications.scheduleNotificationAsync({
+      return await Notifications.scheduleNotificationAsync({
         content: {
           title: `${reminder.emoji} ${reminder.title}`,
           body: reminder.notes || `Time for ${reminder.title.toLowerCase()}!`,
-          sound: true,
-          badge: 1,
-          data: {
-            
-            
-            screen: 'TrackerReminders',
-            
-            type: 'reminder',
-            reminderId: reminder.id,
-            category: reminder.category,
-            babyId: reminder.babyId,
-          },
+          sound: true, badge: 1,
+          data: { screen: 'TrackerReminders', type: 'reminder', reminderId: reminder.id, category: reminder.category, babyId: reminder.babyId },
         },
         trigger,
       });
-
-      return id;
-    } catch (error) {
-      console.warn('Failed to schedule notification:', error);
-      return undefined;
-    }
+    } catch { return undefined; }
   };
 
-  const cancelNotification = async (notificationId?: string) => {
-    if (notificationId) await Notifications.cancelScheduledNotificationAsync(notificationId);
-  };
+  const cancelNotification = async (id?: string) => { if (id) await Notifications.cancelScheduledNotificationAsync(id); };
 
-  /* ---- CRUD Operations ---- */
   const toggleReminder = async (id: string) => {
-    const reminder = reminders.find((r) => r.id === id);
-    if (!reminder) return;
-
-    const newEnabled = !reminder.enabled;
-    let newNotificationId = reminder.notificationId;
-
+    const r = reminders.find(x => x.id === id);
+    if (!r) return;
+    const newEnabled = !r.enabled;
+    let nid = r.notificationId;
     triggerHaptic(newEnabled ? 'success' : 'light');
-
     if (newEnabled) {
-      newNotificationId = await scheduleNotification(reminder);
-      if (newNotificationId) {
-        showToast('success', 'Reminder On', `You'll be notified at ${reminder.time}`, reminder.emoji);
-      }
+      nid = await scheduleNotification(r);
+      if (nid) showToast('success', 'Reminder On', `Notified at ${r.time}`, r.emoji);
     } else {
-      await cancelNotification(reminder.notificationId);
-      showToast('info', 'Reminder Off', `${reminder.title} is paused`);
+      await cancelNotification(r.notificationId);
+      showToast('info', 'Reminder Off', `${r.title} paused`);
     }
-
-    const updated = reminders.map((r) =>
-      r.id === id ? { ...r, enabled: newEnabled, notificationId: newNotificationId } : r
-    );
-
+    const updated = reminders.map(x => x.id === id ? { ...x, enabled: newEnabled, notificationId: nid } : x);
     setReminders(updated);
     await saveReminders(updated);
   };
@@ -1426,298 +1021,197 @@ export default function RemindersScreen({ navigation, route }: Props) {
     setShowAddModal(true);
   };
 
-  const openEditModal = (reminder: Reminder) => {
-    const [h, m] = reminder.time.split(':').map(Number);
-    setFormTitle(reminder.title);
-    setFormCategory(reminder.category);
-    setFormRepeat(reminder.repeat);
+  const openEditModal = (r: Reminder) => {
+    const [h, m] = r.time.split(':').map(Number);
+    setFormTitle(r.title);
+    setFormCategory(r.category);
+    setFormRepeat(r.repeat);
     setFormTime(set(new Date(), { hours: h, minutes: m, seconds: 0, milliseconds: 0 }));
-    setFormNotes(reminder.notes || '');
-    setFormDaysOfWeek(reminder.daysOfWeek || [1, 2, 3, 4, 5]);
-    setFormColor(reminder.color || CATEGORY_CONFIG[reminder.category].color);
-    setEditingReminder(reminder);
+    setFormNotes(r.notes || '');
+    setFormDaysOfWeek(r.daysOfWeek || [1, 2, 3, 4, 5]);
+    setFormColor(r.color || CATEGORY_CONFIG[r.category].color);
+    setEditingReminder(r);
     setShowEditModal(true);
   };
 
   const validateForm = (): boolean => {
-    if (!formTitle.trim()) {
-      showToast('error', 'Title Required', 'Please enter a reminder title');
-      return false;
-    }
+    if (!formTitle.trim()) { showToast('error', 'Title Required', 'Please enter a title'); return false; }
     return true;
   };
 
-  const buildReminderFromForm = (id?: string): Reminder => {
-    const timeStr = format(formTime, 'HH:mm');
-    return {
-      id: id || `rem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: formTitle.trim(),
-      time: timeStr,
-      emoji: CATEGORY_CONFIG[formCategory].emoji,
-      enabled: true,
-      repeat: formRepeat,
-      category: formCategory,
-      babyId: baby?.id,
-      babyName: baby?.name,
-      notes: formNotes.trim() || undefined,
-      createdAt: new Date().toISOString(),
-      color: formColor,
-      daysOfWeek: formRepeat === 'custom' ? formDaysOfWeek : undefined,
-      isAchievementRelated: editingReminder?.isAchievementRelated,
-      achievementId: editingReminder?.achievementId,
-    };
-  };
+  const buildReminder = (id?: string): Reminder => ({
+    id: id || `rem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    title: formTitle.trim(),
+    time: format(formTime, 'HH:mm'),
+    emoji: CATEGORY_CONFIG[formCategory].emoji,
+    enabled: true,
+    repeat: formRepeat,
+    category: formCategory,
+    babyId: baby?.id,
+    babyName: baby?.name,
+    notes: formNotes.trim() || undefined,
+    createdAt: new Date().toISOString(),
+    color: formColor,
+    daysOfWeek: formRepeat === 'custom' ? formDaysOfWeek : undefined,
+    isAchievementRelated: editingReminder?.isAchievementRelated,
+    achievementId: editingReminder?.achievementId,
+  });
 
   const addReminder = async () => {
     if (!validateForm()) return;
-    const newReminder = buildReminderFromForm();
-    const notificationId = await scheduleNotification(newReminder);
-    newReminder.notificationId = notificationId;
-    const updated = [...reminders, newReminder];
+    const n = buildReminder();
+    n.notificationId = await scheduleNotification(n);
+    const updated = [...reminders, n];
     setReminders(updated);
     await saveReminders(updated);
     setShowAddModal(false);
     resetForm();
-    showToast('success', 'Reminder Added', `${newReminder.title} set for ${newReminder.time}`, newReminder.emoji);
+    showToast('success', 'Reminder Added', `${n.title} at ${n.time}`, n.emoji);
     triggerHaptic('medium');
   };
 
   const updateReminder = async () => {
     if (!editingReminder || !validateForm()) return;
     await cancelNotification(editingReminder.notificationId);
-    const updatedReminder = buildReminderFromForm(editingReminder.id);
-    const notificationId = await scheduleNotification(updatedReminder);
-    updatedReminder.notificationId = notificationId;
-    const updated = reminders.map((r) => (r.id === editingReminder.id ? updatedReminder : r));
+    const u = buildReminder(editingReminder.id);
+    u.notificationId = await scheduleNotification(u);
+    const updated = reminders.map(r => r.id === editingReminder.id ? u : r);
     setReminders(updated);
     await saveReminders(updated);
     setShowEditModal(false);
     setEditingReminder(null);
     resetForm();
-    showToast('success', 'Reminder Updated', `${updatedReminder.title} updated`, updatedReminder.emoji);
+    showToast('success', 'Updated', u.title, u.emoji);
   };
 
   const deleteReminder = async (id: string) => {
-    const reminder = reminders.find((r) => r.id === id);
-    if (!reminder) return;
-    sweetAlert.confirm(
-      'Delete Reminder',
-      'Are you sure you want to delete this reminder?',
-      async () => {
-        await cancelNotification(reminder.notificationId);
-        const updated = reminders.filter((r) => r.id !== id);
-        setReminders(updated);
-        await saveReminders(updated);
-        showToast('success', 'Deleted', `${reminder.title} removed`);
-      },
-      () => {},
-      'Delete',
-      'Cancel',
-      true
-    );
+    const r = reminders.find(x => x.id === id);
+    if (!r) return;
+    sweetAlert.confirm('Delete Reminder', 'Are you sure?', async () => {
+      await cancelNotification(r.notificationId);
+      const updated = reminders.filter(x => x.id !== id);
+      setReminders(updated);
+      await saveReminders(updated);
+      showToast('success', 'Deleted', r.title);
+    }, () => {}, 'Delete', 'Cancel', true);
   };
 
   const resetForm = () => {
-    setFormTitle('');
-    setFormCategory('custom');
-    setFormRepeat('daily');
-    setFormTime(new Date());
-    setFormNotes('');
-    setFormDaysOfWeek([1, 2, 3, 4, 5]);
+    setFormTitle(''); setFormCategory('custom'); setFormRepeat('daily');
+    setFormTime(new Date()); setFormNotes(''); setFormDaysOfWeek([1, 2, 3, 4, 5]);
     setFormColor(CATEGORY_CONFIG.custom.color);
   };
 
   const dismissSuggestion = async (id: string) => {
-    const newSet = new Set(dismissedSuggestions);
-    newSet.add(id);
-    setDismissedSuggestions(newSet);
-    await saveDismissedSuggestions(newSet);
-    setSmartSuggestions((prev) => prev.filter((s) => s.id !== id));
+    const ns = new Set(dismissedSuggestions); ns.add(id);
+    setDismissedSuggestions(ns);
+    await saveDismissedSuggestions(ns);
+    setSmartSuggestions(prev => prev.filter(s => s.id !== id));
   };
 
-  const applySmartSuggestion = async (suggestion: SmartSuggestion) => {
-    const [hours, minutes] = suggestion.optimalTime.split(':').map(Number);
-    const newReminder: Reminder = {
-      id: `smart_${Date.now()}`,
-      title: suggestion.title,
-      time: suggestion.optimalTime,
-      emoji: suggestion.emoji,
-      enabled: true,
-      repeat: 'daily',
-      category: suggestion.type,
-      babyId: baby?.id,
-      babyName: baby?.name,
-      smartSuggestion: true,
-      notes: suggestion.reason,
-      createdAt: new Date().toISOString(),
-      color: CATEGORY_CONFIG[suggestion.type].color,
+  const applySmartSuggestion = async (s: SmartSuggestion) => {
+    const n: Reminder = {
+      id: `smart_${Date.now()}`, title: s.title, time: s.optimalTime, emoji: s.emoji,
+      enabled: true, repeat: 'daily', category: s.type, babyId: baby?.id, babyName: baby?.name,
+      smartSuggestion: true, notes: s.reason, createdAt: new Date().toISOString(),
+      color: CATEGORY_CONFIG[s.type].color,
     };
-    const notificationId = await scheduleNotification(newReminder);
-    newReminder.notificationId = notificationId;
-    const updated = [...reminders, newReminder];
+    n.notificationId = await scheduleNotification(n);
+    const updated = [...reminders, n];
     setReminders(updated);
     await saveReminders(updated);
-    dismissSuggestion(suggestion.id);
-    showToast('success', 'Smart Reminder Added', `AI scheduled: ${suggestion.title}`, suggestion.emoji);
+    dismissSuggestion(s.id);
+    showToast('success', 'Added', `AI: ${s.title}`, s.emoji);
     triggerHaptic('success');
   };
 
-  const quickLog = (type: CategoryType) => {
-    navigation.navigate('Timeline', { type, babyId: baby?.id });
-  };
+  const quickLog = (type: CategoryType) => navigation.navigate('Timeline', { type, babyId: baby?.id });
 
-  /* ---- Filtering ---- */
   const filteredReminders = useMemo(() => {
     let list = [...reminders];
-
-    if (activeCategory !== 'all') {
-      list = list.filter(r => r.category === activeCategory);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter((r) =>
-        r.title.toLowerCase().includes(q) ||
-        r.category.toLowerCase().includes(q) ||
-        r.notes?.toLowerCase().includes(q)
-      );
-    }
-
+    if (activeCategory !== 'all') list = list.filter(r => r.category === activeCategory);
     if (viewMode === 'today') {
-      const now = new Date();
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
       list = list.filter(r => r.enabled).sort((a, b) => {
         const [ah, am] = a.time.split(':').map(Number);
         const [bh, bm] = b.time.split(':').map(Number);
         return (ah * 60 + am) - (bh * 60 + bm);
       });
     } else if (viewMode === 'upcoming') {
-      const now = new Date();
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const now = new Date(); const c = now.getHours() * 60 + now.getMinutes();
       list = list.filter(r => r.enabled).sort((a, b) => {
         const aMin = parseInt(a.time.split(':')[0]) * 60 + parseInt(a.time.split(':')[1]);
         const bMin = parseInt(b.time.split(':')[0]) * 60 + parseInt(b.time.split(':')[1]);
-        const aDiff = aMin >= currentMinutes ? aMin - currentMinutes : aMin + 1440 - currentMinutes;
-        const bDiff = bMin >= currentMinutes ? bMin - currentMinutes : bMin + 1440 - currentMinutes;
-        return aDiff - bDiff;
+        return ((aMin >= c ? aMin - c : aMin + 1440 - c) - (bMin >= c ? bMin - c : bMin + 1440 - c));
       });
     }
-
     return list;
-  }, [reminders, activeCategory, searchQuery, viewMode]);
+  }, [reminders, activeCategory, viewMode]);
 
-  const getNextReminder = (): Reminder | null => {
-    const enabled = reminders.filter((r) => r.enabled);
-    if (enabled.length === 0) return null;
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    let next = enabled.find((r) => {
-      const [h, m] = r.time.split(':').map(Number);
-      return h * 60 + m > currentMinutes;
-    });
-    if (!next) next = enabled[0];
-    return next;
+  const getNext = (): Reminder | null => {
+    const e = reminders.filter(r => r.enabled);
+    if (!e.length) return null;
+    const c = new Date().getHours() * 60 + new Date().getMinutes();
+    return e.find(r => { const [h, m] = r.time.split(':').map(Number); return h * 60 + m > c; }) || e[0];
   };
+  const nextReminder = getNext();
 
-  const nextReminder = getNextReminder();
-
-  /* ---- Toast helper ---- */
-  const showToast = (type: AlertState['type'], title: string, message: string, emoji?: string) => {
+  const showToast = (type: AlertState['type'], title: string, message: string, emoji?: string) =>
     setAlert({ visible: true, type, title, message, emoji });
-  };
 
   const openTimePicker = useCallback(() => {
-    datePicker.open(
-      { value: formTime instanceof Date ? formTime : new Date(), mode: 'time' },
-      (picked) => {
-        if (picked) setFormTime(picked);
-      }
-    );
+    datePicker.open({ value: formTime instanceof Date ? formTime : new Date(), mode: 'time' }, (p) => { if (p) setFormTime(p); });
   }, [datePicker, formTime]);
 
-  /* ---- View mode tabs ---- */
-  const viewTabs = [
-    { key: 'today' as ViewMode, label: 'Today', icon: 'sunny-outline' },
-    { key: 'upcoming' as ViewMode, label: 'Upcoming', icon: 'time-outline' },
-    { key: 'all' as ViewMode, label: 'All', icon: 'list-outline' },
-    { key: 'smart' as ViewMode, label: 'Smart', icon: 'sparkles-outline', badge: smartSuggestions.length },
-    { key: 'analytics' as ViewMode, label: 'Stats', icon: 'bar-chart-outline' },
-  ];
-
-  /* ---- Share ---- */
   const handleShare = async () => {
-    triggerHaptic('medium');
     try {
-      const activeCount = reminders.filter(r => r.enabled).length;
-      const message = baby
-        ? `⏰ ${baby.name} has ${activeCount} active reminders on LittleLoom! Stay on track with daily routines.`
-        : `I'm using LittleLoom to track ${activeCount} daily reminders! 🏆`;
-      await Share.share({ message, title: 'LittleLoom Reminders' });
-      showToast('success', 'Shared!', 'Your reminders have been shared');
-    } catch {
-      showToast('error', 'Share Failed', 'Could not share reminders');
-    }
+      const c = reminders.filter(r => r.enabled).length;
+      await Share.share({ message: `⏰ ${baby?.name || 'Baby'} has ${c} active reminders on LittleLoom!`, title: 'LittleLoom Reminders' });
+      showToast('success', 'Shared!', 'Reminders shared');
+    } catch { showToast('error', 'Share Failed', 'Try again'); }
   };
 
-  /* ═══════════════════════════════════════════════════════════════
-     ⚡ INSTANT LOADING: Show content immediately, no spinner
-     ═══════════════════════════════════════════════════════════════ */
+  const viewTabs = [
+    { key: 'today' as ViewMode, label: 'Today', icon: 'sunny-outline' as const },
+    { key: 'upcoming' as ViewMode, label: 'Upcoming', icon: 'time-outline' as const },
+    { key: 'all' as ViewMode, label: 'All', icon: 'list-outline' as const },
+    { key: 'smart' as ViewMode, label: 'Smart', icon: 'sparkles-outline' as const, badge: smartSuggestions.length },
+    { key: 'analytics' as ViewMode, label: 'Stats', icon: 'bar-chart-outline' as const },
+  ];
 
-  /* ---- No baby state (shown instantly) ---- */
+  const activeCount = reminders.filter(r => r.enabled).length;
+
+  /* Baby Required only */
   if (!baby && !isInitialLoad) {
     return (
-      <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8fafc', '#e2e8f0']} style={StyleSheet.absoluteFill} />
-        <View style={styles.centerContent}>
-          <GlassCard>
-            <LinearGradient colors={[themeColors?.primary || '#6366f1', themeColors?.secondary || '#a78bfa']} style={styles.noBabyGradient}>
-              <Ionicons name="add-circle" size={56} color="#fff" />
-              <Text style={styles.noBabyTitle}>Baby Profile Needed</Text>
-              <Text style={styles.noBabySubtitle}>Create a baby profile to manage reminders</Text>
-              <TouchableOpacity style={styles.noBabyButton} onPress={() => navigation.navigate('CreateBabyProfile')}>
-                <Text style={[styles.noBabyButtonText, { color: themeColors?.primary || '#6366f1' }]}>Create Baby Profile</Text>
-              </TouchableOpacity>
-            </LinearGradient>
-          </GlassCard>
+      <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+        <LinearGradient colors={isDark ? ['#0c0a09', '#12121e'] : ['#f8faff', '#eef0f5']} style={StyleSheet.absoluteFill} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <LinearGradient colors={[DS.primary, DS.accent]} style={styles.noBabyGradient}>
+            <Ionicons name="add-circle" size={56} color={DS.white} />
+            <Text style={styles.noBabyTitle}>Baby Profile Needed</Text>
+            <Text style={styles.noBabySub}>Create a profile to manage reminders</Text>
+            <TouchableOpacity style={styles.noBabyBtn} onPress={() => navigation.navigate('CreateBabyProfile')}>
+              <Text style={[styles.noBabyBtnText, { color: DS.primary }]}>Create Baby Profile</Text>
+            </TouchableOpacity>
+          </LinearGradient>
         </View>
-
-        {/* Baby Required Modal */}
-        <Modal
-          visible={showBabyRequiredModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowBabyRequiredModal(false)}
-        >
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => setShowBabyRequiredModal(false)}
-          >
-            <View style={[styles.modalContent, { backgroundColor: isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
-              <View style={styles.modalIconWrap}>
-                <LinearGradient colors={[themeColors?.secondary || '#fa709a', themeColors?.primary || '#6366f1']} style={styles.modalIconGradient}>
-                  <Ionicons name="people-outline" size={32} color="#fff" />
+        <Modal visible={showBabyRequiredModal} transparent animationType="fade" onRequestClose={() => setShowBabyRequiredModal(false)}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowBabyRequiredModal(false)}>
+            <View style={[styles.babyReqCard, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+              <LinearGradient colors={[DS.primary, DS.accent]} style={styles.babyReqIcon}>
+                <Ionicons name="people-outline" size={28} color={DS.white} />
+              </LinearGradient>
+              <Text style={[styles.babyReqTitle, { color: isDark ? DS.white : DS.gray900 }]}>Baby Profile Needed</Text>
+              <Text style={[styles.babyReqDesc, { color: isDark ? DS.gray400 : DS.gray500 }]}>Create a profile to start tracking.</Text>
+              <PressableScale onPress={() => { setShowBabyRequiredModal(false); navigation.navigate('CreateBabyProfile'); }} activeScale={0.97} style={{ width: '100%' }}>
+                <LinearGradient colors={[DS.primary, DS.accent]} style={styles.babyReqBtn}>
+                  <Text style={styles.babyReqBtnText}>Create Baby Profile</Text>
+                  <Ionicons name="arrow-forward" size={16} color={DS.white} />
                 </LinearGradient>
-              </View>
-              <Text style={[styles.modalBabyTitle, { color: isDark ? '#fff' : '#1a1a1a' }]}>Baby Profile Needed</Text>
-              <Text style={[styles.modalDesc, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                Create a baby profile to start tracking activities and unlock all features.
-              </Text>
-              <TouchableOpacity
-                style={[styles.modalPrimaryBtn, { backgroundColor: themeColors?.primary || '#6366f1' }]}
-                onPress={() => {
-                  setShowBabyRequiredModal(false);
-                  navigation.navigate('CreateBabyProfile');
-                }}
-              >
-                <Text style={styles.modalPrimaryBtnText}>Create Baby Profile</Text>
-                <Ionicons name="arrow-forward" size={16} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalSecondaryBtn}
-                onPress={() => setShowBabyRequiredModal(false)}
-              >
-                <Text style={[styles.modalSecondaryBtnText, { color: '#94a3b8' }]}>Maybe Later</Text>
+              </PressableScale>
+              <TouchableOpacity onPress={() => setShowBabyRequiredModal(false)} style={{ paddingVertical: 10 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? DS.gray500 : DS.gray400 }}>Maybe later</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -1726,464 +1220,304 @@ export default function RemindersScreen({ navigation, route }: Props) {
     );
   }
 
-  // ⚡ Show content even while loading - no spinner
+  /* Main */
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? '#0a0a0a' : '#f8fafc' }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent />
-      <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8fafc', '#e2e8f0']} style={StyleSheet.absoluteFill} />
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <LinearGradient colors={isDark ? ['#0c0a09', '#12121e', '#0c0a09'] : ['#f8faff', '#eef0f5', '#e4e8f0']} style={StyleSheet.absoluteFill} />
 
       {/* Sticky Header */}
-      <Animated.View style={[styles.stickyHeader, headerAnimatedStyle]}>
-        <BlurView intensity={isDark ? 40 : 80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-        <Text style={[styles.stickyTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
-          {baby?.name ? `${baby.name}'s Reminders` : 'Reminders'}
-        </Text>
-        <Text style={[styles.stickySubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-          {reminders.filter(r => r.enabled).length} active
-        </Text>
+      <Animated.View style={[styles.stickyHeader, { paddingTop: HEADER_TOP_PADDING, backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)', borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }, headerAnim]}>
+        <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <View style={styles.headerInner}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+            <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>REMINDERS</GradientText>
+            <Text style={[styles.headerSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>{baby?.name || 'Baby'}</Text>
+          </View>
+          <TouchableOpacity onPress={handleShare} style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+            <Ionicons name="share-outline" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+        </View>
       </Animated.View>
 
       <Animated.ScrollView
-        ref={scrollRef}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={{ paddingTop: HEADER_TOTAL_HEIGHT + 12, paddingBottom: insets.bottom + 120 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── TOP HEADER ROW ── */}
-        <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}>
-            <Ionicons name="arrow-back" size={22} color={isDark ? '#fff' : '#1e293b'} />
-          </TouchableOpacity>
-
-          <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
-              {baby?.name ? `${baby.name}'s Reminders` : 'Reminders'}
-            </Text>
-            <View style={[styles.pointsBadge, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
-              <Ionicons name="time" size={14} color="#6366f1" />
-              <Text style={[styles.pointsText, { color: '#6366f1' }]}>{reminders.filter(r => r.enabled).length} active</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity onPress={handleShare} style={[styles.backBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}>
-            <Ionicons name="share-outline" size={22} color={isDark ? '#fff' : '#1e293b'} />
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* ── BABY INFO CARD ── */}
-        {baby && (
-          <Animated.View entering={FadeInDown.delay(100).springify()}>
-            <GlassCard onPress={() => babies.length > 1 && navigation.navigate('SwitchBaby')}>
-              <View style={styles.babyRow}>
-                <SafeBabyAvatar
-                  avatar={baby.avatar}
-                  gender={baby.gender}
-                  size={60}
-                  showBadge={streakData.current > 0}
-                  animated={!shouldReduceMotion}
-                />
-                <View style={styles.babyInfo}>
-                  <Text style={[styles.babyName, { color: isDark ? '#fff' : '#1e293b' }]}>{baby.name}</Text>
-                  <Text style={[styles.babyAge, { color: isDark ? '#94a3b8' : '#64748b' }]}>{baby.age}</Text>
-                  <View style={[styles.statusBadge, { backgroundColor: streakData.atRisk ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)' }]}>
-                    <Ionicons name={streakData.atRisk ? 'flame-outline' : 'checkmark-circle'} size={14} color={streakData.atRisk ? '#ef4444' : '#10b981'} />
-                    <Text style={[styles.statusText, { color: streakData.atRisk ? '#ef4444' : '#10b981' }]}>
-                      {streakData.atRisk ? 'Streak at risk!' : `${streakData.current}d streak`}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.statsCol}>
-                  <Text style={[styles.statValue, { color: isDark ? '#fff' : '#1e293b' }]}>{reminders.filter(r => r.enabled).length}</Text>
-                  <Text style={[styles.statLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Active</Text>
-                </View>
-              </View>
-              {streakData.atRisk && (
-                <View style={styles.warningBanner}>
-                  <Ionicons name="warning" size={16} color="#ef4444" />
-                  <Text style={styles.warningText}>Log an activity today to keep your streak!</Text>
-                  <TouchableOpacity style={styles.warningAction} onPress={() => quickLog('potty')}>
-                    <Text style={styles.warningActionText}>Log Now</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </GlassCard>
-          </Animated.View>
-        )}
-
-        {/* ── NEW FEATURE 1: Reminder Stats Ring ── */}
-        {baby && reminders.length > 0 && (
-          <View style={styles.statsRingSection}>
-            <ReminderStatsRing
-              total={reminders.length}
-              active={reminders.filter(r => r.enabled).length}
-              isDark={isDark}
-            />
-          </View>
-        )}
-
-        {/* ── NEW FEATURE 2: Category Breakdown ── */}
-        {baby && reminders.length > 0 && (
-          <CategoryBreakdown reminders={reminders} isDark={isDark} />
-        )}
-
-        {/* ── Daily Insights ── */}
-        {baby && dailyInsights.length > 0 && (
-          <DailyInsights insights={dailyInsights} isDark={isDark} onAction={(insight) => {
-            triggerHaptic('light');
-            if (insight.actionScreen) navigation.navigate(insight.actionScreen as any);
-          }} />
-        )}
-
-        {/* ── NEW FEATURE 3: Upcoming Timeline ── */}
-        {baby && reminders.filter(r => r.enabled).length > 0 && (
-          <UpcomingTimeline reminders={reminders} onPress={openEditModal} isDark={isDark} />
-        )}
-
-        {/* ── View Mode Tabs ── */}
-        <ViewModeTabs
-          tabs={viewTabs}
-          activeTab={viewMode}
-          onChange={(tab) => {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            setViewMode(tab);
-            triggerHaptic('light');
-          }}
-          isDark={isDark}
+        {/* Pulse Header */}
+        <RemindersPulse
+          isDark={isDark} baby={baby} activeCount={activeCount} totalCount={reminders.length}
+          streak={streakData.current} atRisk={streakData.atRisk} nextReminder={nextReminder}
+          onBabyPress={() => babies.length > 1 && navigation.navigate('SwitchBaby')}
+          onShare={handleShare}
         />
 
-        {/* ── Category Filter ── */}
-        {(viewMode === 'today' || viewMode === 'upcoming' || viewMode === 'all') && reminders.length > 0 && (
-          <CategoryFilter
-            reminders={reminders}
-            selectedCategory={activeCategory}
-            onChange={(cat) => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              setActiveCategory(cat);
-              triggerHaptic('light');
-            }}
-            isDark={isDark}
-          />
+        {/* Streak at risk ribbon */}
+        {streakData.atRisk && (
+          <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+            <AuraRibbon isDark={isDark} icon="flame-outline" color={DS.danger} label="Streak at Risk" text="Log activity today to keep your streak alive" onPress={() => quickLog('potty')} />
+          </View>
         )}
 
-        {/* ── Content based on view mode ── */}
+        {/* Stats Ring */}
+        {reminders.length > 0 && (
+          <View style={{ marginTop: DS.space.md }}>
+            <StatsRing total={reminders.length} active={activeCount} isDark={isDark} />
+          </View>
+        )}
+
+        {/* Category Breakdown */}
+        {reminders.length > 0 && (
+          <View style={{ marginTop: DS.space.md }}>
+            <CategoryBreakdown reminders={reminders} isDark={isDark} />
+          </View>
+        )}
+
+        {/* Insights */}
+        {dailyInsights.length > 0 && (
+          <View style={{ marginTop: DS.space.md }}>
+            <Insights insights={dailyInsights} isDark={isDark} onAction={(i) => { if (i.actionScreen) navigation.navigate(i.actionScreen as any); }} />
+          </View>
+        )}
+
+        {/* Timeline */}
+        {reminders.filter(r => r.enabled).length > 0 && (
+          <View style={{ marginTop: DS.space.md }}>
+            <Timeline reminders={reminders} onPress={openEditModal} isDark={isDark} />
+          </View>
+        )}
+
+        {/* View Tabs */}
+        <View style={{ marginTop: DS.space.md }}>
+          <ViewTabs
+            tabs={viewTabs} activeTab={viewMode}
+            onChange={(t) => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setViewMode(t); triggerHaptic('light'); }}
+            isDark={isDark}
+          />
+        </View>
+
+        {/* Category filter */}
+        {(viewMode === 'today' || viewMode === 'upcoming' || viewMode === 'all') && reminders.length > 0 && (
+          <View style={{ marginTop: DS.space.md }}>
+            <CategoryFilter reminders={reminders} selected={activeCategory} onChange={(c) => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setActiveCategory(c); triggerHaptic('light'); }} isDark={isDark} />
+          </View>
+        )}
+
+        {/* Smart View */}
         {viewMode === 'smart' && (
-          <View style={styles.section}>
-            <SectionHeader
-              title="Smart Suggestions"
-              subtitle={`${smartSuggestions.length} AI-powered recommendations`}
-              isDark={isDark}
-            />
-            {smartSuggestions.map((suggestion, i) => (
-              <Animated.View key={suggestion.id} entering={FadeInUp.delay(i * 60).springify()}>
-                <GlassCard style={styles.smartCard}>
-                  <View style={styles.smartCardHeader}>
-                    <View style={styles.smartCardLeft}>
-                      <View style={[styles.smartCardIconBg, { backgroundColor: `${CATEGORY_CONFIG[suggestion.type].color}15` }]}>
-                        <Text style={styles.smartCardEmoji}>{suggestion.emoji}</Text>
-                      </View>
-                      <View>
-                        <Text style={[styles.smartCardTitle, { color: isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>{suggestion.title}</Text>
-                        <View style={styles.smartCardMeta}>
-                          <View style={[styles.confidenceBadge, { backgroundColor: suggestion.confidence > 85 ? '#22c55e' : suggestion.confidence > 70 ? '#f59e0b' : '#3b82f6' }]}>
-                            <Text style={styles.confidenceText}>{suggestion.confidence}%</Text>
-                          </View>
-                          {suggestion.priority === 'high' && (
-                            <View style={styles.urgentBadge}>
-                              <Text style={styles.urgentText}>URGENT</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-                    <TouchableOpacity onPress={() => dismissSuggestion(suggestion.id)} style={styles.dismissBtn}>
-                      <Ionicons name="close" size={18} color={isDark ? '#94a3b8' : '#94a3b8'} />
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={[styles.smartCardDesc, { color: isDark ? '#94a3b8' : '#64748b' }]} numberOfLines={2}>{suggestion.description}</Text>
-                  <View style={styles.smartCardFooter}>
-                    <View style={styles.smartCardTimeRow}>
-                      <Ionicons name="time-outline" size={14} color={isDark ? '#94a3b8' : '#64748b'} />
-                      <Text style={[styles.smartCardTime, { color: isDark ? '#94a3b8' : '#64748b' }]}>Best at {suggestion.optimalTime}</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity style={styles.smartCardApplyBtn} onPress={() => applySmartSuggestion(suggestion)}>
-                    <LinearGradient colors={CATEGORY_CONFIG[suggestion.type].gradient} style={styles.smartCardApplyGradient}>
-                      <Ionicons name="add-circle" size={16} color="#fff" />
-                      <Text style={styles.smartCardApplyText}>Add Reminder</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </GlassCard>
-              </Animated.View>
-            ))}
-            {smartSuggestions.length === 0 && (
-              <View style={styles.emptyState}>
-                <Ionicons name="sparkles-outline" size={56} color={isDark ? '#64748b' : '#cbd5e1'} />
-                <Text style={[styles.emptyTitle, { color: isDark ? '#fff' : '#1e293b' }]}>No smart suggestions</Text>
-                <Text style={[styles.emptyText, { color: isDark ? '#94a3b8' : '#64748b' }]}>Keep tracking activities and AI will suggest optimal reminders</Text>
+          <View style={{ marginTop: DS.space.md, paddingHorizontal: DS.space.lg, gap: 10 }}>
+            <SectionHeader title="Smart Suggestions" subtitle={`${smartSuggestions.length} AI recommendations`} icon="sparkles-outline" color={DS.warning} isDark={isDark} />
+            {smartSuggestions.length > 0 ? smartSuggestions.map((s, i) => (
+              <SmartCard key={s.id} suggestion={s} onApply={applySmartSuggestion} onDismiss={dismissSuggestion} isDark={isDark} index={i} />
+            )) : (
+              <View style={styles.emptyCard}>
+                <Ionicons name="sparkles-outline" size={44} color={isDark ? DS.gray500 : DS.gray400} />
+                <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray900 }]}>No smart suggestions</Text>
+                <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Keep tracking — AI will suggest optimal reminders</Text>
               </View>
             )}
           </View>
         )}
 
+        {/* Analytics View */}
         {viewMode === 'analytics' && (
-          <View style={styles.analyticsSection}>
-            <SectionHeader title="Analytics" subtitle="Your reminder performance" isDark={isDark} />
-            <View style={styles.analyticsGrid}>
+          <View style={{ marginTop: DS.space.md, paddingHorizontal: DS.space.lg }}>
+            <SectionHeader title="Analytics" subtitle="Reminder performance" icon="bar-chart-outline" color={DS.info} isDark={isDark} />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: DS.space.sm }}>
               {[
-                { label: 'Active', value: reminders.filter(r => r.enabled).length, icon: 'checkmark-done', color: '#10b981' },
-                { label: 'Paused', value: reminders.filter(r => !r.enabled).length, icon: 'pause', color: '#94a3b8' },
-                { label: 'Categories', value: Object.keys(CATEGORY_CONFIG).filter(c => reminders.some(r => r.category === c)).length, icon: 'grid', color: '#6366f1' },
-                { label: 'Smart', value: reminders.filter(r => r.smartSuggestion).length, icon: 'sparkles', color: '#f59e0b' },
-              ].map((stat) => (
-                <GlassCard key={stat.label} style={styles.analyticsCard}>
-                  <View style={[styles.analyticsIconBg, { backgroundColor: `${stat.color}15` }]}>
-                    <Ionicons name={stat.icon as any} size={20} color={stat.color} />
+                { label: 'Active', value: activeCount, icon: 'checkmark-done', color: DS.success },
+                { label: 'Paused', value: reminders.length - activeCount, icon: 'pause', color: DS.gray400 },
+                { label: 'Categories', value: Object.keys(CATEGORY_CONFIG).filter(c => reminders.some(r => r.category === c)).length, icon: 'grid', color: DS.primary },
+                { label: 'AI Added', value: reminders.filter(r => r.smartSuggestion).length, icon: 'sparkles', color: DS.warning },
+              ].map(s => (
+                <View key={s.label} style={[styles.analyticsCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                  <View style={[styles.analyticsIcon, { backgroundColor: `${s.color}18` }]}>
+                    <Ionicons name={s.icon as any} size={20} color={s.color} />
                   </View>
-                  <Text style={[styles.analyticsValue, { color: isDark ? '#fff' : '#1e293b' }]}>{stat.value}</Text>
-                  <Text style={[styles.analyticsLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>{stat.label}</Text>
-                </GlassCard>
+                  <Text style={[styles.analyticsVal, { color: isDark ? DS.white : DS.gray900 }]}>{s.value}</Text>
+                  <Text style={[styles.analyticsLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>{s.label}</Text>
+                </View>
               ))}
             </View>
-
-            {/* Weekly chart */}
-            <GlassCard>
-              <View style={styles.chartHeader}>
-                <Text style={[styles.chartTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Weekly Activity</Text>
-                <Text style={[styles.chartSubtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>Reminders completed per day</Text>
-              </View>
-              <View style={styles.chartBars}>
-                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => {
-                  const count = analytics?.weekly?.[day] || 0;
-                  const maxCount = Math.max(...Object.values(analytics?.weekly || {}), 1);
-                  const height = (count / maxCount) * 80;
+            <View style={[styles.chartCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200, marginTop: DS.space.md }]}>
+              <Text style={[styles.chartTitle, { color: isDark ? DS.white : DS.gray900 }]}>Weekly Activity</Text>
+              <Text style={[styles.chartSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Completed per day</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', height: 100, marginTop: 12 }}>
+                {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => {
+                  const count = analytics?.weekly?.[d] || 0;
+                  const max = Math.max(...Object.values(analytics?.weekly || { M: 1 }), 1);
+                  const h = Math.max((count as number / max as number) * 80, 4);
                   return (
-                    <View key={day} style={styles.chartBarContainer}>
-                      <View style={[styles.chartBar, { height: Math.max(height, 4), backgroundColor: '#6366f1' }]} />
-                      <Text style={[styles.chartBarLabel, { color: isDark ? '#94a3b8' : '#94a3b8' }]}>{day}</Text>
+                    <View key={i} style={{ alignItems: 'center', gap: 4 }}>
+                      <View style={{ width: 20, height: h, borderRadius: 4, backgroundColor: DS.primary }} />
+                      <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? DS.gray500 : DS.gray400 }}>{d}</Text>
                     </View>
                   );
                 })}
               </View>
-            </GlassCard>
+            </View>
           </View>
         )}
 
+        {/* Reminder List */}
         {(viewMode === 'today' || viewMode === 'upcoming' || viewMode === 'all') && (
-          <View style={styles.section}>
+          <View style={{ marginTop: DS.space.md, paddingHorizontal: DS.space.lg }}>
             <SectionHeader
               title={viewMode === 'today' ? "Today's Schedule" : viewMode === 'upcoming' ? 'Upcoming' : 'All Reminders'}
               subtitle={`${filteredReminders.length} reminder${filteredReminders.length !== 1 ? 's' : ''}`}
-              isDark={isDark}
+              icon="list-outline" color={DS.primary} isDark={isDark}
             />
-            {filteredReminders.map((item, index) => (
-              <ReminderListItem
-                key={item.id}
-                item={item}
-                index={index}
-                isNext={nextReminder?.id === item.id}
-                onToggle={toggleReminder}
-                onPress={openEditModal}
-                onLongPress={deleteReminder}
-                isDark={isDark}
-              />
-            ))}
+            <View style={{ gap: 8 }}>
+              {filteredReminders.map((item, i) => (
+                <ReminderItem
+                  key={item.id} item={item} index={i}
+                  isNext={nextReminder?.id === item.id}
+                  onToggle={toggleReminder} onPress={openEditModal} onLongPress={deleteReminder}
+                  isDark={isDark}
+                />
+              ))}
+            </View>
             {filteredReminders.length === 0 && (
-              <View style={styles.emptyState}>
-                <Ionicons name="notifications-off-outline" size={56} color={isDark ? '#64748b' : '#cbd5e1'} />
-                <Text style={[styles.emptyTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
-                  {searchQuery ? 'No matches found' : 'No reminders yet'}
-                </Text>
-                <Text style={[styles.emptyText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                  {searchQuery ? 'Try a different search term' : 'Tap + to add your first reminder'}
-                </Text>
+              <View style={styles.emptyCard}>
+                <Ionicons name="notifications-off-outline" size={44} color={isDark ? DS.gray500 : DS.gray400} />
+                <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray900 }]}>No reminders yet</Text>
+                <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Tap + to add your first reminder</Text>
               </View>
             )}
           </View>
         )}
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 40 }} />
       </Animated.ScrollView>
 
-      {/* Quick Add FAB */}
-      <QuickAddFAB onPress={() => openAddModal()} themeColors={themeColors} />
+      {/* FAB */}
+      <Animated.View entering={FadeIn.delay(400)} style={[styles.fabWrap, { bottom: insets.bottom + 20 }]}>
+        <PressableScale onPress={() => openAddModal()} activeScale={0.92}>
+          <LinearGradient colors={[DS.primary, DS.accent]} style={styles.fabGrad}>
+            <Ionicons name="add" size={28} color={DS.white} />
+          </LinearGradient>
+        </PressableScale>
+      </Animated.View>
 
       {/* Add/Edit Modal */}
       {(showAddModal || showEditModal) && (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 1000 }]} pointerEvents="auto">
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            onPress={() => { setShowAddModal(false); setShowEditModal(false); resetForm(); }}
-            activeOpacity={1}
-          >
+        <View style={[StyleSheet.absoluteFill, { zIndex: 1000 }]}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => { setShowAddModal(false); setShowEditModal(false); resetForm(); }} activeOpacity={1}>
             <BlurView intensity={90} style={StyleSheet.absoluteFill} tint="dark" />
           </TouchableOpacity>
-
-          <Animated.View entering={FadeInUp.springify()} style={[styles.modal, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>
-                {showEditModal ? 'Edit Reminder' : 'New Reminder'}
-              </Text>
-              <TouchableOpacity onPress={() => { setShowAddModal(false); setShowEditModal(false); resetForm(); }}>
-                <Ionicons name="close" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
+          <Animated.View entering={FadeInUp.springify()} style={[styles.modalCard, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={[styles.modalTitle, { color: isDark ? DS.white : DS.gray900 }]}>{showEditModal ? 'Edit Reminder' : 'New Reminder'}</Text>
+              <TouchableOpacity onPress={() => { setShowAddModal(false); setShowEditModal(false); resetForm(); }} style={{ padding: 4 }}>
+                <Ionicons name="close" size={22} color={isDark ? DS.gray400 : DS.gray500} />
               </TouchableOpacity>
             </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
-              <Text style={[styles.inputLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>What to remind?</Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '80%' }} contentContainerStyle={{ paddingBottom: 20 }}>
+              <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>What to remind?</Text>
               <TextInput
-                style={[styles.textInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: isDark ? '#fff' : '#1e293b' }]}
-                value={formTitle}
-                onChangeText={setFormTitle}
+                style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100, color: isDark ? DS.white : DS.gray900 }]}
+                value={formTitle} onChangeText={setFormTitle}
                 placeholder="e.g., Give Vitamin D"
-                placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
+                placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
                 maxLength={50}
               />
-
-              <Text style={[styles.inputLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Category</Text>
-              <View style={styles.categoryGrid}>
-                {(Object.keys(CATEGORY_CONFIG) as CategoryType[]).map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.categoryChip, formCategory === cat && { backgroundColor: `${CATEGORY_CONFIG[cat].color}20`, borderColor: CATEGORY_CONFIG[cat].color, borderWidth: 2 }]}
-                    onPress={() => { setFormCategory(cat); setFormColor(CATEGORY_CONFIG[cat].color); triggerHaptic('light'); }}
-                  >
-                    <Text style={styles.categoryChipEmoji}>{CATEGORY_CONFIG[cat].emoji}</Text>
-                    <Text style={[styles.categoryChipText, { color: isDark ? '#cbd5e1' : '#475569' }, formCategory === cat && { color: CATEGORY_CONFIG[cat].color, fontWeight: '700' }]}>
-                      {CATEGORY_CONFIG[cat].label}
-                    </Text>
+              <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Category</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {(Object.keys(CATEGORY_CONFIG) as CategoryType[]).map(cat => (
+                  <TouchableOpacity key={cat} onPress={() => { setFormCategory(cat); setFormColor(CATEGORY_CONFIG[cat].color); triggerHaptic('light'); }}
+                    style={[styles.catChip, { backgroundColor: formCategory === cat ? `${CATEGORY_CONFIG[cat].color}20` : isDark ? 'rgba(255,255,255,0.05)' : DS.gray100, borderColor: formCategory === cat ? CATEGORY_CONFIG[cat].color : 'transparent', borderWidth: 2 }]}>
+                    <Text style={{ fontSize: 16 }}>{CATEGORY_CONFIG[cat].emoji}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: formCategory === cat ? CATEGORY_CONFIG[cat].color : isDark ? DS.gray300 : DS.gray700 }}>{CATEGORY_CONFIG[cat].label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={[styles.inputLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Time</Text>
-                            <View style={styles.timePickerRow}>
-                <TouchableOpacity style={[styles.timePickerButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} onPress={openTimePicker}>
-                  <Ionicons name="time-outline" size={22} color="#6366f1" />
-                  <Text style={[styles.timePickerText, { color: isDark ? '#fff' : '#1e293b' }]}>{format(formTime, 'h:mm a')}</Text>
+              <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Time</Text>
+              <View style={{ gap: 10 }}>
+                <TouchableOpacity onPress={openTimePicker} style={[styles.timeBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+                  <Ionicons name="time-outline" size={20} color={DS.primary} />
+                  <Text style={[styles.timeBtnText, { color: isDark ? DS.white : DS.gray900 }]}>{format(formTime, 'h:mm a')}</Text>
                 </TouchableOpacity>
-                <View style={styles.quickTimesRow}>
-                  {[
-                    { label: 'Morning', time: '08:00' },
-                    { label: 'Noon', time: '12:00' },
-                    { label: 'Evening', time: '18:00' },
-                    { label: 'Night', time: '21:00' },
-                  ].map((qt) => (
-                    <TouchableOpacity key={qt.label} style={[styles.quickTimeChip, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} onPress={() => {
-                      const [h, m] = qt.time.split(':').map(Number);
-                      setFormTime(set(new Date(), { hours: h, minutes: m }));
-                      triggerHaptic('light');
-                    }}>
-                      <Text style={[styles.quickTimeChipText, { color: isDark ? '#94a3b8' : '#64748b' }]}>{qt.label}</Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {[{ l: 'AM', t: '08:00' }, { l: 'Noon', t: '12:00' }, { l: 'PM', t: '18:00' }, { l: 'Night', t: '21:00' }].map(q => (
+                    <TouchableOpacity key={q.l} onPress={() => { const [h, m] = q.t.split(':').map(Number); setFormTime(set(new Date(), { hours: h, minutes: m })); triggerHaptic('light'); }}
+                      style={[styles.quickTime, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: isDark ? DS.gray400 : DS.gray500 }}>{q.l}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
 
-              {/* iOS-only time picker modal — driven by useDateTimePicker */}
-              {Platform.OS === 'ios' && datePicker.iosPicker.visible ? (
-                <Modal
-                  transparent
-                  animationType="slide"
-                  visible={datePicker.iosPicker.visible}
-                  statusBarTranslucent
-                  onRequestClose={datePicker.dismissIos}
-                >
-                  <Pressable
-                    style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}
-                    onPress={datePicker.dismissIos}
-                  >
-                    <View
-                      style={{ backgroundColor: isDark ? '#1a1a2e' : '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 }}
-                      onStartShouldSetResponder={() => true}
-                      onTouchEnd={(e) => e.stopPropagation()}
-                    >
-                      <View style={{ alignItems: 'flex-end', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.06)' }}>
+              {Platform.OS === 'ios' && datePicker.iosPicker.visible && (
+                <Modal transparent animationType="slide" visible={datePicker.iosPicker.visible} statusBarTranslucent onRequestClose={datePicker.dismissIos}>
+                  <Pressable style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={datePicker.dismissIos}>
+                    <View style={{ backgroundColor: isDark ? DS.darkCard : DS.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 }}>
+                      <View style={{ alignItems: 'flex-end', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }}>
                         <TouchableOpacity onPress={datePicker.dismissIos}>
-                          <Text style={{ fontSize: 16, fontWeight: '600', color: '#6366f1' }}>Done</Text>
+                          <Text style={{ fontSize: 16, fontWeight: '600', color: DS.primary }}>Done</Text>
                         </TouchableOpacity>
                       </View>
                       {(() => {
                         try {
-                          const DateTimePicker = require('@react-native-community/datetimepicker').default;
-                          return (
-                            <DateTimePicker
-                              value={datePicker.iosPicker.value}
-                              mode="time"
-                              display="spinner"
-                              onValueChange={datePicker.handleIosChange}
-                              textColor={isDark ? '#fff' : '#000'}
-                            />
-                          );
-                        } catch {
-                          return null;
-                        }
+                          const Picker = require('@react-native-community/datetimepicker').default;
+                          return <Picker value={datePicker.iosPicker.value} mode="time" display="spinner" onValueChange={datePicker.handleIosChange} textColor={isDark ? DS.white : DS.gray900} />;
+                        } catch { return null; }
                       })()}
                     </View>
                   </Pressable>
                 </Modal>
-              ) : null}
+              )}
 
-              <Text style={[styles.inputLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Repeat</Text>
-              <View style={styles.repeatGrid}>
-                {(Object.keys(REPEAT_LABELS) as RepeatType[]).map((opt) => (
-                  <TouchableOpacity
-                    key={opt}
-                    style={[styles.repeatChip, formRepeat === opt && { backgroundColor: '#6366f1' }]}
-                    onPress={() => { setFormRepeat(opt); triggerHaptic('light'); }}
-                  >
-                    <Text style={[styles.repeatChipText, formRepeat === opt && styles.repeatChipTextActive, { color: formRepeat === opt ? '#fff' : isDark ? '#cbd5e1' : '#64748b' }]}>
-                      {REPEAT_LABELS[opt]}
-                    </Text>
+              <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500, marginTop: 16 }]}>Repeat</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {(Object.keys(REPEAT_LABELS) as RepeatType[]).map(o => (
+                  <TouchableOpacity key={o} onPress={() => { setFormRepeat(o); triggerHaptic('light'); }}
+                    style={[styles.repeatChip, { backgroundColor: formRepeat === o ? DS.primary : isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+                    <Text style={{ fontSize: 12, fontWeight: formRepeat === o ? '700' : '600', color: formRepeat === o ? DS.white : isDark ? DS.gray300 : DS.gray700 }}>{REPEAT_LABELS[o]}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
               {formRepeat === 'custom' && (
                 <Animated.View entering={FadeInUp.duration(200)}>
-                  <Text style={[styles.inputLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Days of Week</Text>
-                  <View style={styles.daysRow}>
-                    {WEEKDAYS.map((day) => (
-                      <TouchableOpacity
-                        key={day.id}
-                        style={[styles.dayChip, formDaysOfWeek.includes(day.id) && { backgroundColor: '#6366f1' }]}
-                        onPress={() => {
-                          setFormDaysOfWeek((prev) =>
-                            prev.includes(day.id) ? prev.filter((d) => d !== day.id) : [...prev, day.id].sort()
-                          );
-                          triggerHaptic('light');
-                        }}
-                      >
-                        <Text style={[styles.dayChipText, formDaysOfWeek.includes(day.id) && styles.dayChipTextActive, { color: formDaysOfWeek.includes(day.id) ? '#fff' : isDark ? '#cbd5e1' : '#64748b' }]}>{day.label}</Text>
+                  <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500, marginTop: 16 }]}>Days</Text>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {WEEKDAYS.map(d => (
+                      <TouchableOpacity key={d.id}
+                        onPress={() => { setFormDaysOfWeek(p => p.includes(d.id) ? p.filter(x => x !== d.id) : [...p, d.id].sort()); triggerHaptic('light'); }}
+                        style={[styles.dayChip, { backgroundColor: formDaysOfWeek.includes(d.id) ? DS.primary : isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: formDaysOfWeek.includes(d.id) ? DS.white : isDark ? DS.gray300 : DS.gray700 }}>{d.label}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </Animated.View>
               )}
 
-              <Text style={[styles.inputLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>Notes (optional)</Text>
+              <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500, marginTop: 16 }]}>Notes (optional)</Text>
               <TextInput
-                style={[styles.notesInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', color: isDark ? '#fff' : '#1e293b' }]}
-                value={formNotes}
-                onChangeText={setFormNotes}
-                placeholder="Add details..."
-                placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
+                style={[styles.notesInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100, color: isDark ? DS.white : DS.gray900 }]}
+                value={formNotes} onChangeText={setFormNotes}
+                placeholder="Add details..." placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
+                multiline numberOfLines={3} textAlignVertical="top"
               />
 
-              <TouchableOpacity style={styles.saveButton} onPress={showEditModal ? updateReminder : addReminder} activeOpacity={0.9}>
-                <LinearGradient colors={[themeColors?.primary || '#6366f1', themeColors?.secondary || '#a78bfa']} style={styles.saveButtonGradient}>
-                  <Ionicons name={showEditModal ? 'checkmark' : 'add'} size={22} color="#fff" />
-                  <Text style={styles.saveButtonText}>{showEditModal ? 'Update Reminder' : 'Create Reminder'}</Text>
+              <PressableScale onPress={showEditModal ? updateReminder : addReminder} activeScale={0.97} style={{ marginTop: 20 }}>
+                <LinearGradient colors={[DS.primary, DS.accent]} style={styles.saveBtn}>
+                  <Ionicons name={showEditModal ? 'checkmark' : 'add'} size={20} color={DS.white} />
+                  <Text style={styles.saveBtnText}>{showEditModal ? 'Update' : 'Create Reminder'}</Text>
                 </LinearGradient>
-              </TouchableOpacity>
+              </PressableScale>
 
               {showEditModal && editingReminder && (
-                <TouchableOpacity style={styles.deleteButton} onPress={() => { setShowEditModal(false); deleteReminder(editingReminder.id); }}>
-                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                  <Text style={styles.deleteButtonText}>Delete Reminder</Text>
+                <TouchableOpacity onPress={() => { setShowEditModal(false); deleteReminder(editingReminder.id); }}
+                  style={[styles.deleteBtn, { backgroundColor: `${DS.danger}10` }]}>
+                  <Ionicons name="trash-outline" size={16} color={DS.danger} />
+                  <Text style={[styles.deleteBtnText, { color: DS.danger }]}>Delete Reminder</Text>
                 </TouchableOpacity>
               )}
             </ScrollView>
@@ -2191,495 +1525,194 @@ export default function RemindersScreen({ navigation, route }: Props) {
         </View>
       )}
 
-      {/* Sweet Alert */}
-      <SweetAlert {...alert} onClose={() => setAlert({ ...alert, visible: false })} isDark={isDark} />
+      {/* Toast */}
+      {alert.visible && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 9999, alignItems: 'center', paddingTop: 100 }]} pointerEvents="none">
+          <Animated.View entering={FadeInUp.springify()} style={[styles.toast, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+            <LinearGradient colors={alert.type === 'success' ? [DS.success, DS.success] : alert.type === 'error' ? [DS.danger, DS.danger] : [DS.primary, DS.accent]} style={styles.toastIcon}>
+              {alert.emoji ? <Text style={{ fontSize: 22 }}>{alert.emoji}</Text> : <Ionicons name={alert.type === 'success' ? 'checkmark-circle' : alert.type === 'error' ? 'alert-circle' : 'information-circle'} size={22} color={DS.white} />}
+            </LinearGradient>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.toastTitle, { color: isDark ? DS.white : DS.gray900 }]}>{alert.title}</Text>
+              <Text style={[styles.toastMsg, { color: isDark ? DS.gray400 : DS.gray500 }]}>{alert.message}</Text>
+            </View>
+          </Animated.View>
+        </View>
+      )}
     </View>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   STYLES — Completely Redesigned matching Achievements screen
-   ═══════════════════════════════════════════════════════════════ */
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  textDark: { color: '#ffffff' },
-  scrollContent: { paddingBottom: 24 },
 
-  /* ---- Loading ---- */
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 16, fontSize: 15, fontWeight: '600', color: '#64748b' },
+  /* Header */
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, paddingBottom: DS.space.md, borderBottomWidth: StyleSheet.hairlineWidth },
+  headerInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: DS.space.lg, height: 48 },
+  headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
+  headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
 
-  /* ---- Glass Card ---- */
-  glassCard: {
-    borderRadius: DESIGN.radius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.lg,
-  },
-  glassBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  glassContent: { flex: 1 },
+  /* Pulse */
+  pulseWrap: { marginHorizontal: DS.space.lg, marginTop: DS.space.md, borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden', borderWidth: 1, ...DS.shadow.md },
+  pulseGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  pulseGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  pulseAvatarWrap: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseAvatarGlow: { position: 'absolute', width: 66, height: 66, borderRadius: 33, backgroundColor: `${DS.primary}35` },
+  pulseAvatarRing: { position: 'absolute', width: 62, height: 62, borderRadius: 31, overflow: 'hidden' },
+  pulseAvatarInner: { width: 54, height: 54, borderRadius: 27, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  pulseName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, maxWidth: '70%' },
+  pulseAgePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  pulseAgeText: { fontSize: 11, fontWeight: '700' },
+  pulseLiveDot: { width: 6, height: 6, borderRadius: 3 },
+  pulseSubText: { fontSize: 12, fontWeight: '500' },
+  pulseIconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  pulseStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: DS.space.md, paddingVertical: DS.space.sm, borderRadius: DS.radius.lg, marginTop: DS.space.md },
+  pulseStat: { alignItems: 'center', flex: 1 },
+  pulseStatVal: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  pulseStatLbl: { fontSize: 10, fontWeight: '600', marginTop: 1 },
+  pulseStatDiv: { width: 1, height: 22 },
 
-  /* ---- Sticky Header ---- */
-  stickyHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
-  },
-  stickyTitle: { fontSize: 17, fontWeight: '800' },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  /* Ribbon */
+  ribbon: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1, lineHeight: 16 },
 
-  /* ---- Top Header ---- */
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    marginTop: Platform.OS === 'ios' ? 40 : 20,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerCenter: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  headerTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  pointsBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    gap: 4,
-  },
-  pointsText: { fontSize: 13, fontWeight: '700' },
+  /* Section */
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: DS.space.md, marginTop: DS.space.sm },
+  sectionIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
+  sectionAction: { fontSize: 12, fontWeight: '700' },
 
-  /* ---- Section Header ---- */
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    marginTop: 8,
-  },
-  sectionTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  sectionActionText: { fontSize: 13, fontWeight: '700' },
+  /* Aura card */
+  auraCard: { marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg, padding: DS.space.md, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
 
-  /* ---- Baby Card ---- */
-  babyRow: { flexDirection: 'row', alignItems: 'center', padding: 16 },
-  babyInfo: { flex: 1, marginLeft: 14 },
-  babyName: { fontSize: 18, fontWeight: '800', marginBottom: 2 },
-  babyAge: { fontSize: 12, fontWeight: '500', marginBottom: 6 },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    gap: 5,
-  },
-  statusText: { fontSize: 12, fontWeight: '700' },
-  statsCol: { alignItems: 'center', marginLeft: 'auto', paddingLeft: 16, borderLeftWidth: 1, borderLeftColor: 'rgba(100,116,139,0.15)' },
-  statValue: { fontSize: 18, fontWeight: '800' },
-  statLabel: { fontSize: 11, fontWeight: '500', marginTop: 2 },
-  warningBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(239,68,68,0.08)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(239,68,68,0.15)',
-  },
-  warningText: { fontSize: 13, color: '#ef4444', marginLeft: 8, fontWeight: '600', flex: 1 },
-  warningAction: { marginLeft: 'auto', backgroundColor: '#ef4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  warningActionText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  /* Ring */
+  ringInner: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  ringVal: { fontSize: 28, fontWeight: '800' },
+  ringLbl: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  ringDot: { width: 8, height: 8, borderRadius: 4 },
+  ringMetaText: { fontSize: 11, fontWeight: '500' },
 
-  /* ---- Stats Ring ---- */
-  statsRingSection: { alignItems: 'center', marginVertical: 8 },
-  statsRingContainer: { alignItems: 'center' },
-  statsRingWrap: { justifyContent: 'center', alignItems: 'center' },
-  statsRingInner: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
-  statsRingValue: { fontSize: 32, fontWeight: '800' },
-  statsRingLabel: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-  statsRingMeta: { flexDirection: 'row', gap: 16, marginTop: 12 },
-  statsRingMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  statsRingMetaDot: { width: 8, height: 8, borderRadius: 4 },
-  statsRingMetaText: { fontSize: 12, fontWeight: '500' },
+  /* Cat card */
+  catCard: { width: 92, padding: 12, borderRadius: DS.radius.lg, borderWidth: 1, alignItems: 'center', overflow: 'hidden' },
+  catIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  catCount: { fontSize: 20, fontWeight: '800' },
+  catLabel: { fontSize: 10, fontWeight: '700', marginTop: 1 },
 
-  /* ---- Category Breakdown ---- */
-  categoryBreakdownScroll: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
-  categoryBreakdownCard: {
-    width: 100,
-    padding: 14,
-    borderRadius: 20,
-    overflow: 'hidden',
-    alignItems: 'center',
-  },
-  categoryBreakdownIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  categoryBreakdownEmoji: { fontSize: 22 },
-  categoryBreakdownCount: { fontSize: 22, fontWeight: '800', marginBottom: 2 },
-  categoryBreakdownLabel: { fontSize: 11, fontWeight: '700' },
+  /* Timeline */
+  tlNode: { width: 88, padding: 10, borderRadius: DS.radius.md, alignItems: 'center', gap: 4 },
+  tlDot: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tlTime: { fontSize: 12, fontWeight: '800' },
+  tlLabel: { fontSize: 10, fontWeight: '600', textAlign: 'center', width: '100%' },
+  tlNextBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 2 },
+  tlNextText: { color: DS.white, fontSize: 8, fontWeight: '800' },
 
-  /* ---- Insights ---- */
-  insightsScroll: { paddingHorizontal: 16, gap: 0 },
-  insightCard: {
-    width: width - 48,
-    padding: 18,
-    borderRadius: 20,
-    marginRight: 12,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderLeftWidth: 4,
-  },
-  insightRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  insightIconBg: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  insightEmoji: { fontSize: 28 },
-  insightContent: { flex: 1, gap: 4 },
-  insightTitle: { fontSize: 16, fontWeight: '800' },
-  insightMessage: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
-  insightActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginTop: 6 },
-  insightActionText: { fontSize: 12, fontWeight: '700' },
-  insightDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 12 },
-  insightDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#e2e8f0' },
+  /* Insights */
+  insightCard: { width: 220, padding: DS.space.md, borderRadius: DS.radius.lg, borderLeftWidth: 3, borderWidth: 1, overflow: 'hidden', gap: 4 },
+  insightTitle: { fontSize: 12, fontWeight: '700' },
+  insightDesc: { fontSize: 10, fontWeight: '500', lineHeight: 14 },
+  insightAction: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
+  insightActionText: { fontSize: 10, fontWeight: '700' },
 
-  /* ---- Timeline ---- */
-  timelineScroll: { paddingHorizontal: 16, paddingVertical: 12, gap: 0 },
-  timelineNode: { alignItems: 'center', width: 80, marginRight: 4 },
-  timelineNodeNext: { transform: [{ scale: 1.05 }] },
-  timelineDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 3,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 2,
-    backgroundColor: '#fff',
-  },
-  timelineConnector: { width: 52, height: 2, backgroundColor: '#e2e8f0', marginHorizontal: -2 },
-  timelineNodeContent: { alignItems: 'center', gap: 2, marginTop: 8 },
-  timelineTime: { fontSize: 13, fontWeight: '800' },
-  timelineLabel: { fontSize: 11, fontWeight: '500', textAlign: 'center', maxWidth: 70 },
-  timelineNextBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 4 },
-  timelineNextText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  /* Tabs */
+  tabBar: { flexDirection: 'row', marginHorizontal: DS.space.lg, padding: 4, borderRadius: DS.radius.full, gap: 2 },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, borderRadius: DS.radius.full, position: 'relative' },
+  tabLabel: { fontSize: 10, fontWeight: '600' },
+  tabBadge: { position: 'absolute', top: 2, right: 2, minWidth: 12, height: 12, borderRadius: 6, backgroundColor: DS.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
+  tabBadgeText: { color: DS.white, fontSize: 8, fontWeight: '800' },
 
-  /* ---- View Tabs ---- */
-  viewTabBar: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    marginTop: 8,
-    padding: 4,
-    borderRadius: 16,
-    gap: 2,
-  },
-  viewTab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 12,
-    position: 'relative',
-  },
-  viewTabLabel: { fontSize: 12, fontWeight: '600' },
-  viewTabBadge: { position: 'absolute', top: 4, right: 4, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  viewTabBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  /* Filter */
+  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: DS.radius.full, borderWidth: 1 },
+  filterText: { fontSize: 12, fontWeight: '600' },
+  filterBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, minWidth: 18, alignItems: 'center' },
+  filterBadgeText: { fontSize: 9, fontWeight: '800' },
 
-  /* ---- Category Filter ---- */
-  filterScroll: { marginBottom: 16, marginTop: 4, paddingLeft: 16 },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(100,116,139,0.15)',
-    marginRight: 8,
-    gap: 6,
-  },
-  filterChipEmoji: { fontSize: 14 },
-  filterText: { fontSize: 13, fontWeight: '600' },
-  filterTextActive: { color: '#fff' },
-  filterBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, minWidth: 20, alignItems: 'center' },
-  filterBadgeText: { fontSize: 10, fontWeight: '800' },
+  /* Reminder card */
+  reminderCard: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.lg, overflow: 'hidden' },
+  remIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  remTitle: { fontSize: 14, fontWeight: '700', flex: 1 },
+  remTime: { fontSize: 12, fontWeight: '800' },
+  catBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
+  catBadgeText: { fontSize: 9, fontWeight: '700' },
+  metaText: { fontSize: 10, fontWeight: '500' },
+  aiBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 5 },
+  aiBadgeText: { fontSize: 9, fontWeight: '800' },
+  nextBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  nextBadgeText: { color: DS.white, fontSize: 8, fontWeight: '800' },
+  remNotes: { fontSize: 10, fontStyle: 'italic', marginTop: 3 },
 
-  /* ---- Reminder Item ---- */
-  reminderItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    padding: 14,
-    marginBottom: 10,
-    marginHorizontal: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    overflow: 'hidden',
-  },
-  reminderItemNext: { borderColor: 'rgba(99,102,241,0.3)', borderWidth: 2 },
-  reminderItemDisabled: { opacity: 0.55 },
-  reminderEmojiWrap: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  reminderEmoji: { fontSize: 22 },
-  reminderContent: { flex: 1 },
-  reminderTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  reminderTitle: { fontSize: 15, fontWeight: '700', flex: 1, marginRight: 8 },
-  reminderTitleDisabled: { textDecorationLine: 'line-through' },
-  reminderTime: { fontSize: 13, fontWeight: '600' },
-  reminderMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
-  categoryTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  categoryTagText: { fontSize: 10, fontWeight: '700' },
-  metaDot: { fontSize: 12 },
-  metaText: { fontSize: 11, fontWeight: '500' },
-  aiBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: 'rgba(245,158,11,0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  aiBadgeText: { fontSize: 10, fontWeight: '700', color: '#f59e0b' },
-  reminderNotes: { fontSize: 11, marginTop: 4, fontStyle: 'italic' },
-  reminderRight: { alignItems: 'center', gap: 6, marginLeft: 8 },
-  nextIndicator: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  nextIndicatorText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  /* Smart */
+  smartCard: { padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden' },
+  smartIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  smartTitle: { fontSize: 13, fontWeight: '700', flex: 1 },
+  smartDesc: { fontSize: 11, fontWeight: '500', lineHeight: 15, marginTop: 4 },
+  smartTime: { fontSize: 10, fontWeight: '600' },
+  confBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  confText: { fontSize: 9, fontWeight: '800' },
+  priBadge: { paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
+  priText: { fontSize: 8, fontWeight: '800' },
+  smartApply: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10 },
+  smartApplyText: { color: DS.white, fontSize: 12, fontWeight: '700' },
 
-  /* ---- Smart Suggestions ---- */
-  smartCard: { padding: 16, marginBottom: 10 },
-  smartCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  smartCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  smartCardIconBg: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  smartCardEmoji: { fontSize: 24 },
-  smartCardTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
-  smartCardMeta: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  confidenceBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  confidenceText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  urgentBadge: { backgroundColor: '#ef4444', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
-  urgentText: { color: '#fff', fontSize: 9, fontWeight: '800' },
-  dismissBtn: { padding: 4 },
-  smartCardDesc: { fontSize: 13, lineHeight: 18, marginBottom: 10, fontWeight: '500' },
-  smartCardFooter: { gap: 4, marginBottom: 12 },
-  smartCardTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  smartCardTime: { fontSize: 12, fontWeight: '600' },
-  smartCardApplyBtn: { borderRadius: 12, overflow: 'hidden' },
-  smartCardApplyGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 },
-  smartCardApplyText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  /* Analytics */
+  analyticsCard: { width: (width - 40 - 10) / 2, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, alignItems: 'center' },
+  analyticsIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  analyticsVal: { fontSize: 20, fontWeight: '800' },
+  analyticsLbl: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+  chartCard: { padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1 },
+  chartTitle: { fontSize: 14, fontWeight: '800' },
+  chartSub: { fontSize: 11, fontWeight: '500', marginTop: 2 },
 
-  /* ---- Analytics ---- */
-  analyticsSection: { marginBottom: 20 },
-  analyticsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginHorizontal: 16, marginBottom: 16 },
-  analyticsCard: { width: (width - 56) / 2, padding: 16, alignItems: 'center' },
-  analyticsIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  analyticsValue: { fontSize: 20, fontWeight: '800', marginBottom: 2 },
-  analyticsLabel: { fontSize: 11, fontWeight: '600' },
-  chartHeader: { padding: 16, paddingBottom: 8 },
-  chartTitle: { fontSize: 16, fontWeight: '800' },
-  chartSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  chartBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', paddingHorizontal: 16, paddingBottom: 16, height: 120 },
-  chartBarContainer: { alignItems: 'center', gap: 6 },
-  chartBar: { width: 24, borderRadius: 6, minHeight: 4 },
-  chartBarLabel: { fontSize: 10, fontWeight: '600' },
+  /* Empty */
+  emptyCard: { alignItems: 'center', paddingVertical: DS.space['3xl'], marginTop: DS.space.md, gap: 8 },
+  emptyTitle: { fontSize: 15, fontWeight: '800' },
+  emptySub: { fontSize: 12, fontWeight: '500', textAlign: 'center', paddingHorizontal: 20 },
 
-  /* ---- FAB ---- */
-  fab: {
-    position: 'absolute',
-    bottom: 32,
-    right: 24,
-    zIndex: 50,
-    shadowColor: '#6366f1',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  fabGradient: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
+  /* FAB */
+  fabWrap: { position: 'absolute', right: 20, zIndex: 100 },
+  fabGrad: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', ...DS.shadow.lg },
 
-  /* ---- Section ---- */
-  section: { marginBottom: 20 },
+  /* Modal */
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  modalCard: { position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '88%', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: DS.space.lg, ...DS.shadow.lg },
+  modalTitle: { fontSize: 18, fontWeight: '800' },
+  inputLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, marginTop: 12 },
+  input: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontWeight: '500', marginBottom: 4 },
+  notesInput: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13, fontWeight: '500', minHeight: 80 },
+  catChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+  timeBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12 },
+  timeBtnText: { fontSize: 16, fontWeight: '800' },
+  quickTime: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10 },
+  repeatChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  dayChip: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14 },
+  saveBtnText: { color: DS.white, fontSize: 14, fontWeight: '700' },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, marginTop: 8 },
+  deleteBtnText: { fontSize: 13, fontWeight: '700' },
 
-  /* ---- Empty State ---- */
-  emptyState: { alignItems: 'center', paddingVertical: 40 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', marginTop: 16, marginBottom: 8 },
-  emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 22, paddingHorizontal: 40 },
+  /* Toast */
+  toast: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, marginHorizontal: 20, ...DS.shadow.lg, minWidth: 280 },
+  toastIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  toastTitle: { fontSize: 14, fontWeight: '700' },
+  toastMsg: { fontSize: 12, fontWeight: '500', marginTop: 1 },
 
-  /* ---- Center Content (No Baby) ---- */
-  centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  /* Baby required */
   noBabyGradient: { padding: 40, alignItems: 'center', borderRadius: 24 },
-  noBabyEmoji: { fontSize: 56, marginBottom: 16 },
-  noBabyTitle: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
-  noBabySubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginBottom: 16, textAlign: 'center' },
-  noBabyButton: { backgroundColor: '#fff', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 16, marginTop: 8 },
-  noBabyButtonText: { fontSize: 15, fontWeight: '700' },
-
-  /* ---- Modal (Baby Required) ---- */
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalContent: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: 28,
-    padding: 28,
-    alignItems: 'center',
-  },
-  modalIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 24,
-    marginBottom: 16,
-    overflow: 'hidden',
-  },
-  modalIconGradient: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBabyTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 8,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  modalDesc: {
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
-    paddingHorizontal: 8,
-  },
-  modalPrimaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    paddingVertical: 16,
-    borderRadius: 18,
-    gap: 8,
-    marginBottom: 12,
-  },
-  modalPrimaryBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  modalSecondaryBtn: {
-    width: '100%',
-    paddingVertical: 14,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalSecondaryBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-
-  /* ---- Add/Edit Modal ---- */
-  modal: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    maxHeight: height * 0.88,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 20,
-  },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  modalTitle: { fontSize: 24, fontWeight: '800' },
-  modalScroll: { paddingBottom: 40 },
-  inputLabel: { fontSize: 13, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  textInput: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 20, fontWeight: '500' },
-
-  /* ---- Category Grid ---- */
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
-  categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, backgroundColor: 'rgba(100,116,139,0.06)', borderWidth: 2, borderColor: 'transparent' },
-  categoryChipEmoji: { fontSize: 18 },
-  categoryChipText: { fontSize: 13, fontWeight: '600' },
-
-  /* ---- Time Picker ---- */
-  timePickerRow: { marginBottom: 20, gap: 12 },
-  timePickerButton: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 16 },
-  timePickerText: { fontSize: 18, fontWeight: '700' },
-  quickTimesRow: { flexDirection: 'row', gap: 8 },
-  quickTimeChip: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12 },
-  quickTimeChipText: { fontSize: 12, fontWeight: '600' },
-
-  /* ---- Repeat ---- */
-  repeatGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  repeatChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: 'rgba(100,116,139,0.08)' },
-  repeatChipText: { fontSize: 13, fontWeight: '600' },
-  repeatChipTextActive: { color: '#fff', fontWeight: '700' },
-
-  /* ---- Days ---- */
-  daysRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
-  dayChip: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(100,116,139,0.08)' },
-  dayChipText: { fontSize: 14, fontWeight: '600' },
-  dayChipTextActive: { color: '#fff', fontWeight: '700' },
-
-  /* ---- Notes ---- */
-  notesInput: { borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, marginBottom: 24, minHeight: 80, fontWeight: '500' },
-
-  /* ---- Save Button ---- */
-  saveButton: { borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
-  saveButtonGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  /* ---- Delete Button ---- */
-  deleteButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 16, backgroundColor: 'rgba(239,68,68,0.08)' },
-  deleteButtonText: { color: '#ef4444', fontSize: 14, fontWeight: '700' },
-
-  /* ---- Alert ---- */
-  alertContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-    minWidth: 300,
-    maxWidth: width - 40,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  alertIconBg: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  alertTextContainer: { flex: 1 },
-  alertTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
-  alertMessage: { fontSize: 13, color: '#64748b' },
+  noBabyTitle: { fontSize: 22, fontWeight: '800', color: DS.white, marginTop: 12 },
+  noBabySub: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 6, textAlign: 'center' },
+  noBabyBtn: { backgroundColor: DS.white, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 14, marginTop: 16 },
+  noBabyBtnText: { fontSize: 14, fontWeight: '700' },
+  babyReqCard: { width: '100%', maxWidth: 340, borderRadius: DS.radius['2xl'], padding: DS.space['2xl'], alignItems: 'center', ...DS.shadow.lg },
+  babyReqIcon: { width: 60, height: 60, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
+  babyReqTitle: { fontSize: 20, fontWeight: '800', marginBottom: 6, textAlign: 'center' },
+  babyReqDesc: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: DS.space.lg, paddingHorizontal: 6 },
+  babyReqBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, width: '100%' },
+  babyReqBtnText: { color: DS.white, fontSize: 14, fontWeight: '700' },
 });
