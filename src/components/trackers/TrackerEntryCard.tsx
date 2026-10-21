@@ -1,11 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { format } from 'date-fns';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../hooks/useTrackerContext';
 import { TrackerEntry } from '../../types/trackers';
+
+const DS = {
+  primary: '#6366f1',
+  accent: '#ec4899',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  radius: { sm: 10, md: 14, lg: 18, full: 999 },
+};
 
 interface TrackerEntryCardProps {
   entry: TrackerEntry;
@@ -19,27 +33,16 @@ interface TrackerEntryCardProps {
 
 const formatDuration = (value: unknown): string | null => {
   if (value === undefined || value === null || value === '') return null;
-
   if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (/^\d+[hm](\s*\d+[m])?$/i.test(trimmed) || /^\d+h\s*\d+m$/i.test(trimmed)) {
-      return trimmed;
-    }
-    const parsed = Number(trimmed);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return formatDuration(parsed);
-    }
+    const t = value.trim();
+    if (/^\d+[hm](\s*\d+[m])?$/i.test(t) || /^\d+h\s*\d+m$/i.test(t)) return t;
+    const n = Number(t);
+    if (Number.isFinite(n) && n > 0) return formatDuration(n);
     return null;
   }
-
   const s = Number(value);
   if (!Number.isFinite(s) || s <= 0) return null;
-
-  if (s > 86400) {
-    if (__DEV__) console.warn('[TrackerEntryCard] Absurd duration:', s);
-    return null;
-  }
-
+  if (s > 86400) return null;
   const mins = Math.floor(s / 60);
   if (mins === 0) {
     const secs = Math.floor(s);
@@ -51,20 +54,15 @@ const formatDuration = (value: unknown): string | null => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
-const getFieldDisplayValue = (
-  field: any,
-  entryData: Record<string, unknown>
-): string | null => {
+const getFieldDisplayValue = (field: any, entryData: Record<string, unknown>): string | null => {
   const value = entryData[field.id];
   if (value === undefined || value === null || value === '') return null;
 
-  if (field.type === 'toggle') {
-    return value ? 'Yes' : 'No';
-  }
+  if (field.type === 'toggle') return value ? 'Yes' : 'No';
 
   if (field.type === 'select' && field.options) {
-    const option = field.options.find((o: any) => o.id === value);
-    return option ? option.label : String(value);
+    const opt = field.options.find((o: any) => o.id === value);
+    return opt ? opt.label : String(value);
   }
 
   if (field.type === 'multiselect') {
@@ -78,9 +76,7 @@ const getFieldDisplayValue = (
     return value.map(String).join(', ');
   }
 
-  if (field.type === 'duration') {
-    return formatDuration(value);
-  }
+  if (field.type === 'duration') return formatDuration(value);
 
   if (field.type === 'rating') {
     const n = Number(value);
@@ -90,56 +86,39 @@ const getFieldDisplayValue = (
 
   if (field.type === 'mood_emoji') {
     const moods = ['😭', '😟', '😐', '🙂', '😄'];
-    const n = Number(value);
-    return moods[n - 1] || '😐';
+    return moods[Number(value) - 1] || '😐';
   }
 
   if (field.type === 'photo') {
     if (Array.isArray(value)) {
-      const count = (value as unknown[])
-        .flat(Infinity)
-        .filter(
-          (v) =>
-            typeof v === 'string' ||
-            (v && typeof v === 'object' && typeof (v as any).uri === 'string')
-        ).length;
+      const count = (value as unknown[]).flat(Infinity).filter(
+        (v) => typeof v === 'string' || (v && typeof v === 'object' && typeof (v as any).uri === 'string')
+      ).length;
       if (count === 0) return null;
       return `📷 ${count} photo${count !== 1 ? 's' : ''}`;
     }
-    if (typeof value === 'string' && value.length > 0) {
-      return '📷 1 photo';
-    }
+    if (typeof value === 'string' && value.length > 0) return '📷 1 photo';
     return null;
   }
 
-  if (
-    field.type === 'quantity' ||
-    field.type === 'measurement' ||
-    field.type === 'number'
-  ) {
+  if (field.type === 'quantity' || field.type === 'measurement' || field.type === 'number') {
     const unitKey = `${field.id}_unit`;
     const unit = (entryData[unitKey] as string) || field.unit || '';
-    const num = Number(value);
-
-    if (Number.isFinite(num)) {
-      const displayNum = Number.isInteger(num)
-        ? num
-        : Math.round(num * 100) / 100;
-      return unit ? `${displayNum} ${unit}` : String(displayNum);
+    const n = Number(value);
+    if (Number.isFinite(n)) {
+      const disp = Number.isInteger(n) ? n : Math.round(n * 100) / 100;
+      return unit ? `${disp} ${unit}` : String(disp);
     }
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return unit ? `${value} ${unit}` : value;
-    }
+    if (typeof value === 'string' && value.trim().length > 0) return unit ? `${value} ${unit}` : value;
     return null;
   }
 
   if (field.type === 'temperature') {
     const unitKey = `${field.id}_unit`;
     const unit = (entryData[unitKey] as string) || 'celsius';
-    const unitLabel = unit === 'fahrenheit' ? '°F' : '°C';
-    const num = Number(value);
-    if (Number.isFinite(num)) return `${num}${unitLabel}`;
-    return `${value}${unitLabel}`;
+    const lbl = unit === 'fahrenheit' ? '°F' : '°C';
+    const n = Number(value);
+    return Number.isFinite(n) ? `${n}${lbl}` : `${value}${lbl}`;
   }
 
   if (field.type === 'datetime' || field.type === 'date') {
@@ -152,9 +131,7 @@ const getFieldDisplayValue = (
     }
   }
 
-  if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
-    return null;
-  }
+  if (Array.isArray(value) || (typeof value === 'object' && value !== null)) return null;
   return String(value);
 };
 
@@ -168,58 +145,40 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
   index = 0,
 }) => {
   const { getTracker } = useTracker();
-  const {
-    fullThemeColors,
-    themeColors,
-    isDark,
-    borderRadiusValue,
-    fontSizeMultiplier,
-    triggerHaptic,
-  } = useCustomization();
+  const { fullThemeColors, themeColors, isDark, borderRadiusValue, fontSizeMultiplier, triggerHaptic } = useCustomization();
 
   const tracker = getTracker(entry.trackerId);
   const entryDate = new Date(entry.timestamp);
   const isToday = new Date().toDateString() === entryDate.toDateString();
+  const accent = tracker?.color || themeColors?.primary || DS.primary;
 
   const timeString = useMemo(() => {
-    try {
-      return format(entryDate, 'h:mm a');
-    } catch {
-      return '';
-    }
+    try { return format(entryDate, 'h:mm a'); } catch { return ''; }
   }, [entryDate]);
 
   const dateString = useMemo(() => {
     try {
       if (isToday) return 'Today';
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      if (entryDate.toDateString() === yesterday.toDateString()) return 'Yesterday';
+      const yest = new Date();
+      yest.setDate(yest.getDate() - 1);
+      if (entryDate.toDateString() === yest.toDateString()) return 'Yesterday';
       return format(entryDate, 'MMM d');
     } catch {
       return '';
     }
   }, [entryDate, isToday]);
 
-  // ─── Live ticker: only runs while an ongoing entry is visible ──────
-  // The 30s cadence is plenty for "2h 15m"; we don't want a 1s interval
-  // burning CPU across every card in a list.
-  const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const isOngoing = useMemo(() => {
-    const ongoingTrackers = ['sleep', 'feed', 'dream_feed', 'nap'];
-    if (!ongoingTrackers.includes(entry.trackerId)) return false;
-
-    const data = entry.data || {};
-    const status = data.status;
-    if (status === 'ongoing' || status === 'started') return true;
-    if (status === 'completed' || status === 'ended') return false;
-
-    const hasStart = data.startTime && String(data.startTime).length > 0;
-    const hasEnd = data.endTime && String(data.endTime).length > 0;
-    if (hasStart && !hasEnd) return true;
-
-    return false;
+    const ongoing = ['sleep', 'feed', 'dream_feed', 'nap'];
+    if (!ongoing.includes(entry.trackerId)) return false;
+    const d = entry.data || {};
+    if (d.status === 'ongoing' || d.status === 'started') return true;
+    if (d.status === 'completed' || d.status === 'ended') return false;
+    const hasStart = d.startTime && String(d.startTime).length > 0;
+    const hasEnd = d.endTime && String(d.endTime).length > 0;
+    return !!(hasStart && !hasEnd);
   }, [entry.trackerId, entry.data]);
 
   useEffect(() => {
@@ -228,24 +187,17 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     return () => clearInterval(id);
   }, [isOngoing]);
 
-  // ─── Compact variant ────────────────────────────────────────────────
+  /* ─── Compact variant ────────────────────────────────────────── */
   if (compact) {
     const durationFormatted = formatDuration(entry.data?.duration);
-    const compactSubtitle = isOngoing
-      ? 'Ongoing'
-      : durationFormatted
-      ? durationFormatted
-      : timeString;
+    const subtitle = isOngoing ? 'Ongoing' : durationFormatted || timeString;
 
     const photoCount = (() => {
       const raw = entry.photoUris;
       if (!Array.isArray(raw)) return 0;
-      const flat = (raw as unknown[]).flat(Infinity);
-      return flat.filter((u) => {
+      return (raw as unknown[]).flat(Infinity).filter((u) => {
         if (typeof u === 'string') return u.length > 0;
-        if (u && typeof u === 'object' && typeof (u as any).uri === 'string') {
-          return (u as any).uri.length > 0;
-        }
+        if (u && typeof u === 'object' && typeof (u as any).uri === 'string') return (u as any).uri.length > 0;
         return false;
       }).length;
     })();
@@ -255,75 +207,44 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
         style={[
           styles.compactCard,
           {
-            backgroundColor: fullThemeColors.glassBg,
-            borderColor: isOngoing
-              ? tracker?.color || themeColors.primary
-              : fullThemeColors.border,
+            backgroundColor: fullThemeColors.surface,
+            borderColor: isOngoing ? accent : fullThemeColors.border,
             borderRadius: borderRadiusValue,
             borderWidth: isOngoing ? 2 : 1,
           },
         ]}
         onPress={() => onPress?.(entry)}
-        activeOpacity={0.7}
+        activeOpacity={0.75}
       >
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: `${tracker?.color || themeColors.primary}15`,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 10,
-          }}
-        >
+        <View style={[styles.compactIconWrap, { backgroundColor: `${accent}15` }]}>
           <Text style={{ fontSize: 18 }}>{tracker?.emoji || '📝'}</Text>
         </View>
-        <View style={styles.compactContent}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text
-            style={[
-              styles.compactTitle,
-              { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier },
-            ]}
+            style={[styles.compactTitle, { color: fullThemeColors.text, fontSize: 13 * fontSizeMultiplier }]}
             numberOfLines={1}
           >
             {entry.title || tracker?.name || 'Entry'}
           </Text>
           <Text
             style={[
-              styles.compactTime,
+              styles.compactSub,
               {
-                color: isOngoing
-                  ? tracker?.color || themeColors.primary
-                  : fullThemeColors.textSecondary,
-                fontSize: 11 * fontSizeMultiplier,
+                color: isOngoing ? accent : fullThemeColors.textSecondary,
+                fontSize: 10.5 * fontSizeMultiplier,
                 fontWeight: isOngoing ? '700' : '500',
               },
             ]}
           >
-            {compactSubtitle}
+            {subtitle}
           </Text>
         </View>
-        {isOngoing && (
-          <View
-            style={[
-              styles.ongoingDot,
-              { backgroundColor: tracker?.color || themeColors.primary },
-            ]}
-          />
-        )}
+        {isOngoing && <View style={[styles.ongoingDot, { backgroundColor: accent }]} />}
         {photoCount > 0 && (
           <View style={styles.photoIndicator}>
-            <Ionicons name="image" size={12} color={fullThemeColors.textSecondary} />
+            <Ionicons name="image-outline" size={11} color={fullThemeColors.textSecondary} />
             {photoCount > 1 && (
-              <Text
-                style={{
-                  color: fullThemeColors.textSecondary,
-                  fontSize: 10,
-                  marginLeft: 2,
-                  fontWeight: '600',
-                }}
-              >
+              <Text style={{ color: fullThemeColors.textSecondary, fontSize: 9.5, marginLeft: 1, fontWeight: '700' }}>
                 {photoCount}
               </Text>
             )}
@@ -333,71 +254,42 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     );
   }
 
-  // ─── Full variant: data chips preview ───────────────────────────────
+  /* ─── Data preview ───────────────────────────────────────────── */
   const renderDataPreview = () => {
     if (!tracker || !entry.data || typeof entry.data !== 'object') return null;
+    const SKIP = new Set(['status', 'startTime', 'endTime', 'duration', 'sleepType', 'feedType', 'title', 'side', 'measurementType', 'unit', 'value_unit', 'bottleAmount_unit', 'solidAmount_unit']);
+    const PRIORITY = ['bottleAmount', 'solidAmount', 'amount', 'value', 'quality', 'mood', 'severity', 'temperature', 'food', 'name', 'dosage', 'symptoms', 'color', 'consistency', 'location', 'method'];
 
-    const SKIP_IN_PREVIEW = new Set([
-      'status', 'startTime', 'endTime', 'duration',
-      'sleepType', 'feedType', 'title',
-      'side',
-      'measurementType',
-      'unit',
-      'value_unit',
-      'bottleAmount_unit',
-      'solidAmount_unit',
-    ]);
-
-    const PRIORITY_ORDER = [
-      'bottleAmount', 'solidAmount', 'amount', 'value',
-      'quality', 'mood', 'severity', 'temperature',
-      'food', 'name', 'dosage', 'symptoms',
-      'color', 'consistency', 'location', 'method',
-    ];
-
-    const allFields = (tracker.fields || [])
-      .filter((f: any) => !SKIP_IN_PREVIEW.has(f.id))
+    const fields = (tracker.fields || [])
+      .filter((f: any) => !SKIP.has(f.id))
       .filter((f: any) => {
         const v = entry.data[f.id];
         return v !== undefined && v !== null && v !== '';
-      });
-
-    const previewFields = allFields
+      })
       .sort((a: any, b: any) => {
-        const ai = PRIORITY_ORDER.indexOf(a.id);
-        const bi = PRIORITY_ORDER.indexOf(b.id);
-        const ar = ai === -1 ? 999 : ai;
-        const br = bi === -1 ? 999 : bi;
-        return ar - br;
+        const ai = PRIORITY.indexOf(a.id);
+        const bi = PRIORITY.indexOf(b.id);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
       })
       .slice(0, 3);
 
+    if (fields.length === 0) return null;
+
     return (
       <View style={styles.dataPreview}>
-        {previewFields.map((field) => {
-          const displayValue = getFieldDisplayValue(field, entry.data);
-          if (!displayValue) return null;
-
+        {fields.map((field) => {
+          const val = getFieldDisplayValue(field, entry.data);
+          if (!val) return null;
           return (
             <View
               key={field.id}
-              style={[
-                styles.dataChip,
-                {
-                  backgroundColor: fullThemeColors.glassBg,
-                  borderColor: fullThemeColors.border,
-                  borderRadius: borderRadiusValue / 2,
-                },
-              ]}
+              style={[styles.dataChip, { backgroundColor: fullThemeColors.background, borderColor: fullThemeColors.border }]}
             >
               <Text style={[styles.dataChipLabel, { color: fullThemeColors.textSecondary }]}>
-                {field.label}:
+                {field.label}
               </Text>
-              <Text
-                style={[styles.dataChipValue, { color: fullThemeColors.text }]}
-                numberOfLines={1}
-              >
-                {displayValue}
+              <Text style={[styles.dataChipValue, { color: fullThemeColors.text }]} numberOfLines={1}>
+                {val}
               </Text>
             </View>
           );
@@ -406,231 +298,141 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
     );
   };
 
+  /* ─── Photo strip ──────────────────────────────────────────────── */
+  const photoUris = useMemo(() => {
+    const raw = entry.photoUris;
+    if (!Array.isArray(raw)) return [];
+    const flat = (raw as unknown[]).flat(Infinity).map((u) => {
+      if (typeof u === 'string') return u;
+      if (u && typeof u === 'object') {
+        const o = u as any;
+        return typeof o.publicUrl === 'string' ? o.publicUrl : typeof o.uri === 'string' ? o.uri : '';
+      }
+      return '';
+    }).filter((u): u is string => typeof u === 'string' && u.length > 0);
+    return [...new Set(flat)];
+  }, [entry.photoUris]);
+
   return (
     <TouchableOpacity
       style={[
         styles.card,
         {
-          backgroundColor: fullThemeColors.glassBg,
+          backgroundColor: fullThemeColors.surface,
+          borderColor: fullThemeColors.border,
           borderRadius: borderRadiusValue,
-          borderColor: isOngoing
-            ? tracker?.color || themeColors.primary
-            : fullThemeColors.border,
-          borderLeftColor: tracker?.color || themeColors.primary,
-          borderLeftWidth: isOngoing ? 6 : 4,
         },
       ]}
       onPress={() => onPress?.(entry)}
-      activeOpacity={0.8}
+      activeOpacity={0.85}
     >
-      <View style={styles.cardHeader}>
-        <View style={styles.titleRow}>
-          <View
-            style={[
-              styles.iconContainer,
-              { backgroundColor: `${tracker?.color || themeColors.primary}15` },
-            ]}
-          >
-            <Text style={styles.emoji}>{tracker?.emoji || '📝'}</Text>
+      {/* Left accent rail */}
+      <View style={[styles.rail, { backgroundColor: accent, borderRadius: borderRadiusValue }]} />
+
+      <View style={styles.cardBody}>
+        <View style={styles.header}>
+          <View style={[styles.iconWrap, { backgroundColor: `${accent}15` }]}>
+            <Text style={{ fontSize: 20 }}>{tracker?.emoji || '📝'}</Text>
           </View>
-          <View style={styles.titleContent}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text
-              style={[
-                styles.title,
-                { color: fullThemeColors.text, fontSize: 16 * fontSizeMultiplier },
-              ]}
+              style={[styles.title, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}
               numberOfLines={1}
             >
               {entry.title || tracker?.name || 'Entry'}
             </Text>
-            <View style={styles.metaRow}>
-              <Text
-                style={[
-                  styles.metaText,
-                  { color: fullThemeColors.textSecondary, fontSize: 12 * fontSizeMultiplier },
-                ]}
-              >
-                {dateString} • {timeString}
-              </Text>
-              {entry.loggedByName && (
-                <Text
-                  style={[
-                    styles.metaText,
-                    { color: fullThemeColors.textSecondary, fontSize: 12 * fontSizeMultiplier },
-                  ]}
+            <Text
+              style={[styles.meta, { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}
+              numberOfLines={1}
+            >
+              {dateString} · {timeString}
+              {entry.loggedByName ? ` · ${entry.loggedByName}` : ''}
+            </Text>
+          </View>
+
+          {showActions && (onEdit || onDelete) && (
+            <View style={styles.actions}>
+              {onEdit && (
+                <TouchableOpacity
+                  onPress={() => { triggerHaptic('light'); onEdit(entry); }}
+                  style={[styles.actionBtn, { backgroundColor: fullThemeColors.background }]}
                 >
-                  • {entry.loggedByName}
-                </Text>
+                  <Ionicons name="create-outline" size={16} color={fullThemeColors.textSecondary} />
+                </TouchableOpacity>
+              )}
+              {onDelete && (
+                <TouchableOpacity
+                  onPress={() => { triggerHaptic('warning'); onDelete(entry); }}
+                  style={[styles.actionBtn, { backgroundColor: `${DS.danger}12` }]}
+                >
+                  <Ionicons name="trash-outline" size={16} color={DS.danger} />
+                </TouchableOpacity>
               )}
             </View>
-          </View>
+          )}
         </View>
 
-        {showActions && (onEdit || onDelete) && (
-          <View style={styles.actions}>
-            {onEdit && (
-              <TouchableOpacity
-                onPress={() => {
-                  triggerHaptic('light');
-                  onEdit(entry);
-                }}
-                style={[styles.actionBtn, { backgroundColor: fullThemeColors.surface }]}
-              >
-                <Ionicons name="create-outline" size={18} color={fullThemeColors.textSecondary} />
-              </TouchableOpacity>
-            )}
-            {onDelete && (
-              <TouchableOpacity
-                onPress={() => {
-                  triggerHaptic('warning');
-                  onDelete(entry);
-                }}
-                style={[
-                  styles.actionBtn,
-                  { backgroundColor: `${fullThemeColors.error || '#ef4444'}15` },
-                ]}
-              >
-                <Ionicons
-                  name="trash-outline"
-                  size={18}
-                  color={fullThemeColors.error || '#ef4444'}
-                />
-              </TouchableOpacity>
+        {/* Ongoing pulse */}
+        {isOngoing && (
+          <View style={[styles.ongoingBadge, { backgroundColor: `${accent}12` }]}>
+            <View style={[styles.ongoingPulseDot, { backgroundColor: accent }]} />
+            <Text style={[styles.ongoingLabel, { color: accent, fontSize: 11 * fontSizeMultiplier }]}>
+              Ongoing
+            </Text>
+            {entry.data?.startTime && (
+              <Text style={[styles.ongoingSince, { color: fullThemeColors.textSecondary, fontSize: 10.5 * fontSizeMultiplier }]}>
+                {(() => {
+                  try {
+                    const start = new Date(String(entry.data.startTime));
+                    if (isNaN(start.getTime())) return '';
+                    const lbl = format(start, 'h:mm a');
+                    const mins = Math.max(0, Math.floor((nowTick - start.getTime()) / 60000));
+                    if (mins < 1) return `since ${lbl}`;
+                    const txt = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+                    return `since ${lbl} · ${txt}`;
+                  } catch {
+                    return '';
+                  }
+                })()}
+              </Text>
             )}
           </View>
         )}
-      </View>
 
-      {/* Ongoing badge for sleep/feed with live timer */}
-      {isOngoing && (
-        <View
-          style={[
-            styles.ongoingBadge,
-            { backgroundColor: `${tracker?.color || themeColors.primary}15` },
-          ]}
-        >
-          <View
-            style={[
-              styles.ongoingPulse,
-              { backgroundColor: tracker?.color || themeColors.primary },
-            ]}
-          />
+        {renderDataPreview()}
+
+        {entry.notes && (
           <Text
-            style={[
-              styles.ongoingText,
-              {
-                color: tracker?.color || themeColors.primary,
-                fontSize: 12 * fontSizeMultiplier,
-              },
-            ]}
+            style={[styles.notes, { color: fullThemeColors.textSecondary, fontSize: 12.5 * fontSizeMultiplier }]}
+            numberOfLines={2}
           >
-            Ongoing
+            {entry.notes}
           </Text>
-          {entry.data?.startTime && (
-            <Text
-              style={[
-                styles.ongoingSince,
-                {
-                  color: fullThemeColors.textSecondary,
-                  fontSize: 11 * fontSizeMultiplier,
-                },
-              ]}
-            >
-              {(() => {
-                try {
-                  const start = new Date(String(entry.data.startTime));
-                  if (isNaN(start.getTime())) return '';
-                  const startLabel = format(start, 'h:mm a');
-                  const elapsedMin = Math.max(
-                    0,
-                    Math.floor((nowTick - start.getTime()) / 60000)
-                  );
-                  if (elapsedMin < 1) return `since ${startLabel}`;
-                  const elapsedText =
-                    elapsedMin < 60
-                      ? `${elapsedMin}m`
-                      : `${Math.floor(elapsedMin / 60)}h ${elapsedMin % 60}m`;
-                  return `since ${startLabel} · ${elapsedText}`;
-                } catch {
-                  return '';
-                }
-              })()}
-            </Text>
-          )}
-        </View>
-      )}
+        )}
 
-      {renderDataPreview()}
-
-      {entry.notes && (
-        <Text
-          style={[
-            styles.notes,
-            { color: fullThemeColors.textSecondary, fontSize: 14 * fontSizeMultiplier },
-          ]}
-          numberOfLines={2}
-        >
-          {entry.notes}
-        </Text>
-      )}
-
-      {entry.tags && entry.tags.length > 0 && (
-        <View style={styles.tagsRow}>
-          {entry.tags.slice(0, 3).map((tag) => (
-            <View
-              key={tag}
-              style={[
-                styles.tagChip,
-                { backgroundColor: `${themeColors.primary}15`, borderRadius: borderRadiusValue / 2 },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.tagText,
-                  { color: themeColors.primary, fontSize: 11 * fontSizeMultiplier },
-                ]}
+        {entry.tags && entry.tags.length > 0 && (
+          <View style={styles.tagsRow}>
+            {entry.tags.slice(0, 3).map((tag) => (
+              <View
+                key={tag}
+                style={[styles.tagChip, { backgroundColor: `${accent}10` }]}
               >
-                #{tag}
+                <Text style={[styles.tagText, { color: accent, fontSize: 10.5 * fontSizeMultiplier }]}>
+                  #{tag}
+                </Text>
+              </View>
+            ))}
+            {entry.tags.length > 3 && (
+              <Text style={[styles.moreTags, { color: fullThemeColors.textSecondary, fontSize: 10.5 }]}>
+                +{entry.tags.length - 3}
               </Text>
-            </View>
-          ))}
-          {entry.tags.length > 3 && (
-            <Text
-              style={[
-                styles.moreTags,
-                { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier },
-              ]}
-            >
-              +{entry.tags.length - 3} more
-            </Text>
-          )}
-        </View>
-      )}
+            )}
+          </View>
+        )}
 
-      {(() => {
-        const raw = entry.photoUris;
-        const flatUris: string[] = Array.isArray(raw)
-          ? (raw as unknown[])
-              .flat(Infinity)
-              .map((u) => {
-                if (typeof u === 'string') return u;
-                if (u && typeof u === 'object') {
-                  const obj = u as any;
-                  return typeof obj.publicUrl === 'string' ? obj.publicUrl :
-                         typeof obj.uri === 'string' ? obj.uri : '';
-                }
-                return '';
-              })
-              .filter((u): u is string => typeof u === 'string' && u.length > 0)
-          : [];
-
-        const uniqueUris = [...new Set(flatUris)];
-
-        if (uniqueUris.length === 0) return null;
-
-        return (
+        {photoUris.length > 0 && (
           <View style={styles.photoStrip}>
-            {uniqueUris.slice(0, 3).map((uri, idx) => (
+            {photoUris.slice(0, 3).map((uri, idx) => (
               <Image
                 key={`${uri}-${idx}`}
                 source={{ uri }}
@@ -638,223 +440,166 @@ export const TrackerEntryCard: React.FC<TrackerEntryCardProps> = ({
                 resizeMode="cover"
               />
             ))}
-            {uniqueUris.length > 3 && (
-              <View style={[styles.photoCount, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-                <Text style={styles.photoCountText}>+{uniqueUris.length - 3}</Text>
+            {photoUris.length > 3 && (
+              <View style={styles.photoCountOverlay}>
+                <Text style={styles.photoCountText}>+{photoUris.length - 3}</Text>
               </View>
             )}
           </View>
-        );
-      })()}
+        )}
 
-      {entry.aiTags && entry.aiTags.length > 0 ? (
-        <View style={styles.aiTagRow}>
-          <View
-            style={[
-              styles.aiTagChip,
-              {
-                backgroundColor: `${themeColors.primary}12`,
-                borderRadius: borderRadiusValue / 2,
-              },
-            ]}
-          >
-            <Ionicons name="sparkles" size={10} color={themeColors.primary} />
-            <Text
-              style={[
-                styles.aiTagText,
-                { color: themeColors.primary, fontSize: 10 * fontSizeMultiplier },
-              ]}
-              numberOfLines={1}
-            >
-              {entry.aiTags[0]}
-            </Text>
+        {entry.aiTags && entry.aiTags.length > 0 && (
+          <View style={styles.aiTagRow}>
+            <View style={[styles.aiTagChip, { backgroundColor: `${accent}10` }]}>
+              <Ionicons name="sparkles" size={9} color={accent} />
+              <Text style={[styles.aiTagText, { color: accent }]} numberOfLines={1}>
+                {entry.aiTags[0]}
+              </Text>
+            </View>
+            {entry.aiTags.length > 1 && (
+              <Text style={[styles.aiTagMore, { color: fullThemeColors.textSecondary }]}>
+                +{entry.aiTags.length - 1}
+              </Text>
+            )}
           </View>
-          {entry.aiTags.length > 1 ? (
-            <Text
-              style={[
-                styles.aiTagMore,
-                { color: fullThemeColors.textSecondary, fontSize: 10 * fontSizeMultiplier },
-              ]}
-            >
-              +{entry.aiTags.length - 1}
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
+        )}
 
-      {entry.editedAt && (
-        <Text
-          style={[
-            styles.editedText,
-            { color: fullThemeColors.textSecondary, fontSize: 10 * fontSizeMultiplier },
-          ]}
-        >
-          Edited
-        </Text>
-      )}
+        {entry.editedAt && (
+          <Text style={[styles.editedText, { color: fullThemeColors.textSecondary, fontSize: 10 }]}>
+            Edited
+          </Text>
+        )}
+      </View>
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
-    padding: 16,
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     borderWidth: 1,
+    overflow: 'hidden',
+    flexDirection: 'row',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  rail: {
+    width: 4,
+    marginVertical: 10,
+    marginLeft: 4,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  cardBody: {
     flex: 1,
+    padding: 12,
+    paddingLeft: 10,
+    gap: 8,
   },
-  iconContainer: {
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  iconWrap: {
     width: 40,
     height: 40,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
-  emoji: { fontSize: 20 },
-  titleContent: { flex: 1 },
-  title: { fontWeight: '700' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  metaText: { fontWeight: '500' },
-  actions: { flexDirection: 'row', gap: 8 },
+  title: { fontWeight: '700', letterSpacing: -0.2 },
+  meta: { fontWeight: '500', marginTop: 2 },
+  actions: { flexDirection: 'row', gap: 6 },
   actionBtn: { padding: 6, borderRadius: 8 },
 
-  // ── Ongoing badge ─────────────────────────────────────────────
   ongoingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 10,
-    marginTop: 10,
     alignSelf: 'flex-start',
+    flexWrap: 'wrap',
   },
-  ongoingPulse: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  ongoingText: {
-    fontWeight: '700',
-  },
-  ongoingSince: {
-    fontWeight: '500',
-    marginLeft: 2,
-  },
+  ongoingPulseDot: { width: 7, height: 7, borderRadius: 4 },
+  ongoingLabel: { fontWeight: '800' },
+  ongoingSince: { fontWeight: '500', marginLeft: 2 },
 
-  // ── Compact ───────────────────────────────────────────────────
-  compactCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    marginRight: 12,
-    minWidth: 140,
-    borderWidth: 1,
-  },
-  compactEmoji: { fontSize: 24, marginRight: 10 },
-  compactContent: { flex: 1 },
-  compactTitle: { fontWeight: '600' },
-  compactTime: { marginTop: 2, fontWeight: '500' },
-  photoIndicator: { marginLeft: 8 },
-  ongoingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginLeft: 6,
-  },
-
-  // ── Data preview ──────────────────────────────────────────────
   dataPreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
+    gap: 6,
   },
   dataChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
     borderWidth: 1,
+    gap: 4,
   },
-  dataChipLabel: { fontSize: 11, fontWeight: '500' },
-  dataChipValue: { fontSize: 12, fontWeight: '600', maxWidth: 140, marginLeft: 4 },
+  dataChipLabel: { fontSize: 10, fontWeight: '500' },
+  dataChipValue: { fontSize: 11, fontWeight: '700', maxWidth: 130 },
 
-  // ── Notes & tags ──────────────────────────────────────────────
-  notes: {
-    marginTop: 10,
-    lineHeight: 20,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 10,
-  },
-  tagChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  tagText: { fontWeight: '600' },
-  moreTags: { fontWeight: '500', alignSelf: 'center' },
+  notes: { lineHeight: 18 },
 
-  // ── Photos & AI tags ──────────────────────────────────────────
-  photoStrip: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
-  },
-  thumbnail: {
-    width: 60,
-    height: 60,
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, alignItems: 'center' },
+  tagChip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  tagText: { fontWeight: '700' },
+  moreTags: { fontWeight: '600', alignSelf: 'center' },
+
+  photoStrip: { flexDirection: 'row', gap: 6, position: 'relative' },
+  thumbnail: { width: 52, height: 52, borderRadius: 8 },
+  photoCountOverlay: {
+    width: 52,
+    height: 52,
     borderRadius: 8,
-  },
-  photoCount: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  photoCountText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  editedText: { fontStyle: 'italic', marginTop: 8 },
-  aiTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 10,
-  },
+  photoCountText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+
+  aiTagRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   aiTagChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
-  aiTagText: {
-    fontWeight: '700',
-    maxWidth: 120,
+  aiTagText: { fontSize: 9.5, fontWeight: '700', maxWidth: 110 },
+  aiTagMore: { fontSize: 9.5, fontWeight: '600' },
+
+  editedText: { fontStyle: 'italic', marginTop: 2 },
+
+  /* Compact */
+  compactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    marginRight: 10,
+    minWidth: 140,
+    borderWidth: 1,
+    gap: 8,
   },
-  aiTagMore: {
-    fontWeight: '600',
+  compactIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  compactTitle: { fontWeight: '700' },
+  compactSub: { marginTop: 1 },
+  ongoingDot: { width: 7, height: 7, borderRadius: 4 },
+  photoIndicator: { flexDirection: 'row', alignItems: 'center', marginLeft: 4 },
 });
 
 export default TrackerEntryCard;

@@ -1,230 +1,318 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, {
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+  cancelAnimation,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
 import { useGrowthIntelligence, SubScore } from '../../hooks/useGrowthIntelligence';
-
 import { useCustomization } from '../../hooks/useCustomization';
 
-interface SubScoreBarProps {
-  score: SubScore;
-  index: number;
-}
+const DS = {
+  primary: '#6366f1',
+  accent: '#ec4899',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, full: 999 },
+};
 
 const getEmojiForLabel = (label: string): string => {
   const map: Record<string, string> = {
-    'Nutrition': '🍎',
-    'Rest': '😴',
-    'Physical': '💪',
-    'Cognitive': '🧠',
-    'Health': '❤️',
+    Nutrition: '🍎',
+    Rest: '😴',
+    Physical: '💪',
+    Cognitive: '🧠',
+    Health: '❤️',
   };
   return map[label] || '📊';
 };
 
-const SubScoreBar: React.FC<SubScoreBarProps> = ({ score, index }) => {
-  const { fullThemeColors, borderRadiusValue, fontSizeMultiplier } = useCustomization();
-  
+const getScoreColor = (v: number): string => {
+  if (v >= 85) return DS.success;
+  if (v >= 70) return DS.warning;
+  if (v >= 50) return '#f97316';
+  return DS.danger;
+};
+
+/* ─── Sub score bar ──────────────────────────────────────────────── */
+const SubScoreBar: React.FC<{ score: SubScore; index: number; isDark: boolean }> = ({
+  score,
+  index,
+  isDark,
+}) => {
+  const { fullThemeColors, fontSizeMultiplier } = useCustomization();
+  const color = score.color || getScoreColor(score.value);
+
   return (
-    <Animated.View entering={FadeInUp.delay(index * 100)} style={styles.subScoreContainer}>
-      <View style={styles.subScoreHeader}>
-        <View style={[styles.subScoreIcon, { backgroundColor: `${score.color}20` }]}>
-          <Text style={styles.subScoreEmoji}>{getEmojiForLabel(score.label)}</Text>
-        </View>
-        <View style={styles.subScoreInfo}>
-          <Text style={[styles.subScoreLabel, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]}>
+    <Animated.View entering={FadeInUp.delay(index * 60)} style={styles.subScoreRow}>
+      <View style={[styles.subScoreIcon, { backgroundColor: `${color}18` }]}>
+        <Text style={styles.subScoreEmoji}>{getEmojiForLabel(score.label)}</Text>
+      </View>
+      <View style={styles.subScoreInfo}>
+        <View style={styles.subScoreTopLine}>
+          <Text
+            style={[
+              styles.subScoreLabel,
+              { color: fullThemeColors.text, fontSize: 13 * fontSizeMultiplier },
+            ]}
+          >
             {score.label}
           </Text>
-          <Text style={[styles.subScoreTrend, { color: score.trend === 'up' ? '#10AC84' : score.trend === 'down' ? '#EE5A24' : fullThemeColors.textSecondary }]}>
-            {score.trend === 'up' ? '↑' : score.trend === 'down' ? '↓' : '→'} {score.delta > 0 ? '+' : ''}{score.delta}
+          <Text style={[styles.subScoreValue, { color }]}>
+            {score.value}
           </Text>
         </View>
-        <Text style={[styles.subScoreValue, { color: score.color, fontSize: 18 * fontSizeMultiplier }]}>
-          {score.value}
-        </Text>
+        <View style={[styles.subScoreBarBg, { backgroundColor: fullThemeColors.border }]}>
+          <View
+            style={[
+              styles.subScoreBarFill,
+              {
+                width: `${Math.min(100, score.value)}%`,
+                backgroundColor: color,
+              },
+            ]}
+          />
+        </View>
+        <View style={styles.subScoreBottomLine}>
+          <Text style={[styles.subScoreTrend, { color: fullThemeColors.textSecondary }]}>
+            {score.trend === 'up' ? '↑' : score.trend === 'down' ? '↓' : '→'}{' '}
+            {score.delta > 0 ? '+' : ''}{score.delta}
+          </Text>
+          <Text style={[styles.subScoreWeight, { color: fullThemeColors.textSecondary }]}>
+            {Math.round(score.weight * 100)}% weight
+          </Text>
+        </View>
       </View>
-      <View style={[styles.progressBar, { backgroundColor: fullThemeColors.border, borderRadius: borderRadiusValue / 2 }]}>
-        <View style={[
-          styles.progressFill, 
-          { 
-            width: `${score.value}%`, 
-            backgroundColor: score.color,
-            borderRadius: borderRadiusValue / 2,
-          }
-        ]} />
-      </View>
-      <Text style={[styles.weightLabel, { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}>
-        Weight: {Math.round(score.weight * 100)}% of composite
-      </Text>
     </Animated.View>
   );
 };
 
-const VelocityPill: React.FC<{ label: string; value: number; unit: string; percentile: number; color: string }> = ({
-  label, value, unit, percentile, color
-}) => (
-  <View style={styles.velocityPill}>
-    <Text style={[styles.velocityPillLabel, { color }]}>{label}</Text>
-    <Text style={styles.velocityPillValue}>
-      {value > 0 ? value.toFixed(1) : '--'} <Text style={styles.velocityPillUnit}>{unit}</Text>
-    </Text>
-    <Text style={[styles.velocityPillPercentile, { color }]}>{percentile}th %ile (latest)</Text>
-  </View>
-);
+/* ─── Velocity chip ──────────────────────────────────────────────── */
+const VelocityChip: React.FC<{
+  label: string;
+  value: number;
+  unit: string;
+  percentile: number;
+  color: string;
+  isDark: boolean;
+}> = ({ label, value, unit, percentile, color, isDark }) => {
+  const { fullThemeColors } = useCustomization();
+  return (
+    <View style={[styles.velocityChip, { backgroundColor: `${color}12`, borderColor: `${color}30` }]}>
+      <Text style={[styles.velocityLabel, { color }]}>{label}</Text>
+      <Text style={[styles.velocityValue, { color: isDark ? DS.white : '#1e293b' }]}>
+        {value > 0 ? value.toFixed(1) : '—'}
+        <Text style={[styles.velocityUnit, { color: fullThemeColors.textSecondary }]}> {unit}</Text>
+      </Text>
+      <Text style={[styles.velocityPercentile, { color: fullThemeColors.textSecondary }]}>
+        {percentile}th %ile
+      </Text>
+    </View>
+  );
+};
 
+/* ─── Main ───────────────────────────────────────────────────────── */
 export const GrowthIndexCard: React.FC = () => {
-  const navigation = useNavigation();
-  const { fullThemeColors, themeColors, borderRadiusValue, fontSizeMultiplier } = useCustomization();
+  const navigation = useNavigation<any>();
+  const { fullThemeColors, themeColors, borderRadiusValue, fontSizeMultiplier, isDark } = useCustomization();
   const { growthIndex } = useGrowthIntelligence();
 
   if (!growthIndex) {
     return (
-      <View style={[styles.container, { borderRadius: borderRadiusValue * 1.5, justifyContent: 'center', alignItems: 'center', minHeight: 200 }]}>
-        <Text style={{ color: fullThemeColors.textSecondary, fontSize: 14 * fontSizeMultiplier }}>
-          Loading growth data...
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: fullThemeColors.surface,
+            borderColor: fullThemeColors.border,
+            borderRadius: borderRadiusValue,
+            minHeight: 140,
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
+        ]}
+      >
+        <Text style={{ color: fullThemeColors.textSecondary, fontSize: 13 * fontSizeMultiplier }}>
+          Loading growth data…
         </Text>
       </View>
     );
   }
 
-  const getIndexColor = (index: number): [string, string] => {
-    if (index >= 85) return ['#10AC84', '#1DD1A1'];
-    if (index >= 70) return ['#FFD700', '#FF9F43'];
-    if (index >= 50) return ['#FF9F43', '#EE5A24'];
-    return ['#EE5A24', '#FF6B6B'];
-  };
+  const composite = growthIndex.compositeIndex ?? 0;
+  const compositeColor = getScoreColor(composite);
 
-  const compositeIndex = growthIndex.compositeIndex ?? 0;
-  const [gradientStart, gradientEnd] = getIndexColor(compositeIndex);
+  const subScores = [
+    growthIndex.nutritionScore,
+    growthIndex.restScore,
+    growthIndex.physicalScore,
+    growthIndex.cognitiveScore,
+    growthIndex.healthStability,
+  ].filter(Boolean) as SubScore[];
+
+  const subscoreCount = subScores.length;
 
   return (
-    <Animated.View entering={FadeInUp} style={[styles.container, { borderRadius: borderRadiusValue * 1.5 }]}>
+    <Animated.View
+      entering={FadeInUp}
+      style={[
+        styles.card,
+        {
+          backgroundColor: fullThemeColors.surface,
+          borderColor: fullThemeColors.border,
+          borderRadius: borderRadiusValue,
+        },
+      ]}
+    >
       <LinearGradient
-        colors={[gradientStart + '15', gradientEnd + '08']}
-        style={[StyleSheet.absoluteFill, { borderRadius: borderRadiusValue * 1.5 }]}
+        colors={[`${compositeColor}12`, `${compositeColor}02`]}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       />
 
-      {/* ─── View full insights link ──────────────────────────────── */}
-      <TouchableOpacity
-        onPress={() => navigation.navigate('Insights' as never)}
-        style={styles.viewInsightsRow}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.viewInsightsText, { color: gradientStart }]}>
-          View full insights
-        </Text>
-        <Ionicons name="chevron-forward" size={14} color={gradientStart} />
-      </TouchableOpacity>
-
-      {/* Header */}
+      {/* ─── Compact pulse header (no hero) ────────────────────── */}
       <View style={styles.header}>
-        <View>
-          <Text style={[styles.title, { color: fullThemeColors.text, fontSize: 20 * fontSizeMultiplier }]}>
-            🧬 Growth Index
-          </Text>
-          <Text style={[styles.subtitle, { color: fullThemeColors.textSecondary, fontSize: 13 * fontSizeMultiplier }]}>
-            Last updated: {growthIndex.lastUpdated ? new Date(growthIndex.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
-          </Text>
-        </View>
-        <View style={[styles.scoreCircle, { borderColor: gradientStart }]}>
-          <Text style={[styles.scoreValue, { color: gradientStart, fontSize: 28 * fontSizeMultiplier }]}>
-            {compositeIndex}
-          </Text>
-          <Text style={[styles.scoreLabel, { color: fullThemeColors.textSecondary }]}>/100</Text>
-        </View>
-      </View>
-
-      {/* Sub Scores */}
-      <View style={styles.subScores}>
-        {growthIndex.nutritionScore && <SubScoreBar score={growthIndex.nutritionScore} index={0} />}
-        {growthIndex.restScore && <SubScoreBar score={growthIndex.restScore} index={1} />}
-        {growthIndex.physicalScore && <SubScoreBar score={growthIndex.physicalScore} index={2} />}
-        {growthIndex.cognitiveScore && <SubScoreBar score={growthIndex.cognitiveScore} index={3} />}
-        {growthIndex.healthStability && <SubScoreBar score={growthIndex.healthStability} index={4} />}
-      </View>
-
-      {/* Velocity Summary */}
-      {growthIndex.velocityTrends && (
-        <View style={[styles.velocityCard, { backgroundColor: fullThemeColors.glassBg, borderRadius: borderRadiusValue }]}>
-          <Text style={[styles.velocityTitle, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]}>
-            📈 Growth Velocity
-          </Text>
-          <View style={styles.velocityRow}>
-            <VelocityPill 
-              label="Height" 
-              value={growthIndex.velocityTrends.height?.perMonth || 0} 
-              unit="cm/mo" 
-              percentile={growthIndex.velocityTrends.height?.percentile || 0}
-              color="#667eea"
-            />
-            <VelocityPill 
-              label="Weight" 
-              value={growthIndex.velocityTrends.weight?.perMonth || 0} 
-              unit="kg/mo" 
-              percentile={growthIndex.velocityTrends.weight?.percentile || 0}
-              color="#fa709a"
-            />
-            <VelocityPill 
-              label="Head" 
-              value={growthIndex.velocityTrends.head?.perMonth || 0} 
-              unit="cm/mo" 
-              percentile={growthIndex.velocityTrends.head?.percentile || 0}
-              color="#11998e"
-            />
+        <View style={styles.headerLeft}>
+          <View style={[styles.headerIcon, { backgroundColor: `${compositeColor}20` }]}>
+            <Text style={{ fontSize: 22 }}>🧬</Text>
+          </View>
+          <View>
+            <Text style={[styles.headerTitle, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
+              Growth Index
+            </Text>
+            <Text style={[styles.headerSub, { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}>
+              {growthIndex.lastUpdated
+                ? `Updated ${new Date(growthIndex.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                : '—'}
+            </Text>
           </View>
         </View>
-      )}
 
-      {/* Milestone Readiness */}
-      {growthIndex.milestoneReadiness && growthIndex.milestoneReadiness.length > 0 && (
-        <View style={styles.readinessSection}>
-          <Text style={[styles.readinessTitle, { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier }]}>
-            🎯 Milestone Readiness
-          </Text>
-          {growthIndex.milestoneReadiness.map((readiness, idx) => (
-            <TouchableOpacity 
-              key={idx}
-              style={[styles.readinessItem, { backgroundColor: fullThemeColors.glassBg, borderRadius: borderRadiusValue }]}
-              onPress={() => {
-                // @ts-ignore - navigate to AddEntry
-                navigation.navigate('AddEntry', { 
-                  trackerId: 'milestone', 
-                  presetData: { category: readiness.category } 
-                });
-              }}
-            >
-              <View style={[styles.readinessBar, { backgroundColor: fullThemeColors.border }]}>
-                <View style={[
-                  styles.readinessFill,
-                  { 
-                    width: `${readiness.readinessPercent}%`,
-                    backgroundColor: readiness.readinessPercent > 80 ? '#10AC84' : readiness.readinessPercent > 50 ? '#FFD700' : '#FF9F43',
-                  }
-                ]} />
-              </View>
-              <View style={styles.readinessInfo}>
-                <Text style={[styles.readinessCategory, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]}>
-                  {readiness.category.charAt(0).toUpperCase() + readiness.category.slice(1)}
-                </Text>
-                <Text style={[styles.readinessPercent, { color: fullThemeColors.textSecondary }]}>
-                  {readiness.readinessPercent}% ready
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={fullThemeColors.textSecondary} />
-            </TouchableOpacity>
-          ))}
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Insights')}
+            style={[styles.headerBtn, { backgroundColor: `${compositeColor}15` }]}
+            hitSlop={8}
+          >
+            <Text style={[styles.headerBtnText, { color: compositeColor }]}>Insights</Text>
+            <Ionicons name="chevron-forward" size={12} color={compositeColor} />
+          </TouchableOpacity>
+          <View style={[styles.scoreRing, { borderColor: compositeColor }]}>
+            <Text style={[styles.scoreValue, { color: compositeColor, fontSize: 20 * fontSizeMultiplier }]}>
+              {composite}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* ─── Sub score carousel (horizontal to save space) ────── */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.subScoreScroll}
+      >
+        {subScores.map((s, i) => (
+          <View
+            key={s.label}
+            style={[
+              styles.subScoreCard,
+              { backgroundColor: fullThemeColors.background, borderColor: fullThemeColors.border, borderRadius: borderRadiusValue },
+            ]}
+          >
+            <SubScoreBar score={s} index={i} isDark={isDark} />
+          </View>
+        ))}
+      </ScrollView>
+
+      {/* ─── Velocity row ───────────────────────────────────────── */}
+      {growthIndex.velocityTrends && (
+        <View style={styles.velocityRow}>
+          <VelocityChip
+            label="Height"
+            value={growthIndex.velocityTrends.height?.perMonth || 0}
+            unit="cm/mo"
+            percentile={growthIndex.velocityTrends.height?.percentile || 0}
+            color={themeColors?.primary || DS.primary}
+            isDark={isDark}
+          />
+          <VelocityChip
+            label="Weight"
+            value={growthIndex.velocityTrends.weight?.perMonth || 0}
+            unit="kg/mo"
+            percentile={growthIndex.velocityTrends.weight?.percentile || 0}
+            color={DS.accent}
+            isDark={isDark}
+          />
+          <VelocityChip
+            label="Head"
+            value={growthIndex.velocityTrends.head?.perMonth || 0}
+            unit="cm/mo"
+            percentile={growthIndex.velocityTrends.head?.percentile || 0}
+            color={DS.info}
+            isDark={isDark}
+          />
         </View>
       )}
 
-      {/* Predicted Checkup */}
+      {/* ─── Milestone readiness strip ──────────────────────────── */}
+      {growthIndex.milestoneReadiness && growthIndex.milestoneReadiness.length > 0 && (
+        <View style={styles.readinessStrip}>
+          <Text style={[styles.readinessTitle, { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}>
+            🎯 READINESS
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            {growthIndex.milestoneReadiness.map((r, idx) => {
+              const pct = Math.max(0, Math.min(100, r.readinessPercent || 0));
+              const color = pct > 80 ? DS.success : pct > 50 ? DS.warning : '#f97316';
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() =>
+                    navigation.navigate('AddEntry', {
+                      trackerId: 'milestone',
+                      presetData: { category: r.category },
+                    })
+                  }
+                  style={[
+                    styles.readinessChip,
+                    { backgroundColor: `${color}10`, borderColor: `${color}35` },
+                  ]}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.readinessCategory, { color }]}>
+                    {r.category.charAt(0).toUpperCase() + r.category.slice(1)}
+                  </Text>
+                  <View style={[styles.readinessBarBg, { backgroundColor: `${color}20` }]}>
+                    <View style={[styles.readinessBarFill, { width: `${pct}%`, backgroundColor: color }]} />
+                  </View>
+                  <Text style={[styles.readinessPct, { color: fullThemeColors.textSecondary }]}>{pct}%</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* ─── Next checkup ───────────────────────────────────────── */}
       {growthIndex.predictedNextCheckup && (
-        <View style={[styles.checkupCard, { backgroundColor: `${themeColors.primary}10`, borderRadius: borderRadiusValue }]}>
-          <Ionicons name="calendar" size={20} color={themeColors.primary} />
-          <Text style={[styles.checkupText, { color: fullThemeColors.text, fontSize: 13 * fontSizeMultiplier }]}>
-            Next checkup suggested: {growthIndex.predictedNextCheckup.toLocaleDateString()}
+        <View style={[styles.checkupRow, { backgroundColor: `${themeColors?.primary || DS.primary}10` }]}>
+          <Ionicons name="calendar-outline" size={14} color={themeColors?.primary || DS.primary} />
+          <Text style={[styles.checkupText, { color: fullThemeColors.text, fontSize: 12 * fontSizeMultiplier }]}>
+            Next checkup: {growthIndex.predictedNextCheckup.toLocaleDateString()}
           </Text>
         </View>
       )}
@@ -233,186 +321,130 @@ export const GrowthIndexCard: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
+  card: {
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
     overflow: 'hidden',
+    padding: 14,
   },
+
+  /* Header */
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  title: {
-    fontWeight: '800',
-    letterSpacing: -0.3,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
   },
-  subtitle: {
-    marginTop: 2,
-    fontWeight: '500',
+  headerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  scoreCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+  headerTitle: { fontWeight: '800', letterSpacing: -0.2 },
+  headerSub: { fontWeight: '500', marginTop: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  headerBtnText: { fontSize: 11, fontWeight: '700' },
+  scoreRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scoreValue: {
-    fontWeight: '800',
-    letterSpacing: -1,
+  scoreValue: { fontWeight: '800', letterSpacing: -0.5 },
+
+  /* Sub scores */
+  subScoreScroll: { gap: 8, paddingBottom: 4, paddingRight: 4 },
+  subScoreCard: {
+    width: 168,
+    padding: 10,
+    borderWidth: 1,
   },
-  scoreLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  subScores: {
-    gap: 14,
-  },
-  subScoreContainer: {
-    gap: 6,
-  },
-  subScoreHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  subScoreRow: { gap: 6 },
   subScoreIcon: {
-    width: 36,
-    height: 36,
+    width: 30,
+    height: 30,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
-  subScoreEmoji: {
-    fontSize: 18,
+  subScoreEmoji: { fontSize: 15 },
+  subScoreInfo: { gap: 4 },
+  subScoreTopLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  subScoreInfo: {
-    flex: 1,
-  },
-  subScoreLabel: {
-    fontWeight: '700',
-  },
-  subScoreTrend: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  subScoreValue: {
-    fontWeight: '800',
-    minWidth: 40,
-    textAlign: 'right',
-  },
-  progressBar: {
-    height: 6,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-  },
-  weightLabel: {
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  velocityCard: {
-    padding: 14,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-  },
-  velocityTitle: {
-    fontWeight: '700',
-    marginBottom: 10,
-  },
+  subScoreLabel: { fontWeight: '700', flex: 1 },
+  subScoreValue: { fontSize: 14, fontWeight: '800' },
+  subScoreBarBg: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  subScoreBarFill: { height: '100%', borderRadius: 2 },
+  subScoreBottomLine: { flexDirection: 'row', justifyContent: 'space-between' },
+  subScoreTrend: { fontSize: 10, fontWeight: '600' },
+  subScoreWeight: { fontSize: 10, fontWeight: '500' },
+
+  /* Velocity */
   velocityRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  velocityPill: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  velocityPillLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  velocityPillValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1e293b',
-  },
-  velocityPillUnit: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  velocityPillPercentile: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  readinessSection: {
-    marginTop: 16,
     gap: 8,
+    marginTop: 12,
   },
-  readinessTitle: {
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  readinessItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
+  velocityChip: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
   },
-  readinessBar: {
-    width: 4,
-    height: 40,
-    borderRadius: 2,
-    marginRight: 12,
-    overflow: 'hidden',
+  velocityLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
+  velocityValue: { fontSize: 15, fontWeight: '800', marginTop: 2 },
+  velocityUnit: { fontSize: 10, fontWeight: '600' },
+  velocityPercentile: { fontSize: 9.5, fontWeight: '500', marginTop: 1 },
+
+  /* Readiness */
+  readinessStrip: { marginTop: 14, gap: 6 },
+  readinessTitle: { fontWeight: '800', letterSpacing: 0.6 },
+  readinessChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+    minWidth: 110,
   },
-  readinessFill: {
-    height: '100%',
-  },
-  readinessInfo: {
-    flex: 1,
-  },
-  readinessCategory: {
-    fontWeight: '700',
-  },
-  readinessPercent: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  checkupCard: {
+  readinessCategory: { fontSize: 11.5, fontWeight: '700' },
+  readinessBarBg: { height: 3, borderRadius: 2, overflow: 'hidden' },
+  readinessBarFill: { height: '100%', borderRadius: 2 },
+  readinessPct: { fontSize: 10, fontWeight: '600' },
+
+  /* Checkup */
+  checkupRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    marginTop: 16,
-    gap: 10,
+    gap: 8,
+    padding: 10,
+    borderRadius: 12,
+    marginTop: 12,
   },
-    viewInsightsRow: {
-    position: 'absolute',
-    top: 14,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    zIndex: 2,
-  },
-  viewInsightsText: { fontSize: 12, fontWeight: '700' },
-  checkupText: {
-    fontWeight: '600',
-    flex: 1,
-  },
+  checkupText: { fontWeight: '600', flex: 1 },
 });
 
 export default GrowthIndexCard;

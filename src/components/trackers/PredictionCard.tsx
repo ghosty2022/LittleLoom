@@ -1,70 +1,37 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import {
-  getPredictions,
-  formatMinutes,
-  Prediction,
-  PredictorType,
-} from '../../services/ai/PredictorEngine';
+import { getPredictions, formatMinutes, Prediction, PredictorType } from '../../services/ai/PredictorEngine';
 
+const DS = {
+  primary: '#6366f1',
+  accent: '#ec4899',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray400: '#a8a29e',
+};
 
-
-const TYPE_META: Record<
-  PredictorType,
-  {
-    emoji: string;
-    color: string;
-    trackerId: string;
-    label: string;
-  }
-> = {
+const TYPE_META: Record<PredictorType, { emoji: string; color: string; trackerId: string; label: string }> = {
   sleep: { emoji: '😴', color: '#8b5cf6', trackerId: 'sleep', label: 'Sleep' },
   feed: { emoji: '🍼', color: '#f59e0b', trackerId: 'feed', label: 'Feed' },
   diaper: { emoji: '🧷', color: '#3b82f6', trackerId: 'diaper', label: 'Diaper' },
   wake: { emoji: '⏰', color: '#06b6d4', trackerId: 'sleep', label: 'Wake' },
-  medication: {
-    emoji: '💊',
-    color: '#ef4444',
-    trackerId: 'medication',
-    label: 'Medication',
-  },
+  medication: { emoji: '💊', color: '#ef4444', trackerId: 'medication', label: 'Med' },
 };
-
-
 
 const STORAGE_PREFIX = '@littleloom_predictor_v1:';
 
-const readState = async (
-  babyId: string,
-  type: PredictorType
-): Promise<{ n: number; level: number } | null> => {
+const readState = async (babyId: string, type: PredictorType): Promise<{ n: number; level: number } | null> => {
   try {
     const raw = await AsyncStorage.getItem(`${STORAGE_PREFIX}${babyId}:${type}`);
     if (!raw) return null;
@@ -75,35 +42,20 @@ const readState = async (
   }
 };
 
-
-
 type Urgency = 'now' | 'soon' | 'later' | 'unknown';
 
-const getUrgency = (minutesUntil: number, confidence: number): Urgency => {
-  if (confidence < 0.3) return 'unknown';
-  if (minutesUntil <= 15) return 'now';
-  if (minutesUntil <= 45) return 'soon';
+const getUrgency = (mins: number, conf: number): Urgency => {
+  if (conf < 0.3) return 'unknown';
+  if (mins <= 15) return 'now';
+  if (mins <= 45) return 'soon';
   return 'later';
 };
 
-const URGENCY_STYLE: Record<
-  Urgency,
-  { label: string; color: string; bg: string; icon: string }
-> = {
-  now: { label: 'Now', color: '#ef4444', bg: '#ef444415', icon: 'alert-circle' },
-  soon: { label: 'Soon', color: '#f59e0b', bg: '#f59e0b15', icon: 'time' },
-  later: {
-    label: 'Later',
-    color: '#10b981',
-    bg: '#10b98115',
-    icon: 'checkmark-circle',
-  },
-  unknown: {
-    label: 'Learning',
-    color: '#94a3b8',
-    bg: '#94a3b815',
-    icon: 'hourglass',
-  },
+const URGENCY_STYLE: Record<Urgency, { label: string; color: string; bg: string; icon: any }> = {
+  now: { label: 'Now', color: DS.danger, bg: `${DS.danger}15`, icon: 'alert-circle' },
+  soon: { label: 'Soon', color: DS.warning, bg: `${DS.warning}15`, icon: 'time' },
+  later: { label: 'Later', color: DS.success, bg: `${DS.success}15`, icon: 'checkmark-circle' },
+  unknown: { label: 'Learning', color: DS.gray400, bg: `${DS.gray400}15`, icon: 'hourglass' },
 };
 
 interface Row {
@@ -112,18 +64,13 @@ interface Row {
   level: number;
 }
 
-
-
 export default function PredictionCard() {
   const navigation = useNavigation<any>();
   const { currentBaby } = useBaby();
-  const { fullThemeColors, borderRadiusValue, fontSizeMultiplier } =
-    useCustomization();
+  const { fullThemeColors, borderRadiusValue, fontSizeMultiplier, isDark } = useCustomization();
 
   const [predictions, setPredictions] = useState<Prediction[]>([]);
-  const [sampleCounts, setSampleCounts] = useState<
-    Record<string, { n: number; level: number }>
-  >({});
+  const [sampleCounts, setSampleCounts] = useState<Record<string, { n: number; level: number }>>({});
   const [loading, setLoading] = useState(true);
 
   const babyId = currentBaby?.id;
@@ -135,24 +82,10 @@ export default function PredictionCard() {
     }
     try {
       const types: PredictorType[] = ['sleep', 'feed', 'diaper'];
-
-      
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), 5000)
-      );
-
-      const loadPromise = Promise.all([
-        getPredictions(babyId, types),
-        ...types.map((t) => readState(babyId, t)),
-      ]);
-
-      const [results, ...states] = await Promise.race([
-        loadPromise,
-        timeoutPromise,
-      ]);
-
+      const timeoutPromise = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000));
+      const loadPromise = Promise.all([getPredictions(babyId, types), ...types.map((t) => readState(babyId, t))]);
+      const [results, ...states] = await Promise.race([loadPromise, timeoutPromise]);
       setPredictions(results);
-
       const counts: Record<string, { n: number; level: number }> = {};
       types.forEach((t, i) => {
         const s = states[i];
@@ -170,34 +103,22 @@ export default function PredictionCard() {
     load();
   }, [load]);
 
-  
   useEffect(() => {
     const iv = setInterval(load, 30_000);
     return () => clearInterval(iv);
   }, [load]);
 
-  
   const rows: Row[] = useMemo(() => {
     return predictions
-      .map((p) => {
-        const state = sampleCounts[p.type] || { n: 0, level: 0 };
-        return { prediction: p, n: state.n, level: state.level };
-      })
+      .map((p) => ({
+        prediction: p,
+        n: (sampleCounts[p.type] || { n: 0, level: 0 }).n,
+        level: (sampleCounts[p.type] || { n: 0, level: 0 }).level,
+      }))
       .sort((a, b) => {
-        const order: Record<Urgency, number> = {
-          now: 0,
-          soon: 1,
-          later: 2,
-          unknown: 3,
-        };
-        const ua = getUrgency(
-          a.prediction.minutesUntil,
-          a.prediction.confidence
-        );
-        const ub = getUrgency(
-          b.prediction.minutesUntil,
-          b.prediction.confidence
-        );
+        const order: Record<Urgency, number> = { now: 0, soon: 1, later: 2, unknown: 3 };
+        const ua = getUrgency(a.prediction.minutesUntil, a.prediction.confidence);
+        const ub = getUrgency(b.prediction.minutesUntil, b.prediction.confidence);
         if (order[ua] !== order[ub]) return order[ua] - order[ub];
         return a.prediction.minutesUntil - b.prediction.minutesUntil;
       });
@@ -205,297 +126,172 @@ export default function PredictionCard() {
 
   if (!currentBaby) return null;
 
-  
   if (loading && predictions.length === 0) {
     return (
       <View
         style={[
-          styles.wrap,
+          styles.card,
           {
             backgroundColor: fullThemeColors.surface,
-            borderRadius: borderRadiusValue,
             borderColor: fullThemeColors.border,
+            borderRadius: borderRadiusValue,
+            alignItems: 'center',
+            paddingVertical: 20,
           },
         ]}
       >
-        <ActivityIndicator size="small" color="#667eea" />
-        <Text
-          style={[
-            styles.headerSub,
-            {
-              color: fullThemeColors.textSecondary,
-              marginTop: 8,
-              textAlign: 'center',
-            },
-          ]}
-        >
+        <ActivityIndicator size="small" color={DS.primary} />
+        <Text style={{ color: fullThemeColors.textSecondary, marginTop: 8, fontSize: 12 }}>
           Analyzing patterns…
         </Text>
       </View>
     );
   }
 
-  const totalSamples = Object.values(sampleCounts).reduce(
-    (sum, s) => sum + (s.n || 0),
-    0
-  );
+  const totalSamples = Object.values(sampleCounts).reduce((s, v) => s + (v.n || 0), 0);
   const isLearning = totalSamples < 15;
 
   return (
     <Animated.View
       entering={FadeInUp}
       style={[
-        styles.wrap,
+        styles.card,
         {
           backgroundColor: fullThemeColors.surface,
-          borderRadius: borderRadiusValue,
           borderColor: fullThemeColors.border,
+          borderRadius: borderRadiusValue,
         },
       ]}
     >
-      {/* ─── Header ─────────────────────────────────────────────── */}
+      <LinearGradient
+        colors={isDark ? ['rgba(99,102,241,0.08)', 'rgba(236,72,153,0.03)'] : ['rgba(99,102,241,0.04)', 'rgba(236,72,153,0.02)']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={{ fontSize: 18 }}>🔮</Text>
+        <View style={[styles.headerIcon, { backgroundColor: `${DS.primary}15` }]}>
+          <Ionicons name="sparkles" size={16} color={DS.primary} />
+        </View>
         <View style={{ flex: 1 }}>
-          <Text
-            style={[
-              styles.headerText,
-              {
-                color: fullThemeColors.text,
-                fontSize: 14 * fontSizeMultiplier,
-              },
-            ]}
-          >
+          <Text style={[styles.title, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]}>
             What's Next?
           </Text>
-          <Text
-            style={[
-              styles.headerSub,
-              {
-                color: fullThemeColors.textSecondary,
-                fontSize: 11 * fontSizeMultiplier,
-              },
-            ]}
-          >
+          <Text style={[styles.sub, { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}>
             {isLearning
-              ? `Learning ${currentBaby.name}'s rhythm… (${totalSamples} samples)`
+              ? `Learning ${currentBaby.name}'s rhythm · ${totalSamples} samples`
               : `Based on ${totalSamples} tracked events`}
           </Text>
         </View>
       </View>
 
-      {/* ─── Learning banner ─────────────────────────────────────── */}
+      {/* Learning banner */}
       {isLearning && (
         <Animated.View
           entering={FadeIn}
-          style={[
-            styles.learningBanner,
-            {
-              backgroundColor: `${fullThemeColors.primary}08`,
-              borderRadius: borderRadiusValue / 1.5,
-            },
-          ]}
+          style={[styles.learningBanner, { backgroundColor: `${DS.primary}10`, borderColor: `${DS.primary}25` }]}
         >
-          <Ionicons
-            name="sparkles"
-            size={16}
-            color={fullThemeColors.primary}
-          />
-          <Text
-            style={[
-              styles.learningText,
-              {
-                color: fullThemeColors.textSecondary,
-                fontSize: 12 * fontSizeMultiplier,
-              },
-            ]}
-          >
-            Log a few more feeds, sleeps, and diaper changes and we'll start
-            predicting accurately.
+          <Ionicons name="sparkles" size={14} color={DS.primary} />
+          <Text style={[styles.learningText, { color: fullThemeColors.textSecondary }]}>
+            Log more feeds, sleeps & diapers — predictions sharpen with each entry.
           </Text>
         </Animated.View>
       )}
 
-      {/* ─── Prediction rows ─────────────────────────────────────── */}
+      {/* Rows */}
       {!isLearning &&
         rows.map(({ prediction: p, n, level }, idx) => {
           const meta = TYPE_META[p.type];
-          const urgency = getUrgency(p.minutesUntil, p.confidence);
-          const urg = URGENCY_STYLE[urgency];
+          const urg = URGENCY_STYLE[getUrgency(p.minutesUntil, p.confidence)];
           const conf = Math.round(p.confidence * 100);
-
           const predictedTime = new Date(p.predictedAt).toLocaleTimeString([], {
             hour: 'numeric',
             minute: '2-digit',
           });
-
-          const learnedInterval = n > 0 ? formatMinutes(Math.round(level)) : null;
+          const learned = n > 0 ? formatMinutes(Math.round(level)) : null;
 
           return (
             <Animated.View
               key={p.type}
               entering={FadeInUp.delay(idx * 60)}
-              style={[
-                styles.row,
-                {
-                  backgroundColor: `${meta.color}0A`,
-                  borderRadius: borderRadiusValue / 1.5,
-                  borderColor: `${meta.color}25`,
-                  borderWidth: 1,
-                },
-              ]}
+              style={{ marginBottom: 8 }}
             >
               <TouchableOpacity
-                onPress={() =>
-                  navigation.navigate('AddEntry', { trackerId: meta.trackerId })
-                }
-                activeOpacity={0.75}
-                style={styles.rowTouchable}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('AddEntry', { trackerId: meta.trackerId })}
+                style={[
+                  styles.row,
+                  {
+                    backgroundColor: `${meta.color}08`,
+                    borderColor: `${meta.color}30`,
+                    borderRadius: borderRadiusValue / 1.4,
+                  },
+                ]}
               >
-                <View
-                  style={[
-                    styles.iconWrap,
-                    { backgroundColor: `${meta.color}20` },
-                  ]}
-                >
+                <View style={[styles.rowIcon, { backgroundColor: `${meta.color}18` }]}>
                   <Text style={{ fontSize: 20 }}>{meta.emoji}</Text>
                 </View>
 
-                <View style={styles.rowBody}>
+                <View style={{ flex: 1 }}>
                   <View style={styles.rowTopLine}>
-                    <Text
-                      style={[
-                        styles.rowTitle,
-                        {
-                          color: fullThemeColors.text,
-                          fontSize: 14 * fontSizeMultiplier,
-                        },
-                      ]}
-                    >
+                    <Text style={[styles.rowTitle, { color: fullThemeColors.text, fontSize: 13 * fontSizeMultiplier }]}>
                       {meta.label}
                     </Text>
-                    <View
-                      style={[styles.urgencyPill, { backgroundColor: urg.bg }]}
-                    >
-                      <Ionicons
-                        name={urg.icon as any}
-                        size={11}
-                        color={urg.color}
-                      />
-                      <Text
-                        style={[
-                          styles.urgencyPillText,
-                          { color: urg.color },
-                        ]}
-                      >
-                        {urg.label}
-                      </Text>
+                    <View style={[styles.urgencyPill, { backgroundColor: urg.bg }]}>
+                      <Ionicons name={urg.icon} size={10} color={urg.color} />
+                      <Text style={[styles.urgencyText, { color: urg.color }]}>{urg.label}</Text>
                     </View>
                   </View>
 
-                  <View style={styles.rowTimeLine}>
-                    <Text
-                      style={[
-                        styles.rowTime,
-                        {
-                          color: fullThemeColors.text,
-                          fontSize: 15 * fontSizeMultiplier,
-                        },
-                      ]}
-                    >
+                  <View style={styles.timeLine}>
+                    <Text style={[styles.timeBig, { color: fullThemeColors.text, fontSize: 14 * fontSizeMultiplier }]}>
                       ~{predictedTime}
                     </Text>
-                    <Text
-                      style={[
-                        styles.rowIn,
-                        {
-                          color: fullThemeColors.textSecondary,
-                          fontSize: 12 * fontSizeMultiplier,
-                        },
-                      ]}
-                    >
-                      in {formatMinutes(Math.max(0, p.minutesUntil))}
+                    <Text style={[styles.timeIn, { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier }]}>
+                      · in {formatMinutes(Math.max(0, p.minutesUntil))}
                     </Text>
                   </View>
 
-                  <Text
-                    style={[
-                      styles.learnedLine,
-                      {
-                        color: fullThemeColors.textSecondary,
-                        fontSize: 11 * fontSizeMultiplier,
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {learnedInterval
-                      ? `Every ${learnedInterval} · ${n} sample${
-                          n === 1 ? '' : 's'
-                        }`
-                      : 'Building baseline…'}
-                  </Text>
-
-                  <View style={styles.confidenceRow}>
-                    <View
-                      style={[
-                        styles.confidenceTrack,
-                        { backgroundColor: `${meta.color}15` },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.confidenceFill,
-                          {
-                            width: `${Math.max(6, conf)}%`,
-                            backgroundColor: meta.color,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.confidenceText,
-                        { color: fullThemeColors.textSecondary },
-                      ]}
-                    >
-                      {conf}%
+                  {learned && (
+                    <Text style={[styles.learned, { color: fullThemeColors.textSecondary, fontSize: 10.5 * fontSizeMultiplier }]}>
+                      Every {learned} · {n} sample{n === 1 ? '' : 's'}
                     </Text>
+                  )}
+
+                  <View style={styles.confRow}>
+                    <View style={[styles.confTrack, { backgroundColor: `${meta.color}15` }]}>
+                      <View style={[styles.confFill, { width: `${Math.max(6, conf)}%`, backgroundColor: meta.color }]} />
+                    </View>
+                    <Text style={[styles.confText, { color: fullThemeColors.textSecondary }]}>{conf}%</Text>
                   </View>
                 </View>
 
-                <Ionicons
-                  name="chevron-forward"
-                  size={16}
-                  color={fullThemeColors.textSecondary}
-                />
+                <Ionicons name="chevron-forward" size={14} color={fullThemeColors.textSecondary} />
               </TouchableOpacity>
             </Animated.View>
           );
         })}
 
-      {/* ─── Footer ─────────────────────────────────────────────── */}
+      {/* Footer */}
       <TouchableOpacity
-        style={styles.footer}
         onPress={() => navigation.navigate('Insights')}
+        style={styles.footer}
       >
-        <Text style={[styles.footerText, { color: '#667eea' }]}>
-          {isLearning
-            ? 'Every log makes predictions sharper →'
-            : 'View full insights →'}
+        <Text style={[styles.footerText, { color: DS.primary, fontSize: 11.5 * fontSizeMultiplier }]}>
+          {isLearning ? 'Every log makes predictions sharper →' : 'View full insights →'}
         </Text>
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
-
-
 const styles = StyleSheet.create({
-  wrap: {
+  card: {
     padding: 14,
-    marginHorizontal: 0,
-    marginBottom: 12,
     borderWidth: 1,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
@@ -503,34 +299,41 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 12,
   },
-  headerText: { fontWeight: '800' },
-  headerSub: { marginTop: 1, fontWeight: '500' },
+  headerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { fontWeight: '800', letterSpacing: -0.2 },
+  sub: { fontWeight: '500', marginTop: 1 },
+
   learningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    padding: 12,
-    marginBottom: 4,
-  },
-  learningText: { flex: 1, fontWeight: '500', lineHeight: 16 },
-  row: {
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
     marginBottom: 8,
-    overflow: 'hidden',
   },
-  rowTouchable: {
+  learningText: { flex: 1, fontWeight: '500', lineHeight: 15, fontSize: 11 },
+
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     gap: 10,
+    borderWidth: 1,
   },
-  iconWrap: {
+  rowIcon: {
     width: 40,
     height: 40,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowBody: { flex: 1 },
   rowTopLine: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -546,34 +349,22 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 8,
   },
-  urgencyPillText: { fontSize: 10, fontWeight: '700' },
-  rowTimeLine: {
+  urgencyText: { fontSize: 9.5, fontWeight: '800' },
+  timeLine: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 6,
+    gap: 4,
     marginBottom: 2,
+    flexWrap: 'wrap',
   },
-  rowTime: { fontWeight: '800', letterSpacing: -0.3 },
-  rowIn: { fontWeight: '500' },
-  learnedLine: { fontWeight: '500', marginBottom: 6 },
-  confidenceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  confidenceTrack: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  confidenceFill: { height: '100%', borderRadius: 2 },
-  confidenceText: {
-    fontSize: 10,
-    fontWeight: '700',
-    minWidth: 30,
-    textAlign: 'right',
-  },
-  footer: { alignItems: 'center', paddingVertical: 6, marginTop: 4 },
-  footerText: { fontSize: 12, fontWeight: '600' },
+  timeBig: { fontWeight: '800', letterSpacing: -0.3 },
+  timeIn: { fontWeight: '500' },
+  learned: { fontWeight: '500', marginBottom: 6 },
+  confRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  confTrack: { flex: 1, height: 4, borderRadius: 2, overflow: 'hidden' },
+  confFill: { height: '100%', borderRadius: 2 },
+  confText: { fontSize: 10, fontWeight: '700', minWidth: 30, textAlign: 'right' },
+
+  footer: { alignItems: 'center', paddingVertical: 6, marginTop: 2 },
+  footerText: { fontWeight: '700' },
 });
