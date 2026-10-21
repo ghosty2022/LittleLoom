@@ -12,11 +12,9 @@ import {
   TouchableOpacity,
   Switch,
   RefreshControl,
-  Alert,
   Modal,
   Pressable,
   Dimensions,
-  TextInput,
   Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,14 +29,16 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withRepeat,
+  withSequence,
   interpolate,
   Extrapolation,
   useAnimatedScrollHandler,
 } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { format, subDays } from 'date-fns';
 
 import { useBaby } from '../../context/BabyContext';
 import { useAuth } from '../../context/AuthContext';
@@ -51,8 +51,6 @@ import {
   MetricKey,
   LearnedRange,
   resetLearningForBaby,
-  observeValue,
-  detectAnomaly,
 } from '../../services/ai/BayesianEngine';
 import {
   isCollaborativeLearningEnabled,
@@ -62,55 +60,54 @@ import {
   unblockCohortContributions,
   getCohortPrior,
   ageToCohort,
-  AgeCohort,
 } from '../../services/ai/CohortPriors';
 import type { RootStackParamList } from '../../types/navigation';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   AURA DS
+   AURA DESIGN SYSTEM
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const AURA = {
+const DS = {
   primary: '#6366f1',
   primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
   accent: '#ec4899',
+  accentLight: '#f472b6',
   secondary: '#8b5cf6',
   success: '#10b981',
   warning: '#f59e0b',
   info: '#0ea5e9',
   danger: '#ef4444',
   white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
   gray300: '#d6d3d1',
   gray400: '#a8a29e',
   gray500: '#78716c',
+  gray600: '#57534e',
   gray700: '#44403c',
+  gray800: '#292524',
   gray900: '#1c1917',
   darkBg: '#0c0a09',
   darkSurface: '#1c1917',
   darkCard: '#292524',
   darkBorder: 'rgba(255,255,255,0.06)',
-};
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Unified with AddEntryScreen
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const DESIGN = {
-  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
   shadow: {
-    sm: {},
-    md: {},
-    lg: {},
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
   },
 };
 
 const SPRING_CONFIG = { damping: 15, stiffness: 300 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   METRIC METADATA — Aura palette
+   METRIC METADATA
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface MetricMeta {
@@ -126,160 +123,20 @@ interface MetricMeta {
 }
 
 const METRIC_META: Record<MetricKey, MetricMeta> = {
-  temperature_c: {
-    label: 'Temperature',
-    shortLabel: 'Temp',
-    emoji: '🌡️',
-    unit: '°C',
-    color: AURA.danger,
-    gradient: [AURA.danger, '#f87171'],
-    category: 'vitals',
-    format: v => v.toFixed(2),
-    description: 'Body temperature readings. Fever threshold is typically >38°C.',
-  },
-  feeding_ml: {
-    label: 'Feeding Amount',
-    shortLabel: 'Feed',
-    emoji: '🍼',
-    unit: 'ml',
-    color: AURA.warning,
-    gradient: [AURA.warning, '#fbbf24'],
-    category: 'feeding',
-    format: v => v.toFixed(0),
-    description: 'Volume per feeding session. Adjusts to baby\'s growing appetite.',
-  },
-  feed_interval_min: {
-    label: 'Feed Interval',
-    shortLabel: 'Feed Gap',
-    emoji: '⏱️',
-    unit: 'min',
-    color: '#fb923c',
-    gradient: ['#fb923c', '#fdba74'],
-    category: 'feeding',
-    format: v => v.toFixed(0),
-    description: 'Time between feeds. Decreases as baby grows and takes larger feeds.',
-  },
-  sleep_duration_min: {
-    label: 'Sleep Duration',
-    shortLabel: 'Sleep',
-    emoji: '😴',
-    unit: 'min',
-    color: AURA.secondary,
-    gradient: [AURA.secondary, '#a78bfa'],
-    category: 'sleep',
-    format: v => v.toFixed(0),
-    description: 'Length of each sleep session. Varies by age and time of day.',
-  },
-  sleep_interval_min: {
-    label: 'Sleep Interval',
-    shortLabel: 'Wake Gap',
-    emoji: '🌙',
-    unit: 'min',
-    color: AURA.primary,
-    gradient: [AURA.primary, AURA.primaryLight],
-    category: 'sleep',
-    format: v => v.toFixed(0),
-    description: 'Wake windows between sleep periods. Longer as baby matures.',
-  },
-  diaper_interval_min: {
-    label: 'Diaper Interval',
-    shortLabel: 'Diaper',
-    emoji: '🧷',
-    unit: 'min',
-    color: AURA.info,
-    gradient: [AURA.info, '#38bdf8'],
-    category: 'vitals',
-    format: v => v.toFixed(0),
-    description: 'Time between diaper changes. Helps predict and anticipate needs.',
-  },
-  weight_kg: {
-    label: 'Weight',
-    shortLabel: 'Weight',
-    emoji: '⚖️',
-    unit: 'kg',
-    color: AURA.success,
-    gradient: [AURA.success, '#34d399'],
-    category: 'growth',
-    format: v => v.toFixed(2),
-    description: 'Body weight measurements. Tracks growth velocity.',
-  },
-  height_cm: {
-    label: 'Height',
-    shortLabel: 'Height',
-    emoji: '📏',
-    unit: 'cm',
-    color: '#14b8a6',
-    gradient: ['#14b8a6', '#2dd4bf'],
-    category: 'growth',
-    format: v => v.toFixed(1),
-    description: 'Length/height measurements. Key growth indicator.',
-  },
-  head_cm: {
-    label: 'Head Circumference',
-    shortLabel: 'Head',
-    emoji: '🧠',
-    unit: 'cm',
-    color: '#06b6d4',
-    gradient: ['#06b6d4', '#22d3ee'],
-    category: 'growth',
-    format: v => v.toFixed(1),
-    description: 'Head circumference. Important for brain development tracking.',
-  },
-  heart_rate_bpm: {
-    label: 'Heart Rate',
-    shortLabel: 'HR',
-    emoji: '❤️',
-    unit: 'bpm',
-    color: AURA.accent,
-    gradient: [AURA.accent, '#f472b6'],
-    category: 'vitals',
-    format: v => v.toFixed(0),
-    description: 'Heart rate readings. Resting rate is typically higher in infants.',
-  },
-  blood_oxygen: {
-    label: 'Blood Oxygen',
-    shortLabel: 'SpO2',
-    emoji: '🫁',
-    unit: '%',
-    color: AURA.danger,
-    gradient: [AURA.danger, '#f87171'],
-    category: 'vitals',
-    format: v => v.toFixed(1),
-    description: 'Oxygen saturation. Normal range is typically 95-100%.',
-  },
-  mood_score: {
-    label: 'Mood Score',
-    shortLabel: 'Mood',
-    emoji: '😊',
-    unit: '/5',
-    color: '#fbbf24',
-    gradient: ['#fbbf24', '#fcd34d'],
-    category: 'behavior',
-    format: v => v.toFixed(1),
-    description: 'Baby\'s mood rating. Helps correlate with sleep and feeding.',
-  },
-  poop_interval_hr: {
-    label: 'Poop Interval',
-    shortLabel: 'Poop',
-    emoji: '💩',
-    unit: 'hr',
-    color: '#8B4513',
-    gradient: ['#8B4513', '#a0522d'],
-    category: 'vitals',
-    format: v => v.toFixed(1),
-    description: 'Time between bowel movements. Varies greatly by feeding type.',
-  },
-  wake_window_min: {
-    label: 'Wake Window',
-    shortLabel: 'Wake',
-    emoji: '⏰',
-    unit: 'min',
-    color: AURA.info,
-    gradient: [AURA.info, '#38bdf8'],
-    category: 'sleep',
-    format: v => v.toFixed(0),
-    description: 'Optimal awake time before next sleep. Critical for avoiding overtiredness.',
-  },
+  temperature_c: { label: 'Temperature', shortLabel: 'Temp', emoji: '🌡️', unit: '°C', color: DS.danger, gradient: [DS.danger, '#f87171'], category: 'vitals', format: v => v.toFixed(2), description: 'Body temperature readings. Fever threshold is typically >38°C.' },
+  feeding_ml: { label: 'Feeding Amount', shortLabel: 'Feed', emoji: '🍼', unit: 'ml', color: DS.warning, gradient: [DS.warning, '#fbbf24'], category: 'feeding', format: v => v.toFixed(0), description: 'Volume per feeding session. Adjusts to baby\'s growing appetite.' },
+  feed_interval_min: { label: 'Feed Interval', shortLabel: 'Feed Gap', emoji: '⏱️', unit: 'min', color: '#fb923c', gradient: ['#fb923c', '#fdba74'], category: 'feeding', format: v => v.toFixed(0), description: 'Time between feeds. Decreases as baby grows.' },
+  sleep_duration_min: { label: 'Sleep Duration', shortLabel: 'Sleep', emoji: '😴', unit: 'min', color: DS.secondary, gradient: [DS.secondary, '#a78bfa'], category: 'sleep', format: v => v.toFixed(0), description: 'Length of each sleep session. Varies by age and time of day.' },
+  sleep_interval_min: { label: 'Sleep Interval', shortLabel: 'Wake Gap', emoji: '🌙', unit: 'min', color: DS.primary, gradient: [DS.primary, DS.primaryLight], category: 'sleep', format: v => v.toFixed(0), description: 'Wake windows between sleep periods. Longer as baby matures.' },
+  diaper_interval_min: { label: 'Diaper Interval', shortLabel: 'Diaper', emoji: '🧷', unit: 'min', color: DS.info, gradient: [DS.info, '#38bdf8'], category: 'vitals', format: v => v.toFixed(0), description: 'Time between diaper changes. Helps predict needs.' },
+  weight_kg: { label: 'Weight', shortLabel: 'Weight', emoji: '⚖️', unit: 'kg', color: DS.success, gradient: [DS.success, '#34d399'], category: 'growth', format: v => v.toFixed(2), description: 'Body weight measurements. Tracks growth velocity.' },
+  height_cm: { label: 'Height', shortLabel: 'Height', emoji: '📏', unit: 'cm', color: '#14b8a6', gradient: ['#14b8a6', '#2dd4bf'], category: 'growth', format: v => v.toFixed(1), description: 'Length/height measurements. Key growth indicator.' },
+  head_cm: { label: 'Head Circumference', shortLabel: 'Head', emoji: '🧠', unit: 'cm', color: '#06b6d4', gradient: ['#06b6d4', '#22d3ee'], category: 'growth', format: v => v.toFixed(1), description: 'Head circumference. Important for brain development.' },
+  heart_rate_bpm: { label: 'Heart Rate', shortLabel: 'HR', emoji: '❤️', unit: 'bpm', color: DS.accent, gradient: [DS.accent, '#f472b6'], category: 'vitals', format: v => v.toFixed(0), description: 'Heart rate readings. Resting rate is higher in infants.' },
+  blood_oxygen: { label: 'Blood Oxygen', shortLabel: 'SpO2', emoji: '🫁', unit: '%', color: DS.danger, gradient: [DS.danger, '#f87171'], category: 'vitals', format: v => v.toFixed(1), description: 'Oxygen saturation. Normal range is 95-100%.' },
+  mood_score: { label: 'Mood Score', shortLabel: 'Mood', emoji: '😊', unit: '/5', color: '#fbbf24', gradient: ['#fbbf24', '#fcd34d'], category: 'behavior', format: v => v.toFixed(1), description: 'Baby\'s mood rating. Correlates with sleep and feeding.' },
+  poop_interval_hr: { label: 'Poop Interval', shortLabel: 'Poop', emoji: '💩', unit: 'hr', color: '#8B4513', gradient: ['#8B4513', '#a0522d'], category: 'vitals', format: v => v.toFixed(1), description: 'Time between bowel movements. Varies by feeding type.' },
+  wake_window_min: { label: 'Wake Window', shortLabel: 'Wake', emoji: '⏰', unit: 'min', color: DS.info, gradient: [DS.info, '#38bdf8'], category: 'sleep', format: v => v.toFixed(0), description: 'Optimal awake time before next sleep. Critical for overtiredness.' },
 };
 
 const ALL_METRICS: MetricKey[] = [
@@ -309,121 +166,222 @@ interface CohortInfo {
 }
 
 type ScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'AIManagement'>;
+type FilterCategory = 'all' | 'vitals' | 'growth' | 'behavior' | 'feeding' | 'sleep';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   UNIFIED GLASS CARD — Aura
+   AURA SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GlassCard = ({
-  children,
-  style,
-  onPress,
-  active = false,
-}: {
-  children: React.ReactNode;
-  style?: any;
-  onPress?: () => void;
-  active?: boolean;
-}) => {
-  const { fullThemeColors, isDark, borderRadiusValue } = useCustomization();
-  const Wrapper = onPress ? TouchableOpacity : View;
-
+const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: any) => {
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
   return (
-    <Wrapper
-      onPress={onPress}
-      activeOpacity={onPress ? 0.85 : 1}
-      style={[
-        styles.glassCard,
-        { borderRadius: borderRadiusValue },
-        active && { borderColor: AURA.primary, borderWidth: 2 },
-        style,
-      ]}
-    >
-      <LinearGradient
-        colors={
-          isDark
-            ? ['rgba(41,37,36,0.85)', 'rgba(28,25,23,0.65)']
-            : ['rgba(255,255,255,0.92)', 'rgba(250,250,255,0.75)']
-        }
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <View
-        style={[
-          styles.glassBorder,
-          { backgroundColor: isDark ? AURA.darkBorder : 'rgba(255,255,255,0.5)' },
-        ]}
-      />
-      <View style={styles.glassContent}>{children}</View>
-    </Wrapper>
-  );
-};
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER — Aura
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const SectionHeader = ({
-  title,
-  subtitle,
-  icon,
-}: {
-  title: string;
-  subtitle?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-}) => {
-  const { fullThemeColors, themeColors } = useCustomization();
-  const primary = themeColors?.primary || AURA.primary;
-
-  return (
-    <View style={styles.sectionHeader}>
-      {icon && (
-        <View style={[styles.sectionIcon, { backgroundColor: `${AURA.primary}12` }]}>
-          <Ionicons name={icon} size={16} color={AURA.primary} />
-        </View>
-      )}
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.sectionTitle, { color: fullThemeColors.text }]}>{title}</Text>
-        {subtitle && (
-          <Text style={[styles.sectionSubtitle, { color: fullThemeColors.textSecondary }]}>
-            {subtitle}
-          </Text>
-        )}
-      </View>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>{l}</Text>;
+      })}
     </View>
   );
-};
+});
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SPARKLINE
-   ═══════════════════════════════════════════════════════════════════════════ */
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = React.memo<any>(({ children, onPress, disabled, style, activeScale = 0.96 }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={() => { if (!disabled) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onPress?.(); } }}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
 
-const Sparkline = ({
-  data,
-  color,
-  width = 60,
-  height = 20,
-}: {
-  data: number[];
-  color: string;
-  width?: number;
-  height?: number;
+const GlassCard = React.memo(({ children, style, isDark, delay = 0, onPress }: any) => {
+  const Wrapper = onPress ? PressableScale : View;
+  const wrapperProps = onPress ? { onPress } : {};
+  return (
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }, style]}>
+      <Wrapper {...wrapperProps}>
+        <LinearGradient
+          colors={isDark ? ['rgba(255,255,255,0.02)', 'transparent'] : ['rgba(255,255,255,0.4)', 'transparent']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        />
+        {children}
+      </Wrapper>
+    </Animated.View>
+  );
+});
+
+const SectionHeader = React.memo(({ title, subtitle, icon, color = DS.primary, action, actionLabel }: any) => (
+  <View style={styles.sectionHeader}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+      {icon && <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}><Ionicons name={icon} size={15} color={color} /></View>}
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <Text style={[styles.sectionAction, { color }]}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={13} color={color} />
+      </TouchableOpacity>
+    )}
+  </View>
+));
+
+/* ─── AI Pulse Capsule ─── */
+const AIPulse = React.memo<any>(({
+  isDark, baby, stats, onExport, onRefresh,
 }) => {
-  if (!data || data.length < 2) return null;
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 9000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.8, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, []);
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
 
+  const scoreColor = stats.healthScore >= 80 ? DS.success : stats.healthScore >= 60 ? DS.warning : stats.healthScore >= 40 ? '#fb923c' : DS.danger;
+  const scoreLabel = stats.healthScore >= 80 ? 'Excellent' : stats.healthScore >= 60 ? 'Good' : stats.healthScore >= 40 ? 'Fair' : 'Learning';
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View style={[styles.capsule, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient
+          colors={isDark
+            ? ['rgba(99,102,241,0.20)', 'rgba(236,72,153,0.10)', 'rgba(139,92,246,0.05)']
+            : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        />
+        <LinearGradient colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']}
+          style={styles.capsuleGlowL} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} pointerEvents="none" />
+        <LinearGradient colors={[`${DS.accent}${isDark ? '35' : '22'}`, 'transparent']}
+          style={styles.capsuleGlowR} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} pointerEvents="none" />
+
+        <View style={styles.capsuleRow}>
+          <View style={styles.avatarWrap}>
+            <Animated.View style={[styles.avatarGlow, { backgroundColor: `${DS.primary}35` }, glowStyle]} />
+            <Animated.View style={[styles.avatarRing, ringStyle]}>
+              <LinearGradient colors={[DS.primary, DS.accent, DS.warning, DS.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+            </Animated.View>
+            <View style={[styles.avatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+              <Text style={{ fontSize: 32 }}>🧠</Text>
+            </View>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={[styles.capsuleName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                AI Learning
+              </Text>
+              <View style={[styles.livePill, { backgroundColor: `${scoreColor}18` }]}>
+                <View style={[styles.liveDot, { backgroundColor: scoreColor }]} />
+                <Text style={[styles.liveText, { color: scoreColor }]}>{scoreLabel}</Text>
+              </View>
+            </View>
+            <Text style={[styles.capsuleSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+              {baby?.name || 'Baby'} · {stats.totalSamples} samples observed
+            </Text>
+            <View style={styles.capsuleStats}>
+              <View style={styles.capsuleStatItem}>
+                <Text style={[styles.capsuleStatValue, { color: DS.success }]}>{stats.learnedCount}</Text>
+                <Text style={[styles.capsuleStatLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>learned</Text>
+              </View>
+              <View style={[styles.capsuleStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+              <View style={styles.capsuleStatItem}>
+                <Text style={[styles.capsuleStatValue, { color: DS.warning }]}>{stats.partialCount}</Text>
+                <Text style={[styles.capsuleStatLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>learning</Text>
+              </View>
+              <View style={[styles.capsuleStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+              <View style={styles.capsuleStatItem}>
+                <Text style={[styles.capsuleStatValue, { color: DS.gray400 }]}>{stats.notStarted}</Text>
+                <Text style={[styles.capsuleStatLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>pending</Text>
+              </View>
+            </View>
+          </View>
+
+          <PressableScale onPress={onExport} activeScale={0.9}>
+            <View style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+              <Ionicons name="share-outline" size={18} color={DS.primary} />
+            </View>
+          </PressableScale>
+        </View>
+
+        {/* Score strip */}
+        <View style={[styles.scoreStrip, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' }]}>
+          <View style={styles.scoreRingWrap}>
+            <View style={[styles.scoreRingBg, { borderColor: `${scoreColor}20` }]} />
+            <View style={[styles.scoreRingFill, { borderColor: scoreColor, transform: [{ rotate: `${-45 + (stats.healthScore / 100) * 360}deg` }] }]} />
+            <Text style={[styles.scoreRingValue, { color: scoreColor }]}>{stats.healthScore}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.scoreLabel, { color: isDark ? DS.white : DS.gray900 }]}>AI Health Score</Text>
+            <Text style={[styles.scoreSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+              {stats.totalSamples < 20 ? 'Keep logging to improve accuracy'
+                : stats.totalSamples < 100 ? `${stats.totalSamples} samples learned`
+                : `Personalized from ${stats.totalSamples} samples`}
+            </Text>
+          </View>
+          <View style={[styles.confidenceBadge, { backgroundColor: `${scoreColor}15` }]}>
+            <Text style={[styles.confidenceText, { color: scoreColor }]}>{Math.round(stats.avgConfidence * 100)}%</Text>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ─── Contextual Ribbon ─── */
+const InsightRibbon = React.memo<any>(({ isDark, icon, color, label, text, onPress }) => (
+  <Animated.View entering={FadeInUp.delay(80).springify()}>
+    <PressableScale onPress={onPress} activeScale={0.98} disabled={!onPress}>
+      <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={15} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+          <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={2}>{text}</Text>
+        </View>
+        {onPress && <Ionicons name="chevron-forward" size={15} color={isDark ? DS.gray500 : DS.gray400} />}
+      </View>
+    </PressableScale>
+  </Animated.View>
+));
+
+/* ─── Sparkline ─── */
+const Sparkline = ({ data, color, width = 50, height = 18 }: any) => {
+  if (!data || data.length < 2) return null;
   const maxVal = Math.max(...data, 0.1);
   const minVal = Math.min(...data);
   const range = maxVal - minVal || 1;
   const padding = 2;
   const chartW = width - padding * 2;
   const chartH = height - padding * 2;
-
   const points = data.map((v, i) => ({
     x: padding + (i / (data.length - 1)) * chartW,
     y: padding + chartH - ((v - minVal) / range) * chartH,
   }));
-
   return (
     <View style={{ width, height }}>
       {points.map((pt, i) => {
@@ -435,348 +393,229 @@ const Sparkline = ({
           <View
             key={i}
             style={{
-              position: 'absolute',
-              left: prev.x,
-              top: prev.y,
-              width: len,
-              height: 2,
-              backgroundColor: color,
-              transform: [
-                { translateX: 0 },
-                { translateY: -1 },
-                { rotate: `${angle}deg` },
-              ],
-              transformOrigin: '0% 50%',
-              borderRadius: 1,
-              opacity: 0.7,
+              position: 'absolute', left: prev.x, top: prev.y,
+              width: len, height: 2, backgroundColor: color,
+              transform: [{ translateY: -1 }, { rotate: `${angle}deg` }],
+              transformOrigin: '0% 50%', borderRadius: 1, opacity: 0.7,
             }}
           />
         );
       })}
       {points.map((pt, i) => (
-        <View
-          key={`pt-${i}`}
-          style={{
-            position: 'absolute',
-            left: pt.x - 2,
-            top: pt.y - 2,
-            width: 4,
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: color,
-            borderWidth: 1,
-            borderColor: AURA.white,
-          }}
-        />
+        <View key={`pt-${i}`} style={{
+          position: 'absolute', left: pt.x - 2, top: pt.y - 2,
+          width: 4, height: 4, borderRadius: 2,
+          backgroundColor: color, borderWidth: 1, borderColor: DS.white,
+        }} />
       ))}
     </View>
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   HEALTH SCORE RING — Aura
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ─── Filter Chip ─── */
+const FilterChip = React.memo(({ label, count, active, isDark, onPress }: any) => (
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={0.85}
+    style={[styles.filterChip, {
+      backgroundColor: active ? DS.primary : (isDark ? DS.darkCard : DS.white),
+      borderColor: active ? DS.primary : (isDark ? DS.darkBorder : DS.gray200),
+    }]}
+  >
+    <Text style={[styles.filterChipText, { color: active ? DS.white : (isDark ? DS.gray300 : DS.gray700) }, active && { fontWeight: '700' }]}>
+      {label}
+    </Text>
+    <View style={[styles.filterChipCount, { backgroundColor: active ? 'rgba(255,255,255,0.25)' : `${DS.primary}15` }]}>
+      <Text style={[styles.filterChipCountText, { color: active ? DS.white : DS.primary }]}>{count}</Text>
+    </View>
+  </TouchableOpacity>
+));
 
-const HealthScoreRing = ({
-  score,
-  size = 100,
-  strokeWidth = 8,
-}: {
-  score: number;
-  size?: number;
-  strokeWidth?: number;
-}) => {
-  const { fullThemeColors } = useCustomization();
+/* ─── Metric Row ─── */
+const MetricRow = React.memo<any>(({ row, index, isDark, cohortInfo, onPress }) => {
+  const meta = METRIC_META[row.metric];
+  const samples = row.range?.samples || 0;
+  const confidence = Math.round((row.range?.confidence || 0) * 100);
 
-  const scoreColor =
-    score >= 80 ? AURA.success : score >= 60 ? AURA.warning : score >= 40 ? '#fb923c' : AURA.danger;
-  const scoreLabel =
-    score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Fair' : 'Learning';
+  let statusColor = DS.gray400;
+  let statusLabel = 'Not started';
+  let statusIcon = 'ellipse-outline';
+  if (samples >= LEARNED_THRESHOLD) { statusColor = DS.success; statusLabel = 'Learned'; statusIcon = 'checkmark-circle'; }
+  else if (samples >= PARTIAL_THRESHOLD) { statusColor = DS.warning; statusLabel = 'Learning'; statusIcon = 'hourglass'; }
+
+  const progress = Math.min(100, (samples / LEARNED_THRESHOLD) * 100);
+  const sparkData = samples >= PARTIAL_THRESHOLD
+    ? [row.range.lower95, row.range.mean - row.range.stddev * 0.5, row.range.mean, row.range.mean + row.range.stddev * 0.5, row.range.upper95]
+    : [];
 
   return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <View
-        style={{
-          position: 'absolute',
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: strokeWidth,
-          borderColor: `${scoreColor}20`,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: strokeWidth,
-          borderColor: scoreColor,
-          borderTopColor: 'transparent',
-          borderRightColor: 'transparent',
-          transform: [{ rotate: `${-45 + (score / 100) * 360}deg` }],
-        }}
-      />
-      <View style={{ alignItems: 'center' }}>
-        <Text style={{ fontSize: 24, fontWeight: '800', color: scoreColor }}>{score}</Text>
-        <Text
-          style={{
-            fontSize: 10,
-            fontWeight: '600',
-            color: fullThemeColors.textSecondary,
-            marginTop: 2,
-          }}
-        >
-          {scoreLabel}
-        </Text>
-      </View>
-    </View>
+    <Animated.View entering={FadeInUp.delay(Math.min(index, 8) * 40).springify()}>
+      <PressableScale onPress={onPress} activeScale={0.98}>
+        <View style={[styles.metricCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.md }}>
+            <View style={[styles.metricIcon, { backgroundColor: `${meta.color}15` }]}>
+              <Text style={{ fontSize: 20 }}>{meta.emoji}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.metricLabel, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{meta.label}</Text>
+              <Text style={[styles.metricMeta, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                {samples} sample{samples === 1 ? '' : 's'} · {confidence}% confidence
+              </Text>
+            </View>
+
+            {sparkData.length >= 2 && (
+              <Sparkline data={sparkData} color={meta.color} width={46} height={18} />
+            )}
+
+            <View style={[styles.statusPill, { backgroundColor: `${statusColor}15` }]}>
+              <Ionicons name={statusIcon as any} size={10} color={statusColor} />
+              <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={isDark ? DS.gray500 : DS.gray400} />
+          </View>
+
+          {samples >= PARTIAL_THRESHOLD && row.range && (
+            <View style={[styles.rangeBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : `${meta.color}06` }]}>
+              <View style={styles.rangeItem}>
+                <Text style={[styles.rangeLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>Mean</Text>
+                <Text style={[styles.rangeValue, { color: isDark ? DS.gray200 : DS.gray800 }]}>
+                  {meta.format(row.range.mean)} {meta.unit}
+                </Text>
+              </View>
+              <View style={[styles.rangeDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+              <View style={styles.rangeItem}>
+                <Text style={[styles.rangeLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>95% Range</Text>
+                <Text style={[styles.rangeValue, { color: isDark ? DS.gray200 : DS.gray800 }]}>
+                  {meta.format(row.range.lower95)} – {meta.format(row.range.upper95)}
+                </Text>
+              </View>
+              {cohortInfo && cohortInfo.contributorCount > 0 && (
+                <>
+                  <View style={[styles.rangeDivider, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+                  <View style={styles.rangeItem}>
+                    <Text style={[styles.rangeLabel, { color: DS.secondary }]}>Cohort</Text>
+                    <Text style={[styles.rangeValue, { color: DS.secondary }]}>
+                      {cohortInfo.contributorCount} users
+                    </Text>
+                  </View>
+                </>
+              )}
+            </View>
+          )}
+
+          <View style={[styles.progressTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : `${statusColor}12` }]}>
+            <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: statusColor }]} />
+          </View>
+        </View>
+      </PressableScale>
+    </Animated.View>
   );
-};
+});
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   METRIC DETAIL MODAL — Aura
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const MetricDetailModal = ({
-  visible,
-  metric,
-  range,
-  cohortInfo,
-  onClose,
-}: {
-  visible: boolean;
-  metric: MetricKey | null;
-  range: LearnedRange | null;
-  cohortInfo: CohortInfo | null;
-  onClose: () => void;
-}) => {
-  const { fullThemeColors, isDark, borderRadiusValue, fontSizeMultiplier } =
-    useCustomization();
+/* ─── Metric Detail Modal ─── */
+const MetricDetailModal = ({ visible, metric, range, cohortInfo, onClose, isDark }: any) => {
   const scale = useSharedValue(0.9);
   const opacity = useSharedValue(0);
-
   useEffect(() => {
-    if (visible) {
-      scale.value = withSpring(1, SPRING_CONFIG);
-      opacity.value = withTiming(1, { duration: 250 });
-    } else {
-      scale.value = withTiming(0.9, { duration: 200 });
-      opacity.value = withTiming(0, { duration: 200 });
-    }
-  }, [visible, scale, opacity]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
+    if (visible) { scale.value = withSpring(1, SPRING_CONFIG); opacity.value = withTiming(1, { duration: 250 }); }
+    else { scale.value = withTiming(0.9, { duration: 200 }); opacity.value = withTiming(0, { duration: 200 }); }
+  }, [visible]);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
 
   if (!metric || !range) return null;
-
   const meta = METRIC_META[metric];
   const samples = range.samples || 0;
   const confidence = Math.round((range.confidence || 0) * 100);
   const isLearned = samples >= LEARNED_THRESHOLD;
   const isPartial = samples >= PARTIAL_THRESHOLD && samples < LEARNED_THRESHOLD;
-
-  const statusColor = isLearned ? AURA.success : isPartial ? AURA.warning : AURA.gray400;
+  const statusColor = isLearned ? DS.success : isPartial ? DS.warning : DS.gray400;
   const statusLabel = isLearned ? 'Fully Learned' : isPartial ? 'Learning' : 'Not Started';
-  const statusIcon = isLearned
-    ? 'checkmark-circle'
-    : isPartial
-    ? 'hourglass'
-    : 'ellipse-outline';
+  const statusIcon = isLearned ? 'checkmark-circle' : isPartial ? 'hourglass' : 'ellipse-outline';
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <Pressable
-        style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
-        onPress={onClose}
-      >
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
         <Animated.View
-          style={[
-            styles.modalContent,
-            animStyle,
-            {
-              borderRadius: borderRadiusValue * 2,
-              backgroundColor: fullThemeColors.surface,
-            },
-          ]}
+          style={[styles.modalCard, animStyle, { backgroundColor: isDark ? DS.darkCard : DS.white }]}
           onStartShouldSetResponder={() => true}
-          onTouchEnd={e => e.stopPropagation()}
         >
-          <LinearGradient
-            colors={meta.gradient}
-            style={[styles.modalHeader, { borderTopLeftRadius: borderRadiusValue * 2, borderTopRightRadius: borderRadiusValue * 2 }]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
+          <LinearGradient colors={meta.gradient} style={styles.modalHeader}>
             <Text style={styles.modalEmoji}>{meta.emoji}</Text>
             <Text style={styles.modalTitle}>{meta.label}</Text>
             <View style={[styles.modalStatusBadge, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
-              <Ionicons name={statusIcon as any} size={14} color={AURA.white} />
+              <Ionicons name={statusIcon as any} size={12} color={DS.white} />
               <Text style={styles.modalStatusText}>{statusLabel}</Text>
             </View>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
-              <Ionicons name="close" size={24} color={AURA.white} />
+              <Ionicons name="close" size={22} color={DS.white} />
             </TouchableOpacity>
           </LinearGradient>
 
-          <ScrollView
-            style={styles.modalBody}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 24 }}
-          >
-            <Text style={[styles.modalDescription, { color: fullThemeColors.textSecondary }]}>
+          <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+            <Text style={[styles.modalDescription, { color: isDark ? DS.gray400 : DS.gray500 }]}>
               {meta.description}
             </Text>
 
             <View style={styles.modalSection}>
-              <Text style={[styles.modalSectionTitle, { color: fullThemeColors.textSecondary }]}>
-                LEARNING PROGRESS
-              </Text>
+              <Text style={[styles.modalSectionTitle, { color: isDark ? DS.gray500 : DS.gray400 }]}>LEARNING PROGRESS</Text>
               <View style={[styles.modalProgressTrack, { backgroundColor: `${statusColor}15` }]}>
-                <View
-                  style={[
-                    styles.modalProgressFill,
-                    {
-                      width: `${Math.min(100, (samples / LEARNED_THRESHOLD) * 100)}%`,
-                      backgroundColor: statusColor,
-                    },
-                  ]}
-                />
+                <View style={[styles.modalProgressFill, { width: `${Math.min(100, (samples / LEARNED_THRESHOLD) * 100)}%`, backgroundColor: statusColor }]} />
               </View>
               <View style={styles.modalProgressLabels}>
-                <Text style={[styles.modalProgressText, { color: fullThemeColors.textSecondary }]}>
-                  {samples} / {LEARNED_THRESHOLD} samples
-                </Text>
-                <Text style={[styles.modalProgressPercent, { color: statusColor }]}>
-                  {confidence}% confidence
-                </Text>
+                <Text style={[styles.modalProgressText, { color: isDark ? DS.gray400 : DS.gray500 }]}>{samples} / {LEARNED_THRESHOLD} samples</Text>
+                <Text style={[styles.modalProgressPercent, { color: statusColor }]}>{confidence}% confidence</Text>
               </View>
             </View>
 
             {samples >= PARTIAL_THRESHOLD && (
               <View style={styles.modalSection}>
-                <Text style={[styles.modalSectionTitle, { color: fullThemeColors.textSecondary }]}>
-                  LEARNED STATISTICS
-                </Text>
+                <Text style={[styles.modalSectionTitle, { color: isDark ? DS.gray500 : DS.gray400 }]}>LEARNED STATISTICS</Text>
                 <View style={styles.modalStatsGrid}>
-                  <View
-                    style={[
-                      styles.modalStatCard,
-                      { backgroundColor: `${meta.color}08`, borderRadius: borderRadiusValue },
-                    ]}
-                  >
-                    <Text style={[styles.modalStatLabel, { color: fullThemeColors.textSecondary }]}>
-                      Mean
-                    </Text>
-                    <Text style={[styles.modalStatValue, { color: fullThemeColors.text }]}>
-                      {meta.format(range.mean)} {meta.unit}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.modalStatCard,
-                      { backgroundColor: `${meta.color}08`, borderRadius: borderRadiusValue },
-                    ]}
-                  >
-                    <Text style={[styles.modalStatLabel, { color: fullThemeColors.textSecondary }]}>
-                      Std Dev
-                    </Text>
-                    <Text style={[styles.modalStatValue, { color: fullThemeColors.text }]}>
-                      ± {meta.format(range.stddev)} {meta.unit}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.modalStatCard,
-                      { backgroundColor: `${meta.color}08`, borderRadius: borderRadiusValue },
-                    ]}
-                  >
-                    <Text style={[styles.modalStatLabel, { color: fullThemeColors.textSecondary }]}>
-                      Lower 95%
-                    </Text>
-                    <Text style={[styles.modalStatValue, { color: fullThemeColors.text }]}>
-                      {meta.format(range.lower95)} {meta.unit}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.modalStatCard,
-                      { backgroundColor: `${meta.color}08`, borderRadius: borderRadiusValue },
-                    ]}
-                  >
-                    <Text style={[styles.modalStatLabel, { color: fullThemeColors.textSecondary }]}>
-                      Upper 95%
-                    </Text>
-                    <Text style={[styles.modalStatValue, { color: fullThemeColors.text }]}>
-                      {meta.format(range.upper95)} {meta.unit}
-                    </Text>
-                  </View>
+                  {[
+                    { label: 'Mean', value: `${meta.format(range.mean)} ${meta.unit}` },
+                    { label: 'Std Dev', value: `± ${meta.format(range.stddev)} ${meta.unit}` },
+                    { label: 'Lower 95%', value: `${meta.format(range.lower95)} ${meta.unit}` },
+                    { label: 'Upper 95%', value: `${meta.format(range.upper95)} ${meta.unit}` },
+                  ].map((stat, i) => (
+                    <View key={i} style={[styles.modalStatCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : `${meta.color}08` }]}>
+                      <Text style={[styles.modalStatLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>{stat.label}</Text>
+                      <Text style={[styles.modalStatValue, { color: isDark ? DS.gray200 : DS.gray900 }]}>{stat.value}</Text>
+                    </View>
+                  ))}
                 </View>
               </View>
             )}
 
             {cohortInfo && cohortInfo.contributorCount > 0 && (
               <View style={styles.modalSection}>
-                <Text style={[styles.modalSectionTitle, { color: fullThemeColors.textSecondary }]}>
-                  COHORT BENCHMARK
-                </Text>
-                <View
-                  style={[
-                    styles.modalCohortCard,
-                    { backgroundColor: `${AURA.secondary}08`, borderRadius: borderRadiusValue },
-                  ]}
-                >
-                  <View style={styles.modalCohortRow}>
-                    <Ionicons name="people" size={16} color={AURA.secondary} />
-                    <Text style={[styles.modalCohortText, { color: fullThemeColors.text }]}>
-                      {cohortInfo.contributorCount} contributor
-                      {cohortInfo.contributorCount !== 1 ? 's' : ''}
-                    </Text>
-                  </View>
-                  <View style={styles.modalCohortRow}>
-                    <Ionicons name="analytics" size={16} color={AURA.secondary} />
-                    <Text style={[styles.modalCohortText, { color: fullThemeColors.text }]}>
-                      {cohortInfo.sampleCount} total samples
-                    </Text>
-                  </View>
-                  <View style={styles.modalCohortRow}>
-                    <Ionicons name="stats-chart" size={16} color={AURA.secondary} />
-                    <Text style={[styles.modalCohortText, { color: fullThemeColors.text }]}>
-                      Cohort mean: {meta.format(cohortInfo.mu)} {meta.unit}
-                    </Text>
-                  </View>
+                <Text style={[styles.modalSectionTitle, { color: isDark ? DS.gray500 : DS.gray400 }]}>COHORT BENCHMARK</Text>
+                <View style={[styles.modalCohortCard, { backgroundColor: isDark ? 'rgba(139,92,246,0.08)' : `${DS.secondary}08` }]}>
+                  {[
+                    { icon: 'people' as const, text: `${cohortInfo.contributorCount} contributor${cohortInfo.contributorCount !== 1 ? 's' : ''}` },
+                    { icon: 'analytics' as const, text: `${cohortInfo.sampleCount} total samples` },
+                    { icon: 'stats-chart' as const, text: `Cohort mean: ${meta.format(cohortInfo.mu)} ${meta.unit}` },
+                  ].map((row, i) => (
+                    <View key={i} style={styles.modalCohortRow}>
+                      <Ionicons name={row.icon} size={14} color={DS.secondary} />
+                      <Text style={[styles.modalCohortText, { color: isDark ? DS.gray300 : DS.gray700 }]}>{row.text}</Text>
+                    </View>
+                  ))}
                 </View>
               </View>
             )}
 
             <View style={styles.modalSection}>
-              <Text style={[styles.modalSectionTitle, { color: fullThemeColors.textSecondary }]}>
-                HOW IT WORKS
-              </Text>
-              <View style={styles.modalExplainer}>
-                <View style={styles.modalExplainerRow}>
+              <Text style={[styles.modalSectionTitle, { color: isDark ? DS.gray500 : DS.gray400 }]}>HOW IT WORKS</Text>
+              {[
+                `Every time you log ${meta.label.toLowerCase()}, the AI observes the value`,
+                `It updates a Bayesian posterior — narrowing the "normal" range for your baby`,
+                `After ${LEARNED_THRESHOLD}+ samples, anomalies can be flagged with high confidence`,
+              ].map((text, i) => (
+                <View key={i} style={styles.modalExplainerRow}>
                   <View style={[styles.modalExplainerDot, { backgroundColor: meta.color }]} />
-                  <Text style={[styles.modalExplainerText, { color: fullThemeColors.textSecondary }]}>
-                    Every time you log {meta.label.toLowerCase()}, the AI observes the value
-                  </Text>
+                  <Text style={[styles.modalExplainerText, { color: isDark ? DS.gray400 : DS.gray500 }]}>{text}</Text>
                 </View>
-                <View style={styles.modalExplainerRow}>
-                  <View style={[styles.modalExplainerDot, { backgroundColor: meta.color }]} />
-                  <Text style={[styles.modalExplainerText, { color: fullThemeColors.textSecondary }]}>
-                    It updates a Bayesian posterior — narrowing the "normal" range for your baby
-                  </Text>
-                </View>
-                <View style={styles.modalExplainerRow}>
-                  <View style={[styles.modalExplainerDot, { backgroundColor: meta.color }]} />
-                  <Text style={[styles.modalExplainerText, { color: fullThemeColors.textSecondary }]}>
-                    After {LEARNED_THRESHOLD}+ samples, anomalies can be flagged with high confidence
-                  </Text>
-                </View>
-              </View>
+              ))}
             </View>
           </ScrollView>
         </Animated.View>
@@ -794,19 +633,9 @@ export default function AIManagementScreen() {
   const navigation = useNavigation<ScreenNavigationProp>();
   const { currentBaby } = useBaby();
   const { userProfile } = useAuth();
-  const {
-    fullThemeColors,
-    themeColors,
-    isDark,
-    borderRadiusValue,
-    fontSizeMultiplier,
-    triggerHaptic,
-  } = useCustomization();
+  const { fullThemeColors, themeColors, isDark, triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
 
-  const primary = themeColors?.primary || AURA.primary;
-
-  /* ─── State ─────────────────────────────────────────────────────── */
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
   const [collaborativeEnabled, setCollaborativeEnabled] = useState(false);
   const [cohortBlocked, setCohortBlocked] = useState(false);
@@ -819,48 +648,29 @@ export default function AIManagementScreen() {
   const [selectedMetric, setSelectedMetric] = useState<MetricKey | null>(null);
   const [selectedRange, setSelectedRange] = useState<LearnedRange | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
-  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterCategory, setFilterCategory] = useState<FilterCategory>('all');
 
-  /* ─── Scroll animation ──────────────────────────────────────────── */
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: e => {
-      'worklet';
-      scrollY.value = e.contentOffset.y;
-    },
+    onScroll: e => { 'worklet'; scrollY.value = e.contentOffset.y; },
   });
-
   const headerOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
   }));
-
-  /* ─── Data loading ──────────────────────────────────────────────── */
 
   const loadMetrics = useCallback(async () => {
     if (!currentBaby?.id) return;
-
     try {
       const ranges = await getAllLearnedRanges(currentBaby.id, ALL_METRICS);
-
-      const rows: MetricRow[] = ALL_METRICS.map((metric, i) => ({
-        metric,
-        range: ranges[i],
-      }));
-
-      setMetrics(rows);
-    } catch (e) {
-      if (__DEV__) console.warn('[AIManagement] loadMetrics failed:', e);
-    }
+      setMetrics(ALL_METRICS.map((metric, i) => ({ metric, range: ranges[i] })));
+    } catch (e) { if (__DEV__) console.warn('[AIManagement] loadMetrics failed:', e); }
   }, [currentBaby?.id]);
 
   const loadCohortInfo = useCallback(async () => {
     if (!currentBaby?.birthDate) return;
-
     try {
       const cohort = ageToCohort(currentBaby.birthDate);
       const infoMap: Record<string, CohortInfo> = {};
-
       for (const row of metrics) {
         if ((row.range?.samples || 0) >= PARTIAL_THRESHOLD) {
           try {
@@ -876,20 +686,15 @@ export default function AIManagementScreen() {
           } catch {}
         }
       }
-
       setCohortInfoMap(infoMap);
-    } catch (e) {
-      if (__DEV__) console.warn('[AIManagement] loadCohortInfo failed:', e);
-    }
+    } catch (e) { if (__DEV__) console.warn('[AIManagement] loadCohortInfo failed:', e); }
   }, [currentBaby?.birthDate, metrics]);
 
   const loadSettings = useCallback(async () => {
     try {
       const [collab, blocked] = await Promise.all([
         isCollaborativeLearningEnabled(),
-        currentBaby?.id
-          ? isCohortContributionBlocked(currentBaby.id)
-          : Promise.resolve(false),
+        currentBaby?.id ? isCohortContributionBlocked(currentBaby.id) : Promise.resolve(false),
       ]);
       setCollaborativeEnabled(collab);
       setCohortBlocked(blocked);
@@ -902,15 +707,8 @@ export default function AIManagementScreen() {
     setLoading(false);
   }, [loadMetrics, loadSettings]);
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
-
-  useEffect(() => {
-    if (metrics.length > 0) {
-      loadCohortInfo();
-    }
-  }, [metrics.length, loadCohortInfo]);
+  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => { if (metrics.length > 0) loadCohortInfo(); }, [metrics.length, loadCohortInfo]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -918,771 +716,370 @@ export default function AIManagementScreen() {
     setRefreshing(false);
   }, [loadAll]);
 
-  /* ─── Handlers ──────────────────────────────────────────────────── */
-
-  const handleMetricPress = useCallback(
-    (metric: MetricKey) => {
-      triggerHaptic('light');
-      const row = metrics.find(m => m.metric === metric);
-      if (row) {
-        setSelectedMetric(metric);
-        setSelectedRange(row.range);
-        setDetailModalVisible(true);
-      }
-    },
-    [metrics, triggerHaptic]
-  );
+  const handleMetricPress = useCallback((metric: MetricKey) => {
+    triggerHaptic('light');
+    const row = metrics.find(m => m.metric === metric);
+    if (row) {
+      setSelectedMetric(metric);
+      setSelectedRange(row.range);
+      setDetailModalVisible(true);
+    }
+  }, [metrics, triggerHaptic]);
 
   const handleResetLearning = useCallback(() => {
     if (!currentBaby?.id) return;
-
-    Alert.alert(
+    sweetAlert.confirm(
       'Reset AI Learning?',
-      `This will erase all personalized learning for ${currentBaby.name}. The AI will start fresh with population priors. This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            setResetting(true);
-            try {
-              await resetLearningForBaby(currentBaby.id);
-              triggerHaptic('success');
-              await loadAll();
-              sweetAlert.success('Learning Reset', 'AI learning has been reset for this baby.');
-            } catch (e) {
-              sweetAlert.error('Error', 'Failed to reset learning.');
-            } finally {
-              setResetting(false);
-            }
-          },
-        },
-      ]
+      `This will erase all personalized learning for ${currentBaby.name}. The AI will start fresh with population priors.`,
+      async () => {
+        setResetting(true);
+        try {
+          await resetLearningForBaby(currentBaby.id);
+          triggerHaptic('success');
+          await loadAll();
+          sweetAlert.success('Learning Reset', 'AI learning has been reset.');
+        } catch { sweetAlert.error('Error', 'Failed to reset learning.'); }
+        finally { setResetting(false); }
+      },
+      () => {},
+      'Reset',
+      'Cancel'
     );
   }, [currentBaby, loadAll, triggerHaptic, sweetAlert]);
 
   const handleEraseCohort = useCallback(() => {
-    if (!currentBaby?.id || !userProfile?.id) {
-      sweetAlert.warning('No Baby Selected', 'Select a baby profile first.');
-      return;
-    }
-
-    Alert.alert(
+    if (!currentBaby?.id || !userProfile?.id) { sweetAlert.warning('No Baby Selected', 'Select a baby first.'); return; }
+    sweetAlert.confirm(
       'Erase Cohort Contributions?',
-      'This removes your local AI caches and prevents future contributions to the shared cohort pool. Already-aggregated priors cannot be reversed.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Erase',
-          style: 'destructive',
-          onPress: async () => {
-            setErasing(true);
-            try {
-              const res = await deleteCohortContributions(currentBaby.id, userProfile.id);
-              if (res.success) {
-                triggerHaptic('success');
-                await loadSettings();
-                sweetAlert.success('Erased', res.message);
-              } else {
-                sweetAlert.error('Error', res.message);
-              }
-            } catch (e) {
-              sweetAlert.error('Error', 'Failed to erase contributions.');
-            } finally {
-              setErasing(false);
-            }
-          },
-        },
-      ]
+      'This removes your local AI caches and prevents future contributions to the shared cohort pool.',
+      async () => {
+        setErasing(true);
+        try {
+          const res = await deleteCohortContributions(currentBaby.id, userProfile.id);
+          if (res.success) { triggerHaptic('success'); await loadSettings(); sweetAlert.success('Erased', res.message); }
+          else sweetAlert.error('Error', res.message);
+        } catch { sweetAlert.error('Error', 'Failed to erase contributions.'); }
+        finally { setErasing(false); }
+      },
+      () => {},
+      'Erase',
+      'Cancel'
     );
   }, [currentBaby, userProfile, loadSettings, triggerHaptic, sweetAlert]);
 
   const handleUnblockCohort = useCallback(async () => {
-    if (!currentBaby?.id || !userProfile?.id) {
-      sweetAlert.warning('No Baby Selected', 'Select a baby profile first.');
-      return;
-    }
-
-    Alert.alert(
+    if (!currentBaby?.id || !userProfile?.id) { sweetAlert.warning('No Baby Selected', 'Select a baby first.'); return; }
+    sweetAlert.confirm(
       'Unblock Cohort Contributions?',
-      'This will re-enable sharing of anonymized statistical patterns for this baby. Your past local caches will start rebuilding immediately.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unblock',
-          onPress: async () => {
-            setUnblocking(true);
-            try {
-              const res = await unblockCohortContributions(currentBaby.id, userProfile.id);
-              if (res.success) {
-                triggerHaptic('success');
-                await loadSettings();
-
-                try {
-                  const { bootstrapAI } = await import('../../services/ai/bootstrap');
-                  bootstrapAI(currentBaby.id, true).catch(() => {});
-                } catch {}
-
-                sweetAlert.success('Unblocked', res.message);
-              } else {
-                sweetAlert.error('Error', res.message);
-              }
-            } catch (e) {
-              sweetAlert.error('Error', 'Failed to unblock contributions.');
-            } finally {
-              setUnblocking(false);
-            }
-          },
-        },
-      ]
+      'This will re-enable sharing of anonymized statistical patterns for this baby.',
+      async () => {
+        setUnblocking(true);
+        try {
+          const res = await unblockCohortContributions(currentBaby.id, userProfile.id);
+          if (res.success) {
+            triggerHaptic('success');
+            await loadSettings();
+            try { const { bootstrapAI } = await import('../../services/ai/bootstrap'); bootstrapAI(currentBaby.id, true).catch(() => {}); } catch {}
+            sweetAlert.success('Unblocked', res.message);
+          } else sweetAlert.error('Error', res.message);
+        } catch { sweetAlert.error('Error', 'Failed to unblock.'); }
+        finally { setUnblocking(false); }
+      },
+      () => {},
+      'Unblock',
+      'Cancel'
     );
   }, [currentBaby, userProfile, loadSettings, triggerHaptic, sweetAlert]);
 
-  const handleToggleCollaborative = useCallback(
-    async (value: boolean) => {
-      try {
-        await setCollaborativeLearningEnabled(value);
-        setCollaborativeEnabled(value);
-        triggerHaptic(value ? 'success' : 'light');
-
-        if (value && currentBaby?.id) {
-          const { bootstrapAI } = await import('../../services/ai/bootstrap');
-          bootstrapAI(currentBaby.id, true).catch(() => {});
-        }
-      } catch (e) {
-        sweetAlert.error('Error', 'Could not update the setting.');
+  const handleToggleCollaborative = useCallback(async (value: boolean) => {
+    try {
+      await setCollaborativeLearningEnabled(value);
+      setCollaborativeEnabled(value);
+      triggerHaptic(value ? 'success' : 'light');
+      if (value && currentBaby?.id) {
+        const { bootstrapAI } = await import('../../services/ai/bootstrap');
+        bootstrapAI(currentBaby.id, true).catch(() => {});
       }
-    },
-    [currentBaby, triggerHaptic, sweetAlert]
-  );
+    } catch { sweetAlert.error('Error', 'Could not update the setting.'); }
+  }, [currentBaby, triggerHaptic, sweetAlert]);
 
   const handleExportLearning = useCallback(async () => {
     if (!currentBaby?.id) return;
-
     try {
       const exportData = {
-        babyId: currentBaby.id,
-        babyName: currentBaby.name,
+        babyId: currentBaby.id, babyName: currentBaby.name,
         exportedAt: new Date().toISOString(),
         metrics: metrics.map(row => ({
-          metric: row.metric,
-          label: METRIC_META[row.metric].label,
-          samples: row.range?.samples || 0,
-          confidence: row.range?.confidence || 0,
-          mean: row.range?.mean,
-          stddev: row.range?.stddev,
-          lower95: row.range?.lower95,
-          upper95: row.range?.upper95,
+          metric: row.metric, label: METRIC_META[row.metric].label,
+          samples: row.range?.samples || 0, confidence: row.range?.confidence || 0,
+          mean: row.range?.mean, stddev: row.range?.stddev,
+          lower95: row.range?.lower95, upper95: row.range?.upper95,
         })),
-        collaborativeEnabled,
-        cohortBlocked,
+        collaborativeEnabled, cohortBlocked,
       };
-
-      const jsonString = JSON.stringify(exportData, null, 2);
-
-      await Share.share({
-        message: jsonString,
-        title: `${currentBaby.name} - AI Learning Data`,
-      });
-
+      await Share.share({ message: JSON.stringify(exportData, null, 2), title: `${currentBaby.name} - AI Learning Data` });
       triggerHaptic('success');
-    } catch (e) {
-      if (__DEV__) console.warn('[AIManagement] Export failed:', e);
-    }
+    } catch (e) { if (__DEV__) console.warn('[AIManagement] Export failed:', e); }
   }, [currentBaby, metrics, collaborativeEnabled, cohortBlocked, triggerHaptic]);
-
-  /* ─── Derived stats ─────────────────────────────────────────────── */
 
   const stats = useMemo(() => {
     const totalSamples = metrics.reduce((sum, r) => sum + (r.range?.samples || 0), 0);
-    const learnedCount = metrics.filter(
-      r => (r.range?.samples || 0) >= LEARNED_THRESHOLD
-    ).length;
-    const partialCount = metrics.filter(r => {
-      const n = r.range?.samples || 0;
-      return n >= PARTIAL_THRESHOLD && n < LEARNED_THRESHOLD;
-    }).length;
+    const learnedCount = metrics.filter(r => (r.range?.samples || 0) >= LEARNED_THRESHOLD).length;
+    const partialCount = metrics.filter(r => { const n = r.range?.samples || 0; return n >= PARTIAL_THRESHOLD && n < LEARNED_THRESHOLD; }).length;
     const notStarted = metrics.filter(r => (r.range?.samples || 0) < PARTIAL_THRESHOLD).length;
-    const avgConfidence =
-      metrics.length > 0
-        ? metrics.reduce((sum, r) => sum + (r.range?.confidence || 0), 0) / metrics.length
-        : 0;
-
+    const avgConfidence = metrics.length > 0 ? metrics.reduce((sum, r) => sum + (r.range?.confidence || 0), 0) / metrics.length : 0;
     const learningProgress = metrics.length > 0 ? (learnedCount / metrics.length) * 60 : 0;
     const confidenceScore = avgConfidence * 30;
     const sampleScore = Math.min(10, (totalSamples / 200) * 10);
     const healthScore = Math.round(learningProgress + confidenceScore + sampleScore);
-
-    return {
-      totalSamples,
-      learnedCount,
-      partialCount,
-      notStarted,
-      avgConfidence,
-      healthScore,
-    };
+    return { totalSamples, learnedCount, partialCount, notStarted, avgConfidence, healthScore };
   }, [metrics]);
 
-  /* ─── Filtered metrics ──────────────────────────────────────────── */
-
-  const categories = useMemo(() => {
-    const cats = new Set<string>();
-    metrics.forEach(m => cats.add(METRIC_META[m.metric].category));
+  const categories: FilterCategory[] = useMemo(() => {
+    const cats = new Set<FilterCategory>();
+    metrics.forEach(m => cats.add(METRIC_META[m.metric].category as FilterCategory));
     return ['all', ...Array.from(cats)];
   }, [metrics]);
 
   const filteredMetrics = useMemo(() => {
     if (filterCategory === 'all') return metrics;
-
-    return [...metrics]
-      .filter(m => METRIC_META[m.metric].category === filterCategory)
-      .sort((a, b) => {
-        const aSamples = a.range?.samples || 0;
-        const bSamples = b.range?.samples || 0;
-        return bSamples - aSamples;
-      });
+    return [...metrics].filter(m => METRIC_META[m.metric].category === filterCategory).sort((a, b) => (b.range?.samples || 0) - (a.range?.samples || 0));
   }, [metrics, filterCategory]);
 
-  /* ─── Metric row renderer ───────────────────────────────────────── */
-
-  const renderMetricRow = (row: MetricRow, index: number) => {
-    const meta = METRIC_META[row.metric];
-    const samples = row.range?.samples || 0;
-    const confidence = Math.round((row.range?.confidence || 0) * 100);
-
-    let status: 'learned' | 'learning' | 'not_started';
-    let statusColor: string;
-    let statusLabel: string;
-    let statusIcon: string;
-
-    if (samples >= LEARNED_THRESHOLD) {
-      status = 'learned';
-      statusColor = AURA.success;
-      statusLabel = 'Learned';
-      statusIcon = 'checkmark-circle';
-    } else if (samples >= PARTIAL_THRESHOLD) {
-      status = 'learning';
-      statusColor = AURA.warning;
-      statusLabel = 'Learning';
-      statusIcon = 'hourglass';
-    } else {
-      status = 'not_started';
-      statusColor = AURA.gray400;
-      statusLabel = 'Not started';
-      statusIcon = 'ellipse-outline';
-    }
-
-    const progress = Math.min(100, (samples / LEARNED_THRESHOLD) * 100);
-    const cohortInfo = cohortInfoMap[row.metric];
-
-    const sparkData = samples >= PARTIAL_THRESHOLD
-      ? [row.range.lower95, row.range.mean - row.range.stddev * 0.5, row.range.mean, row.range.mean + row.range.stddev * 0.5, row.range.upper95]
-      : [];
-
-    return (
-      <Animated.View
-        key={row.metric}
-        entering={FadeInUp.delay(index * 30)}
-      >
-        <GlassCard
-          onPress={() => handleMetricPress(row.metric)}
-          style={styles.metricCard}
-        >
-          <View style={styles.metricHeader}>
-            <View
-              style={[
-                styles.metricIconBg,
-                { backgroundColor: `${meta.color}15`, borderRadius: borderRadiusValue },
-              ]}
-            >
-              <Text style={styles.metricEmoji}>{meta.emoji}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.metricLabel,
-                  { color: fullThemeColors.text, fontSize: 15 * fontSizeMultiplier },
-                ]}
-              >
-                {meta.label}
-              </Text>
-              <Text
-                style={[
-                  styles.metricMeta,
-                  { color: fullThemeColors.textSecondary, fontSize: 11 * fontSizeMultiplier },
-                ]}
-              >
-                {samples} sample{samples === 1 ? '' : 's'} · {confidence}% confidence
-              </Text>
-            </View>
-
-            {sparkData.length >= 2 && (
-              <Sparkline data={sparkData} color={meta.color} width={50} height={18} />
-            )}
-
-            <View style={[styles.statusPill, { backgroundColor: `${statusColor}15` }]}>
-              <Ionicons name={statusIcon as any} size={12} color={statusColor} />
-              <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
-            </View>
-
-            <Ionicons
-              name="chevron-forward"
-              size={16}
-              color={fullThemeColors.textSecondary}
-            />
-          </View>
-
-          {samples >= PARTIAL_THRESHOLD && row.range && (
-            <View
-              style={[
-                styles.rangeBox,
-                { backgroundColor: `${meta.color}06`, borderRadius: borderRadiusValue / 1.5 },
-              ]}
-            >
-              <View style={styles.rangeItem}>
-                <Text style={[styles.rangeLabel, { color: fullThemeColors.textSecondary }]}>
-                  Mean
-                </Text>
-                <Text style={[styles.rangeValue, { color: fullThemeColors.text }]}>
-                  {meta.format(row.range.mean)} {meta.unit}
-                </Text>
-              </View>
-              <View style={styles.rangeDivider} />
-              <View style={styles.rangeItem}>
-                <Text style={[styles.rangeLabel, { color: fullThemeColors.textSecondary }]}>
-                  Range
-                </Text>
-                <Text style={[styles.rangeValue, { color: fullThemeColors.text }]}>
-                  {meta.format(row.range.lower95)} – {meta.format(row.range.upper95)}
-                </Text>
-              </View>
-              {cohortInfo && cohortInfo.contributorCount > 0 && (
-                <>
-                  <View style={styles.rangeDivider} />
-                  <View style={styles.rangeItem}>
-                    <Text style={[styles.rangeLabel, { color: AURA.secondary }]}>
-                      Cohort
-                    </Text>
-                    <Text style={[styles.rangeValue, { color: AURA.secondary }]}>
-                      {cohortInfo.contributorCount} users
-                    </Text>
-                  </View>
-                </>
-              )}
-            </View>
-          )}
-
-          <View style={[styles.progressTrack, { backgroundColor: `${statusColor}12` }]}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${progress}%`, backgroundColor: statusColor },
-              ]}
-            />
-          </View>
-        </GlassCard>
-      </Animated.View>
-    );
-  };
-
-  /* ─── Render ────────────────────────────────────────────────────── */
+  /* ─── Ribbon ─── */
+  const topRibbon = useMemo(() => {
+    if (cohortBlocked) return {
+      icon: 'ban-outline' as const, color: DS.danger, label: 'Contribution blocked',
+      text: 'GDPR erasure in effect — no cohort sharing. Tap to unblock',
+      onPress: handleUnblockCohort,
+    };
+    if (stats.healthScore >= 80) return {
+      icon: 'sparkles' as const, color: DS.success, label: 'Excellent',
+      text: `${stats.learnedCount}/${metrics.length} metrics learned — AI is sharp`,
+      onPress: undefined,
+    };
+    if (stats.learnedCount === 0) return {
+      icon: 'bulb-outline' as const, color: DS.primary, label: 'Getting started',
+      text: 'Log more entries to unlock personalized predictions',
+      onPress: undefined,
+    };
+    return {
+      icon: 'analytics-outline' as const, color: DS.warning, label: 'Learning',
+      text: `${stats.learnedCount} learned · ${stats.partialCount} in progress`,
+      onPress: undefined,
+    };
+  }, [cohortBlocked, stats, metrics.length, handleUnblockCohort]);
 
   if (!currentBaby) {
     return (
-      <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
-        <View style={styles.emptyState}>
-          <Ionicons name="sparkles-outline" size={64} color={fullThemeColors.textSecondary} />
-          <Text style={[styles.emptyTitle, { color: fullThemeColors.text }]}>
-            No Baby Selected
-          </Text>
-          <Text style={[styles.emptySubtitle, { color: fullThemeColors.textSecondary }]}>
-            Select a baby profile to view AI learning.
-          </Text>
-        </View>
+      <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50, alignItems: 'center', justifyContent: 'center' }]}>
+        <Ionicons name="sparkles-outline" size={64} color={DS.gray400} />
+        <Text style={{ marginTop: 16, color: isDark ? DS.gray400 : DS.gray500, fontSize: 16, fontWeight: '700' }}>No Baby Selected</Text>
+        <Text style={{ marginTop: 6, color: isDark ? DS.gray500 : DS.gray400, fontSize: 13, fontWeight: '500', textAlign: 'center', paddingHorizontal: 40 }}>
+          Select a baby profile to view AI learning
+        </Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: fullThemeColors.background }]}>
-      <LinearGradient
-        colors={
-          isDark
-            ? [fullThemeColors.background, fullThemeColors.surface]
-            : ['#f8faff', '#eef0ff', '#e2e5ff']
-        }
-        style={StyleSheet.absoluteFill}
-      />
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
+      <LinearGradient colors={isDark ? [DS.darkBg, '#12121e', DS.darkBg] : ['#f8faff', '#eef0f5', '#e4e8f0']} style={StyleSheet.absoluteFill} />
 
-      {/* Sticky Header */}
-      <Animated.View
-        style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}
-      >
-        <BlurView
-          intensity={isDark ? 40 : 80}
-          tint={isDark ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
-        <Text style={[styles.stickyTitle, { color: fullThemeColors.text }]}>
-          AI Learning
-        </Text>
-        <Text style={[styles.stickySubtitle, { color: fullThemeColors.textSecondary }]}>
-          {stats.learnedCount}/{metrics.length} metrics learned
+      {/* Sticky header */}
+      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]} pointerEvents="none">
+        <BlurView intensity={40} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <Text style={[styles.stickyTitle, { color: isDark ? DS.white : DS.gray900 }]}>AI Learning</Text>
+        <Text style={[styles.stickySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+          {stats.learnedCount}/{metrics.length} metrics · {Math.round(stats.avgConfidence * 100)}% confidence
         </Text>
       </Animated.View>
 
+      {/* Back */}
+      <Animated.View entering={FadeInDown.springify()} style={[styles.topHeader, { paddingTop: insets.top + 12 }]} pointerEvents="box-none">
+        <PressableScale onPress={() => navigation.goBack()} activeScale={0.92}>
+          <View style={[styles.backBtn, { backgroundColor: isDark ? 'rgba(15,15,30,0.55)' : 'rgba(255,255,255,0.85)', borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)' }]}>
+            <Ionicons name="arrow-back" size={22} color={isDark ? DS.white : DS.gray800} />
+          </View>
+        </PressableScale>
+      </Animated.View>
+
       {loading ? (
-        <View style={styles.loadingWrap}>
-          <UniversalSpinner size={40} color={primary} variant="liquid" section="settings" />
-          <Text style={[styles.loadingText, { color: fullThemeColors.textSecondary }]}>
-            Loading learning data…
-          </Text>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          <UniversalSpinner size={40} color={DS.primary} variant="liquid" section="settings" />
+          <Text style={{ color: isDark ? DS.gray400 : DS.gray500, fontSize: 13, fontWeight: '600' }}>Loading learning data…</Text>
         </View>
       ) : (
         <Animated.ScrollView
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 32 },
-          ]}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={primary}
-              colors={[primary]}
-            />
-          }
+          contentContainerStyle={{ paddingTop: insets.top + 68, paddingBottom: insets.bottom + 40 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={DS.primary} colors={[DS.primary, DS.accent]} />}
         >
-          {/* ─── TOP HEADER ROW ─────────────────────────────────── */}
-          <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={[styles.headerIconBtn, { backgroundColor: fullThemeColors.surface }]}
-            >
-              <Ionicons name="arrow-back" size={22} color={fullThemeColors.text} />
-            </TouchableOpacity>
+          {/* AI Pulse Capsule */}
+          <View style={{ paddingHorizontal: DS.space.lg }}>
+            <AIPulse isDark={isDark} baby={currentBaby} stats={stats} onExport={handleExportLearning} onRefresh={onRefresh} />
+          </View>
 
-            <View style={styles.headerTitleWrap}>
-              <Text style={[styles.headerTitle, { color: fullThemeColors.text }]}>
-                AI Learning
-              </Text>
-              <Text style={[styles.headerSubtitle, { color: fullThemeColors.textSecondary }]}>
-                {currentBaby.name}'s personalized intelligence
-              </Text>
-            </View>
+          {/* Ribbon */}
+          <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+            <InsightRibbon isDark={isDark} {...topRibbon} />
+          </View>
 
-            <TouchableOpacity
-              onPress={handleExportLearning}
-              style={[styles.headerIconBtn, { backgroundColor: fullThemeColors.surface }]}
-            >
-              <Ionicons name="share-outline" size={22} color={fullThemeColors.text} />
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* ─── HERO CARD (Health Score) ──────────────────────────── */}
-          <Animated.View entering={FadeInUp.delay(50).springify()} style={styles.heroSection}>
-            <GlassCard>
-              <View style={styles.heroContent}>
-                <HealthScoreRing score={stats.healthScore} size={110} strokeWidth={10} />
-                <View style={styles.heroInfo}>
-                  <Text style={[styles.heroTitle, { color: fullThemeColors.text }]}>
-                    AI Health Score
-                  </Text>
-                  <Text style={[styles.heroSubtitle, { color: fullThemeColors.textSecondary }]}>
-                    {stats.totalSamples < 20
-                      ? 'Keep logging to improve accuracy'
-                      : stats.totalSamples < 100
-                      ? `Learning from ${stats.totalSamples} samples`
-                      : `Personalized from ${stats.totalSamples} samples`}
-                  </Text>
-
-                  <View style={styles.heroStatsRow}>
-                    <View style={styles.heroStatItem}>
-                      <Text style={[styles.heroStatValue, { color: AURA.success }]}>
-                        {stats.learnedCount}
-                      </Text>
-                      <Text style={[styles.heroStatLabel, { color: fullThemeColors.textSecondary }]}>
-                        Learned
-                      </Text>
-                    </View>
-                    <View style={styles.heroStatItem}>
-                      <Text style={[styles.heroStatValue, { color: AURA.warning }]}>
-                        {stats.partialCount}
-                      </Text>
-                      <Text style={[styles.heroStatLabel, { color: fullThemeColors.textSecondary }]}>
-                        Learning
-                      </Text>
-                    </View>
-                    <View style={styles.heroStatItem}>
-                      <Text style={[styles.heroStatValue, { color: AURA.gray400 }]}>
-                        {stats.notStarted}
-                      </Text>
-                      <Text style={[styles.heroStatLabel, { color: fullThemeColors.textSecondary }]}>
-                        Pending
-                      </Text>
-                    </View>
-                    <View style={styles.heroStatItem}>
-                      <Text style={[styles.heroStatValue, { color: primary }]}>
-                        {Math.round(stats.avgConfidence * 100)}%
-                      </Text>
-                      <Text style={[styles.heroStatLabel, { color: fullThemeColors.textSecondary }]}>
-                        Confidence
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            </GlassCard>
-          </Animated.View>
-
-          {/* ─── GDPR BLOCKED BANNER ────────────────────────────────── */}
+          {/* GDPR blocked banner (if applicable) */}
           {cohortBlocked && (
-            <Animated.View entering={FadeInUp.delay(80).springify()} style={styles.section}>
-              <GlassCard style={{ borderColor: `${AURA.danger}30`, borderWidth: 1.5 }}>
-                <View style={styles.gdprBanner}>
-                  <View style={[styles.gdprIcon, { backgroundColor: `${AURA.danger}15` }]}>
-                    <Ionicons name="ban" size={24} color={AURA.danger} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.gdprTitle, { color: AURA.danger }]}>
-                      Cohort Contribution Blocked
-                    </Text>
-                    <Text style={[styles.gdprSubtitle, { color: fullThemeColors.textSecondary }]}>
-                      This baby was previously opted out of collaborative learning via GDPR
-                      erasure. Local AI still works, but no patterns are shared.
-                    </Text>
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  onPress={handleUnblockCohort}
-                  disabled={unblocking}
-                  style={[styles.unblockBtn, { backgroundColor: `${primary}15`, borderRadius: borderRadiusValue }]}
-                >
-                  {unblocking ? (
-                    <UniversalSpinner size={18} color={primary} variant="liquid" section="settings" />
-                  ) : (
-                    <>
-                      <Ionicons name="refresh" size={18} color={primary} />
-                      <Text style={[styles.unblockBtnText, { color: primary }]}>
-                        Unblock & Re-enable Contributions
+            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+              <GlassCard isDark={isDark}>
+                <View style={{ padding: DS.space.md }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: DS.space.md }}>
+                    <View style={[styles.gdprIcon, { backgroundColor: `${DS.danger}15` }]}>
+                      <Ionicons name="ban" size={20} color={DS.danger} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.gdprTitle, { color: DS.danger }]}>Cohort Contribution Blocked</Text>
+                      <Text style={[styles.gdprSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={3}>
+                        Previous GDPR erasure in effect. Local AI works, but no patterns are shared.
                       </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                    </View>
+                  </View>
+                  <PressableScale onPress={handleUnblockCohort} disabled={unblocking} activeScale={0.97}>
+                    <View style={[styles.unblockBtn, { backgroundColor: `${DS.primary}12` }]}>
+                      {unblocking ? (
+                        <UniversalSpinner size={16} color={DS.primary} variant="liquid" section="settings" />
+                      ) : (
+                        <>
+                          <Ionicons name="refresh" size={15} color={DS.primary} />
+                          <Text style={[styles.unblockText, { color: DS.primary }]}>Unblock & Re-enable</Text>
+                        </>
+                      )}
+                    </View>
+                  </PressableScale>
+                </View>
               </GlassCard>
-            </Animated.View>
+            </View>
           )}
 
-          {/* ─── COLLABORATIVE LEARNING ────────────────────────────── */}
-          <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.section}>
-            <SectionHeader
-              title="Collaborative Learning"
-              subtitle="Share anonymized patterns with other families"
-              icon="people-circle-outline"
-            />
-            <GlassCard>
-              <View style={styles.settingRow}>
-                <View style={[styles.settingIcon, { backgroundColor: `${AURA.secondary}15` }]}>
-                  <Ionicons name="globe-outline" size={22} color={AURA.secondary} />
+          {/* Collaborative Learning */}
+          <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+            <SectionHeader title="Collaborative Learning" subtitle="Share anonymized patterns" icon="people-circle-outline" color={DS.secondary} />
+            <GlassCard isDark={isDark}>
+              <View style={{ padding: DS.space.md }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.md }}>
+                  <View style={[styles.settingIcon, { backgroundColor: `${DS.secondary}15` }]}>
+                    <Ionicons name="globe-outline" size={20} color={DS.secondary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.settingTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                      {collaborativeEnabled ? 'Enabled' : 'Disabled'}
+                    </Text>
+                    <Text style={[styles.settingSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>
+                      {collaborativeEnabled ? 'Anonymized stats shared — no personal data' : 'Data stays on this device only'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={collaborativeEnabled}
+                    onValueChange={handleToggleCollaborative}
+                    trackColor={{ false: isDark ? DS.gray700 : DS.gray300, true: `${DS.secondary}60` }}
+                    thumbColor={collaborativeEnabled ? DS.secondary : (isDark ? DS.gray500 : DS.gray100)}
+                  />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingTitle, { color: fullThemeColors.text }]}>
-                    {collaborativeEnabled ? 'Enabled' : 'Disabled'}
-                  </Text>
-                  <Text
-                    style={[styles.settingSubtitle, { color: fullThemeColors.textSecondary }]}
-                  >
-                    {collaborativeEnabled
-                      ? 'Sharing anonymized statistical patterns — no personal data'
-                      : 'Your data stays on this device only'}
+                <View style={[styles.privacyNote, { backgroundColor: `${DS.primary}08` }]}>
+                  <Ionicons name="shield-checkmark" size={14} color={DS.primary} />
+                  <Text style={[styles.privacyNoteText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                    Only metric names, statistical params, and age buckets leave your device. No names, IDs, or raw values.
                   </Text>
                 </View>
-                <Switch
-                  value={collaborativeEnabled}
-                  onValueChange={handleToggleCollaborative}
-                  trackColor={{
-                    false: isDark ? AURA.gray700 : '#d1d5db',
-                    true: `${AURA.secondary}50`,
-                  }}
-                  thumbColor={collaborativeEnabled ? AURA.secondary : isDark ? AURA.gray500 : '#f4f3f4'}
-                />
-              </View>
-
-              <View style={[styles.privacyNote, { backgroundColor: `${primary}08`, borderRadius: borderRadiusValue / 1.5 }]}>
-                <Ionicons name="shield-checkmark" size={16} color={primary} />
-                <Text style={[styles.privacyNoteText, { color: fullThemeColors.textSecondary }]}>
-                  Only metric names, statistical parameters (mean/stddev), and age buckets leave
-                  your device. No baby names, IDs, or raw values are ever shared.
-                </Text>
               </View>
             </GlassCard>
-          </Animated.View>
+          </View>
 
-          {/* ─── CATEGORY FILTER ───────────────────────────────────── */}
-          <Animated.View entering={FadeInUp.delay(120).springify()} style={styles.filterSection}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterScroll}
-            >
+          {/* Category Filter */}
+          <View style={{ marginTop: DS.space.md }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 8, paddingVertical: 4 }}>
               {categories.map(cat => {
-                const isActive = filterCategory === cat;
-                const label = cat === 'all' ? 'All Metrics' : cat.charAt(0).toUpperCase() + cat.slice(1);
-                const count =
-                  cat === 'all'
-                    ? metrics.length
-                    : metrics.filter(m => METRIC_META[m.metric].category === cat).length;
-
+                const label = cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1);
+                const count = cat === 'all' ? metrics.length : metrics.filter(m => METRIC_META[m.metric].category === cat).length;
                 return (
-                  <TouchableOpacity
-                    key={cat}
-                    onPress={() => {
-                      triggerHaptic('light');
-                      setFilterCategory(cat);
-                    }}
-                    style={[
-                      styles.filterChip,
-                      {
-                        backgroundColor: isActive ? AURA.primary : fullThemeColors.surface,
-                        borderRadius: borderRadiusValue,
-                        borderColor: isActive ? AURA.primary : fullThemeColors.border,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterChipText,
-                        { color: isActive ? AURA.white : fullThemeColors.textSecondary },
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                    <View
-                      style={[
-                        styles.filterChipCount,
-                        { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : `${AURA.primary}15` },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.filterChipCountText,
-                          { color: isActive ? AURA.white : AURA.primary },
-                        ]}
-                      >
-                        {count}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                  <FilterChip key={cat} label={label} count={count} active={filterCategory === cat} isDark={isDark}
+                    onPress={() => { triggerHaptic('light'); setFilterCategory(cat); }} />
                 );
               })}
             </ScrollView>
-          </Animated.View>
+          </View>
 
-          {/* ─── METRICS ────────────────────────────────────────────── */}
-          <Animated.View entering={FadeInUp.delay(150).springify()} style={styles.section}>
-            <SectionHeader
-              title="Learned Metrics"
-              subtitle={`${filteredMetrics.length} metrics in this view`}
-              icon="analytics-outline"
-            />
-            {filteredMetrics.map((row, index) => renderMetricRow(row, index))}
-
+          {/* Metrics */}
+          <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md, gap: 8 }}>
+            <SectionHeader title="Learned Metrics" subtitle={`${filteredMetrics.length} in view`} icon="analytics-outline" color={DS.primary} />
+            {filteredMetrics.map((row, index) => (
+              <MetricRow key={row.metric} row={row} index={index} isDark={isDark}
+                cohortInfo={cohortInfoMap[row.metric]} onPress={() => handleMetricPress(row.metric)} />
+            ))}
             {filteredMetrics.length === 0 && (
-              <GlassCard>
-                <View style={styles.emptyMetrics}>
-                  <Ionicons name="analytics-outline" size={40} color={fullThemeColors.textSecondary} />
-                  <Text style={[styles.emptyMetricsText, { color: fullThemeColors.textSecondary }]}>
-                    No metrics in this category
-                  </Text>
-                </View>
-              </GlassCard>
+              <View style={[styles.emptyCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <Ionicons name="analytics-outline" size={36} color={DS.gray400} />
+                <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray900 }]}>No metrics here</Text>
+                <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Try a different category</Text>
+              </View>
             )}
-          </Animated.View>
+          </View>
 
-          {/* ─── DATA MANAGEMENT ────────────────────────────────────── */}
-          <Animated.View entering={FadeInUp.delay(250).springify()} style={styles.section}>
-            <SectionHeader
-              title="Data Management"
-              subtitle="Reset or erase learning data"
-              icon="server-outline"
-            />
+          {/* Data Management */}
+          <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg, gap: 10 }}>
+            <SectionHeader title="Data Management" subtitle="Reset or erase learning" icon="server-outline" color={DS.warning} />
 
-            <GlassCard onPress={handleResetLearning} style={styles.dangerCard}>
-              <View style={styles.settingRow}>
-                <View style={[styles.settingIcon, { backgroundColor: `${AURA.warning}15` }]}>
-                  <Ionicons name="refresh" size={22} color={AURA.warning} />
+            <GlassCard isDark={isDark} onPress={handleResetLearning}>
+              <View style={{ padding: DS.space.md, flexDirection: 'row', alignItems: 'center', gap: DS.space.md }}>
+                <View style={[styles.settingIcon, { backgroundColor: `${DS.warning}15` }]}>
+                  <Ionicons name="refresh" size={20} color={DS.warning} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingTitle, { color: fullThemeColors.text }]}>
-                    Reset AI Learning
-                  </Text>
-                  <Text
-                    style={[styles.settingSubtitle, { color: fullThemeColors.textSecondary }]}
-                  >
-                    Start fresh — the AI will re-learn from scratch
+                  <Text style={[styles.settingTitle, { color: isDark ? DS.white : DS.gray900 }]}>Reset AI Learning</Text>
+                  <Text style={[styles.settingSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                    Start fresh — AI will re-learn from scratch
                   </Text>
                 </View>
                 {resetting ? (
-                  <UniversalSpinner size={20} color={AURA.warning} variant="liquid" section="settings" />
+                  <UniversalSpinner size={18} color={DS.warning} variant="liquid" section="settings" />
                 ) : (
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={fullThemeColors.textSecondary}
-                  />
+                  <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
                 )}
               </View>
             </GlassCard>
 
-            <GlassCard onPress={handleEraseCohort} style={styles.dangerCard}>
-              <View style={styles.settingRow}>
-                <View style={[styles.settingIcon, { backgroundColor: `${AURA.danger}15` }]}>
-                  <Ionicons name="trash-bin-outline" size={22} color={AURA.danger} />
+            <GlassCard isDark={isDark} onPress={handleEraseCohort}>
+              <View style={{ padding: DS.space.md, flexDirection: 'row', alignItems: 'center', gap: DS.space.md }}>
+                <View style={[styles.settingIcon, { backgroundColor: `${DS.danger}15` }]}>
+                  <Ionicons name="trash-bin-outline" size={20} color={DS.danger} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingTitle, { color: fullThemeColors.text }]}>
-                    Erase Cohort Contributions
-                  </Text>
-                  <Text
-                    style={[styles.settingSubtitle, { color: fullThemeColors.textSecondary }]}
-                  >
-                    Remove local caches and block future sharing
+                  <Text style={[styles.settingTitle, { color: isDark ? DS.white : DS.gray900 }]}>Erase Cohort Contributions</Text>
+                  <Text style={[styles.settingSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                    Remove local caches & block future sharing
                   </Text>
                 </View>
                 {erasing ? (
-                  <UniversalSpinner size={20} color={AURA.danger} variant="liquid" section="settings" />
+                  <UniversalSpinner size={18} color={DS.danger} variant="liquid" section="settings" />
                 ) : (
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={fullThemeColors.textSecondary}
-                  />
+                  <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
                 )}
               </View>
             </GlassCard>
-          </Animated.View>
+          </View>
 
           <View style={{ height: 40 }} />
         </Animated.ScrollView>
       )}
 
-      {/* ─── METRIC DETAIL MODAL ────────────────────────────────── */}
       <MetricDetailModal
         visible={detailModalVisible}
         metric={selectedMetric}
         range={selectedRange}
         cohortInfo={selectedMetric ? cohortInfoMap[selectedMetric] : null}
+        isDark={isDark}
         onClose={() => {
           setDetailModalVisible(false);
-          setTimeout(() => {
-            setSelectedMetric(null);
-            setSelectedRange(null);
-          }, 200);
+          setTimeout(() => { setSelectedMetric(null); setSelectedRange(null); }, 200);
         }}
       />
     </View>
@@ -1695,340 +1092,130 @@ export default function AIManagementScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: 0 },
-  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { fontSize: 14, fontWeight: '500' },
 
-  glassCard: {
-    borderRadius: DESIGN.radius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    marginHorizontal: DESIGN.spacing.lg,
-    marginBottom: DESIGN.spacing.md,
-  },
-  glassBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  glassContent: { flex: 1 },
+  /* Sticky header */
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
+  stickyTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  stickySub: { fontSize: 11, fontWeight: '500', marginTop: 2 },
 
-  stickyHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  stickyTitle: { fontSize: 17, fontWeight: '800' },
-  stickySubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  /* Top header */
+  topHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: DS.space.lg },
+  backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.22, shadowRadius: 10, elevation: 6 },
 
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginBottom: 16,
-  },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitleWrap: { flex: 1, alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
-  headerSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  /* Capsule */
+  capsule: { borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden', borderWidth: 1, ...DS.shadow.md },
+  capsuleGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  capsuleGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  capsuleRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  avatarWrap: { width: 68, height: 68, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  avatarGlow: { position: 'absolute', width: 76, height: 76, borderRadius: 38 },
+  avatarRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36, overflow: 'hidden' },
+  avatarInner: { width: 62, height: 62, borderRadius: 31, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  capsuleName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, maxWidth: '60%' },
+  livePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  liveDot: { width: 5, height: 5, borderRadius: 3 },
+  liveText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
+  capsuleSub: { fontSize: 12, fontWeight: '500', marginTop: 3 },
+  capsuleStats: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  capsuleStatItem: { alignItems: 'center' },
+  capsuleStatValue: { fontSize: 14, fontWeight: '800' },
+  capsuleStatLabel: { fontSize: 9, fontWeight: '600', marginTop: 1 },
+  capsuleStatDiv: { width: 1, height: 18 },
+  iconBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    marginTop: 8,
-  },
-  sectionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+  /* Score strip */
+  scoreStrip: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.lg, marginTop: DS.space.md },
+  scoreRingWrap: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  scoreRingBg: { position: 'absolute', width: 56, height: 56, borderRadius: 28, borderWidth: 4 },
+  scoreRingFill: { position: 'absolute', width: 56, height: 56, borderRadius: 28, borderWidth: 4, borderTopColor: 'transparent', borderRightColor: 'transparent' },
+  scoreRingValue: { fontSize: 16, fontWeight: '800' },
+  scoreLabel: { fontSize: 13, fontWeight: '800' },
+  scoreSub: { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  confidenceBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  confidenceText: { fontSize: 13, fontWeight: '800' },
 
-  section: { marginBottom: 20 },
+  /* Ribbon */
+  ribbon: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, paddingVertical: DS.space.md, paddingHorizontal: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1, lineHeight: 16 },
 
-  heroSection: { marginBottom: 16 },
-  heroContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-    gap: 20,
-  },
-  heroInfo: { flex: 1 },
-  heroTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  heroSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 4, lineHeight: 16 },
-  heroStatsRow: {
-    flexDirection: 'row',
-    marginTop: 14,
-    gap: 12,
-  },
-  heroStatItem: { alignItems: 'center', flex: 1 },
-  heroStatValue: { fontSize: 18, fontWeight: '800' },
-  heroStatLabel: {
-    fontSize: 9,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
+  /* Section */
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: DS.space.sm, marginTop: DS.space.sm },
+  sectionIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
+  sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
+  sectionAction: { fontSize: 11, fontWeight: '700' },
 
-  gdprBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    padding: 16,
-    paddingBottom: 12,
-  },
-  gdprIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gdprTitle: { fontSize: 15, fontWeight: '800', marginBottom: 4 },
-  gdprSubtitle: { fontSize: 12, fontWeight: '500', lineHeight: 17 },
-  unblockBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    paddingVertical: 12,
-  },
-  unblockBtnText: { fontSize: 13, fontWeight: '700' },
+  /* Glass card */
+  glassCard: { borderRadius: DS.radius.lg, overflow: 'hidden', borderWidth: 1, ...DS.shadow.sm },
 
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 16,
-  },
-  settingIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingTitle: { fontSize: 15, fontWeight: '700' },
-  settingSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, lineHeight: 16 },
+  /* GDPR */
+  gdprIcon: { width: 40, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  gdprTitle: { fontSize: 14, fontWeight: '800' },
+  gdprSub: { fontSize: 11, fontWeight: '500', marginTop: 3, lineHeight: 15 },
+  unblockBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, marginTop: DS.space.md },
+  unblockText: { fontSize: 12, fontWeight: '700' },
 
-  privacyNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    margin: 16,
-    marginTop: 0,
-    padding: 12,
-  },
-  privacyNoteText: { flex: 1, fontSize: 11, fontWeight: '500', lineHeight: 16 },
+  /* Setting rows */
+  settingIcon: { width: 40, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  settingTitle: { fontSize: 13, fontWeight: '700' },
+  settingSub: { fontSize: 11, fontWeight: '500', marginTop: 2, lineHeight: 15 },
+  privacyNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: DS.space.sm + 2, borderRadius: 10, marginTop: DS.space.sm },
+  privacyNoteText: { flex: 1, fontSize: 10, fontWeight: '500', lineHeight: 14 },
 
-  filterSection: { marginBottom: 16 },
-  filterScroll: { paddingHorizontal: 20, gap: 8 },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1.5,
-  },
-  filterChipText: { fontSize: 13, fontWeight: '700' },
-  filterChipCount: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    minWidth: 22,
-    alignItems: 'center',
-  },
-  filterChipCountText: { fontSize: 11, fontWeight: '800' },
+  /* Filter */
+  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: DS.radius.full, borderWidth: 1 },
+  filterChipText: { fontSize: 12, fontWeight: '600' },
+  filterChipCount: { paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6, minWidth: 18, alignItems: 'center' },
+  filterChipCountText: { fontSize: 10, fontWeight: '800' },
 
-  metricCard: { padding: 14, marginBottom: 10 },
-  metricHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  metricIconBg: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  metricEmoji: { fontSize: 22 },
-  metricLabel: { fontWeight: '700' },
-  metricMeta: { fontWeight: '500', marginTop: 2 },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  statusText: { fontSize: 10, fontWeight: '700' },
-
-  rangeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    padding: 10,
-    gap: 10,
-  },
+  /* Metric row */
+  metricCard: { padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
+  metricIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  metricLabel: { fontSize: 13, fontWeight: '700' },
+  metricMeta: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+  statusText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
+  rangeBox: { flexDirection: 'row', alignItems: 'center', marginTop: DS.space.sm, padding: DS.space.sm, borderRadius: 10, gap: DS.space.sm },
   rangeItem: { flex: 1 },
-  rangeLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  rangeValue: { fontSize: 12, fontWeight: '700', marginTop: 3 },
-  rangeDivider: { width: 1, height: 28, backgroundColor: 'rgba(0,0,0,0.06)' },
-
-  progressTrack: {
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginTop: 12,
-  },
+  rangeLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  rangeValue: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  rangeDivider: { width: 1, height: 22 },
+  progressTrack: { height: 4, borderRadius: 2, overflow: 'hidden', marginTop: DS.space.sm },
   progressFill: { height: '100%', borderRadius: 2 },
 
-  emptyMetrics: { alignItems: 'center', padding: 32, gap: 12 },
-  emptyMetricsText: { fontSize: 14, fontWeight: '500' },
+  /* Empty */
+  emptyCard: { alignItems: 'center', paddingVertical: DS.space['2xl'], paddingHorizontal: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, gap: 8, ...DS.shadow.sm },
+  emptyTitle: { fontSize: 14, fontWeight: '800', marginTop: 4 },
+  emptySub: { fontSize: 12, fontWeight: '500', textAlign: 'center' },
 
-  dangerCard: { marginBottom: 10 },
-
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 32,
-  },
-  emptyTitle: { fontSize: 18, fontWeight: '700' },
-  emptySubtitle: { fontSize: 14, fontWeight: '500', textAlign: 'center' },
-
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    maxWidth: 420,
-    maxHeight: '85%',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.25,
-    shadowRadius: 30,
-    elevation: 20,
-  },
-  modalHeader: {
-    padding: 20,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  modalEmoji: { fontSize: 44, marginBottom: 8 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: AURA.white, letterSpacing: -0.3 },
-  modalStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-    marginTop: 8,
-  },
-  modalStatusText: { color: AURA.white, fontSize: 11, fontWeight: '700' },
-  modalCloseBtn: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBody: { padding: 20 },
-  modalDescription: { fontSize: 13, fontWeight: '500', lineHeight: 19, marginBottom: 20 },
-
-  modalSection: { marginBottom: 20 },
-  modalSectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginBottom: 10,
-    textTransform: 'uppercase',
-  },
-  modalProgressTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  modalProgressFill: { height: '100%', borderRadius: 4 },
-  modalProgressLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  modalProgressText: { fontSize: 12, fontWeight: '600' },
-  modalProgressPercent: { fontSize: 12, fontWeight: '700' },
-
-  modalStatsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  modalStatCard: {
-    width: '47%',
-    padding: 12,
-  },
-  modalStatLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  modalStatValue: { fontSize: 15, fontWeight: '800' },
-
-  modalCohortCard: { padding: 14, gap: 10 },
+  /* Modal */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalCard: { width: '100%', maxWidth: 420, maxHeight: '85%', borderRadius: DS.radius['2xl'], overflow: 'hidden', ...DS.shadow.lg },
+  modalHeader: { padding: DS.space.lg, alignItems: 'center', position: 'relative' },
+  modalEmoji: { fontSize: 40, marginBottom: 6 },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: DS.white, letterSpacing: -0.3 },
+  modalStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 6 },
+  modalStatusText: { color: DS.white, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  modalCloseBtn: { position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  modalBody: { padding: DS.space.md },
+  modalDescription: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginBottom: DS.space.md },
+  modalSection: { marginBottom: DS.space.md },
+  modalSectionTitle: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, marginBottom: 8, textTransform: 'uppercase' },
+  modalProgressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  modalProgressFill: { height: '100%', borderRadius: 3 },
+  modalProgressLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
+  modalProgressText: { fontSize: 11, fontWeight: '600' },
+  modalProgressPercent: { fontSize: 11, fontWeight: '700' },
+  modalStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  modalStatCard: { width: '48%', padding: DS.space.sm + 2, borderRadius: 10 },
+  modalStatLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 3 },
+  modalStatValue: { fontSize: 13, fontWeight: '800' },
+  modalCohortCard: { padding: DS.space.sm + 2, borderRadius: 10, gap: 8 },
   modalCohortRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  modalCohortText: { fontSize: 13, fontWeight: '600' },
-
-  modalExplainer: { gap: 10 },
-  modalExplainerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  modalExplainerDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 7,
-  },
-  modalExplainerText: { flex: 1, fontSize: 12, fontWeight: '500', lineHeight: 18 },
+  modalCohortText: { fontSize: 12, fontWeight: '600' },
+  modalExplainerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
+  modalExplainerDot: { width: 5, height: 5, borderRadius: 3, marginTop: 6 },
+  modalExplainerText: { flex: 1, fontSize: 11, fontWeight: '500', lineHeight: 16 },
 });

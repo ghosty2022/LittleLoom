@@ -16,7 +16,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, {
+  FadeInUp,
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withSpring,
+  interpolate,
+  Extrapolation,
+  useAnimatedScrollHandler,
+} from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { useCustomization } from '../../hooks/useCustomization';
 import { supabase } from '../../lib/supabase';
@@ -26,58 +38,61 @@ import type { RootStackParamList } from '../../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HelpCenter'>;
 
-/* ═══════════════════════════════════════════════════════════════════════
-   AURA DS
-   ═══════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-const AURA = {
+const DS = {
   primary: '#6366f1',
   primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
   accent: '#ec4899',
+  accentLight: '#f472b6',
   secondary: '#8b5cf6',
   success: '#10b981',
   warning: '#f59e0b',
   info: '#0ea5e9',
   danger: '#ef4444',
   white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
   gray300: '#d6d3d1',
   gray400: '#a8a29e',
   gray500: '#78716c',
+  gray600: '#57534e',
   gray700: '#44403c',
+  gray800: '#292524',
   gray900: '#1c1917',
   darkBg: '#0c0a09',
   darkSurface: '#1c1917',
   darkCard: '#292524',
   darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
 };
 
-const { width } = Dimensions.get('window');
+const { width: SCREEN_W } = Dimensions.get('window');
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   Types + Data
-   ═══════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   DATA
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-interface FaqItem {
-  q: string;
-  a: string;
-}
-
-interface FaqCategory {
-  category: string;
-  icon: string;
-  color: string;
-  items: FaqItem[];
-}
+interface FaqItem { q: string; a: string }
+interface FaqCategory { category: string; icon: string; color: string; items: FaqItem[] }
 
 const FAQS: FaqCategory[] = [
   {
-    category: 'Getting Started',
-    icon: 'rocket-outline',
-    color: AURA.primary,
+    category: 'Getting Started', icon: 'rocket-outline', color: DS.primary,
     items: [
       { q: 'How do I add my first baby?', a: 'Go to Settings → Family → Add Baby, or tap the baby icon on your profile card.' },
       { q: 'Can I track multiple babies?', a: 'Yes! Add multiple profiles and switch between them from the profile card or Switch Baby screen.' },
@@ -86,9 +101,7 @@ const FAQS: FaqCategory[] = [
     ],
   },
   {
-    category: 'Tracking',
-    icon: 'analytics-outline',
-    color: AURA.success,
+    category: 'Tracking', icon: 'analytics-outline', color: DS.success,
     items: [
       { q: 'What activities can I track?', a: 'Feeding, sleep, potty, growth measurements, medications, and milestones. Use the + button on any tab.' },
       { q: 'How do I start a sleep timer?', a: 'Go to Track → Sleep, tap "Start Sleep Session." We\'ll track the duration automatically.' },
@@ -97,9 +110,7 @@ const FAQS: FaqCategory[] = [
     ],
   },
   {
-    category: 'Data & Privacy',
-    icon: 'shield-checkmark-outline',
-    color: AURA.accent,
+    category: 'Data & Privacy', icon: 'shield-checkmark-outline', color: DS.accent,
     items: [
       { q: 'Is my data backed up?', a: 'Data is stored locally AND synced to Supabase for cloud backup. Use Backup & Restore in Settings to create manual backups.' },
       { q: 'Can I export my data?', a: 'Yes, the backup file is standard JSON — readable by you, portable to any device.' },
@@ -108,9 +119,7 @@ const FAQS: FaqCategory[] = [
     ],
   },
   {
-    category: 'Account & Security',
-    icon: 'lock-closed-outline',
-    color: AURA.warning,
+    category: 'Account & Security', icon: 'lock-closed-outline', color: DS.warning,
     items: [
       { q: 'How do I reset my PIN?', a: 'Settings → Security → PIN Code → Change PIN. You\'ll need your current PIN.' },
       { q: 'I forgot my PIN. What now?', a: "You'll need to reinstall the app and restore from backup. We can't reset PINs for security." },
@@ -119,9 +128,7 @@ const FAQS: FaqCategory[] = [
     ],
   },
   {
-    category: 'Community & Social',
-    icon: 'people-outline',
-    color: AURA.secondary,
+    category: 'Community & Social', icon: 'people-outline', color: DS.secondary,
     items: [
       { q: 'What is the Community feature?', a: 'Connect with other parents, share experiences, and get support in our parenting community.' },
       { q: 'Is my community profile public?', a: 'You control your privacy settings. Choose between public, family-only, or private profiles.' },
@@ -130,86 +137,161 @@ const FAQS: FaqCategory[] = [
   },
 ];
 
-interface TipItem {
-  icon: string;
-  title: string;
-  desc: string;
-  route?: keyof RootStackParamList;
-  params?: any;
-}
+interface TipItem { icon: string; title: string; desc: string; route?: keyof RootStackParamList; params?: any }
 
 const TIPS: TipItem[] = [
-  {
-    icon: 'moon',
-    title: 'Night Mode',
-    desc: 'Enable dark mode in your device settings — we follow automatically.',
-    route: 'Customize',
-  },
-  {
-    icon: 'notifications',
-    title: 'Smart Reminders',
-    desc: 'Set feeding, sleep, and medication reminders.',
-    route: 'TrackerReminders',
-  },
-  {
-    icon: 'trophy',
-    title: 'Achievements',
-    desc: 'Track milestones to unlock parenting achievements and streaks.',
-    route: 'Achievements',
-  },
-  {
-    icon: 'people',
-    title: 'Family Chat',
-    desc: 'Coordinate with co-parents using the built-in family chat feature.',
-    route: 'FamilyChatList',
-  },
-  {
-    icon: 'images',
-    title: 'Gallery',
-    desc: 'Save and organize precious photos and memories.',
-    route: 'Gallery',
-  },
-  {
-    icon: 'color-wand',
-    title: 'Customize',
-    desc: 'Personalize themes, colors, and your app experience.',
-    route: 'Customize',
-  },
-  {
-    icon: 'cloud',
-    title: 'Cloud Sync',
-    desc: 'Enable Supabase to sync data across devices and family members.',
-    route: 'SyncSettings',
-  },
+  { icon: 'moon', title: 'Night Mode', desc: 'Enable dark mode in your device settings — we follow automatically.', route: 'Customize' },
+  { icon: 'notifications', title: 'Smart Reminders', desc: 'Set feeding, sleep, and medication reminders.', route: 'TrackerReminders' },
+  { icon: 'trophy', title: 'Achievements', desc: 'Track milestones to unlock parenting achievements.', route: 'Achievements' },
+  { icon: 'people', title: 'Family Chat', desc: 'Coordinate with co-parents using family chat.', route: 'FamilyChatList' },
+  { icon: 'images', title: 'Gallery', desc: 'Save and organize precious photos.', route: 'Gallery' },
+  { icon: 'color-wand', title: 'Customize', desc: 'Personalize themes, colors, and app look.', route: 'Customize' },
 ];
 
-/* ═══════════════════════════════════════════════════════════════════════
-   Section Header (Aura)
-   ═══════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA SUB-COMPONENTS
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-const SectionHeader: React.FC<{
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  color: string;
-  isDark: boolean;
-}> = ({ icon, title, color, isDark }) => (
-  <View style={styles.sectionHeader}>
-    <View style={[styles.sectionIcon, { backgroundColor: `${color}20` }]}>
-      <Ionicons name={icon} size={20} color={color} />
+const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: any) => {
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>{l}</Text>;
+      })}
     </View>
-    <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>
-      {title}
-    </Text>
-  </View>
-);
+  );
+});
 
-/* ═══════════════════════════════════════════════════════════════════════
-   Main Screen
-   ═══════════════════════════════════════════════════════════════════════ */
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = React.memo<any>(({ children, onPress, disabled, style, activeScale = 0.96 }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={() => { if (!disabled) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onPress?.(); } }}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+const GlassCard = React.memo(({ children, style, isDark, delay = 0 }: any) => (
+  <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }, style]}>
+    <LinearGradient colors={isDark ? ['rgba(255,255,255,0.02)', 'transparent'] : ['rgba(255,255,255,0.4)', 'transparent']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+    {children}
+  </Animated.View>
+));
+
+const SectionHeader = React.memo(({ title, subtitle, icon, color = DS.primary }: any) => (
+  <View style={styles.sectionHeader}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+      {icon && <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}><Ionicons name={icon} size={15} color={color} /></View>}
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+  </View>
+));
+
+/* ─── Help Capsule (replaces header) ─── */
+const HelpCapsule = React.memo<any>(({ isDark, isConnected, user }) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 9000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.8, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, []);
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
+
+  const statusColor = isConnected ? DS.success : DS.warning;
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View style={[styles.capsule, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient
+          colors={isDark
+            ? ['rgba(99,102,241,0.20)', 'rgba(236,72,153,0.10)', 'rgba(139,92,246,0.05)']
+            : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        />
+        <LinearGradient colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']} style={styles.capsuleGlowL} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} pointerEvents="none" />
+        <LinearGradient colors={[`${DS.accent}${isDark ? '35' : '22'}`, 'transparent']} style={styles.capsuleGlowR} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} pointerEvents="none" />
+
+        <View style={styles.capsuleRow}>
+          <View style={styles.avatarWrap}>
+            <Animated.View style={[styles.avatarGlow, glowStyle]} />
+            <Animated.View style={[styles.avatarRing, ringStyle]}>
+              <LinearGradient colors={[DS.primary, DS.accent, DS.warning, DS.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+            </Animated.View>
+            <View style={[styles.avatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+              <Ionicons name="help-buoy" size={30} color={DS.primary} />
+            </View>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.capsuleName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+              Help Center
+            </Text>
+            <Text style={[styles.capsuleSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+              Find answers & learn LittleLoom
+            </Text>
+            <View style={[styles.statusPill, { backgroundColor: `${statusColor}15`, marginTop: 6 }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.statusText, { color: statusColor }]}>
+                {isConnected ? 'Cloud connected' : 'Offline mode'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ─── Insight Ribbon ─── */
+const InsightRibbon = React.memo<any>(({ isDark, icon, color, label, text }) => (
+  <Animated.View entering={FadeInUp.delay(80).springify()}>
+    <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+      <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+        <Ionicons name={icon} size={15} color={color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+        <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={2}>{text}</Text>
+      </View>
+    </View>
+  </Animated.View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN SCREEN
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function HelpCenterScreen({ navigation }: Props) {
   const { themeColors, darkMode, reduceMotion } = useCustomization();
   const { sweetAlert } = useSweetAlert();
+  const insets = useSafeAreaInsets();
+
   const [isConnected, setIsConnected] = useState(false);
   const [user, setUser] = useState<any>(null);
 
@@ -220,35 +302,35 @@ export default function HelpCenterScreen({ navigation }: Props) {
         setIsConnected(!error);
         const { data: { user } } = await supabase.auth.getUser();
         setUser(user);
-      } catch {
-        setIsConnected(false);
-      }
+      } catch { setIsConnected(false); }
     };
     checkSupabase();
   }, []);
-  const insets = useSafeAreaInsets();
 
   const isDark = darkMode;
-  const primary = themeColors?.primary || AURA.primary;
-  const secondary = themeColors?.secondary || AURA.accent;
+  const primary = themeColors?.primary || DS.primary;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
   const [expandedCategory, setExpandedCategory] = useState<string | null>('Getting Started');
 
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: e => { 'worklet'; scrollY.value = e.contentOffset.y; },
+  });
+  const headerOpacity = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
+  }));
+
   const handleHaptic = (style: 'light' | 'medium' = 'light') => {
     if (!reduceMotion) {
-      Haptics.impactAsync(
-        style === 'medium' ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light
-      ).catch(() => {});
+      Haptics.impactAsync(style === 'medium' ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
   };
 
   const handleTipPress = (tip: TipItem) => {
     handleHaptic('light');
-    if (tip.route) {
-      navigation.navigate(tip.route as any, tip.params);
-    }
+    if (tip.route) navigation.navigate(tip.route as any, tip.params);
   };
 
   const handleCategoryPress = (category: string) => {
@@ -265,7 +347,6 @@ export default function HelpCenterScreen({ navigation }: Props) {
 
   const filteredFaqs = useMemo(() => {
     if (!searchQuery.trim()) return FAQS;
-
     return FAQS.map(cat => ({
       ...cat,
       items: cat.items.filter(item =>
@@ -275,533 +356,251 @@ export default function HelpCenterScreen({ navigation }: Props) {
     })).filter(cat => cat.items.length > 0);
   }, [searchQuery]);
 
-  const bgColors = isDark
-    ? [themeColors?.colors?.[0] || AURA.darkBg, themeColors?.colors?.[1] || '#1a1428', themeColors?.colors?.[2] || AURA.darkBg]
-    : [themeColors?.colors?.[0] || '#f8faff', themeColors?.colors?.[1] || '#eef0ff', themeColors?.colors?.[2] || '#e2e5ff'];
+  const totalResults = useMemo(() => filteredFaqs.reduce((acc, cat) => acc + cat.items.length, 0), [filteredFaqs]);
+
+  const topRibbon = searchQuery
+    ? { icon: 'search-outline' as const, color: primary, label: 'Search', text: `${totalResults} result${totalResults !== 1 ? 's' : ''} for "${searchQuery}"` }
+    : { icon: 'sparkles-outline' as const, color: DS.success, label: 'Welcome', text: 'Browse FAQs, quick tips, or message our team' };
 
   return (
-    <LinearGradient colors={bgColors} style={styles.container}>
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <Animated.ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ─── Header ─── */}
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeInUp.delay(100)}
-          style={styles.header}
-        >
-          <TouchableOpacity
-            style={[
-              styles.backButton,
-              { backgroundColor: isDark ? AURA.darkCard : 'rgba(0,0,0,0.05)' },
-            ]}
-            onPress={() => {
-              handleHaptic('light');
-              navigation.goBack();
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={24} color={isDark ? AURA.white : AURA.gray900} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Help Center</Text>
-          <Text style={[styles.headerSubtitle, isDark && styles.headerSubtitleDark]}>
-            Find answers and learn how to use LittleLoom
-          </Text>
-        </Animated.View>
+      <LinearGradient
+        colors={isDark ? [DS.darkBg, '#12121e', DS.darkBg] : ['#f8faff', '#eef0f5', '#e4e8f0']}
+        style={StyleSheet.absoluteFill}
+      />
 
-        {/* ─── Connection Status ─── */}
-        <Animated.View entering={reduceMotion ? undefined : FadeInUp.delay(150)}>
-          <View
-            style={[
-              styles.connectionBadge,
-              { backgroundColor: isConnected ? `${AURA.success}15` : `${AURA.warning}15` },
-            ]}
-          >
-            <Ionicons
-              name={isConnected ? 'cloud-outline' : 'cloud-offline-outline'}
-              size={16}
-              color={isConnected ? AURA.success : AURA.warning}
-            />
-            <Text
-              style={[
-                styles.connectionText,
-                { color: isConnected ? AURA.success : AURA.warning },
-              ]}
-            >
-              {isConnected
-                ? 'Connected to cloud services'
-                : 'Offline - some features may be limited'}
-            </Text>
+      {/* Sticky header */}
+      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]} pointerEvents="none">
+        <BlurView intensity={40} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <Text style={[styles.stickyTitle, { color: isDark ? DS.white : DS.gray900 }]}>Help Center</Text>
+        <Text style={[styles.stickySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>FAQs, tips & support</Text>
+      </Animated.View>
+
+      {/* Back button */}
+      <Animated.View entering={FadeInDown.springify()} style={[styles.topHeader, { paddingTop: insets.top + 12 }]} pointerEvents="box-none">
+        <PressableScale onPress={() => navigation.goBack()} activeScale={0.92}>
+          <View style={[styles.backBtn, { backgroundColor: isDark ? 'rgba(15,15,30,0.55)' : 'rgba(255,255,255,0.85)', borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)' }]}>
+            <Ionicons name="arrow-back" size={22} color={isDark ? DS.white : DS.gray800} />
           </View>
-        </Animated.View>
+        </PressableScale>
+      </Animated.View>
 
-        {/* ─── Search ─── */}
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeInUp.delay(200)}
-          style={styles.sectionWrapper}
-        >
-          <BlurView
-            intensity={isDark ? 30 : 70}
-            style={styles.searchContainer}
-            tint={isDark ? 'dark' : 'light'}
-          >
-            <Ionicons name="search" size={20} color={isDark ? AURA.gray500 : AURA.gray400} />
+      <Animated.ScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + 68, paddingBottom: insets.bottom + 40 }}
+      >
+        {/* Capsule */}
+        <View style={{ paddingHorizontal: DS.space.lg }}>
+          <HelpCapsule isDark={isDark} isConnected={isConnected} user={user} />
+        </View>
+
+        {/* Ribbon */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <InsightRibbon isDark={isDark} {...topRibbon} />
+        </View>
+
+        {/* Search */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <View style={[styles.searchWrap, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+            <Ionicons name="search" size={18} color={isDark ? DS.gray500 : DS.gray400} />
             <TextInput
-              style={[styles.searchInput, isDark && styles.searchInputDark]}
-              placeholder="Search help articles..."
-              placeholderTextColor={isDark ? AURA.gray500 : AURA.gray400}
+              style={[styles.searchInput, { color: isDark ? DS.white : DS.gray900 }]}
+              placeholder="Search help articles…"
+              placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
               value={searchQuery}
               onChangeText={setSearchQuery}
               returnKeyType="search"
+              selectionColor={primary}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons
-                  name="close-circle"
-                  size={20}
-                  color={isDark ? AURA.gray500 : AURA.gray400}
-                />
+                <Ionicons name="close-circle" size={18} color={isDark ? DS.gray500 : DS.gray400} />
               </TouchableOpacity>
             )}
-          </BlurView>
-          {searchQuery.length > 0 && (
-            <Text style={[styles.searchResultCount, isDark && styles.searchResultCountDark]}>
-              Found {filteredFaqs.reduce((acc, cat) => acc + cat.items.length, 0)} results
-            </Text>
-          )}
-        </Animated.View>
+          </View>
+        </View>
 
-        {/* ─── Quick Tips ─── */}
+        {/* Quick Tips */}
         {!searchQuery && (
-          <Animated.View
-            entering={reduceMotion ? undefined : FadeInUp.delay(300)}
-            style={styles.sectionWrapper}
-          >
-            <SectionHeader icon="bulb-outline" title="Quick Tips" color={AURA.warning} isDark={isDark} />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tipsScroll}
-            >
+          <View style={{ marginTop: DS.space.lg }}>
+            <View style={{ paddingHorizontal: DS.space.lg }}>
+              <SectionHeader title="Quick Tips" subtitle="Shortcuts & tricks" icon="bulb-outline" color={DS.warning} />
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
               {TIPS.map((tip, i) => (
-                <TouchableOpacity
-                  key={i}
-                  activeOpacity={0.75}
-                  onPress={() => handleTipPress(tip)}
-                  style={styles.tipCardWrapper}
-                >
-                  <View style={[styles.tipCard, isDark && styles.tipCardDark]}>
-                    <View style={[styles.tipIcon, { backgroundColor: `${AURA.primary}15` }]}>
-                      <Ionicons name={tip.icon as any} size={24} color={AURA.primary} />
+                <PressableScale key={i} onPress={() => handleTipPress(tip)} activeScale={0.94}>
+                  <View style={[styles.tipCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                    <View style={[styles.tipIcon, { backgroundColor: `${DS.primary}15` }]}>
+                      <Ionicons name={tip.icon as any} size={20} color={DS.primary} />
                     </View>
-                    <Text style={[styles.tipTitle, isDark && styles.tipTitleDark]}>{tip.title}</Text>
-                    <Text
-                      style={[styles.tipDesc, isDark && styles.tipDescDark]}
-                      numberOfLines={2}
-                    >
-                      {tip.desc}
-                    </Text>
-                    <View style={[styles.tipArrow, { backgroundColor: `${AURA.primary}12` }]}>
-                      <Ionicons name="arrow-forward" size={12} color={AURA.primary} />
+                    <Text style={[styles.tipTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{tip.title}</Text>
+                    <Text style={[styles.tipDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>{tip.desc}</Text>
+                    <View style={[styles.tipArrow, { backgroundColor: `${DS.primary}12` }]}>
+                      <Ionicons name="arrow-forward" size={11} color={DS.primary} />
                     </View>
                   </View>
-                </TouchableOpacity>
+                </PressableScale>
               ))}
             </ScrollView>
-          </Animated.View>
+          </View>
         )}
 
-        {/* ─── FAQ Categories ─── */}
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeInUp.delay(400)}
-          style={styles.sectionWrapper}
-        >
+        {/* FAQ Categories */}
+        <View style={{ marginTop: DS.space.lg, paddingHorizontal: DS.space.lg, gap: 8 }}>
           <SectionHeader
-            icon="help-circle-outline"
             title="Frequently Asked"
-            color={AURA.primary}
-            isDark={isDark}
+            subtitle={searchQuery ? `${totalResults} result${totalResults !== 1 ? 's' : ''}` : `${FAQS.length} categories`}
+            icon="help-circle-outline"
+            color={DS.primary}
           />
+          {filteredFaqs.map((category, catIndex) => {
+            const isCategoryExpanded = expandedCategory === category.category || !!searchQuery;
+            return (
+              <GlassCard key={catIndex} isDark={isDark} delay={catIndex * 40}>
+                <TouchableOpacity style={styles.categoryHeader} onPress={() => handleCategoryPress(category.category)} activeOpacity={0.7}>
+                  <View style={[styles.categoryIcon, { backgroundColor: `${category.color}18` }]}>
+                    <Ionicons name={category.icon as any} size={18} color={category.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.categoryTitle, { color: isDark ? DS.white : DS.gray900 }]}>{category.category}</Text>
+                    <Text style={[styles.categoryCount, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+                      {category.items.length} question{category.items.length !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                  <Ionicons name={isCategoryExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={isDark ? DS.gray500 : DS.gray400} />
+                </TouchableOpacity>
 
-          {filteredFaqs.map((category, catIndex) => (
-            <BlurView
-              key={catIndex}
-              intensity={isDark ? 30 : 70}
-              style={[styles.categoryCard, isDark && styles.categoryCardDark]}
-              tint={isDark ? 'dark' : 'light'}
-            >
-              <TouchableOpacity
-                style={styles.categoryHeader}
-                onPress={() => handleCategoryPress(category.category)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.categoryIcon, { backgroundColor: `${category.color}15` }]}>
-                  <Ionicons name={category.icon as any} size={20} color={category.color} />
-                </View>
-                <Text style={[styles.categoryTitle, isDark && styles.categoryTitleDark]}>
-                  {category.category}
-                </Text>
-                <Text style={[styles.categoryCount, isDark && styles.categoryCountDark]}>
-                  {category.items.length}
-                </Text>
-                <Ionicons
-                  name={expandedCategory === category.category ? 'chevron-up' : 'chevron-down'}
-                  size={20}
-                  color={isDark ? AURA.gray500 : AURA.gray400}
-                />
-              </TouchableOpacity>
-
-              {expandedCategory === category.category &&
-                category.items.map((item, itemIndex) => {
+                {isCategoryExpanded && category.items.map((item, itemIndex) => {
                   const key = `${catIndex}-${itemIndex}`;
                   const isExpanded = expandedFaq === key;
                   return (
-                    <View
-                      key={key}
-                      style={[
-                        styles.faqItem,
-                        { borderTopColor: isDark ? AURA.darkBorder : 'rgba(0,0,0,0.04)' },
-                      ]}
-                    >
-                      <TouchableOpacity
-                        style={styles.faqQuestion}
-                        onPress={() => handleFaqPress(key)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.faqQText, isDark && styles.faqQTextDark]}>
-                          {item.q}
-                        </Text>
-                        <Ionicons
-                          name={isExpanded ? 'remove' : 'add'}
-                          size={20}
-                          color={AURA.primary}
-                        />
+                    <View key={key} style={[styles.faqItem, { borderTopColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                      <TouchableOpacity style={styles.faqQuestion} onPress={() => handleFaqPress(key)} activeOpacity={0.7}>
+                        <Text style={[styles.faqQText, { color: isDark ? DS.white : DS.gray900 }]}>{item.q}</Text>
+                        <Ionicons name={isExpanded ? 'remove' : 'add'} size={18} color={DS.primary} />
                       </TouchableOpacity>
-
                       {isExpanded && (
-                        <Animated.View entering={FadeInUp.delay(50)} style={styles.faqAnswer}>
-                          <Text style={[styles.faqAText, isDark && styles.faqATextDark]}>
-                            {item.a}
-                          </Text>
+                        <Animated.View entering={FadeInUp.delay(30).springify()} style={styles.faqAnswer}>
+                          <Text style={[styles.faqAText, { color: isDark ? DS.gray400 : DS.gray500 }]}>{item.a}</Text>
                         </Animated.View>
                       )}
                     </View>
                   );
                 })}
-            </BlurView>
-          ))}
-        </Animated.View>
+              </GlassCard>
+            );
+          })}
+        </View>
 
-        {/* ─── Contact Support CTA ─── */}
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeInUp.delay(500)}
-          style={styles.supportCta}
-        >
-          <BlurView
-            intensity={isDark ? 40 : 90}
-            style={styles.supportBlur}
-            tint={isDark ? 'dark' : 'light'}
-          >
-            <Ionicons
-              name="chatbubble-ellipses"
-              size={32}
-              color={AURA.primary}
-              style={{ marginBottom: 12 }}
-            />
-            <Text style={[styles.supportTitle, isDark && styles.supportTitleDark]}>
-              Still need help?
-            </Text>
-            <Text style={[styles.supportDesc, isDark && styles.supportDescDark]}>
-              Our team is here for you. Send us a message and we'll respond within 24 hours.
-            </Text>
-            <TouchableOpacity
-              style={styles.supportButton}
-              onPress={() => {
-                handleHaptic('medium');
-                navigation.navigate('ContactSupport');
-              }}
-              activeOpacity={0.85}
+        {/* Support CTA */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
+          <Animated.View entering={FadeInUp.delay(200).springify()}>
+            <LinearGradient
+              colors={[`${primary}20`, `${DS.accent}10`, 'rgba(139,92,246,0.04)']}
+              style={[styles.supportCard, { borderColor: `${primary}30` }]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             >
-              <LinearGradient
-                colors={[AURA.primary, AURA.accent]}
-                style={styles.supportButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+              <View style={[styles.supportIcon, { backgroundColor: `${primary}18` }]}>
+                <Ionicons name="chatbubble-ellipses" size={26} color={primary} />
+              </View>
+              <Text style={[styles.supportTitle, { color: isDark ? DS.white : DS.gray900 }]}>Still need help?</Text>
+              <Text style={[styles.supportDesc, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                Our team responds within 24 hours. Send us a message and we'll help you out.
+              </Text>
+              <PressableScale
+                onPress={() => { handleHaptic('medium'); navigation.navigate('ContactSupport'); }}
+                activeScale={0.97}
+                style={{ width: '100%' }}
               >
-                <Text style={styles.supportButtonText}>Contact Support</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </BlurView>
-        </Animated.View>
+                <LinearGradient colors={[primary, DS.accent]} style={styles.supportBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                  <Ionicons name="mail-outline" size={16} color={DS.white} />
+                  <Text style={styles.supportBtnText}>Contact Support</Text>
+                </LinearGradient>
+              </PressableScale>
+            </LinearGradient>
+          </Animated.View>
+        </View>
       </Animated.ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   Styles
-   ═══════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingHorizontal: 20 },
 
-  header: { marginBottom: 20 },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: AURA.gray900,
-    letterSpacing: -0.5,
-    marginBottom: 6,
-  },
-  headerTitleDark: { color: AURA.white },
-  headerSubtitle: {
-    fontSize: 15,
-    color: AURA.gray500,
-    fontWeight: '500',
-  },
-  headerSubtitleDark: { color: AURA.gray400 },
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
+  stickyTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  stickySub: { fontSize: 11, fontWeight: '500', marginTop: 2 },
 
-  connectionBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 20,
-    gap: 8,
-    alignSelf: 'flex-start',
-  },
-  connectionText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  topHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: DS.space.lg },
+  backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.22, shadowRadius: 10, elevation: 6 },
 
-  sectionWrapper: { marginBottom: 20 },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    marginBottom: 8,
-  },
-  sectionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: AURA.gray900,
-    letterSpacing: -0.3,
-  },
-  sectionTitleDark: { color: AURA.white },
+  /* Capsule */
+  capsule: { borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden', borderWidth: 1, ...DS.shadow.md },
+  capsuleGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  capsuleGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  capsuleRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  avatarWrap: { width: 68, height: 68, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  avatarGlow: { position: 'absolute', width: 76, height: 76, borderRadius: 38, backgroundColor: `${DS.primary}35` },
+  avatarRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36, overflow: 'hidden' },
+  avatarInner: { width: 62, height: 62, borderRadius: 31, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  capsuleName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, maxWidth: '80%' },
+  capsuleSub: { fontSize: 12, fontWeight: '500', marginTop: 3 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, alignSelf: 'flex-start' },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '700' },
 
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: AURA.gray900,
-    marginLeft: 10,
-    fontWeight: '500',
-  },
-  searchInputDark: { color: AURA.white },
-  searchResultCount: {
-    fontSize: 13,
-    color: AURA.gray500,
-    fontWeight: '500',
-    marginTop: 8,
-    paddingHorizontal: 4,
-  },
-  searchResultCountDark: { color: AURA.gray400 },
+  /* Ribbon */
+  ribbon: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, paddingVertical: DS.space.md, paddingHorizontal: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1, lineHeight: 16 },
 
-  tipsScroll: { gap: 12, paddingRight: 20 },
-  tipCardWrapper: {
-    width: 170,
-  },
-  tipCard: {
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(99,102,241,0.10)',
-    alignItems: 'center',
-  },
-  tipCardDark: {
-    backgroundColor: 'rgba(41,37,36,0.4)',
-    borderColor: AURA.darkBorder,
-  },
-  tipIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  tipTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: AURA.gray900,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  tipTitleDark: { color: AURA.white },
-  tipDesc: {
-    fontSize: 12,
-    color: AURA.gray500,
-    fontWeight: '500',
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  tipDescDark: { color: AURA.gray400 },
-  tipArrow: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-  },
+  /* Search */
+  searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, height: 46, borderRadius: DS.radius.full, borderWidth: 1 },
+  searchInput: { flex: 1, fontSize: 14, fontWeight: '500' },
 
-  categoryCard: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  categoryCardDark: {
-    borderColor: AURA.darkBorder,
-  },
-  categoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-  },
-  categoryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  categoryTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    color: AURA.gray900,
-  },
-  categoryTitleDark: { color: AURA.white },
-  categoryCount: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: AURA.gray500,
-    marginRight: 8,
-  },
-  categoryCountDark: { color: AURA.gray500 },
+  /* Section */
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: DS.space.sm, marginTop: DS.space.sm },
+  sectionIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
+  sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
 
-  faqItem: {
-    borderTopWidth: 1,
-  },
-  faqQuestion: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    paddingLeft: 68,
-  },
-  faqQText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: AURA.gray900,
-    lineHeight: 20,
-  },
-  faqQTextDark: { color: AURA.white },
-  faqAnswer: {
-    paddingHorizontal: 68,
-    paddingBottom: 16,
-    paddingTop: 0,
-  },
-  faqAText: {
-    fontSize: 14,
-    color: AURA.gray500,
-    lineHeight: 20,
-    fontWeight: '500',
-  },
-  faqATextDark: { color: AURA.gray400 },
+  /* Glass card */
+  glassCard: { borderRadius: DS.radius.lg, overflow: 'hidden', borderWidth: 1, ...DS.shadow.sm },
 
-  supportCta: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  supportBlur: {
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  supportTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: AURA.gray900,
-    marginBottom: 8,
-  },
-  supportTitleDark: { color: AURA.white },
-  supportDesc: {
-    fontSize: 14,
-    color: AURA.gray500,
-    textAlign: 'center',
-    marginBottom: 16,
-    fontWeight: '500',
-    lineHeight: 20,
-  },
-  supportDescDark: { color: AURA.gray400 },
-  supportButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: AURA.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  supportButtonGradient: {
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  supportButtonText: {
-    color: AURA.white,
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
+  /* Tip card */
+  tipCard: { width: 150, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
+  tipIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.sm },
+  tipTitle: { fontSize: 13, fontWeight: '700', marginBottom: 3 },
+  tipDesc: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
+  tipArrow: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginTop: DS.space.sm, alignSelf: 'flex-start' },
+
+  /* Category */
+  categoryHeader: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md },
+  categoryIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  categoryTitle: { fontSize: 13, fontWeight: '700' },
+  categoryCount: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+
+  /* FAQ */
+  faqItem: { borderTopWidth: StyleSheet.hairlineWidth },
+  faqQuestion: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, paddingVertical: DS.space.md, paddingHorizontal: DS.space.md, paddingLeft: DS.space.md + 46 },
+  faqQText: { flex: 1, fontSize: 12, fontWeight: '600', lineHeight: 17 },
+  faqAnswer: { paddingHorizontal: DS.space.md, paddingBottom: DS.space.md, paddingLeft: DS.space.md + 46 },
+  faqAText: { fontSize: 12, fontWeight: '500', lineHeight: 17 },
+
+  /* Support */
+  supportCard: { padding: DS.space.lg, borderRadius: DS.radius.xl, borderWidth: 1, alignItems: 'center', gap: DS.space.sm, ...DS.shadow.md },
+  supportIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  supportTitle: { fontSize: 16, fontWeight: '800', marginTop: DS.space.sm },
+  supportDesc: { fontSize: 12, fontWeight: '500', textAlign: 'center', lineHeight: 17, marginBottom: DS.space.sm },
+  supportBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, ...DS.shadow.sm },
+  supportBtnText: { color: DS.white, fontSize: 13, fontWeight: '700' },
 });
