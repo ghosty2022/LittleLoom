@@ -1,50 +1,49 @@
-
-
-
-
-
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  StyleSheet,
   ActivityIndicator,
+  Clipboard,
+  Dimensions,
+  Image,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
-  Dimensions,
-  Modal,
-  Image,
-  TextInput,
-  Switch,
-  RefreshControl,
-  StatusBar,
-  ScrollView,
-  Clipboard,
+  Platform,
 } from 'react-native';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { differenceInMonths, formatDistanceToNow } from 'date-fns';
 import { BlurView } from 'expo-blur';
-
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
+  FadeIn,
+  FadeInDown,
+  FadeInRight,
   FadeInUp,
-  useAnimatedStyle,
-  useSharedValue,
-  useAnimatedScrollHandler,
   interpolate,
   Extrapolation,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
   Layout,
-  FadeInRight,
-  SlideInRight,
 } from 'react-native-reanimated';
-
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import { differenceInMonths, formatDistanceToNow, format } from 'date-fns';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
 import { UserRole, FamilyMember } from '../../types/roles';
-
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -53,47 +52,63 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { useTracker } from '../../hooks';
 import { useSafeUser } from '../../hooks/useSafeContexts';
 
+const { width: SCREEN_W } = Dimensions.get('window');
+const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
+const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
+const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 const FAMILY_IMAGES_DIR = FileSystem.documentDirectory + 'family_images/';
 
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
 type TabKey = 'members' | 'activity' | 'access' | 'settings';
 
-
-
-
-
-const DESIGN = {
-  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Aura (aligned with Home / Community / More / Timeline)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  primaryGhost: 'rgba(99,102,241,0.08)',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
 };
 
-const AnimatedScrollView = Animated.ScrollView;
-const { width: SCREEN_W } = Dimensions.get('window');
+const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
-const isImageUri = (value: string | undefined | null): boolean => {
-  if (!value || typeof value !== 'string') return false;
-  return value.startsWith('http') || value.startsWith('file://') || value.startsWith('data:');
-};
-
-const isEmoji = (value: string | undefined | null): boolean => {
-  if (!value || typeof value !== 'string') return false;
-  if (value.length > 4) return false;
-  return /\p{Emoji}/u.test(value);
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   ROLE / PERMISSION CONFIG
+   ═══════════════════════════════════════════════════════════════════════════ */
 const ROLE_CONFIG: Record<UserRole, {
-  label: string;
-  color: string;
-  gradient: [string, string];
-  icon: keyof typeof Ionicons.glyphMap;
-  description: string;
-  permissions: string[];
-  badge: string;
-  maxCount: number;
+  label: string; color: string; gradient: [string, string];
+  icon: keyof typeof Ionicons.glyphMap; description: string;
+  permissions: string[]; badge: string; maxCount: number;
 }> = {
   [UserRole.PARENT_1]: {
     label: 'Primary Parent', color: '#667eea', gradient: ['#667eea', '#764ba2'], icon: 'shield',
@@ -121,7 +136,6 @@ const ROLE_CONFIG: Record<UserRole, {
   },
 };
 
-
 type PermissionKey =
   | 'canView' | 'canAddEntry' | 'canEditEntry' | 'canEditOthersEntries'
   | 'canDeleteEntry' | 'canEditBaby' | 'canInvite' | 'canExport' | 'canManageFamily';
@@ -139,403 +153,133 @@ const PERMISSION_META: Record<PermissionKey, { label: string; icon: keyof typeof
 };
 
 const ROLE_PERMISSION_MAP: Record<UserRole, Record<PermissionKey, boolean>> = {
-  [UserRole.PARENT_1]: {
-    canView: true, canAddEntry: true, canEditEntry: true, canEditOthersEntries: true,
-    canDeleteEntry: true, canEditBaby: true, canInvite: true, canExport: true, canManageFamily: true,
-  },
-  [UserRole.PARENT_2]: {
-    canView: true, canAddEntry: true, canEditEntry: true, canEditOthersEntries: true,
-    canDeleteEntry: true, canEditBaby: true, canInvite: true, canExport: true, canManageFamily: true,
-  },
-  [UserRole.GUARDIAN]: {
-    canView: true, canAddEntry: true, canEditEntry: true, canEditOthersEntries: false,
-    canDeleteEntry: false, canEditBaby: false, canInvite: false, canExport: false, canManageFamily: false,
-  },
-  [UserRole.VIEWER]: {
-    canView: true, canAddEntry: false, canEditEntry: false, canEditOthersEntries: false,
-    canDeleteEntry: false, canEditBaby: false, canInvite: false, canExport: false, canManageFamily: false,
-  },
+  [UserRole.PARENT_1]: { canView: true, canAddEntry: true, canEditEntry: true, canEditOthersEntries: true, canDeleteEntry: true, canEditBaby: true, canInvite: true, canExport: true, canManageFamily: true },
+  [UserRole.PARENT_2]: { canView: true, canAddEntry: true, canEditEntry: true, canEditOthersEntries: true, canDeleteEntry: true, canEditBaby: true, canInvite: true, canExport: true, canManageFamily: true },
+  [UserRole.GUARDIAN]: { canView: true, canAddEntry: true, canEditEntry: true, canEditOthersEntries: false, canDeleteEntry: false, canEditBaby: false, canInvite: false, canExport: false, canManageFamily: false },
+  [UserRole.VIEWER]: { canView: true, canAddEntry: false, canEditEntry: false, canEditOthersEntries: false, canDeleteEntry: false, canEditBaby: false, canInvite: false, canExport: false, canManageFamily: false },
 };
-
-
-
-
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
   active: { label: 'Active', color: '#22c55e', icon: 'checkmark-circle' },
-  used: { label: 'Used ✓', color: '#64748b', icon: 'checkmark-done-circle' },
+  used: { label: 'Used', color: '#64748b', icon: 'checkmark-done-circle' },
   partial: { label: 'Partial', color: '#f59e0b', icon: 'warning' },
   revoked: { label: 'Revoked', color: '#ef4444', icon: 'close-circle' },
   expired: { label: 'Expired', color: '#f59e0b', icon: 'time' },
 };
 
-
-
-
-
-const FamilyHealthScore: React.FC<{
-  members: FamilyMember[];
-  isDark: boolean;
-  shouldReduceMotion: boolean;
-}> = ({ members, isDark, shouldReduceMotion }) => {
-  const score = useMemo(() => {
-    const activeMembers = members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000).length;
-    const totalMembers = members.length || 1;
-    const activityScore = Math.round((activeMembers / totalMembers) * 100);
-    const engagementScore = Math.min(100, members.length * 15);
-    return Math.round((activityScore * 0.6) + (engagementScore * 0.4));
-  }, [members]);
-
-  const getScoreColor = (s: number) => (s >= 80 ? '#10b981' : s >= 50 ? '#f59e0b' : '#ef4444');
-  const getScoreLabel = (s: number) => (s >= 80 ? 'Thriving' : s >= 50 ? 'Active' : 'Needs Attention');
-
-  return (
-    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100).springify()}>
-      <View style={[styles.healthScoreCard, isDark && styles.healthScoreCardDark]}>
-        <LinearGradient
-          colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.healthScoreContent}>
-          <View style={styles.healthScoreLeft}>
-            <View style={[styles.healthScoreRing, { borderColor: getScoreColor(score) + '30' }]}>
-              <Text style={[styles.healthScoreValue, { color: getScoreColor(score) }]}>{score}</Text>
-              <Text style={[styles.healthScoreMax, { color: isDark ? '#94a3b8' : '#64748b' }]}>/100</Text>
-            </View>
-            <View style={styles.healthScoreLabels}>
-              <Text style={[styles.healthScoreLabel, isDark && styles.textDark]}>Family Health</Text>
-              <Text style={[styles.healthScoreSub, { color: getScoreColor(score) }]}>{getScoreLabel(score)}</Text>
-            </View>
-          </View>
-          <View style={styles.healthScoreRight}>
-            {[
-              { label: 'Active', value: members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 24 * 60 * 60 * 1000).length, total: members.length, color: '#10b981' },
-              { label: 'This Week', value: members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000).length, total: members.length, color: '#f59e0b' },
-              { label: 'Pending', value: members.filter(m => !m.lastActive || m.status === 'pending').length, total: members.length, color: '#ef4444' },
-            ].map((stat, i) => (
-              <View key={i} style={styles.healthScoreMini}>
-                <View style={styles.healthScoreMiniBarWrap}>
-                  <View style={[styles.healthScoreMiniBarBg, { backgroundColor: stat.color + '15' }]}>
-                    <View style={[styles.healthScoreMiniBarFill, { width: `${Math.min((stat.value / (stat.total || 1)) * 100, 100)}%`, backgroundColor: stat.color }]} />
-                  </View>
-                </View>
-                <Text style={[styles.healthScoreMiniValue, { color: stat.color }]}>{stat.value}/{stat.total}</Text>
-                <Text style={[styles.healthScoreMiniLabel, isDark && styles.textMuted]}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </View>
-    </Animated.View>
-  );
+/* ═══════════════════════════════════════════════════════════════════════════
+   SAFE HELPERS
+   ═══════════════════════════════════════════════════════════════════════════ */
+const isImageUri = (v: string | undefined | null): boolean => {
+  if (!v || typeof v !== 'string') return false;
+  return v.startsWith('http') || v.startsWith('file://') || v.startsWith('data:');
 };
+const isEmoji = (v: string | undefined | null): boolean => {
+  if (!v || typeof v !== 'string') return false;
+  if (v.length > 4) return false;
+  return /\p{Emoji}/u.test(v);
+};
+const safeStr = (v: unknown, fallback = ''): string => (v == null ? fallback : String(v));
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DAILY FAMILY GOALS
-// ═══════════════════════════════════════════════════════════════════════════
-
-interface DailyGoal {
-  id: string;
-  title: string;
-  icon: string;
-  target: number;
-  current: number;
-  unit: string;
-  color: string;
-  participants: string[];
-}
-
-const DailyFamilyGoals: React.FC<{
-  goals: DailyGoal[];
-  isDark: boolean;
-  themeColors: any;
-  shouldReduceMotion: boolean;
-  onToggleGoal: (id: string) => void;
-}> = ({ goals, isDark, themeColors, shouldReduceMotion, onToggleGoal }) => (
-  <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(150).springify()}>
-    <View style={styles.sectionHeaderRow}>
-      <View>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Daily Goals</Text>
-        <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
-          {goals.filter(g => g.current >= g.target).length} of {goals.length} completed
-        </Text>
-      </View>
-      <View style={[styles.sectionBadge, { backgroundColor: themeColors.primary + '15' }]}>
-        <Text style={[styles.sectionBadgeText, { color: themeColors.primary }]}>
-          {Math.round((goals.filter(g => g.current >= g.target).length / (goals.length || 1)) * 100)}%
-        </Text>
-      </View>
-    </View>
-    <View style={styles.goalsContainer}>
-      {goals.map((goal, index) => {
-        const progress = Math.min(goal.current / goal.target, 1);
-        const isComplete = progress >= 1;
-        return (
-          <Animated.View
-            key={goal.id}
-            entering={shouldReduceMotion ? undefined : FadeInRight.delay(index * 80).springify()}
-            style={[styles.goalCard, isDark && styles.goalCardDark]}
-          >
-            <LinearGradient
-              colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-              style={StyleSheet.absoluteFill}
-            />
-            <TouchableOpacity onPress={() => onToggleGoal(goal.id)} style={styles.goalContent} activeOpacity={0.85}>
-              <View style={[styles.goalIconBg, { backgroundColor: isComplete ? goal.color + '20' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') }]}>
-                <Text style={styles.goalIcon}>{goal.icon}</Text>
-                {isComplete && (
-                  <View style={[styles.goalCheckmark, { backgroundColor: goal.color }]}>
-                    <Ionicons name="checkmark" size={10} color="#fff" />
-                  </View>
-                )}
-              </View>
-              <View style={styles.goalInfo}>
-                <Text style={[styles.goalTitle, isDark && styles.textDark]} numberOfLines={1}>{goal.title}</Text>
-                <View style={styles.goalProgressRow}>
-                  <View style={[styles.goalProgressBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-                    <View style={[styles.goalProgressFill, { width: `${progress * 100}%`, backgroundColor: goal.color }]} />
-                  </View>
-                  <Text style={[styles.goalProgressText, { color: goal.color }]}>{goal.current}/{goal.target}</Text>
-                </View>
-                <Text style={[styles.goalUnit, isDark && styles.textMuted]}>{goal.unit}</Text>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
-        );
+/* ═══════════════════════════════════════════════════════════════════════════
+   GRADIENT TEXT
+   ═══════════════════════════════════════════════════════════════════════════ */
+const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: {
+  children: React.ReactNode; style?: any; colors?: string[];
+}) => {
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        const color = interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo);
+        return <Text key={i} style={[style, { color }]}>{l}</Text>;
       })}
     </View>
-  </Animated.View>
-);
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SMART SUGGESTIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-interface SmartSuggestion {
-  id: string;
-  type: 'invite' | 'reminder' | 'activity' | 'milestone' | 'health';
-  title: string;
-  description: string;
-  icon: string;
-  color: string;
-  actionLabel: string;
-}
-
-const SmartSuggestions: React.FC<{
-  suggestions: SmartSuggestion[];
-  isDark: boolean;
-  shouldReduceMotion: boolean;
-  onAction: (suggestion: SmartSuggestion) => void;
-}> = ({ suggestions, isDark, shouldReduceMotion, onAction }) => {
-  if (suggestions.length === 0) return null;
-  return (
-    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200).springify()}>
-      <View style={styles.sectionHeaderRow}>
-        <View>
-          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Suggested Next</Text>
-          <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>Personalized for your family</Text>
-        </View>
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.suggestionsScroll}
-        decelerationRate="fast"
-        snapToInterval={SCREEN_W * 0.75 + 12}
-        snapToAlignment="start"
-      >
-        {suggestions.map((suggestion, index) => (
-          <Animated.View
-            key={suggestion.id}
-            entering={shouldReduceMotion ? undefined : SlideInRight.delay(index * 100).springify()}
-            style={[styles.suggestionCard, isDark && styles.suggestionCardDark]}
-          >
-            <LinearGradient
-              colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={[styles.suggestionPriority, { backgroundColor: suggestion.color }]} />
-            <View style={styles.suggestionContent}>
-              <View style={[styles.suggestionIconBg, { backgroundColor: suggestion.color + '15' }]}>
-                <Text style={styles.suggestionIcon}>{suggestion.icon}</Text>
-              </View>
-              <Text style={[styles.suggestionTitle, isDark && styles.textDark]} numberOfLines={2}>{suggestion.title}</Text>
-              <Text style={[styles.suggestionDesc, isDark && styles.textMuted]} numberOfLines={2}>{suggestion.description}</Text>
-              <TouchableOpacity onPress={() => onAction(suggestion)} style={[styles.suggestionActionBtn, { backgroundColor: suggestion.color + '15' }]}>
-                <Text style={[styles.suggestionActionText, { color: suggestion.color }]}>{suggestion.actionLabel}</Text>
-                <Ionicons name="arrow-forward" size={14} color={suggestion.color} />
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        ))}
-      </ScrollView>
-    </Animated.View>
   );
-};
+});
 
-// ═══════════════════════════════════════════════════════════════════════════
-// FAMILY ACTIVITY TIMELINE
-// ═══════════════════════════════════════════════════════════════════════════
-
-interface TimelineEvent {
-  id: string;
-  type: string;
-  title: string;
-  description?: string;
-  timestamp: number;
-  actorName: string;
-  actorRole: UserRole;
-}
-
-const FamilyActivityTimeline: React.FC<{
-  events: TimelineEvent[];
-  isDark: boolean;
-  shouldReduceMotion: boolean;
-}> = ({ events, isDark, shouldReduceMotion }) => {
-  const formatTimeAgo = (ts: number) => {
-    const diff = Date.now() - ts;
-    const m = Math.floor(diff / 60000);
-    const h = Math.floor(diff / 3600000);
-    const d = Math.floor(diff / 86400000);
-    if (m < 1) return 'Just now';
-    if (m < 60) return `${m}m ago`;
-    if (h < 24) return `${h}h ago`;
-    if (d < 7) return `${d}d ago`;
-    return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRESSABLE SCALE
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = React.memo<{
+  children: React.ReactNode; onPress?: () => void; disabled?: boolean;
+  style?: any; activeScale?: number; haptic?: 'light' | 'medium' | 'heavy';
+}>(({ children, onPress, disabled, style, activeScale = 0.96, haptic = 'light' }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const handlePress = () => {
+    if (disabled) return;
+    if (haptic === 'light') HAPTIC_LIGHT();
+    else if (haptic === 'medium') HAPTIC_MEDIUM();
+    else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+    onPress?.();
   };
-
-  const ACTIVITY_ICONS: Record<string, string> = {
-    feed: '🍼', sleep: '😴', potty: '🚽', diaper: '🧷', growth: '📏',
-    medication: '💊', milestone: '🏆', note: '📝',
-  };
-
   return (
-    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250).springify()}>
-      <View style={styles.sectionHeaderRow}>
-        <View>
-          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Recent Activity</Text>
-          <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>{events.length} events</Text>
-        </View>
-      </View>
-      <View style={styles.timelineContainer}>
-        {events.map((event, i) => (
-          <View key={event.id} style={styles.timelineItem}>
-            <View style={styles.timelineLeft}>
-              <View style={[styles.timelineDot, { backgroundColor: '#667eea', borderColor: isDark ? '#1a1a2e' : '#f8fafc' }]} />
-              {i < events.length - 1 && (
-                <View style={[styles.timelineLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]} />
-              )}
-            </View>
-            <View style={[styles.timelineCard, isDark && styles.timelineCardDark]}>
-              <LinearGradient
-                colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={styles.timelineCardContent}>
-                <View style={styles.timelineCardHeader}>
-                  <Text style={styles.timelineEmoji}>{ACTIVITY_ICONS[event.type] || '📝'}</Text>
-                  <Text style={[styles.timelineCardTitle, isDark && styles.textDark]} numberOfLines={1}>{event.title}</Text>
-                </View>
-                <Text style={[styles.timelineCardActor, isDark && styles.textMuted]}>
-                  by {event.actorName} • {formatTimeAgo(event.timestamp)}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ))}
-        {events.length === 0 && (
-          <View style={styles.timelineEmpty}>
-            <Ionicons name="time-outline" size={48} color={isDark ? '#555' : '#ccc'} />
-            <Text style={[styles.timelineEmptyText, isDark && styles.textMuted]}>No recent activity</Text>
-          </View>
-        )}
-      </View>
-    </Animated.View>
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={handlePress}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PULSING DOT
+   ═══════════════════════════════════════════════════════════════════════════ */
+const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
+  const pulse = useSharedValue(1);
+  const halo = useSharedValue(1);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.15, { duration: 900 }), withTiming(1, { duration: 900 })), -1, true);
+    halo.value = withRepeat(withSequence(withTiming(1.8, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+  }, [pulse, halo]);
+  const dotStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+  const haloStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: halo.value }],
+    opacity: interpolate(halo.value, [1, 1.8], [0.35, 0]),
+  }));
+  return (
+    <View style={{ width: size * 2, height: size * 2, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={[{ position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: color }, haloStyle]} />
+      <Animated.View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }, dotStyle]} />
+    </View>
   );
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// FAMILY INSIGHTS
-// ═══════════════════════════════════════════════════════════════════════════
-
-interface FamilyInsight {
-  id: string;
-  category: 'tip' | 'alert' | 'milestone' | 'health' | 'social';
-  title: string;
-  description: string;
-  color: string;
-}
-
-const FamilyInsights: React.FC<{
-  insights: FamilyInsight[];
-  isDark: boolean;
-  shouldReduceMotion: boolean;
-}> = ({ insights, isDark, shouldReduceMotion }) => {
-  if (insights.length === 0) return null;
-  const icon = (c: string) => ({ tip: '💡', alert: '⚠️', milestone: '🎯', health: '❤️', social: '👥' }[c] || '✨');
-  return (
-    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(350).springify()}>
-      <View style={styles.sectionHeaderRow}>
-        <View>
-          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Smart Insights</Text>
-          <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>Personalized for your family</Text>
-        </View>
-      </View>
-      <View style={styles.insightsContainer}>
-        {insights.map((insight, index) => (
-          <Animated.View
-            key={insight.id}
-            entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 60).springify()}
-            style={[styles.insightItem, isDark && styles.insightItemDark]}
-          >
-            <LinearGradient
-              colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={[styles.insightLeftBorder, { backgroundColor: insight.color }]} />
-            <View style={styles.insightContent}>
-              <View style={styles.insightHeader}>
-                <View style={[styles.insightIconBg, { backgroundColor: insight.color + '12' }]}>
-                  <Text style={styles.insightIcon}>{icon(insight.category)}</Text>
-                </View>
-                <View style={styles.insightHeaderText}>
-                  <Text style={[styles.insightTitle, isDark && styles.textDark]} numberOfLines={1}>{insight.title}</Text>
-                </View>
-              </View>
-              <Text style={[styles.insightDescription, isDark && styles.textMuted]}>{insight.description}</Text>
-            </View>
-          </Animated.View>
-        ))}
-      </View>
-    </Animated.View>
-  );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SHARED COMPONENTS
-// ═══════════════════════════════════════════════════════════════════════════
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   SAFE AVATAR
+   ═══════════════════════════════════════════════════════════════════════════ */
 const SafeAvatar: React.FC<{
-  avatar?: string | null;
-  size?: number;
-  fallbackEmoji?: string;
-  fallbackIcon?: keyof typeof Ionicons.glyphMap;
-  fallbackColor?: string;
-}> = ({ avatar, size = 56, fallbackEmoji = '👤', fallbackIcon = 'person', fallbackColor = '#667eea' }) => {
+  avatar?: string | null; size?: number; fallbackEmoji?: string;
+  fallbackIcon?: keyof typeof Ionicons.glyphMap; fallbackColor?: string;
+}> = ({ avatar, size = 56, fallbackEmoji = '👤', fallbackIcon = 'person', fallbackColor = DS.primary }) => {
   const hasImage = isImageUri(avatar);
   const hasEmoji = isEmoji(avatar);
   return (
-    <View style={[styles.avatarWrapper, { width: size, height: size }]}>
+    <View style={{ width: size, height: size, borderRadius: size / 2.8, overflow: 'hidden' }}>
       <LinearGradient
         colors={[fallbackColor + '20', fallbackColor + '40']}
-        style={[styles.avatarGradient, { width: size, height: size, borderRadius: size / 2.8 }]}
+        style={{ width: size, height: size, borderRadius: size / 2.8, alignItems: 'center', justifyContent: 'center' }}
       >
         {hasImage ? (
-          <View style={{ width: size, height: size, borderRadius: size / 2.8, overflow: 'hidden' }}>
-            <Image source={{ uri: avatar! }} style={{ width: size, height: size }} resizeMode="cover" />
-          </View>
+          <Image source={{ uri: avatar! }} style={{ width: size, height: size }} resizeMode="cover" />
         ) : hasEmoji ? (
-          <Text style={[styles.avatarEmoji, { fontSize: size * 0.5 }]}>{avatar}</Text>
+          <Text style={{ fontSize: size * 0.5 }}>{avatar}</Text>
         ) : (
           <Ionicons name={fallbackIcon} size={size * 0.4} color={fallbackColor} />
         )}
@@ -544,129 +288,520 @@ const SafeAvatar: React.FC<{
   );
 };
 
-interface ActionModalProps {
-  visible: boolean;
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
+/* ═══════════════════════════════════════════════════════════════════════════
+   PULSE HEADER — Brilliant, modern, swift (NO hero card)
+   Compact glass capsule: avatar stack + live counts + floating actions
+   ═══════════════════════════════════════════════════════════════════════════ */
+interface PulseHeaderProps {
   isDark: boolean;
+  currentBaby: any;
+  members: FamilyMember[];
+  currentUserId: string;
+  activeCount: number;
+  pendingCount: number;
+  unreadChat: number;
+  isPrimaryParent: boolean;
+  onBack: () => void;
+  onBabyPress: () => void;
+  onInvite: () => void;
+  onChat: () => void;
 }
 
-const ActionModal: React.FC<ActionModalProps> = ({ visible, onClose, title, children, isDark }) => (
-  <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-    <View style={styles.modalOverlay}>
-      <BlurView intensity={80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-      <Animated.View entering={FadeInUp.springify()} style={[styles.modalContent, isDark && styles.modalContentDark]}>
+const PulseHeader = React.memo<PulseHeaderProps>(({
+  isDark, currentBaby, members, currentUserId, activeCount, pendingCount, unreadChat,
+  isPrimaryParent, onBack, onBabyPress, onInvite, onChat,
+}) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.08, { duration: 1600 }), withTiming(1, { duration: 1600 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 12000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.9, { duration: 2000 }), withTiming(0.4, { duration: 2000 })), -1, true);
+  }, [pulse, rotate, glow]);
+
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
+
+  // Avatar stack — up to 4 members
+  const avatarStack = members.slice(0, 4);
+  const extra = Math.max(0, members.length - 4);
+  const totalChat = unreadChat;
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View
+        style={[
+          styles.pulseWrap,
+          {
+            backgroundColor: isDark ? DS.darkCard : DS.white,
+            borderColor: isDark ? DS.darkBorder : DS.gray200,
+          },
+        ]}
+      >
         <LinearGradient
-          colors={isDark ? ['rgba(30,30,35,0.95)', 'rgba(20,20,25,0.98)'] : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.98)']}
+          colors={
+            isDark
+              ? ['rgba(99,102,241,0.22)', 'rgba(236,72,153,0.12)', 'rgba(139,92,246,0.06)']
+              : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']
+          }
           style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         />
-        <View style={styles.modalHeader}>
-          <Text style={[styles.modalTitle, isDark && styles.textDark]}>{title}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
-            <Ionicons name="close" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
-          </TouchableOpacity>
+        <LinearGradient
+          colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']}
+          style={styles.pulseGlowL}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          pointerEvents="none"
+        />
+        <LinearGradient
+          colors={[`${DS.accent}${isDark ? '38' : '22'}`, 'transparent']}
+          style={styles.pulseGlowR}
+          start={{ x: 1, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          pointerEvents="none"
+        />
+
+        {/* Back button overlay */}
+        <PressableScale onPress={onBack} activeScale={0.9} haptic="light">
+          <View style={[styles.pulseBackBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.gray100 }]}>
+            <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+          </View>
+        </PressableScale>
+
+        {/* Main row: animated avatar ring + info + actions */}
+        <View style={styles.pulseRow}>
+          <PressableScale onPress={onBabyPress} activeScale={0.94}>
+            <View style={styles.pulseAvatarWrap}>
+              <Animated.View style={[styles.pulseAvatarGlow, glowStyle]} />
+              <Animated.View style={[styles.pulseAvatarRing, ringStyle]}>
+                <LinearGradient
+                  colors={[DS.primary, DS.accent, DS.warning, DS.primary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </Animated.View>
+              <View style={[styles.pulseAvatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+                {currentBaby ? (
+                  <SafeAvatar avatar={currentBaby.avatar || '👶'} size={46} fallbackIcon="happy-outline" fallbackColor={DS.primary} />
+                ) : (
+                  <Ionicons name="add-circle" size={26} color={DS.primary} />
+                )}
+              </View>
+            </View>
+          </PressableScale>
+
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.pulseTitle}>
+                FAMILY
+              </GradientText>
+              <View style={[styles.pulseLivePill, { backgroundColor: `${DS.success}18` }]}>
+                <PulsingDot color={DS.success} size={6} />
+                <Text style={[styles.pulseLiveText, { color: DS.success }]}>{activeCount} active</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={onBabyPress} activeOpacity={0.7} style={styles.pulseSubRow}>
+              <Text style={[styles.pulseBabyName, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={1}>
+                {currentBaby?.name || 'Add a baby profile'}
+              </Text>
+              <Ionicons name="chevron-down" size={12} color={isDark ? DS.gray500 : DS.gray400} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <PressableScale onPress={onChat} activeScale={0.9} haptic="light">
+              <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(236,72,153,0.15)' : `${DS.accent}12` }]}>
+                <Ionicons name="chatbubbles-outline" size={18} color={DS.accent} />
+                {totalChat > 0 && (
+                  <View style={[styles.pulseBadge, { backgroundColor: DS.danger }]}>
+                    <Text style={styles.pulseBadgeText}>{totalChat > 9 ? '9+' : totalChat}</Text>
+                  </View>
+                )}
+              </View>
+            </PressableScale>
+            {isPrimaryParent && (
+              <PressableScale onPress={onInvite} activeScale={0.9} haptic="medium">
+                <LinearGradient
+                  colors={[DS.primary, DS.accent]}
+                  style={styles.pulseAddBtn}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name="person-add" size={18} color={DS.white} />
+                </LinearGradient>
+              </PressableScale>
+            )}
+          </View>
         </View>
-        <Animated.ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
-          {children}
-        </Animated.ScrollView>
-      </Animated.View>
-    </View>
-  </Modal>
+
+        {/* Avatar stack + stats strip */}
+        <View style={[styles.pulseStats, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' }]}>
+          {/* Avatar stack */}
+          <View style={styles.avatarStack}>
+            {avatarStack.map((m, i) => {
+              const roleCfg = ROLE_CONFIG[m.role] || ROLE_CONFIG[UserRole.VIEWER];
+              const isYou = m.id === currentUserId || m.userId === currentUserId;
+              return (
+                <View key={m.id + i} style={[styles.avatarStackItem, { marginLeft: i === 0 ? 0 : -10, zIndex: 10 - i, borderColor: isDark ? DS.darkCard : DS.white }]}>
+                  <SafeAvatar avatar={m.avatar} size={28} fallbackColor={roleCfg.color} />
+                  {isYou && (
+                    <View style={[styles.avatarYouDot, { backgroundColor: DS.primary, borderColor: isDark ? DS.darkCard : DS.white }]} />
+                  )}
+                </View>
+              );
+            })}
+            {extra > 0 && (
+              <View style={[styles.avatarExtra, { marginLeft: -10, backgroundColor: isDark ? DS.darkSurface : DS.gray100, borderColor: isDark ? DS.darkCard : DS.white }]}>
+                <Text style={[styles.avatarExtraText, { color: isDark ? DS.gray300 : DS.gray600 }]}>+{extra}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.primary }]}>{members.length}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>members</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: pendingCount > 0 ? DS.warning : DS.gray400 }]}>{pendingCount}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>pending</Text>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA RIBBON (context line)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AuraRibbon = React.memo<{
+  isDark: boolean; icon: keyof typeof Ionicons.glyphMap; color: string;
+  label: string; text: string; onPress?: () => void;
+}>(({ isDark, icon, color, label, text, onPress }) => (
+  <Animated.View entering={FadeInUp.delay(120).springify()}>
+    <PressableScale onPress={onPress} activeScale={0.98}>
+      <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+          <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={1}>{text}</Text>
+        </View>
+        {onPress && <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />}
+      </View>
+    </PressableScale>
+  </Animated.View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TAB BAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TabBar = ({ tabs, activeTab, onChange, isDark }: {
+  tabs: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }[];
+  activeTab: TabKey;
+  onChange: (t: TabKey) => void;
+  isDark: boolean;
+}) => (
+  <View style={[styles.tabBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(99,102,241,0.06)' }]}>
+    {tabs.map((tab) => {
+      const isActive = activeTab === tab.key;
+      return (
+        <TouchableOpacity
+          key={tab.key}
+          onPress={() => onChange(tab.key)}
+          style={[styles.tabItem, isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : DS.white, ...DS.shadow.sm }]}
+          activeOpacity={0.8}
+        >
+          <Ionicons name={tab.icon} size={14} color={isActive ? DS.primary : isDark ? DS.gray400 : DS.gray500} />
+          <Text style={[styles.tabLabel, { color: isActive ? DS.primary : isDark ? DS.gray400 : DS.gray500 }, isActive && { fontWeight: '700' }]}>
+            {tab.label}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
 );
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MEMBER CARD
-// ═══════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION HEADER
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SectionHeader = React.memo(({ title, subtitle, icon, color = DS.primary, action, actionLabel }: {
+  title: string; subtitle?: string; icon?: keyof typeof Ionicons.glyphMap; color?: string;
+  action?: () => void; actionLabel?: string;
+}) => (
+  <View style={styles.sectionHeader}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+      {icon && (
+        <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={15} color={color} />
+        </View>
+      )}
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <Text style={[styles.sectionAction, { color }]}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={13} color={color} />
+      </TouchableOpacity>
+    )}
+  </View>
+));
 
-const MemberCard: React.FC<{
-  member: FamilyMember;
-  isCurrentUser: boolean;
-  onPress: () => void;
-  index: number;
-  isDark: boolean;
-  themeColors: any;
-  shouldReduceMotion: boolean;
-}> = ({ member, isCurrentUser, onPress, index, isDark, themeColors, shouldReduceMotion }) => {
-  const roleConfig = ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER];
-  const isOnline = member.lastActive && new Date(member.lastActive).getTime() > Date.now() - 5 * 60 * 1000;
+/* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY HEALTH SCORE — compact circular + stats
+   ═══════════════════════════════════════════════════════════════════════════ */
+const FamilyHealthCard = React.memo(({ members, isDark }: { members: FamilyMember[]; isDark: boolean }) => {
+  const score = useMemo(() => {
+    const active = members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 86400000).length;
+    const total = members.length || 1;
+    const activityScore = Math.round((active / total) * 100);
+    const engagementScore = Math.min(100, members.length * 15);
+    return Math.round(activityScore * 0.6 + engagementScore * 0.4);
+  }, [members]);
+
+  const color = score >= 80 ? DS.success : score >= 50 ? DS.warning : DS.danger;
+  const label = score >= 80 ? 'Thriving' : score >= 50 ? 'Active' : 'Needs Attention';
+
+  return (
+    <Animated.View entering={FadeInUp.delay(60).springify()}>
+      <View style={[styles.card, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient colors={[`${color}10`, `${color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.lg }}>
+          <View style={[styles.healthRing, { borderColor: `${color}30` }]}>
+            <View style={[styles.healthRingFill, { borderColor: color, transform: [{ rotate: `${-90 + (score / 100) * 360}deg` }] }]} />
+            <View style={styles.healthRingInner}>
+              <Text style={[styles.healthRingValue, { color }]}>{score}</Text>
+              <Text style={[styles.healthRingMax, { color: isDark ? DS.gray500 : DS.gray400 }]}>/100</Text>
+            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.healthTitle, { color: isDark ? DS.white : DS.gray900 }]}>Family Health</Text>
+            <Text style={[styles.healthLabel, { color }]}>{label}</Text>
+            <View style={styles.healthStatsRow}>
+              {[
+                { label: 'Active', value: members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 86400000).length, color: DS.success },
+                { label: 'Week', value: members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 86400000).length, color: DS.warning },
+                { label: 'Pending', value: members.filter(m => !m.lastActive || m.status === 'pending').length, color: DS.danger },
+              ].map((stat, i) => (
+                <View key={i} style={styles.healthStat}>
+                  <Text style={[styles.healthStatVal, { color: stat.color }]}>{stat.value}</Text>
+                  <Text style={[styles.healthStatLbl, { color: isDark ? DS.gray500 : DS.gray400 }]}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DAILY GOALS
+   ═══════════════════════════════════════════════════════════════════════════ */
+interface DailyGoal {
+  id: string; title: string; icon: string; target: number;
+  current: number; unit: string; color: string;
+}
+
+const DailyGoals = React.memo(({ goals, isDark, onPress }: { goals: DailyGoal[]; isDark: boolean; onPress: (id: string) => void }) => {
+  if (!goals.length) return null;
+  const completed = goals.filter(g => g.current >= g.target).length;
+  return (
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
+      <SectionHeader
+        title="Daily Goals"
+        subtitle={`${completed} of ${goals.length} complete`}
+        icon="trophy-outline"
+        color={DS.warning}
+      />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
+        {goals.map((g) => {
+          const pct = Math.min(g.current / g.target, 1);
+          const done = pct >= 1;
+          return (
+            <PressableScale key={g.id} onPress={() => onPress(g.id)} activeScale={0.94}>
+              <View style={[styles.goalCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <LinearGradient colors={[`${g.color}10`, `${g.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <Text style={{ fontSize: 22 }}>{g.icon}</Text>
+                  {done && <Ionicons name="checkmark-circle" size={16} color={DS.success} />}
+                </View>
+                <Text style={[styles.goalTitle, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={1}>{g.title}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
+                  <Text style={[styles.goalVal, { color: isDark ? DS.white : DS.gray900 }]}>{g.current}</Text>
+                  <Text style={[styles.goalTotal, { color: isDark ? DS.gray500 : DS.gray400 }]}>/{g.target}</Text>
+                </View>
+                <View style={[styles.goalBarBg, { backgroundColor: `${g.color}12` }]}>
+                  <View style={[styles.goalBarFill, { width: `${pct * 100}%`, backgroundColor: done ? DS.success : g.color }]} />
+                </View>
+                <Text style={[styles.goalUnit, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>{g.unit}</Text>
+              </View>
+            </PressableScale>
+          );
+        })}
+      </ScrollView>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MEMBER CARD
+   ═══════════════════════════════════════════════════════════════════════════ */
+const MemberCard = React.memo(({
+  member, isCurrentUser, onPress, index, isDark, currentUserId,
+}: {
+  member: FamilyMember; isCurrentUser: boolean; onPress: () => void;
+  index: number; isDark: boolean; currentUserId: string;
+}) => {
+  const roleCfg = ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER];
+  const isOnline = member.lastActive && new Date(member.lastActive).getTime() > Date.now() - 5 * 60000;
   const isPending = !member.lastActive || member.status === 'pending';
 
   return (
-    <Animated.View
-      entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 80).springify()}
-      layout={shouldReduceMotion ? undefined : Layout.springify()}
-      style={styles.memberCardWrapper}
-    >
-      <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
-        <View style={[styles.memberCard, isDark && styles.memberCardDark, isPending && styles.memberCardPending]}>
-          <LinearGradient
-            colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-            style={StyleSheet.absoluteFill}
-          />
-          <LinearGradient colors={roleConfig.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.roleStrip} />
-          <View style={styles.memberCardContent}>
-            <View style={styles.memberAvatarContainer}>
-              <SafeAvatar
-                avatar={member.avatar}
-                size={52}
-                fallbackIcon={member.role === UserRole.PARENT_1 ? 'shield' : member.role === UserRole.PARENT_2 ? 'heart' : 'person'}
-                fallbackColor={roleConfig.color}
-              />
+    <Animated.View entering={FadeInUp.delay(index * 60).springify()}>
+      <PressableScale onPress={onPress} activeScale={0.98}>
+        <View style={[styles.memberCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+          <LinearGradient colors={roleCfg.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.memberStrip} />
+          <View style={styles.memberRow}>
+            <View style={{ position: 'relative' }}>
+              <SafeAvatar avatar={member.avatar} size={48} fallbackColor={roleCfg.color} />
               {isCurrentUser && (
-                <View style={[styles.youBadge, { backgroundColor: themeColors.primary }]}>
-                  <Text style={styles.youBadgeText}>YOU</Text>
-                </View>
+                <View style={[styles.memberYouDot, { backgroundColor: DS.primary, borderColor: isDark ? DS.darkCard : DS.white }]} />
               )}
-              {isOnline && <View style={[styles.onlineIndicator, { borderColor: isDark ? '#1a1a2e' : '#fff' }]} />}
-              {isPending && <View style={[styles.pendingIndicator, { borderColor: isDark ? '#1a1a2e' : '#fff' }]} />}
+              {isOnline && (
+                <View style={[styles.memberOnlineDot, { borderColor: isDark ? DS.darkCard : DS.white }]} />
+              )}
             </View>
-            <View style={styles.memberInfo}>
-              <Text style={[styles.memberName, isDark && styles.textDark]} numberOfLines={1}>{member.fullName}</Text>
-              <View style={styles.memberMetaRow}>
-                <LinearGradient colors={roleConfig.gradient} style={styles.roleBadgeSmall}>
-                  <Ionicons name={roleConfig.icon} size={9} color="#fff" />
-                  <Text style={styles.roleBadgeSmallText}>{roleConfig.badge}</Text>
-                </LinearGradient>
-                <Text style={[styles.memberRelationship, isDark && styles.textMuted]}>
-                  {member.relationship || 'Family Member'}
+            <View style={{ flex: 1, marginLeft: DS.space.md }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.memberName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                  {member.fullName}
                 </Text>
+                {isCurrentUser && (
+                  <View style={[styles.youBadge, { backgroundColor: `${DS.primary}18` }]}>
+                    <Text style={[styles.youBadgeText, { color: DS.primary }]}>You</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.memberMetaRow}>
+                <LinearGradient colors={roleCfg.gradient} style={styles.roleBadge}>
+                  <Ionicons name={roleCfg.icon} size={9} color={DS.white} />
+                  <Text style={styles.roleBadgeText}>{roleCfg.badge}</Text>
+                </LinearGradient>
+                {member.relationship && (
+                  <Text style={[styles.memberRelationship, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>
+                    {member.relationship}
+                  </Text>
+                )}
               </View>
               {isPending ? (
-                <View style={styles.pendingBadge}>
-                  <Ionicons name="time-outline" size={11} color="#f59e0b" />
-                  <Text style={styles.pendingText}>Pending Invitation</Text>
+                <View style={styles.pendingInline}>
+                  <Ionicons name="time-outline" size={11} color={DS.warning} />
+                  <Text style={[styles.pendingInlineText, { color: DS.warning }]}>Invitation pending</Text>
                 </View>
               ) : member.lastActive ? (
-                <View style={styles.memberStateRow}>
-                  <View style={[styles.stateDot, { backgroundColor: isOnline ? '#10b981' : '#94a3b8' }]} />
-                  <Text style={[styles.memberLastActive, isDark && styles.textMuted]}>
-                    {isOnline ? 'Active now' : `Active ${formatDistanceToNow(new Date(member.lastActive), { addSuffix: true })}`}
-                  </Text>
-                </View>
+                <Text style={[styles.memberActiveText, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+                  {isOnline ? 'Active now' : `Active ${formatDistanceToNow(new Date(member.lastActive), { addSuffix: true })}`}
+                </Text>
               ) : null}
             </View>
-            <Ionicons name="chevron-forward" size={18} color={roleConfig.color} />
+            <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
           </View>
         </View>
-      </TouchableOpacity>
+      </PressableScale>
     </Animated.View>
   );
-};
+});
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ACCESS TAB
-// ═══════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTIVITY TIMELINE
+   ═══════════════════════════════════════════════════════════════════════════ */
+interface TimelineEvent {
+  id: string; type: string; title: string; description?: string;
+  timestamp: number; actorName: string; actorRole: UserRole;
+}
 
-const AccessTab: React.FC<{
-  members: FamilyMember[];
-  isDark: boolean;
-  themeColors: any;
-  canManage: boolean;
-  currentUserId: string;
-  onMemberPress: (m: FamilyMember) => void;
-  shouldReduceMotion: boolean;
-}> = ({ members, isDark, themeColors, canManage, currentUserId, onMemberPress, shouldReduceMotion }) => {
+const ActivityTimeline = React.memo(({ events, isDark }: { events: TimelineEvent[]; isDark: boolean }) => {
+  const ACTIVITY_ICONS: Record<string, string> = {
+    feed: '🍼', sleep: '😴', potty: '🚽', diaper: '🧷', growth: '📏',
+    medication: '💊', milestone: '🏆', note: '📝',
+  };
+  const formatTime = (ts: number) => {
+    const diff = Date.now() - ts;
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'Just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    if (d < 7) return `${d}d ago`;
+    return format(new Date(ts), 'MMM d');
+  };
+
+  if (events.length === 0) {
+    return (
+      <Animated.View entering={FadeInUp.delay(80).springify()}>
+        <SectionHeader title="Recent Activity" subtitle="No events yet" icon="time-outline" color={DS.info} />
+        <View style={[styles.emptyCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+          <View style={[styles.emptyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+            <Ionicons name="time-outline" size={36} color={isDark ? DS.gray500 : DS.gray400} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray900 }]}>No activity yet</Text>
+          <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Family activity will appear here</Text>
+        </View>
+      </Animated.View>
+    );
+  }
+
+  return (
+    <Animated.View entering={FadeInUp.delay(80).springify()}>
+      <SectionHeader title="Recent Activity" subtitle={`${events.length} events`} icon="pulse-outline" color={DS.info} />
+      <View style={{ paddingHorizontal: DS.space.lg }}>
+        {events.map((e, i) => (
+          <Animated.View key={e.id} entering={FadeInUp.delay(i * 50).springify()} style={styles.timelineRow}>
+            <View style={styles.timelineLeft}>
+              <View style={[styles.timelineDot, { backgroundColor: DS.primary }]} />
+              {i < events.length - 1 && <View style={[styles.timelineLine, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />}
+            </View>
+            <View style={[styles.timelineCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+                <Text style={{ fontSize: 18 }}>{ACTIVITY_ICONS[e.type] || '📝'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.timelineTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{e.title}</Text>
+                  <Text style={[styles.timelineMeta, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                    by {e.actorName} · {formatTime(e.timestamp)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </Animated.View>
+        ))}
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACCESS TAB
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AccessTab = ({
+  members, isDark, canManage, currentUserId, onMemberPress,
+}: {
+  members: FamilyMember[]; isDark: boolean; canManage: boolean;
+  currentUserId: string; onMemberPress: (m: FamilyMember) => void;
+}) => {
   const formatLastActive = (iso?: string): string => {
     if (!iso) return 'Never';
     const diff = Date.now() - new Date(iso).getTime();
@@ -681,119 +816,79 @@ const AccessTab: React.FC<{
   };
 
   return (
-    <View style={styles.tabContent}>
-      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
-        <LinearGradient
-          colors={[themeColors.colors[0], themeColors.colors[1]]}
-          style={styles.permissionsHeaderCard}
-        >
-          <View style={styles.permissionsHeaderTop}>
-            <View style={[styles.permissionsHeaderIcon, { backgroundColor: themeColors.primary + '20' }]}>
-              <Ionicons name="shield-checkmark" size={24} color={themeColors.primary} />
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={[styles.permissionsHeaderTitle, isDark && styles.textDark]}>Who can access</Text>
-              <Text style={[styles.permissionsHeaderSubtitle, isDark && styles.textMuted]}>
-                {members.length} {members.length === 1 ? 'person has' : 'people have'} access
-              </Text>
-            </View>
-          </View>
-          {!canManage && (
-            <View style={styles.readOnlyBanner}>
-              <Ionicons name="eye-outline" size={14} color="#f59e0b" />
-              <Text style={styles.readOnlyText}>
-                You can view this list, but only Parent 1 / Parent 2 can change permissions
-              </Text>
-            </View>
-          )}
-        </LinearGradient>
-      </Animated.View>
-
+    <View style={{ gap: 10, paddingTop: DS.space.md }}>
+      {!canManage && (
+        <View style={[styles.readOnlyBanner, { backgroundColor: `${DS.warning}12`, borderColor: `${DS.warning}30` }]}>
+          <Ionicons name="eye-outline" size={14} color={DS.warning} />
+          <Text style={[styles.readOnlyText, { color: DS.warning }]}>
+            Only Parent 1 / Parent 2 can change permissions
+          </Text>
+        </View>
+      )}
       {members.map((member, idx) => {
         const roleCfg = ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER];
         const permMap = ROLE_PERMISSION_MAP[member.role] || ROLE_PERMISSION_MAP[UserRole.VIEWER];
         const activePerms = (Object.keys(PERMISSION_META) as PermissionKey[]).filter(k => permMap[k]);
         const isYou = member.id === currentUserId || member.userId === currentUserId;
         const isPending = !member.lastActive || member.status === 'pending';
-
         return (
-          <Animated.View
-            key={member.id}
-            entering={shouldReduceMotion ? undefined : FadeInUp.delay(80 + idx * 40).springify()}
-          >
-            <TouchableOpacity
-              activeOpacity={canManage && member.role !== UserRole.PARENT_1 ? 0.85 : 1}
-              onPress={() => {
-                if (!canManage) return;
-                if (member.role === UserRole.PARENT_1) return;
-                onMemberPress(member);
-              }}
-              style={[styles.permissionCard, isDark && styles.permissionCardDark]}
+          <Animated.View key={member.id} entering={FadeInUp.delay(80 + idx * 40).springify()}>
+            <PressableScale
+              onPress={() => { if (canManage && member.role !== UserRole.PARENT_1) onMemberPress(member); }}
+              activeScale={0.98}
             >
-              <LinearGradient
-                colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={styles.permissionCardHeader}>
-                <SafeAvatar avatar={member.avatar} size={44} fallbackColor={roleCfg.color} />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={[styles.permissionCardName, isDark && styles.textDark]} numberOfLines={1}>
-                      {member.fullName}
-                      {member.role === UserRole.PARENT_1 && ' (Owner)'}
-                    </Text>
-                    {isYou && (
-                      <View style={[styles.permissionYouBadge, { backgroundColor: themeColors.primary + '20' }]}>
-                        <Text style={[styles.permissionYouText, { color: themeColors.primary }]}>You</Text>
-                      </View>
-                    )}
+              <View style={[styles.permCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.md }}>
+                  <SafeAvatar avatar={member.avatar} size={44} fallbackColor={roleCfg.color} />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[styles.permName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                        {member.fullName}
+                        {member.role === UserRole.PARENT_1 && ' (Owner)'}
+                      </Text>
+                      {isYou && (
+                        <View style={[styles.youBadge, { backgroundColor: `${DS.primary}18` }]}>
+                          <Text style={[styles.youBadgeText, { color: DS.primary }]}>You</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={[styles.permRolePill, { backgroundColor: `${roleCfg.color}15` }]}>
+                      <Text style={[styles.permRoleText, { color: roleCfg.color }]}>{roleCfg.badge}</Text>
+                    </View>
                   </View>
-                  {member.email ? (
-                    <Text style={[styles.permissionEmail, isDark && styles.textMuted]} numberOfLines={1}>
-                      {member.email}
-                    </Text>
-                  ) : null}
                 </View>
-                <View style={[styles.permissionRolePill, { backgroundColor: roleCfg.color + '18' }]}>
-                  <Text style={[styles.permissionRoleText, { color: roleCfg.color }]}>{roleCfg.badge}</Text>
+
+                <View style={styles.permMetaRow}>
+                  <Ionicons name="time-outline" size={12} color={isDark ? DS.gray500 : DS.gray400} />
+                  <Text style={[styles.permMetaText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                    Last active: {formatLastActive(member.lastActive)}
+                  </Text>
+                  {isPending && (
+                    <View style={[styles.permPendingPill, { backgroundColor: `${DS.warning}15` }]}>
+                      <Text style={[styles.permPendingText, { color: DS.warning }]}>Invite Pending</Text>
+                    </View>
+                  )}
                 </View>
-              </View>
 
-              <View style={styles.permissionMetaRow}>
-                <Ionicons name="time-outline" size={12} color={isDark ? '#64748b' : '#94a3b8'} />
-                <Text style={[styles.permissionMetaText, isDark && styles.textMuted]}>
-                  Last active: {formatLastActive(member.lastActive)}
-                </Text>
-                {isPending && (
-                  <View style={styles.permissionPendingPill}>
-                    <Text style={styles.permissionPendingText}>Invite Pending</Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.permissionChipsWrap}>
-                {activePerms.length === 0 ? (
-                  <Text style={[styles.permissionNoPerms, isDark && styles.textMuted]}>No permissions</Text>
-                ) : (
-                  activePerms.map(key => {
+                <View style={styles.permChips}>
+                  {activePerms.map(key => {
                     const meta = PERMISSION_META[key];
                     return (
-                      <View key={key} style={[styles.permissionChip, { backgroundColor: meta.color + '15' }]}>
-                        <Ionicons name={meta.icon} size={11} color={meta.color} />
-                        <Text style={[styles.permissionChipText, { color: meta.color }]}>{meta.label}</Text>
+                      <View key={key} style={[styles.permChip, { backgroundColor: `${meta.color}15` }]}>
+                        <Ionicons name={meta.icon} size={10} color={meta.color} />
+                        <Text style={[styles.permChipText, { color: meta.color }]}>{meta.label}</Text>
                       </View>
                     );
-                  })
-                )}
+                  })}
+                </View>
               </View>
-            </TouchableOpacity>
+            </PressableScale>
           </Animated.View>
         );
       })}
-
-      <View style={styles.permissionsFooter}>
-        <Ionicons name="information-circle-outline" size={14} color={isDark ? '#64748b' : '#94a3b8'} />
-        <Text style={[styles.permissionsFooterText, isDark && styles.textMuted]}>
+      <View style={styles.permFooter}>
+        <Ionicons name="information-circle-outline" size={14} color={isDark ? DS.gray500 : DS.gray400} />
+        <Text style={[styles.permFooterText, { color: isDark ? DS.gray500 : DS.gray400 }]}>
           All access changes sync instantly across family devices.
         </Text>
       </View>
@@ -801,188 +896,148 @@ const AccessTab: React.FC<{
   );
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SETTINGS TAB — real destinations, no dead-ends
-// ═══════════════════════════════════════════════════════════════════════════
-
-interface SettingsTabProps {
-  isDark: boolean;
-  themeColors: any;
-  isPrimaryParent: boolean;
-  familyCount: number;
-  hasCoParent: boolean;
-  guardianCount: number;
-  unreadCount: number;
-  onOpenMembers: () => void;
-  onOpenAccess: () => void;
-  onOpenFamilyChat: () => void;
-  onOpenInvite: () => void;
-  onOpenBackup: () => void;
-  onOpenReminders: () => void;
-  onLeaveFamily: () => void;
-  shouldReduceMotion: boolean;
-}
-
-const SettingsTab: React.FC<SettingsTabProps> = ({
-  isDark, themeColors, isPrimaryParent,
-  familyCount, hasCoParent, guardianCount, unreadCount,
+/* ═══════════════════════════════════════════════════════════════════════════
+   SETTINGS TAB
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SettingsTab = ({
+  isDark, isPrimaryParent, familyCount, hasCoParent, guardianCount, unreadCount,
   onOpenMembers, onOpenAccess, onOpenFamilyChat, onOpenInvite,
   onOpenBackup, onOpenReminders, onLeaveFamily,
-  shouldReduceMotion,
+}: {
+  isDark: boolean; isPrimaryParent: boolean; familyCount: number;
+  hasCoParent: boolean; guardianCount: number; unreadCount: number;
+  onOpenMembers: () => void; onOpenAccess: () => void; onOpenFamilyChat: () => void;
+  onOpenInvite: () => void; onOpenBackup: () => void; onOpenReminders: () => void;
+  onLeaveFamily: () => void;
 }) => {
   const renderRow = (
-    icon: keyof typeof Ionicons.glyphMap,
-    iconColor: string,
-    title: string,
-    subtitle: string,
-    onPress: () => void,
-    destructive = false,
-    badge?: string | number,
+    icon: keyof typeof Ionicons.glyphMap, color: string,
+    title: string, subtitle: string, onPress: () => void,
+    destructive = false, badge?: number,
   ) => (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.75}
-      style={[styles.settingsRow, isDark && styles.settingsRowDark]}
-    >
-      <LinearGradient
-        colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={[styles.settingsIconBg, { backgroundColor: (destructive ? '#ef4444' : iconColor) + '15' }]}>
-        <Ionicons name={icon} size={20} color={destructive ? '#ef4444' : iconColor} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.settingsRowTitle, isDark && styles.textDark, destructive && { color: '#ef4444' }]}>
-          {title}
-        </Text>
-        <Text style={[styles.settingsRowSubtitle, isDark && styles.textMuted]} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      </View>
-      {badge !== undefined && (
-        <View style={[styles.settingsBadge, { backgroundColor: '#ef4444' }]}>
-          <Text style={styles.settingsBadgeText}>{badge}</Text>
+    <PressableScale onPress={onPress} activeScale={0.98}>
+      <View style={[styles.setRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.setIcon, { backgroundColor: (destructive ? DS.danger : color) + '15' }]}>
+          <Ionicons name={icon} size={20} color={destructive ? DS.danger : color} />
         </View>
-      )}
-      <Ionicons name="chevron-forward" size={18} color={isDark ? '#64748b' : '#94a3b8'} />
-    </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.setTitle, { color: destructive ? DS.danger : isDark ? DS.white : DS.gray900 }]}>
+            {title}
+          </Text>
+          <Text style={[styles.setSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        </View>
+        {badge !== undefined && badge > 0 && (
+          <View style={[styles.setBadge, { backgroundColor: DS.danger }]}>
+            <Text style={styles.setBadgeText}>{badge > 9 ? '9+' : badge}</Text>
+          </View>
+        )}
+        <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+      </View>
+    </PressableScale>
   );
 
   return (
-    <View style={styles.tabContent}>
-      {/* Summary card */}
-      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(50).springify()}>
-        <LinearGradient
-          colors={[themeColors.colors[0], themeColors.colors[1]]}
-          style={styles.settingsSummaryCard}
-        >
-          <View style={styles.settingsSummaryRow}>
-            <View style={styles.settingsSummaryItem}>
-              <Text style={[styles.settingsSummaryValue, { color: themeColors.primary }]}>{familyCount}</Text>
-              <Text style={[styles.settingsSummaryLabel, isDark && styles.textMuted]}>Members</Text>
+    <View style={{ gap: 10, paddingTop: DS.space.md }}>
+      {/* Summary */}
+      <Animated.View entering={FadeInUp.delay(40).springify()}>
+        <View style={[styles.summaryCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+          <LinearGradient colors={[`${DS.primary}10`, `${DS.accent}06`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryVal, { color: DS.primary }]}>{familyCount}</Text>
+              <Text style={[styles.summaryLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>Members</Text>
             </View>
-            <View style={[styles.settingsSummaryDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]} />
-            <View style={styles.settingsSummaryItem}>
-              <Text style={[styles.settingsSummaryValue, { color: '#fa709a' }]}>{hasCoParent ? 'Yes' : 'No'}</Text>
-              <Text style={[styles.settingsSummaryLabel, isDark && styles.textMuted]}>Co-Parent</Text>
+            <View style={[styles.summaryDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryVal, { color: DS.accent }]}>{hasCoParent ? 'Yes' : 'No'}</Text>
+              <Text style={[styles.summaryLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>Co-Parent</Text>
             </View>
-            <View style={[styles.settingsSummaryDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]} />
-            <View style={styles.settingsSummaryItem}>
-              <Text style={[styles.settingsSummaryValue, { color: '#10b981' }]}>{guardianCount}</Text>
-              <Text style={[styles.settingsSummaryLabel, isDark && styles.textMuted]}>Guardians</Text>
+            <View style={[styles.summaryDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryVal, { color: DS.success }]}>{guardianCount}</Text>
+              <Text style={[styles.summaryLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>Guardians</Text>
             </View>
           </View>
-        </LinearGradient>
+        </View>
       </Animated.View>
 
       {/* Communication */}
-      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100).springify()}>
-        <View style={styles.sectionHeaderRow}>
-          <View>
-            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Communication</Text>
-            <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>Keep the family connected</Text>
-          </View>
-        </View>
-        <View style={{ gap: 8 }}>
-          {renderRow(
-            'chatbubbles-outline',
-            '#ec4899',
-            'Family Chat',
-            unreadCount > 0 ? `${unreadCount} unread messages` : 'Message your family',
-            onOpenFamilyChat,
-            false,
-            unreadCount > 0 ? unreadCount : undefined,
-          )}
-        </View>
-      </Animated.View>
+      <SectionHeader title="Communication" icon="chatbubbles-outline" color={DS.accent} />
+      {renderRow('chatbubbles-outline', DS.accent, 'Family Chat',
+        unreadCount > 0 ? `${unreadCount} unread messages` : 'Message your family',
+        onOpenFamilyChat, false, unreadCount)}
 
       {/* Family Management */}
-      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(150).springify()}>
-        <View style={[styles.sectionHeaderRow, { marginTop: 8 }]}>
-          <View>
-            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Family Management</Text>
-            <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>Manage your household</Text>
-          </View>
-        </View>
-        <View style={{ gap: 8 }}>
-          {renderRow('people-outline', themeColors.primary, 'View Family Members', 'See everyone in this family', onOpenMembers)}
-          {renderRow('shield-checkmark-outline', '#f59e0b', 'Roles & Permissions', 'Control what family members can access', onOpenAccess)}
-          {isPrimaryParent && renderRow('person-add', '#11998e', 'Invite Co-Parent', 'Send an invite to your partner', onOpenInvite)}
-        </View>
-      </Animated.View>
+      <SectionHeader title="Family Management" icon="people-outline" color={DS.primary} />
+      {renderRow('people-outline', DS.primary, 'Family Members', 'See everyone in this family', onOpenMembers)}
+      {renderRow('shield-checkmark-outline', DS.warning, 'Roles & Permissions', 'Control what family members can access', onOpenAccess)}
+      {isPrimaryParent && renderRow('person-add', DS.success, 'Invite Co-Parent', 'Send an invite to your partner', onOpenInvite)}
 
       {/* Data & Privacy */}
-      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200).springify()}>
-        <View style={[styles.sectionHeaderRow, { marginTop: 8 }]}>
-          <View>
-            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Data & Privacy</Text>
-            <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>Family data controls</Text>
-          </View>
-        </View>
-        <View style={{ gap: 8 }}>
-          {renderRow('cloud-upload-outline', '#10b981', 'Export & Backup', 'Backup all family records', onOpenBackup)}
-          {renderRow('notifications-outline', '#4facfe', 'Notifications & Reminders', 'Alerts for family activity', onOpenReminders)}
-        </View>
-      </Animated.View>
+      <SectionHeader title="Data & Privacy" icon="lock-closed-outline" color={DS.info} />
+      {renderRow('cloud-upload-outline', DS.success, 'Export & Backup', 'Backup all family records', onOpenBackup)}
+      {renderRow('notifications-outline', '#4facfe', 'Notifications & Reminders', 'Alerts for family activity', onOpenReminders)}
 
       {/* Danger Zone */}
-      <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250).springify()}>
-        <View style={[styles.sectionHeaderRow, { marginTop: 8 }]}>
-          <View>
-            <Text style={[styles.sectionTitle, { color: '#ef4444' }]}>Danger Zone</Text>
-            <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>Destructive actions</Text>
-          </View>
-        </View>
-        {renderRow(
-          'exit-outline',
-          '#ef4444',
-          'Leave Family',
-          'Remove yourself from this family group',
-          onLeaveFamily,
-          true,
-        )}
-      </Animated.View>
+      <SectionHeader title="Danger Zone" icon="warning-outline" color={DS.danger} />
+      {renderRow('exit-outline', DS.danger, 'Leave Family', 'Remove yourself from this family group', onLeaveFamily, true)}
     </View>
   );
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MAIN SCREEN
-// ═══════════════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODALS
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ActionModal = ({ visible, onClose, title, children, isDark }: {
+  visible: boolean; onClose: () => void; title: string; children: React.ReactNode; isDark: boolean;
+}) => {
+  const scale = useSharedValue(0.95);
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    if (visible) { scale.value = withSpring(1, { damping: 15, stiffness: 300 }); opacity.value = withTiming(1, { duration: 250 }); }
+    else { scale.value = withTiming(0.95); opacity.value = withTiming(0); }
+  }, [visible]);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
+  if (!visible) return null;
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.modalBackdrop}>
+        <BlurView intensity={isDark ? 60 : 90} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <Animated.View style={[styles.modalCard, anim, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: isDark ? DS.white : DS.gray900 }]}>{title}</Text>
+            <TouchableOpacity onPress={onClose} style={[styles.modalClose, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+              <Ionicons name="close" size={20} color={isDark ? DS.white : DS.gray800} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: DS.space.lg }}>
+            {children}
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN SCREEN
+   ═══════════════════════════════════════════════════════════════════════════ */
 export default function FamilySharingScreen({ navigation }: FamilySharingScreenProps) {
   const sweetAlert = useSweetAlert();
   const {
-    members, guardians, parent1, parent2,
-    loadFamily, removeMember, updateGuardianProfile, updateParent2Profile,
+    members, guardians, parent1, parent2, loadFamily,
+    removeMember, updateGuardianProfile, updateParent2Profile,
     getActiveInviteCodes, revokeInviteCode, getPartialSignupInfo,
   } = useFamily();
 
   const { profile, updateProfile } = useSafeUser();
-  const { currentBaby } = useBaby();
+  const { currentBaby, babies } = useBaby();
   const { userProfile, resetPasswordForUser } = useAuth();
   const insets = useSafeAreaInsets();
-  const { darkMode: isDark, themeColors, triggerHaptic, shouldReduceMotion } = useCustomization();
+  const { darkMode, triggerHaptic } = useCustomization();
+  const isDark = darkMode ?? false;
 
   const scrollY = useSharedValue(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -992,39 +1047,29 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const [showEditModal, setShowEditModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('members');
   const [activeCodes, setActiveCodes] = useState<any[]>([]);
-
   const [editForm, setEditForm] = useState({
     fullName: '', email: '', phoneNumber: '', relationship: '', avatar: '', notificationsEnabled: true,
   });
 
   const { entries: trackerEntries } = useTracker();
 
-  // ─── Data derivations ────────────────────────────────────────────
+  const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
+  const headerAnim = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  /* ─── Data derivations ──────────────────────────────────────────── */
   const dailyGoals = useMemo((): DailyGoal[] => {
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const todayEntries = trackerEntries.filter((e: any) => e.timestamp >= todayStart.getTime() && !e.isDeleted);
-    const count = (id: string) => todayEntries.filter((e: any) => e.trackerId === id).length;
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const today = trackerEntries.filter((e: any) => e.timestamp >= start.getTime() && !e.isDeleted);
+    const count = (id: string) => today.filter((e: any) => e.trackerId === id).length;
     return [
-      { id: 'feed', title: 'Track Feeding', icon: '🍼', target: 6, current: count('feed'), unit: 'times today', color: '#f59e0b', participants: [] },
-      { id: 'sleep', title: 'Log Sleep', icon: '😴', target: 3, current: count('sleep'), unit: 'naps today', color: '#8b5cf6', participants: [] },
-      { id: 'growth', title: 'Growth Check', icon: '📏', target: 1, current: count('growth'), unit: 'measurement', color: '#10b981', participants: [] },
-      { id: 'photo', title: 'Family Photo', icon: '📸', target: 1, current: todayEntries.filter((e: any) => Array.isArray(e.photoUris) && e.photoUris.length > 0).length, unit: 'photo today', color: '#ec4899', participants: [] },
+      { id: 'feed', title: 'Feeding', icon: '🍼', target: 6, current: count('feed'), unit: 'times today', color: '#f59e0b' },
+      { id: 'sleep', title: 'Sleep', icon: '😴', target: 3, current: count('sleep'), unit: 'naps today', color: '#8b5cf6' },
+      { id: 'growth', title: 'Growth', icon: '📏', target: 1, current: count('growth'), unit: 'measurement', color: '#10b981' },
+      { id: 'photo', title: 'Photos', icon: '📸', target: 1, current: today.filter((e: any) => Array.isArray(e.photoUris) && e.photoUris.length > 0).length, unit: 'photo today', color: '#ec4899' },
     ];
   }, [trackerEntries]);
-
-  const smartSuggestions = useMemo((): SmartSuggestion[] => {
-    const out: SmartSuggestion[] = [];
-    if (guardians.length === 0) {
-      out.push({ id: 'invite-guardian', type: 'invite', title: 'Invite a Guardian', description: 'Add a grandparent or caregiver.', icon: '👵', color: '#667eea', actionLabel: 'Send Invite' });
-    }
-    if (currentBaby) {
-      const ageMonths = differenceInMonths(new Date(), new Date((currentBaby as any).birthDate || (currentBaby as any).dateOfBirth));
-      if (ageMonths >= 4 && ageMonths <= 8) {
-        out.push({ id: 'tummy-time', type: 'activity', title: 'Schedule tummy time', description: `At ${ageMonths} months, tummy time helps core strength.`, icon: '👶', color: '#10b981', actionLabel: 'Schedule' });
-      }
-    }
-    return out.slice(0, 3);
-  }, [guardians.length, currentBaby]);
 
   const timelineEvents: TimelineEvent[] = useMemo(() => {
     if (!trackerEntries || trackerEntries.length === 0) return [];
@@ -1034,7 +1079,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       .map((e: any, i: number) => ({
         id: e.id || `event-${i}`,
         type: e.trackerId || 'note',
-        title: e.title || `${e.trackerId?.charAt(0)?.toUpperCase() + e.trackerId?.slice(1) || 'Activity'} logged`,
+        title: e.title || `${(e.trackerId || 'Activity').charAt(0).toUpperCase() + (e.trackerId || '').slice(1)} logged`,
         description: e.notes || '',
         timestamp: e.timestamp,
         actorName: e.loggedByName || 'You',
@@ -1042,22 +1087,6 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       }))
       .sort((a: TimelineEvent, b: TimelineEvent) => b.timestamp - a.timestamp);
   }, [trackerEntries]);
-
-  const familyInsights = useMemo((): FamilyInsight[] => {
-    const out: FamilyInsight[] = [];
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const weekEntries = trackerEntries.filter((e: any) => e.timestamp >= weekAgo && !e.isDeleted);
-    const sleeps = weekEntries.filter((e: any) => e.trackerId === 'sleep');
-    if (sleeps.length >= 3) {
-      const avg = sleeps.reduce((s: number, e: any) => s + (e.data?.duration || 0), 0) / sleeps.length / 60;
-      if (avg > 0) out.push({ id: 'sleep-quality', category: 'health', title: 'Sleep tracking active', description: `Avg ${avg.toFixed(0)}m across ${sleeps.length} sessions.`, color: '#10b981' });
-    }
-    const activeMembers = members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > weekAgo);
-    if (activeMembers.length > 1) {
-      out.push({ id: 'engagement', category: 'social', title: `${activeMembers.length} active members`, description: 'Great teamwork this week!', color: '#667eea' });
-    }
-    return out.slice(0, 3);
-  }, [trackerEntries, members]);
 
   const currentUserId = useMemo(
     () => userProfile?.id || userProfile?.uid || profile?.id || '',
@@ -1070,31 +1099,14 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       members.some(m => m.role === UserRole.PARENT_1 && (m.id === currentUserId || m.userId === currentUserId));
   }, [parent1, members, currentUserId, userProfile, profile]);
 
-  const hasCoParent = useMemo(
-    () => members.some(m => m.role === UserRole.PARENT_2) || !!parent2,
-    [members, parent2],
-  );
+  const hasCoParent = useMemo(() => members.some(m => m.role === UserRole.PARENT_2) || !!parent2, [members, parent2]);
+  const familyCount = useMemo(() => members.length, [members]);
+  const activeCount = useMemo(() => members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 86400000).length, [members]);
+  const pendingCount = useMemo(() => members.filter(m => !m.lastActive || m.status === 'pending').length, [members]);
+  const unreadChat = 0;
 
-  const familyCount = useMemo(
-    () => members.length + (currentBaby ? 1 : 0),
-    [members, currentBaby],
-  );
-
-  // ─── Effects ─────────────────────────────────────────────────────
+  /* ─── Effects ───────────────────────────────────────────────────── */
   useEffect(() => { loadFamily(); }, [loadFamily]);
-
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => { 'worklet'; scrollY.value = event.contentOffset.y; },
-  });
-
-  const headerAnimatedStyle = useAnimatedStyle(() => ({
-    backgroundColor: isDark
-      ? `rgba(10,10,10,${interpolate(scrollY.value, [0, 60, 120], [0, 0.7, 0.95], Extrapolation.CLAMP)})`
-      : `rgba(248,250,252,${interpolate(scrollY.value, [0, 60, 120], [0, 0.7, 0.95], Extrapolation.CLAMP)})`,
-    borderBottomColor: isDark
-      ? `rgba(255,255,255,${interpolate(scrollY.value, [0, 60, 120], [0, 0.05, 0.1], Extrapolation.CLAMP)})`
-      : `rgba(0,0,0,${interpolate(scrollY.value, [0, 60, 120], [0, 0.05, 0.1], Extrapolation.CLAMP)})`,
-  }));
 
   const loadActiveCodes = useCallback(async () => {
     if (!currentBaby) return;
@@ -1115,30 +1127,21 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     setIsRefreshing(false);
   }, [loadFamily, isPrimaryParent, currentBaby, loadActiveCodes]);
 
-  // ─── Handlers ─────────────────────────────────────────────────────
+  /* ─── Handlers ──────────────────────────────────────────────────── */
   const handleUpdateMember = async () => {
     if (!selectedMember) return;
     if (!editForm.fullName.trim()) { sweetAlert.alert('Error', 'Name is required', 'warning'); return; }
     setIsLoading(true);
     let success = false;
     if (selectedMember.role === UserRole.PARENT_2) {
-      success = await updateParent2Profile({
-        fullName: editForm.fullName, email: editForm.email,
-        phoneNumber: editForm.phoneNumber, avatar: editForm.avatar,
-      });
+      success = await updateParent2Profile({ fullName: editForm.fullName, email: editForm.email, phoneNumber: editForm.phoneNumber, avatar: editForm.avatar });
     } else if (selectedMember.role === UserRole.PARENT_1) {
-      try {
-        await updateProfile({
-          fullName: editForm.fullName, email: editForm.email,
-          phoneNumber: editForm.phoneNumber, avatar: editForm.avatar,
-        });
-        success = true;
-      } catch { success = false; }
+      try { await updateProfile({ fullName: editForm.fullName, email: editForm.email, phoneNumber: editForm.phoneNumber, avatar: editForm.avatar }); success = true; }
+      catch { success = false; }
     } else {
       success = await updateGuardianProfile(selectedMember.id, {
         fullName: editForm.fullName, email: editForm.email, phoneNumber: editForm.phoneNumber,
-        relationship: editForm.relationship, avatar: editForm.avatar,
-        notificationsEnabled: editForm.notificationsEnabled,
+        relationship: editForm.relationship, avatar: editForm.avatar, notificationsEnabled: editForm.notificationsEnabled,
       });
     }
     if (success) {
@@ -1163,25 +1166,17 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       sweetAlert.alert('Cannot Remove', 'You cannot remove yourself', 'warning');
       return;
     }
-    sweetAlert.confirm(
-      'Remove Family Member',
-      `Remove ${selectedMember.fullName}?`,
-      () => {
-        triggerHaptic('success');
-        removeMember(selectedMember.id);
-        setShowMemberModal(false);
-      },
-      () => {},
-      'Remove', 'Cancel', true,
-    );
+    sweetAlert.confirm('Remove Family Member', `Remove ${selectedMember.fullName}?`, () => {
+      triggerHaptic('success');
+      removeMember(selectedMember.id);
+      setShowMemberModal(false);
+    }, () => {}, 'Remove', 'Cancel', true);
   };
 
   const handleImagePick = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { sweetAlert.alert('Permission Required', 'Allow photo access', 'warning'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 });
     if (!result.canceled && result.assets?.[0]?.uri) {
       try {
         const dirInfo = await FileSystem.getInfoAsync(FAMILY_IMAGES_DIR);
@@ -1189,7 +1184,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         const permanentUri = `${FAMILY_IMAGES_DIR}${selectedMember?.id || 'member'}_${Date.now()}.jpg`;
         await FileSystem.copyAsync({ from: result.assets[0].uri, to: permanentUri });
         setEditForm(prev => ({ ...prev, avatar: permanentUri }));
-      } catch (error) { sweetAlert.alert('Error', 'Failed to save photo', 'warning'); }
+      } catch { sweetAlert.alert('Error', 'Failed to save photo', 'warning'); }
     }
   };
 
@@ -1202,16 +1197,6 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     });
     setShowMemberModal(true);
     triggerHaptic('light');
-  };
-
-  const handleToggleGoal = (_goalId: string) => {
-    triggerHaptic('light');
-  };
-
-  const handleSuggestionAction = (suggestion: SmartSuggestion) => {
-    triggerHaptic('medium');
-    if (suggestion.type === 'invite') navigation.navigate('CoParentInviteScreen');
-    else sweetAlert.toast('Coming Soon', 'Will be available soon', 'info');
   };
 
   const handleRevokeCode = useCallback(async (code: string) => {
@@ -1238,282 +1223,276 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   }, [getPartialSignupInfo, sweetAlert, triggerHaptic]);
 
   const handleLeaveFamily = () => {
-    sweetAlert.confirm(
-      'Leave Family?',
-      'You will lose access to this family\'s data unless re-invited.',
-      () => {
-        sweetAlert.toast('Left Family', 'You have been removed', 'info');
-        navigation.goBack();
-      },
-      undefined, 'Leave', 'Stay', true,
-    );
+    sweetAlert.confirm('Leave Family?', "You will lose access to this family's data unless re-invited.", () => {
+      sweetAlert.toast('Left Family', 'You have been removed', 'info');
+      navigation.goBack();
+    }, undefined, 'Leave', 'Stay', true);
   };
 
-  const handleTabChange = (tab: TabKey) => {
-    setActiveTab(tab);
-    triggerHaptic('light');
-  };
+  const handleTabChange = (tab: TabKey) => { setActiveTab(tab); HAPTIC_LIGHT(); };
 
-  
-  const renderHeader = () => (
-    <Animated.View style={[styles.headerContainer, { paddingTop: insets.top }, headerAnimatedStyle]}>
-      <View style={styles.headerTop}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerBtn, isDark && styles.headerBtnDark]}>
-          <Ionicons name="arrow-back" size={22} color={isDark ? '#fff' : '#1a1a1a'} />
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={[styles.headerTitle, isDark && styles.textDark]}>Family</Text>
-          {currentBaby && (
-            <TouchableOpacity
-              style={[styles.babySelectorChip, { backgroundColor: themeColors.colors[0] }]}
-              onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'FamilySharing', returnLabel: 'Family' })}
-            >
-              <Text style={[styles.babySelectorText, { color: themeColors.primary }]}>
-                {currentBaby.name} ▼
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        {isPrimaryParent ? (
-          <TouchableOpacity
-            style={[styles.headerBtn, styles.headerBtnAccent, { backgroundColor: themeColors.primary }]}
-            onPress={() => navigation.navigate('CoParentInviteScreen')}
-          >
-            <Ionicons name="person-add" size={18} color="#fff" />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 40 }} />
-        )}
-      </View>
-
-      {/* 4-tab bar */}
-      <View style={[styles.modernTabBar, isDark && styles.modernTabBarDark]}>
-        {(['members', 'activity', 'access', 'settings'] as const).map((tab) => {
-          const icons: Record<TabKey, keyof typeof Ionicons.glyphMap> = {
-            members: 'people', activity: 'pulse', access: 'shield-checkmark', settings: 'settings',
-          };
-          const labels: Record<TabKey, string> = {
-            members: 'Members', activity: 'Activity', access: 'Access', settings: 'Settings',
-          };
-          const isActive = activeTab === tab;
-          return (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.modernTab, isActive && [styles.modernTabActive, { backgroundColor: themeColors.colors[0] }]]}
-              onPress={() => handleTabChange(tab)}
-            >
-              <Ionicons
-                name={icons[tab]}
-                size={15}
-                color={isActive ? themeColors.primary : isDark ? '#94a3b8' : '#64748b'}
-              />
-              <Text
-                style={[
-                  styles.modernTabText,
-                  isActive && [styles.modernTabTextActive, { color: themeColors.primary }],
-                ]}
-                numberOfLines={1}
-              >
-                {labels[tab]}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </Animated.View>
-  );
-
-  
-  const renderMembersTab = () => (
-    <View style={styles.tabContent}>
-      <FamilyHealthScore members={members} isDark={isDark} shouldReduceMotion={shouldReduceMotion} />
-      <DailyFamilyGoals goals={dailyGoals} isDark={isDark} themeColors={themeColors} shouldReduceMotion={shouldReduceMotion} onToggleGoal={handleToggleGoal} />
-      <SmartSuggestions suggestions={smartSuggestions} isDark={isDark} shouldReduceMotion={shouldReduceMotion} onAction={handleSuggestionAction} />
-      <FamilyInsights insights={familyInsights} isDark={isDark} shouldReduceMotion={shouldReduceMotion} />
-
-      {renderMemberSection('Primary Parent', members.filter(m => m.role === UserRole.PARENT_1))}
-      {renderMemberSection('Co-Parent', members.filter(m => m.role === UserRole.PARENT_2), 'No co-parent added yet')}
-      {renderMemberSection('Guardians & Viewers', members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER), 'No guardians added')}
-
-      {isPrimaryParent && activeCodes.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <View>
-              <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Pending Invites</Text>
-              <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
-                {activeCodes.filter(c => c.status === 'active').length} active • {activeCodes.filter(c => c.status === 'partial').length} partial
-              </Text>
-            </View>
-            <TouchableOpacity onPress={loadActiveCodes}>
-              <Ionicons name="refresh" size={18} color={themeColors.primary} />
-            </TouchableOpacity>
-          </View>
-          {activeCodes.map((code, i) => {
-            const sc = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
-            const isPartial = code.status === 'partial';
-            return (
-              <Animated.View
-                key={code.code + i}
-                entering={shouldReduceMotion ? undefined : FadeInUp.delay(i * 60).springify()}
-                style={[styles.pendingCard, isDark && styles.pendingCardDark, isPartial && styles.pendingCardPartial]}
-              >
-                <LinearGradient
-                  colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']}
-                  style={StyleSheet.absoluteFill}
-                />
-                <View style={styles.pendingIcon}>
-                  <Ionicons name="key-outline" size={22} color={isPartial ? '#f59e0b' : themeColors.primary} />
-                </View>
-                <View style={styles.pendingInfo}>
-                  <View style={styles.pendingHeaderRow}>
-                    <Text style={[styles.pendingEmail, isDark && styles.textDark, { fontSize: 13, fontFamily: 'monospace' }]} numberOfLines={1}>
-                      {code.code}
-                    </Text>
-                    <View style={[styles.pendingStatusBadge, { backgroundColor: sc.color + '15' }]}>
-                      <Ionicons name={sc.icon} size={10} color={sc.color} />
-                      <Text style={[styles.pendingStatusText, { color: sc.color }]}>{sc.label}</Text>
-                    </View>
-                  </View>
-                  {code.used_by_name && <Text style={[styles.pendingSent, isDark && styles.textMuted]}>👤 {code.used_by_name}</Text>}
-                  {code.used_by_email && <Text style={[styles.pendingSent, isDark && styles.textMuted]}>✉️ {code.used_by_email}</Text>}
-                  {isPartial && <Text style={[styles.pendingPartialText, { color: '#f59e0b' }]}>⚠️ Partial — didn't finish registration</Text>}
-                </View>
-                <View style={styles.pendingActions}>
-                  {isPartial && (
-                    <TouchableOpacity
-                      style={[styles.pendingAction, { backgroundColor: '#f59e0b15' }]}
-                      onPress={() => handleResendPartial(code.code)}
-                    >
-                      <Ionicons name="refresh-outline" size={18} color="#f59e0b" />
-                    </TouchableOpacity>
-                  )}
-                  {code.status === 'active' && (
-                    <TouchableOpacity
-                      style={[styles.pendingAction, { backgroundColor: '#ef444410' }]}
-                      onPress={() => handleRevokeCode(code.code)}
-                    >
-                      <Ionicons name="close" size={18} color="#ef4444" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </Animated.View>
-            );
-          })}
-        </View>
-      )}
-    </View>
-  );
-
+  /* ─── Render helpers ────────────────────────────────────────────── */
   const renderMemberSection = (title: string, data: FamilyMember[], emptyText?: string) => {
     const unique = data.filter((m, i, arr) => i === arr.findIndex(x => x.id === m.id));
     return (
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <View>
-            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{title}</Text>
-            <Text style={[styles.sectionSubtitle, isDark && styles.textMuted]}>
-              {unique.length} {unique.length === 1 ? 'member' : 'members'}
-            </Text>
-          </View>
-        </View>
+      <View style={{ marginBottom: DS.space.lg }}>
+        <SectionHeader title={title} subtitle={`${unique.length} ${unique.length === 1 ? 'member' : 'members'}`} icon="people-outline" />
         {unique.length === 0 && emptyText ? (
-          <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
-            <Ionicons name="people-outline" size={32} color={isDark ? '#555' : '#ccc'} />
-            <Text style={[styles.emptyStateText, isDark && styles.textMuted]}>{emptyText}</Text>
+          <View style={[styles.emptyCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+            <View style={[styles.emptyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+              <Ionicons name="people-outline" size={32} color={isDark ? DS.gray500 : DS.gray400} />
+            </View>
+            <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>{emptyText}</Text>
             {isPrimaryParent && title !== 'Primary Parent' && (
-              <TouchableOpacity
-                style={[styles.addFirstMemberBtn, { backgroundColor: themeColors.primary }]}
-                onPress={() => navigation.navigate('CoParentInviteScreen')}
-              >
-                <Text style={styles.addFirstMemberText}>Add Member</Text>
-              </TouchableOpacity>
+              <PressableScale onPress={() => navigation.navigate('CoParentInviteScreen')} activeScale={0.96}>
+                <LinearGradient colors={[DS.primary, DS.accent]} style={styles.emptyBtn}>
+                  <Text style={styles.emptyBtnText}>Add Member</Text>
+                </LinearGradient>
+              </PressableScale>
             )}
           </View>
         ) : (
-          unique.map((member, index) => (
-            <MemberCard
-              key={member.id + index}
-              member={member}
-              isCurrentUser={member.id === currentUserId || member.userId === currentUserId}
-              onPress={() => openMemberDetails(member)}
-              index={index}
-              isDark={isDark}
-              themeColors={themeColors}
-              shouldReduceMotion={shouldReduceMotion}
-            />
-          ))
+          <View style={{ gap: 8 }}>
+            {unique.map((member, index) => (
+              <MemberCard
+                key={member.id + index}
+                member={member}
+                isCurrentUser={member.id === currentUserId || member.userId === currentUserId}
+                onPress={() => openMemberDetails(member)}
+                index={index}
+                isDark={isDark}
+                currentUserId={currentUserId}
+              />
+            ))}
+          </View>
         )}
       </View>
     );
   };
 
-  // ─── Render ──────────────────────────────────────────────────────
+  /* ─── Tabs ──────────────────────────────────────────────────────── */
+  const tabs = [
+    { key: 'members' as TabKey, label: 'Members', icon: 'people-outline' as const },
+    { key: 'activity' as TabKey, label: 'Activity', icon: 'pulse-outline' as const },
+    { key: 'access' as TabKey, label: 'Access', icon: 'shield-checkmark-outline' as const },
+    { key: 'settings' as TabKey, label: 'Settings', icon: 'settings-outline' as const },
+  ];
+
+  const topRibbon = useMemo(() => {
+    if (pendingCount > 0) return { icon: 'time-outline' as const, color: DS.warning, label: 'Pending', text: `${pendingCount} invitation${pendingCount > 1 ? 's' : ''} awaiting acceptance`, onPress: () => setActiveTab('members') };
+    if (activeCount > 0) return { icon: 'pulse-outline' as const, color: DS.success, label: 'Active', text: `${activeCount} member${activeCount > 1 ? 's' : ''} active today`, onPress: () => setActiveTab('access') };
+    return { icon: 'person-add-outline' as const, color: DS.primary, label: 'Grow', text: 'Invite family to share the journey', onPress: () => navigation.navigate('CoParentInviteScreen') };
+  }, [pendingCount, activeCount, navigation]);
+
   if (isLoading && members.length === 0) {
     return (
-      <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-        <StatusBar barStyle={isDark ? 'light' : 'dark'} />
-        <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8fafc', '#e2e8f0']} style={StyleSheet.absoluteFill} />
-        <ActivityIndicator size="large" color={themeColors.primary} />
-        <Text style={{ marginTop: 12, color: isDark ? '#94a3b8' : '#64748b' }}>Loading family...</Text>
+      <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50, alignItems: 'center', justifyContent: 'center' }]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+        <LinearGradient colors={isDark ? ['#0c0a09', '#12121e'] : ['#f8faff', '#eef0f5']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={DS.primary} />
+        <Text style={{ marginTop: 12, color: isDark ? DS.gray400 : DS.gray500 }}>Loading family...</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
-      <StatusBar barStyle={isDark ? 'light' : 'dark'} />
-      <LinearGradient colors={isDark ? ['#0a0a0a', '#1a1a2e'] : ['#f8fafc', '#e2e8f0']} style={StyleSheet.absoluteFill} />
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <LinearGradient colors={isDark ? ['#0c0a09', '#12121e', '#0c0a09'] : ['#f8faff', '#eef0f5', '#e4e8f0']} style={StyleSheet.absoluteFill} />
 
-      {renderHeader()}
+      {/* Sticky header (appears on scroll) */}
+      <Animated.View
+        style={[
+          styles.stickyHeader,
+          {
+            paddingTop: HEADER_TOP_PADDING,
+            backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)',
+            borderBottomColor: isDark ? DS.darkBorder : DS.gray200,
+          },
+          headerAnim,
+        ]}
+      >
+        <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <View style={styles.headerInner}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+            <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>FAMILY</GradientText>
+            <Text style={[styles.headerSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              {members.length} member{members.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
+          {isPrimaryParent ? (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('CoParentInviteScreen')}
+              style={[styles.headerIconBtn, { backgroundColor: DS.primary }]}
+            >
+              <Ionicons name="person-add" size={18} color={DS.white} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 38 }} />
+          )}
+        </View>
+      </Animated.View>
 
-      <AnimatedScrollView
+      <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: 140 + insets.top, paddingBottom: insets.bottom + 30 }]}
+        contentContainerStyle={{ paddingTop: HEADER_TOP_PADDING + 8, paddingBottom: insets.bottom + 120 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={themeColors.primary} colors={[themeColors.primary]} />
-        }
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={DS.primary} colors={[DS.primary, DS.accent]} />}
       >
-        {activeTab === 'members' && renderMembersTab()}
-        {activeTab === 'activity' && (
-          <View style={styles.tabContent}>
-            <FamilyActivityTimeline events={timelineEvents} isDark={isDark} shouldReduceMotion={shouldReduceMotion} />
+        {/* Pulse Header — NO hero card */}
+        <PulseHeader
+          isDark={isDark}
+          currentBaby={currentBaby}
+          members={members}
+          currentUserId={currentUserId}
+          activeCount={activeCount}
+          pendingCount={pendingCount}
+          unreadChat={unreadChat}
+          isPrimaryParent={isPrimaryParent}
+          onBack={() => navigation.goBack()}
+          onBabyPress={() => {
+            if (babies && babies.length > 1) navigation.navigate('SwitchBaby', { returnTo: 'FamilySharing', returnLabel: 'Family' });
+            else navigation.navigate('CreateBabyProfile');
+          }}
+          onInvite={() => navigation.navigate('CoParentInviteScreen')}
+          onChat={() => navigation.navigate('FamilyChatList')}
+        />
+
+        {/* Ribbon */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <AuraRibbon isDark={isDark} {...topRibbon} />
+        </View>
+
+        {/* Tab bar */}
+        <View style={{ marginTop: DS.space.md }}>
+          <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} />
+        </View>
+
+        {/* ═══ MEMBERS TAB ═══ */}
+        {activeTab === 'members' && (
+          <View style={{ paddingTop: DS.space.md }}>
+            <FamilyHealthCard members={members} isDark={isDark} />
+
+            <View style={{ marginTop: DS.space.md }}>
+              <DailyGoals goals={dailyGoals} isDark={isDark} onPress={() => {}} />
+            </View>
+
+            <View style={{ marginTop: DS.space.lg, paddingHorizontal: DS.space.lg }}>
+              {renderMemberSection('Primary Parent', members.filter(m => m.role === UserRole.PARENT_1))}
+              {renderMemberSection('Co-Parent', members.filter(m => m.role === UserRole.PARENT_2), 'No co-parent added yet')}
+              {renderMemberSection('Guardians & Viewers', members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER), 'No guardians added yet')}
+
+              {isPrimaryParent && activeCodes.length > 0 && (
+                <View style={{ marginBottom: DS.space.lg }}>
+                  <SectionHeader
+                    title="Pending Invites"
+                    subtitle={`${activeCodes.filter(c => c.status === 'active').length} active · ${activeCodes.filter(c => c.status === 'partial').length} partial`}
+                    icon="key-outline"
+                    color={DS.warning}
+                    action={loadActiveCodes}
+                    actionLabel="Refresh"
+                  />
+                  <View style={{ gap: 8 }}>
+                    {activeCodes.map((code, i) => {
+                      const sc = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
+                      const isPartial = code.status === 'partial';
+                      return (
+                        <Animated.View
+                          key={code.code + i}
+                          entering={FadeInUp.delay(i * 60).springify()}
+                          style={[styles.inviteCard, {
+                            backgroundColor: isDark ? DS.darkCard : DS.white,
+                            borderColor: isPartial ? `${DS.warning}40` : isDark ? DS.darkBorder : DS.gray200,
+                          }]}
+                        >
+                          <View style={[styles.inviteIcon, { backgroundColor: isPartial ? `${DS.warning}15` : `${DS.primary}15` }]}>
+                            <Ionicons name="key-outline" size={20} color={isPartial ? DS.warning : DS.primary} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={[styles.inviteCode, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{code.code}</Text>
+                              <View style={[styles.inviteStatus, { backgroundColor: `${sc.color}15` }]}>
+                                <Ionicons name={sc.icon} size={10} color={sc.color} />
+                                <Text style={[styles.inviteStatusText, { color: sc.color }]}>{sc.label}</Text>
+                              </View>
+                            </View>
+                            {code.used_by_name && <Text style={[styles.inviteMeta, { color: isDark ? DS.gray400 : DS.gray500 }]}>👤 {code.used_by_name}</Text>}
+                            {code.used_by_email && <Text style={[styles.inviteMeta, { color: isDark ? DS.gray400 : DS.gray500 }]}>✉️ {code.used_by_email}</Text>}
+                            {isPartial && <Text style={[styles.inviteMeta, { color: DS.warning }]}>⚠️ Didn't finish registration</Text>}
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            {isPartial && (
+                              <PressableScale onPress={() => handleResendPartial(code.code)} activeScale={0.9}>
+                                <View style={[styles.inviteAction, { backgroundColor: `${DS.warning}15` }]}>
+                                  <Ionicons name="refresh-outline" size={16} color={DS.warning} />
+                                </View>
+                              </PressableScale>
+                            )}
+                            {code.status === 'active' && (
+                              <PressableScale onPress={() => handleRevokeCode(code.code)} activeScale={0.9}>
+                                <View style={[styles.inviteAction, { backgroundColor: `${DS.danger}15` }]}>
+                                  <Ionicons name="close" size={16} color={DS.danger} />
+                                </View>
+                              </PressableScale>
+                            )}
+                          </View>
+                        </Animated.View>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+            </View>
           </View>
         )}
-        {activeTab === 'access' && (
-          <AccessTab
-            members={members}
-            isDark={isDark}
-            themeColors={themeColors}
-            canManage={isPrimaryParent}
-            currentUserId={currentUserId}
-            onMemberPress={(m) => openMemberDetails(m)}
-            shouldReduceMotion={shouldReduceMotion}
-          />
-        )}
-        {activeTab === 'settings' && (
-          <SettingsTab
-            isDark={isDark}
-            themeColors={themeColors}
-            isPrimaryParent={isPrimaryParent}
-            familyCount={familyCount}
-            hasCoParent={hasCoParent}
-            guardianCount={guardians?.length || 0}
-            unreadCount={0}
-            onOpenMembers={() => setActiveTab('members')}
-            onOpenAccess={() => setActiveTab('access')}
-            onOpenFamilyChat={() => navigation.navigate('FamilyChatList')}
-            onOpenInvite={() => navigation.navigate('CoParentInviteScreen')}
-            onOpenBackup={() => navigation.navigate('BackupRestore')}
-            onOpenReminders={() => navigation.navigate('TrackerReminders')}
-            onLeaveFamily={handleLeaveFamily}
-            shouldReduceMotion={shouldReduceMotion}
-          />
-        )}
-      </AnimatedScrollView>
 
-      {/* Member Detail Modal */}
+        {/* ═══ ACTIVITY TAB ═══ */}
+        {activeTab === 'activity' && (
+          <ActivityTimeline events={timelineEvents} isDark={isDark} />
+        )}
+
+        {/* ═══ ACCESS TAB ═══ */}
+        {activeTab === 'access' && (
+          <View style={{ paddingHorizontal: DS.space.lg }}>
+            <AccessTab
+              members={members}
+              isDark={isDark}
+              canManage={isPrimaryParent}
+              currentUserId={currentUserId}
+              onMemberPress={openMemberDetails}
+            />
+          </View>
+        )}
+
+        {/* ═══ SETTINGS TAB ═══ */}
+        {activeTab === 'settings' && (
+          <View style={{ paddingHorizontal: DS.space.lg }}>
+            <SettingsTab
+              isDark={isDark}
+              isPrimaryParent={isPrimaryParent}
+              familyCount={familyCount}
+              hasCoParent={hasCoParent}
+              guardianCount={guardians?.length || 0}
+              unreadCount={unreadChat}
+              onOpenMembers={() => setActiveTab('members')}
+              onOpenAccess={() => setActiveTab('access')}
+              onOpenFamilyChat={() => navigation.navigate('FamilyChatList')}
+              onOpenInvite={() => navigation.navigate('CoParentInviteScreen')}
+              onOpenBackup={() => navigation.navigate('BackupRestore')}
+              onOpenReminders={() => navigation.navigate('TrackerReminders')}
+              onLeaveFamily={handleLeaveFamily}
+            />
+          </View>
+        )}
+
+        <View style={{ height: 40 }} />
+      </Animated.ScrollView>
+
+      {/* ═══ MEMBER DETAIL MODAL ═══ */}
       <ActionModal
         visible={showMemberModal}
         onClose={() => { setShowMemberModal(false); setSelectedMember(null); }}
@@ -1521,95 +1500,88 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         isDark={isDark}
       >
         {selectedMember && (
-          <View style={styles.memberDetailContent}>
-            <View style={styles.memberDetailHeader}>
+          <View style={{ gap: DS.space.lg }}>
+            <View style={{ alignItems: 'center', gap: DS.space.md }}>
               <SafeAvatar
                 avatar={selectedMember.avatar}
-                size={100}
+                size={96}
                 fallbackIcon={selectedMember.role === UserRole.PARENT_1 ? 'shield' : 'person'}
                 fallbackColor={ROLE_CONFIG[selectedMember.role].color}
               />
-              <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.memberDetailRoleBadge}>
-                <Ionicons name={ROLE_CONFIG[selectedMember.role].icon} size={14} color="#fff" />
-                <Text style={styles.memberDetailRoleText}>{ROLE_CONFIG[selectedMember.role].label}</Text>
+              <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.modalRoleBadge}>
+                <Ionicons name={ROLE_CONFIG[selectedMember.role].icon} size={13} color={DS.white} />
+                <Text style={styles.modalRoleText}>{ROLE_CONFIG[selectedMember.role].label}</Text>
               </LinearGradient>
             </View>
 
-            <View style={styles.detailSection}>
-              <Text style={[styles.detailSectionTitle, isDark && styles.textDark]}>Contact</Text>
+            <View style={{ gap: 10 }}>
               {selectedMember.email && (
-                <View style={[styles.detailRow, isDark && styles.detailRowDark]}>
-                  <Ionicons name="mail" size={18} color={themeColors.primary} />
-                  <Text style={[styles.detailText, isDark && styles.textDark]}>{selectedMember.email}</Text>
+                <View style={[styles.detailRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                  <Ionicons name="mail" size={18} color={DS.primary} />
+                  <Text style={[styles.detailText, { color: isDark ? DS.white : DS.gray900 }]}>{selectedMember.email}</Text>
                 </View>
               )}
               {selectedMember.phoneNumber && (
-                <View style={[styles.detailRow, isDark && styles.detailRowDark]}>
-                  <Ionicons name="call" size={18} color="#10b981" />
-                  <Text style={[styles.detailText, isDark && styles.textDark]}>{selectedMember.phoneNumber}</Text>
+                <View style={[styles.detailRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                  <Ionicons name="call" size={18} color={DS.success} />
+                  <Text style={[styles.detailText, { color: isDark ? DS.white : DS.gray900 }]}>{selectedMember.phoneNumber}</Text>
                 </View>
               )}
-              <View style={[styles.detailRow, isDark && styles.detailRowDark]}>
-                <Ionicons name="people" size={18} color="#f59e0b" />
-                <Text style={[styles.detailText, isDark && styles.textDark]}>
+              <View style={[styles.detailRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <Ionicons name="people" size={18} color={DS.warning} />
+                <Text style={[styles.detailText, { color: isDark ? DS.white : DS.gray900 }]}>
                   {selectedMember.relationship || 'Family Member'}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.detailActions}>
+            <View style={{ gap: 10 }}>
               {selectedMember.id !== currentUserId && selectedMember.status !== 'pending' && (
-                <TouchableOpacity
-                  style={styles.detailActionBtn}
-                  onPress={() => {
-                    setShowMemberModal(false);
-                    navigation.navigate('FamilyChat', {
-                      memberId: selectedMember.id,
-                      memberName: selectedMember.fullName,
-                      memberAvatar: selectedMember.avatar,
-                      memberRole: selectedMember.role,
-                    });
-                  }}
-                >
-                  <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.detailActionGradient}>
-                    <Ionicons name="chatbubble" size={20} color="#fff" />
-                    <Text style={styles.detailActionText}>Send Message</Text>
+                <PressableScale onPress={() => {
+                  setShowMemberModal(false);
+                  navigation.navigate('FamilyChat', {
+                    memberId: selectedMember.id,
+                    memberName: selectedMember.fullName,
+                    memberAvatar: selectedMember.avatar,
+                    memberRole: selectedMember.role,
+                  });
+                }} activeScale={0.97}>
+                  <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.modalPrimaryBtn}>
+                    <Ionicons name="chatbubble" size={18} color={DS.white} />
+                    <Text style={styles.modalPrimaryBtnText}>Send Message</Text>
                   </LinearGradient>
-                </TouchableOpacity>
+                </PressableScale>
               )}
 
               {isPrimaryParent && selectedMember.role !== UserRole.PARENT_1 && (
                 <>
-                  <TouchableOpacity
-                    style={[styles.detailActionBtn, styles.detailActionSecondary, isDark && styles.detailActionSecondaryDark]}
-                    onPress={() => { setShowMemberModal(false); setShowEditModal(true); }}
-                  >
-                    <Ionicons name="create" size={20} color={themeColors.primary} />
-                    <Text style={[styles.detailActionSecondaryText, { color: themeColors.primary }]}>Edit Profile</Text>
-                  </TouchableOpacity>
+                  <PressableScale onPress={() => { setShowMemberModal(false); setShowEditModal(true); }} activeScale={0.97}>
+                    <View style={[styles.modalSecondaryBtn, { borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                      <Ionicons name="create" size={18} color={DS.primary} />
+                      <Text style={[styles.modalSecondaryText, { color: DS.primary }]}>Edit Profile</Text>
+                    </View>
+                  </PressableScale>
 
-                  <TouchableOpacity
-                    style={[styles.detailActionBtn, styles.detailActionSecondary, isDark && styles.detailActionSecondaryDark]}
-                    onPress={() => {
-                      if (!selectedMember?.email) { sweetAlert.alert('No Email', 'No email on file', 'warning'); return; }
-                      sweetAlert.confirm('Reset Password', `Reset password for ${selectedMember.fullName}?`, async () => {
-                        const r = await resetPasswordForUser(selectedMember.email, 'littleloom_temp_2026');
-                        if (r.success) sweetAlert.alert('Password Reset', 'Temporary password set.', 'success');
-                        else sweetAlert.alert('Error', r.message, 'warning');
-                      }, () => {}, 'Reset', 'Cancel', true);
-                    }}
-                  >
-                    <Ionicons name="key" size={20} color="#f59e0b" />
-                    <Text style={[styles.detailActionSecondaryText, { color: '#f59e0b' }]}>Reset Password</Text>
-                  </TouchableOpacity>
+                  <PressableScale onPress={() => {
+                    if (!selectedMember?.email) { sweetAlert.alert('No Email', 'No email on file', 'warning'); return; }
+                    sweetAlert.confirm('Reset Password', `Reset password for ${selectedMember.fullName}?`, async () => {
+                      const r = await resetPasswordForUser(selectedMember.email, 'littleloom_temp_2026');
+                      if (r.success) sweetAlert.alert('Password Reset', 'Temporary password set.', 'success');
+                      else sweetAlert.alert('Error', r.message, 'warning');
+                    }, () => {}, 'Reset', 'Cancel', true);
+                  }} activeScale={0.97}>
+                    <View style={[styles.modalSecondaryBtn, { borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                      <Ionicons name="key" size={18} color={DS.warning} />
+                      <Text style={[styles.modalSecondaryText, { color: DS.warning }]}>Reset Password</Text>
+                    </View>
+                  </PressableScale>
 
-                  <TouchableOpacity
-                    style={[styles.detailActionBtn, styles.detailActionDanger]}
-                    onPress={handleRemoveMember}
-                  >
-                    <Ionicons name="trash" size={20} color="#ff4757" />
-                    <Text style={styles.detailActionDangerText}>Remove Member</Text>
-                  </TouchableOpacity>
+                  <PressableScale onPress={handleRemoveMember} activeScale={0.97}>
+                    <View style={[styles.modalDangerBtn, { borderColor: `${DS.danger}40` }]}>
+                      <Ionicons name="trash" size={18} color={DS.danger} />
+                      <Text style={[styles.modalDangerText, { color: DS.danger }]}>Remove Member</Text>
+                    </View>
+                  </PressableScale>
                 </>
               )}
             </View>
@@ -1617,24 +1589,13 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         )}
       </ActionModal>
 
-      {/* Edit Member Modal */}
-      <ActionModal
-        visible={showEditModal}
-        onClose={() => setShowEditModal(false)}
-        title="Edit Member"
-        isDark={isDark}
-      >
-        <View style={styles.editForm}>
-          <TouchableOpacity style={styles.editAvatarContainer} onPress={handleImagePick}>
-            {editForm.avatar ? (
-              <SafeAvatar avatar={editForm.avatar} size={100} fallbackIcon="camera" fallbackColor={themeColors.primary} />
-            ) : (
-              <View style={[styles.editAvatarPlaceholder, { backgroundColor: ROLE_CONFIG[selectedMember?.role || UserRole.GUARDIAN].color + '20' }]}>
-                <Ionicons name="camera" size={32} color={ROLE_CONFIG[selectedMember?.role || UserRole.GUARDIAN].color} />
-              </View>
-            )}
-            <View style={[styles.editAvatarOverlay, { backgroundColor: themeColors.primary }]}>
-              <Ionicons name="camera" size={20} color="#fff" />
+      {/* ═══ EDIT MEMBER MODAL ═══ */}
+      <ActionModal visible={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Member" isDark={isDark}>
+        <View style={{ gap: DS.space.lg }}>
+          <TouchableOpacity style={{ alignSelf: 'center', position: 'relative' }} onPress={handleImagePick}>
+            <SafeAvatar avatar={editForm.avatar} size={96} fallbackIcon="camera" fallbackColor={DS.primary} />
+            <View style={[styles.avatarEditBadge, { backgroundColor: DS.primary, borderColor: isDark ? DS.darkCard : DS.white }]}>
+              <Ionicons name="camera" size={16} color={DS.white} />
             </View>
           </TouchableOpacity>
 
@@ -1644,470 +1605,244 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             { label: 'Phone', key: 'phoneNumber' as const, placeholder: 'Enter phone', keyboard: 'phone-pad' as const },
             { label: 'Relationship', key: 'relationship' as const, placeholder: 'e.g., Grandma, Nanny' },
           ].map(({ label, key, placeholder, keyboard }) => (
-            <View key={key} style={styles.formGroup}>
-              <Text style={[styles.formLabel, isDark && styles.textDark]}>{label}</Text>
+            <View key={key}>
+              <Text style={[styles.formLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{label}</Text>
               <TextInput
-                style={[styles.formInput, isDark && styles.formInputDark]}
+                style={[styles.formInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100, color: isDark ? DS.white : DS.gray900 }]}
                 value={(editForm as any)[key]}
                 onChangeText={(text) => setEditForm(prev => ({ ...prev, [key]: text }))}
                 placeholder={placeholder}
-                placeholderTextColor={isDark ? '#666' : '#999'}
+                placeholderTextColor={isDark ? DS.gray600 : DS.gray400}
                 keyboardType={keyboard}
                 autoCapitalize={key === 'email' ? 'none' : 'words'}
               />
             </View>
           ))}
 
-          <View style={[styles.toggleRow, isDark && styles.toggleRowDark]}>
-            <View style={styles.toggleInfo}>
-              <Ionicons
-                name={editForm.notificationsEnabled ? 'notifications' : 'notifications-off'}
-                size={22}
-                color={editForm.notificationsEnabled ? themeColors.primary : isDark ? '#555' : '#999'}
-              />
-              <View style={styles.toggleTextContainer}>
-                <Text style={[styles.toggleLabel, isDark && styles.textDark]}>Notifications</Text>
-                <Text style={[styles.toggleDescription, isDark && styles.textMuted]}>Receive family activity alerts</Text>
+          <View style={[styles.toggleRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <Ionicons name={editForm.notificationsEnabled ? 'notifications' : 'notifications-off'} size={20} color={editForm.notificationsEnabled ? DS.primary : (isDark ? DS.gray500 : DS.gray400)} />
+              <View style={{ marginLeft: DS.space.md }}>
+                <Text style={[styles.formLabel, { color: isDark ? DS.white : DS.gray900, marginBottom: 2 }]}>Notifications</Text>
+                <Text style={[styles.setSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Receive family activity alerts</Text>
               </View>
             </View>
             <Switch
               value={editForm.notificationsEnabled}
               onValueChange={(v) => setEditForm(prev => ({ ...prev, notificationsEnabled: v }))}
-              trackColor={{ false: isDark ? '#333' : '#ddd', true: themeColors.primary }}
-              thumbColor="#fff"
+              trackColor={{ false: isDark ? '#333' : DS.gray300, true: `${DS.primary}60` }}
+              thumbColor={editForm.notificationsEnabled ? DS.primary : (isDark ? '#555' : '#f4f3f4')}
             />
           </View>
 
-          <TouchableOpacity style={styles.saveButton} onPress={handleUpdateMember} disabled={isLoading}>
-            <LinearGradient colors={[themeColors.primary, themeColors.secondary]} style={styles.saveButtonGradient}>
-              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Changes</Text>}
+          <PressableScale onPress={handleUpdateMember} disabled={isLoading} activeScale={0.97}>
+            <LinearGradient colors={[DS.primary, DS.accent]} style={styles.saveBtn}>
+              {isLoading ? <ActivityIndicator color={DS.white} /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
             </LinearGradient>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </ActionModal>
     </View>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// STYLES
-// ═══════════════════════════════════════════════════════════════════════════
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
-  containerDark: { backgroundColor: '#0a0a0a' },
-  centered: { justifyContent: 'center', alignItems: 'center' },
-  textDark: { color: '#ffffff' },
-  textMuted: { color: '#94a3b8' },
-  scrollContent: { paddingHorizontal: DESIGN.spacing.lg },
+  container: { flex: 1 },
 
-  // ── Header ──
-  headerContainer: {
+  /* Sticky header */
+  stickyHeader: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
-    backgroundColor: 'transparent', borderBottomWidth: 1, borderBottomColor: 'transparent',
+    paddingBottom: DS.space.md, borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  headerTop: {
+  headerInner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: DESIGN.spacing.lg, paddingBottom: 8,
+    paddingHorizontal: DS.space.lg, height: 48,
   },
-  headerBtn: {
-    width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)',
-  },
-  headerBtnDark: { backgroundColor: 'rgba(40,40,50,0.95)', borderColor: 'rgba(255,255,255,0.08)' },
-  headerBtnAccent: { backgroundColor: '#667eea' },
-  headerTitleContainer: { alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', letterSpacing: -0.3 },
-  babySelectorChip: { marginTop: 4, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
-  babySelectorText: { fontSize: 12, fontWeight: '700' },
+  headerIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
+  headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
 
-  // ── Modern Tab Bar (4 tabs) ──
-  modernTabBar: {
-    flexDirection: 'row', marginHorizontal: DESIGN.spacing.lg, marginBottom: DESIGN.spacing.md,
-    padding: 4, borderRadius: DESIGN.radius.lg, backgroundColor: 'rgba(0,0,0,0.04)', gap: 2,
+  /* Pulse header */
+  pulseWrap: {
+    marginHorizontal: DS.space.lg, marginTop: DS.space.md,
+    borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden',
+    borderWidth: 1, ...DS.shadow.md, position: 'relative',
   },
-  modernTabBarDark: { backgroundColor: 'rgba(255,255,255,0.06)' },
-  modernTab: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 3, paddingVertical: 10, borderRadius: 12,
-  },
-  modernTabActive: {},
-  modernTabText: { fontSize: 10, fontWeight: '600', color: '#64748b' },
-  modernTabTextActive: { fontWeight: '700' },
+  pulseGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  pulseGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  pulseBackBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  pulseAvatarWrap: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseAvatarGlow: { position: 'absolute', width: 66, height: 66, borderRadius: 33, backgroundColor: `${DS.primary}35` },
+  pulseAvatarRing: { position: 'absolute', width: 62, height: 62, borderRadius: 31, overflow: 'hidden' },
+  pulseAvatarInner: { width: 54, height: 54, borderRadius: 27, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  pulseTitle: { fontSize: 20, fontWeight: '800', letterSpacing: 0.5 },
+  pulseLivePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  pulseLiveText: { fontSize: 10, fontWeight: '700' },
+  pulseSubRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  pulseBabyName: { fontSize: 13, fontWeight: '600' },
+  pulseIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseBadge: { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: DS.white, paddingHorizontal: 3 },
+  pulseBadgeText: { color: DS.white, fontSize: 8, fontWeight: '800' },
+  pulseAddBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  pulseStats: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: DS.space.md, paddingVertical: DS.space.sm, borderRadius: DS.radius.lg, marginTop: DS.space.md, gap: DS.space.sm },
+  avatarStack: { flexDirection: 'row', alignItems: 'center' },
+  avatarStackItem: { borderRadius: 14, borderWidth: 2, overflow: 'hidden', position: 'relative' },
+  avatarYouDot: { position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: 4, borderWidth: 1.5 },
+  avatarExtra: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  avatarExtraText: { fontSize: 10, fontWeight: '800' },
+  pulseStatDiv: { width: 1, height: 18 },
+  pulseStat: { alignItems: 'center' },
+  pulseStatVal: { fontSize: 14, fontWeight: '800' },
+  pulseStatLbl: { fontSize: 9, fontWeight: '600', marginTop: 1 },
 
-  // ── Section Headers ──
-  sectionHeaderRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginHorizontal: 4, marginBottom: 12, marginTop: 8,
+  /* Ribbon */
+  ribbon: {
+    flexDirection: 'row', alignItems: 'center', gap: DS.space.md,
+    paddingVertical: DS.space.md, paddingHorizontal: DS.space.md,
+    borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm,
   },
-  sectionTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', letterSpacing: -0.4 },
-  sectionSubtitle: { fontSize: 13, fontWeight: '500', color: '#64748b', marginTop: 2 },
-  sectionBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  sectionBadgeText: { fontSize: 14, fontWeight: '800' },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1 },
 
-  tabContent: { paddingTop: 8 },
-  section: { marginBottom: 28 },
+  /* Tab bar */
+  tabBar: { flexDirection: 'row', marginHorizontal: DS.space.lg, padding: 4, borderRadius: DS.radius.full, gap: 2 },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 9, borderRadius: DS.radius.full },
+  tabLabel: { fontSize: 11, fontWeight: '600' },
 
-  // ── Health Score ──
-  healthScoreCard: {
-    borderRadius: DESIGN.radius.lg, overflow: 'hidden', marginBottom: DESIGN.spacing.xl,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-  },
-  healthScoreCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  healthScoreContent: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 16 },
-  healthScoreLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  healthScoreRing: {
-    width: 72, height: 72, borderRadius: 36, borderWidth: 4,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  healthScoreValue: { fontSize: 24, fontWeight: '800' },
-  healthScoreMax: { fontSize: 12, fontWeight: '600' },
-  healthScoreLabels: { gap: 2 },
-  healthScoreLabel: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
-  healthScoreSub: { fontSize: 13, fontWeight: '600' },
-  healthScoreRight: { flex: 1, gap: 8 },
-  healthScoreMini: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  healthScoreMiniBarWrap: { flex: 1 },
-  healthScoreMiniBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  healthScoreMiniBarFill: { height: '100%', borderRadius: 3 },
-  healthScoreMiniValue: { fontSize: 12, fontWeight: '700', width: 32, textAlign: 'right' },
-  healthScoreMiniLabel: { fontSize: 11, fontWeight: '500', width: 50 },
+  /* Section */
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: DS.space.lg, marginBottom: DS.space.md, marginTop: DS.space.sm },
+  sectionIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
+  sectionAction: { fontSize: 12, fontWeight: '700' },
 
-  // ── Goals ──
-  goalsContainer: { gap: 10, marginBottom: DESIGN.spacing.xl },
-  goalCard: { borderRadius: DESIGN.radius.md, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  goalCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  goalContent: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  goalIconBg: {
-    width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
-    position: 'relative',
-  },
-  goalIcon: { fontSize: 22 },
-  goalCheckmark: {
-    position: 'absolute', bottom: -2, right: -2, width: 18, height: 18, borderRadius: 9,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff',
-  },
-  goalInfo: { flex: 1, gap: 6 },
-  goalTitle: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
-  goalProgressRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  goalProgressBar: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
-  goalProgressFill: { height: '100%', borderRadius: 3 },
-  goalProgressText: { fontSize: 12, fontWeight: '700', width: 36, textAlign: 'right' },
-  goalUnit: { fontSize: 11, fontWeight: '500' },
-
-  // ── Suggestions ──
-  suggestionsScroll: { paddingHorizontal: DESIGN.spacing.lg, gap: 12, paddingBottom: 4 },
-  suggestionCard: {
-    width: SCREEN_W * 0.75, borderRadius: DESIGN.radius.lg, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-  },
-  suggestionCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  suggestionPriority: { position: 'absolute', top: 0, left: 0, width: 4, height: '100%' },
-  suggestionContent: { padding: 18, gap: 10 },
-  suggestionIconBg: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  suggestionIcon: { fontSize: 22 },
-  suggestionTitle: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, lineHeight: 22 },
-  suggestionDesc: { fontSize: 13, fontWeight: '500', lineHeight: 19 },
-  suggestionActionBtn: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
-    gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, marginTop: 4,
-  },
-  suggestionActionText: { fontSize: 13, fontWeight: '700' },
-
-  // ── Timeline ──
-  timelineContainer: { marginBottom: DESIGN.spacing.xl },
-  timelineItem: { flexDirection: 'row', gap: 12, marginBottom: 12 },
-  timelineLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
-  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, zIndex: 1 },
-  timelineLine: { position: 'absolute', top: 0, bottom: -12, width: 2, left: 11 },
-  timelineCard: {
-    flex: 1, borderRadius: DESIGN.radius.md, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-  },
-  timelineCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  timelineCardContent: { padding: 14, gap: 6 },
-  timelineCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  timelineEmoji: { fontSize: 16 },
-  timelineCardTitle: { flex: 1, fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
-  timelineCardActor: { fontSize: 11, fontWeight: '500' },
-  timelineEmpty: { alignItems: 'center', justifyContent: 'center', padding: 32 },
-  timelineEmptyText: { fontSize: 14, fontWeight: '500', marginTop: 8 },
-
-  // ── Insights ──
-  insightsContainer: { gap: 10, marginBottom: DESIGN.spacing.xl },
-  insightItem: {
-    borderRadius: DESIGN.radius.md, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', flexDirection: 'row',
-  },
-  insightItemDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  insightLeftBorder: { width: 4 },
-  insightContent: { flex: 1, padding: 14, gap: 8 },
-  insightHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  insightIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  insightIcon: { fontSize: 18 },
-  insightHeaderText: { flex: 1, gap: 2 },
-  insightTitle: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
-  insightDescription: { fontSize: 13, fontWeight: '500', lineHeight: 19 },
-
-  // ── Member Card ──
-  memberCardWrapper: { marginBottom: DESIGN.spacing.md, borderRadius: DESIGN.radius.lg },
-  memberCard: {
-    borderRadius: DESIGN.radius.lg, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-  },
-  memberCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  memberCardPending: { borderColor: 'rgba(245,158,11,0.3)' },
-  roleStrip: { height: 3, width: '100%' },
-  memberCardContent: { flexDirection: 'row', alignItems: 'center', padding: 14 },
-  memberAvatarContainer: {
-    width: 52, height: 52, borderRadius: DESIGN.radius.md,
-    alignItems: 'center', justifyContent: 'center', position: 'relative',
-  },
-  youBadge: {
-    position: 'absolute', bottom: -4, right: -4, paddingHorizontal: 5, paddingVertical: 1,
-    borderRadius: 6, borderWidth: 2, borderColor: '#fff',
-  },
-  youBadgeText: { color: '#fff', fontSize: 7, fontWeight: '900' },
-  onlineIndicator: {
-    position: 'absolute', top: -2, right: -2, width: 12, height: 12,
-    borderRadius: 6, backgroundColor: '#10b981', borderWidth: 2,
-  },
-  pendingIndicator: {
-    position: 'absolute', top: -2, right: -2, width: 12, height: 12,
-    borderRadius: 6, backgroundColor: '#f59e0b', borderWidth: 2,
-  },
-  memberInfo: { flex: 1, marginLeft: 12 },
-  memberName: { fontSize: 16, fontWeight: '700', color: '#1a1a1a', letterSpacing: -0.2 },
-  memberMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 },
-  roleBadgeSmall: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8,
-  },
-  roleBadgeSmallText: { color: '#fff', fontSize: 9, fontWeight: '800', marginLeft: 3 },
-  memberRelationship: { fontSize: 12, fontWeight: '500', color: '#64748b' },
-  memberLastActive: { fontSize: 11, fontWeight: '500', color: '#94a3b8', marginTop: 3 },
-  memberStateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3, gap: 4 },
-  stateDot: { width: 6, height: 6, borderRadius: 3 },
-  pendingBadge: { flexDirection: 'row', alignItems: 'center', marginTop: 3, gap: 4 },
-  pendingText: { fontSize: 11, fontWeight: '600', color: '#f59e0b' },
-
-  // ── Pending Invites ──
-  pendingCard: {
-    flexDirection: 'row', alignItems: 'center', borderRadius: DESIGN.radius.md,
-    padding: 14, marginBottom: DESIGN.spacing.md, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-  },
-  pendingCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  pendingCardPartial: { borderColor: 'rgba(245,158,11,0.3)', backgroundColor: 'rgba(245,158,11,0.05)' },
-  pendingIcon: {
-    width: 44, height: 44, borderRadius: 12, backgroundColor: '#f59e0b15',
-    alignItems: 'center', justifyContent: 'center', marginRight: 12,
-  },
-  pendingInfo: { flex: 1 },
-  pendingHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  pendingEmail: { fontSize: 15, fontWeight: '700', color: '#1a1a1a', letterSpacing: -0.2 },
-  pendingStatusBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
-  },
-  pendingStatusText: { fontSize: 9, fontWeight: '700' },
-  pendingSent: { fontSize: 11, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
-  pendingPartialText: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-  pendingActions: { flexDirection: 'row', gap: 8 },
-  pendingAction: {
-    width: 36, height: 36, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center',
+  /* Card */
+  card: {
+    marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg,
+    padding: DS.space.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm,
   },
 
-  // ── Empty State ──
-  emptyState: {
-    alignItems: 'center', justifyContent: 'center', padding: 24, borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-  },
-  emptyStateDark: { backgroundColor: 'rgba(30,30,35,0.5)' },
-  emptyStateText: { fontSize: 14, fontWeight: '500', color: '#64748b', marginTop: 8 },
-  addFirstMemberBtn: { marginTop: 12, paddingHorizontal: DESIGN.spacing.lg, paddingVertical: 8, borderRadius: 10 },
-  addFirstMemberText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  /* Health */
+  healthRing: { width: 72, height: 72, borderRadius: 36, borderWidth: 5, alignItems: 'center', justifyContent: 'center' },
+  healthRingFill: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 5, borderTopColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: 'transparent' },
+  healthRingInner: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center' },
+  healthRingValue: { fontSize: 20, fontWeight: '800' },
+  healthRingMax: { fontSize: 9, fontWeight: '600' },
+  healthTitle: { fontSize: 15, fontWeight: '800' },
+  healthLabel: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  healthStatsRow: { flexDirection: 'row', gap: 16, marginTop: 8 },
+  healthStat: { alignItems: 'center' },
+  healthStatVal: { fontSize: 14, fontWeight: '800' },
+  healthStatLbl: { fontSize: 9, fontWeight: '600' },
 
-  // ── Access Tab ──
-  permissionsHeaderCard: {
-    borderRadius: DESIGN.radius.lg, padding: 16, marginBottom: 16,
-  },
-  permissionsHeaderTop: { flexDirection: 'row', alignItems: 'center' },
-  permissionsHeaderIcon: {
-    width: 44, height: 44, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  permissionsHeaderTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  permissionsHeaderSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 2 },
-  readOnlyBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginTop: 12, padding: 10, borderRadius: 10, backgroundColor: '#f59e0b10',
-  },
-  readOnlyText: { color: '#f59e0b', fontSize: 11, fontWeight: '600', flex: 1 },
+  /* Goals */
+  goalCard: { width: 132, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden' },
+  goalTitle: { fontSize: 11, fontWeight: '700', marginTop: 4, marginBottom: 2 },
+  goalVal: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  goalTotal: { fontSize: 11, fontWeight: '600' },
+  goalBarBg: { height: 4, borderRadius: 2, overflow: 'hidden', marginTop: 6 },
+  goalBarFill: { height: '100%', borderRadius: 2 },
+  goalUnit: { fontSize: 9, fontWeight: '500', marginTop: 4 },
 
-  permissionCard: {
-    borderRadius: DESIGN.radius.lg, overflow: 'hidden', padding: 14, marginBottom: 10,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-  },
-  permissionCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  permissionCardHeader: { flexDirection: 'row', alignItems: 'center' },
-  permissionCardName: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2, flexShrink: 1 },
-  permissionEmail: { fontSize: 12, fontWeight: '500', color: '#64748b', marginTop: 2 },
-  permissionYouBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  permissionYouText: { fontSize: 10, fontWeight: '800' },
-  permissionRolePill: {
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, marginLeft: 6,
-  },
-  permissionRoleText: { fontSize: 11, fontWeight: '700' },
-  permissionMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10 },
-  permissionMetaText: { fontSize: 11, fontWeight: '500', color: '#94a3b8' },
-  permissionPendingPill: {
-    marginLeft: 8, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
-    backgroundColor: '#f59e0b20',
-  },
-  permissionPendingText: { fontSize: 10, fontWeight: '700', color: '#f59e0b' },
-  permissionChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
-  permissionChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
-  },
-  permissionChipText: { fontSize: 11, fontWeight: '600' },
-  permissionNoPerms: { fontSize: 11, fontStyle: 'italic', color: '#94a3b8' },
-  permissionsFooter: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginTop: 8, paddingHorizontal: 4,
-  },
-  permissionsFooterText: { fontSize: 11, fontWeight: '500', flex: 1, lineHeight: 16, color: '#94a3b8' },
+  /* Member card */
+  memberCard: { borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  memberStrip: { height: 3, width: '100%' },
+  memberRow: { flexDirection: 'row', alignItems: 'center', padding: DS.space.md },
+  memberYouDot: { position: 'absolute', bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
+  memberOnlineDot: { position: 'absolute', top: -2, right: -2, width: 12, height: 12, borderRadius: 6, backgroundColor: DS.success, borderWidth: 2 },
+  memberName: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2, flexShrink: 1 },
+  memberMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  roleBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  roleBadgeText: { color: DS.white, fontSize: 8, fontWeight: '800' },
+  memberRelationship: { fontSize: 11, fontWeight: '500', flexShrink: 1 },
+  memberActiveText: { fontSize: 10, fontWeight: '500', marginTop: 3 },
+  youBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5 },
+  youBadgeText: { fontSize: 9, fontWeight: '800' },
+  pendingInline: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  pendingInlineText: { fontSize: 10, fontWeight: '600' },
 
-  // ── Settings Tab ──
-  settingsSummaryCard: {
-    borderRadius: DESIGN.radius.lg, padding: 18, marginBottom: 16,
-  },
-  settingsSummaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
-  settingsSummaryItem: { alignItems: 'center', flex: 1 },
-  settingsSummaryValue: { fontSize: 22, fontWeight: '800' },
-  settingsSummaryLabel: { fontSize: 11, fontWeight: '600', color: '#64748b', marginTop: 4 },
-  settingsSummaryDivider: { width: 1, height: 36 },
+  /* Empty */
+  emptyCard: { alignItems: 'center', paddingVertical: DS.space['2xl'], marginHorizontal: 0, borderRadius: DS.radius.lg, borderWidth: 1 },
+  emptyIcon: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
+  emptyTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  emptySub: { fontSize: 12, fontWeight: '500', textAlign: 'center', paddingHorizontal: DS.space.lg },
+  emptyBtn: { marginTop: DS.space.md, paddingHorizontal: DS.space.lg, paddingVertical: 8, borderRadius: 10 },
+  emptyBtnText: { color: DS.white, fontSize: 12, fontWeight: '700' },
 
-  settingsRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
-    borderRadius: DESIGN.radius.md, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-  },
-  settingsRowDark: { borderColor: 'rgba(255,255,255,0.08)' },
-  settingsIconBg: {
-    width: 40, height: 40, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  settingsRowTitle: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
-  settingsRowSubtitle: { fontSize: 12, fontWeight: '500', color: '#64748b', marginTop: 2 },
-  settingsBadge: {
-    minWidth: 22, height: 22, borderRadius: 11,
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 6, marginRight: 4,
-  },
-  settingsBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  /* Timeline */
+  timelineRow: { flexDirection: 'row', gap: DS.space.sm, marginBottom: DS.space.md },
+  timelineLeft: { width: 24, alignItems: 'center', paddingTop: 14 },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, zIndex: 1 },
+  timelineLine: { position: 'absolute', top: 0, bottom: -DS.space.md, width: 2, left: 11 },
+  timelineCard: { flex: 1, padding: DS.space.md, borderRadius: DS.radius.md, borderWidth: 1 },
+  timelineTitle: { fontSize: 13, fontWeight: '700' },
+  timelineMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
 
-  // ── Avatar ──
-  avatarWrapper: { borderRadius: DESIGN.radius.md, overflow: 'hidden' },
-  avatarGradient: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarEmoji: { fontSize: 28 },
+  /* Permissions */
+  readOnlyBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: DS.radius.md, borderWidth: 1 },
+  readOnlyText: { fontSize: 11, fontWeight: '600', flex: 1 },
+  permCard: { padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, gap: 8 },
+  permName: { fontSize: 14, fontWeight: '700', flexShrink: 1 },
+  permRolePill: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 4 },
+  permRoleText: { fontSize: 10, fontWeight: '700' },
+  permMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  permMetaText: { fontSize: 10, fontWeight: '500' },
+  permPendingPill: { marginLeft: 6, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5 },
+  permPendingText: { fontSize: 9, fontWeight: '700' },
+  permChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  permChip: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+  permChipText: { fontSize: 10, fontWeight: '600' },
+  permFooter: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4, marginTop: DS.space.sm },
+  permFooterText: { fontSize: 11, fontWeight: '500', flex: 1, lineHeight: 16 },
 
-  // ── Modal ──
-  modalOverlay: {
-    flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)', padding: 20,
-  },
-  modalContent: {
-    width: '90%', maxHeight: '85%', borderRadius: DESIGN.radius.xl,
-    overflow: 'hidden', backgroundColor: '#fff',
-  },
-  modalContentDark: { backgroundColor: '#1a1a2e' },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  modalTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  modalCloseBtn: {
-    width: 32, height: 32, borderRadius: 10,
-    justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  modalScrollContent: { padding: 16 },
+  /* Settings */
+  summaryCard: { padding: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden' },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
+  summaryItem: { alignItems: 'center', flex: 1 },
+  summaryVal: { fontSize: 22, fontWeight: '800' },
+  summaryLbl: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  summaryDiv: { width: 1, height: 32 },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.md, borderWidth: 1 },
+  setIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  setTitle: { fontSize: 14, fontWeight: '700' },
+  setSub: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  setBadge: { minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  setBadgeText: { color: DS.white, fontSize: 10, fontWeight: '800' },
 
-  // ── Member Detail ──
-  memberDetailContent: { padding: 16 },
-  memberDetailHeader: { alignItems: 'center', marginBottom: 20 },
-  memberDetailRoleBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12, marginTop: 12,
-  },
-  memberDetailRoleText: { color: '#fff', fontSize: 13, fontWeight: '700', marginLeft: 6 },
-  detailSection: { marginBottom: 20 },
-  detailSectionTitle: {
-    fontSize: 16, fontWeight: '800', color: '#1a1a1a',
-    marginBottom: 10, letterSpacing: -0.3,
-  },
-  detailRow: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 10,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  detailRowDark: { borderBottomColor: 'rgba(255,255,255,0.05)' },
-  detailText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#1a1a1a', marginLeft: 12 },
-  detailActions: { gap: 10, marginTop: 10 },
-  detailActionBtn: { borderRadius: 12, overflow: 'hidden' },
-  detailActionGradient: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 14, gap: 8,
-  },
-  detailActionText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  detailActionSecondary: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 14, gap: 8, borderRadius: 12, borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)', backgroundColor: 'rgba(255,255,255,0.5)',
-  },
-  detailActionSecondaryDark: {
-    backgroundColor: 'rgba(30,30,35,0.5)', borderColor: 'rgba(255,255,255,0.08)',
-  },
-  detailActionSecondaryText: { fontSize: 15, fontWeight: '700' },
-  detailActionDanger: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 14, gap: 8, borderRadius: 12, borderWidth: 1,
-    borderColor: '#ff4757', backgroundColor: 'rgba(255,71,87,0.05)',
-  },
-  detailActionDangerText: { fontSize: 15, fontWeight: '700', color: '#ff4757' },
+  /* Invite cards */
+  inviteCard: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.md, borderWidth: 1 },
+  inviteIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  inviteCode: { fontSize: 13, fontWeight: '800', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  inviteStatus: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5 },
+  inviteStatusText: { fontSize: 9, fontWeight: '700' },
+  inviteMeta: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+  inviteAction: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
 
-  // ── Edit Form ──
-  editForm: { padding: 16 },
-  editAvatarContainer: { alignSelf: 'center', marginBottom: 20, position: 'relative' },
-  editAvatarPlaceholder: {
-    width: 100, height: 100, borderRadius: 50,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  editAvatarOverlay: {
-    position: 'absolute', bottom: 0, right: 0, width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff',
-  },
-  formGroup: { marginBottom: 16 },
-  formLabel: {
-    fontSize: 13, fontWeight: '700', color: '#1a1a1a',
-    marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5,
-  },
-  formInput: {
-    fontSize: 16, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.03)', color: '#1a1a1a', fontWeight: '500',
-  },
-  formInputDark: { backgroundColor: 'rgba(255,255,255,0.05)', color: '#fff' },
-  toggleRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  toggleRowDark: { borderBottomColor: 'rgba(255,255,255,0.05)' },
-  toggleInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  toggleTextContainer: { marginLeft: 12 },
-  toggleLabel: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
-  toggleDescription: { fontSize: 12, fontWeight: '500', color: '#94a3b8', marginTop: 2 },
-  saveButton: { marginTop: 20, borderRadius: 12, overflow: 'hidden' },
-  saveButtonGradient: { paddingVertical: 16, alignItems: 'center' },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  /* Modal */
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalCard: { width: '100%', maxWidth: 420, maxHeight: '85%', borderRadius: DS.radius['2xl'], overflow: 'hidden', ...DS.shadow.lg },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: DS.space.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  modalTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, flex: 1 },
+  modalClose: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  modalRoleBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10 },
+  modalRoleText: { color: DS.white, fontSize: 12, fontWeight: '700' },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  detailText: { flex: 1, fontSize: 14, fontWeight: '600' },
+  modalPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: DS.radius.md },
+  modalPrimaryBtnText: { color: DS.white, fontSize: 14, fontWeight: '700' },
+  modalSecondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: DS.radius.md, borderWidth: 1 },
+  modalSecondaryText: { fontSize: 14, fontWeight: '700' },
+  modalDangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: DS.radius.md, borderWidth: 1 },
+  modalDangerText: { fontSize: 14, fontWeight: '700' },
+  avatarEditBadge: { position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 3 },
+  formLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
+  formInput: { fontSize: 15, fontWeight: '500', paddingVertical: 12, paddingHorizontal: 14, borderRadius: DS.radius.md },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  saveBtn: { paddingVertical: 15, borderRadius: DS.radius.md, alignItems: 'center' },
+  saveBtnText: { color: DS.white, fontSize: 15, fontWeight: '700' },
 });
