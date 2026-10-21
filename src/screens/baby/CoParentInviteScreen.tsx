@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,6 +16,8 @@ import {
   Dimensions,
   Modal,
   Pressable,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,7 +25,10 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
+  FadeIn,
   FadeInUp,
+  FadeInDown,
+  Layout,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -35,7 +36,10 @@ import Animated, {
   withTiming,
   withRepeat,
   interpolate,
+  Extrapolation,
+  useAnimatedScrollHandler,
 } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
@@ -44,10 +48,66 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useFamily } from '../../context/FamilyContext';
+import { useSweetAlert } from '../../components/SweetAlert';
 import QRCode from 'react-native-qrcode-svg';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CoParentInviteScreen'>;
 const { width: SCREEN_W } = Dimensions.get('window');
+
+const IS_FABRIC =
+  (global as any).nativeFabricUIManager != null ||
+  typeof (global as any).RN$Bridgeless !== 'undefined' ||
+  typeof (global as any).__turboModuleProxy !== 'undefined';
+
+if (Platform.OS === 'android' && !IS_FABRIC && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
+};
+
+const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : (StatusBar.currentHeight || 0) + 14;
+const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
+
+const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+const HAPTIC_WARNING = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ROLE CONFIGURATION
@@ -102,7 +162,53 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: keyof 
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   INLINE TOAST
+   GradientText + PressableScale
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: {
+  children: React.ReactNode; style?: any; colors?: string[];
+}) => {
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        return <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>{l}</Text>;
+      })}
+    </View>
+  );
+});
+
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = React.memo<{
+  children: React.ReactNode; onPress?: () => void; disabled?: boolean; style?: any; activeScale?: number;
+}>(({ children, onPress, disabled, style, activeScale = 0.96 }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={() => { if (!disabled) { HAPTIC_LIGHT(); onPress?.(); } }}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Toast
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const Toast = ({ message, type, visible, onHide }: {
@@ -128,7 +234,7 @@ const Toast = ({ message, type, visible, onHide }: {
   }[type];
 
   return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="none">
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999, alignItems: 'center', paddingTop: HEADER_TOTAL_HEIGHT + 12 }]} pointerEvents="none">
       <RNAnimated.View style={[styles.toast, { opacity, backgroundColor: colors.bg }]}>
         <Ionicons name={colors.icon as any} size={18} color="#fff" />
         <Text style={styles.toastText}>{message}</Text>
@@ -138,31 +244,504 @@ const Toast = ({ message, type, visible, onHide }: {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CODE DETAILS MODAL - Enhanced with Partial Sign-Up Info
+   Section Header
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function CodeDetailsModal({ 
-  code, 
-  visible, 
-  onClose,
-  isDark,
-  primaryColor,
-  onResendPartial,
-}: { 
-  code: any; 
-  visible: boolean; 
-  onClose: () => void;
-  isDark: boolean;
-  primaryColor: string;
-  onResendPartial?: (code: string) => void;
-}) {
-  if (!code) return null;
+const SectionHeader = React.memo(({ title, subtitle, icon, color = DS.primary, action, actionLabel }: {
+  title: string; subtitle?: string; icon?: keyof typeof Ionicons.glyphMap; color?: string;
+  action?: () => void; actionLabel?: string;
+}) => (
+  <View style={styles.sectionHeader}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+      {icon && (
+        <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+      )}
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <Text style={[styles.sectionActionText, { color }]}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={13} color={color} />
+      </TouchableOpacity>
+    )}
+  </View>
+));
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Invite Pulse Header — compact animated status capsule (no hero card)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const InvitePulse = React.memo<{
+  isDark: boolean;
+  avatar: any;
+  baby: any;
+  userProfile: any;
+  stats: { total: number; active: number; partial: number; used: number };
+  onAvatarPress: () => void;
+  onBabyPress: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
+}>(({ isDark, avatar, baby, userProfile, stats, onAvatarPress, onBabyPress, onRefresh, refreshing }) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 9000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.8, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, [pulse, rotate, glow]);
+
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
+
+  const hasAttention = stats.partial > 0;
+  const statusColor = stats.active > 0 ? DS.success : stats.total > 0 ? DS.warning : DS.primary;
+  const statusLabel =
+    hasAttention
+      ? `${stats.partial} need${stats.partial === 1 ? 's' : ''} help`
+      : stats.active > 0
+      ? `${stats.active} active invite${stats.active === 1 ? '' : 's'}`
+      : stats.total > 0
+      ? 'No active codes'
+      : 'Ready to invite';
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View style={[styles.pulseWrap, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient
+          colors={isDark
+            ? ['rgba(99,102,241,0.20)', 'rgba(236,72,153,0.10)', 'rgba(139,92,246,0.05)']
+            : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        />
+        <LinearGradient colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']}
+          style={styles.pulseGlowL} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} pointerEvents="none" />
+        <LinearGradient colors={[`${DS.accent}${isDark ? '35' : '22'}`, 'transparent']}
+          style={styles.pulseGlowR} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} pointerEvents="none" />
+
+        <View style={styles.pulseRow}>
+          <PressableScale onPress={onAvatarPress} activeScale={0.94}>
+            <View style={styles.pulseAvatarWrap}>
+              <Animated.View style={[styles.pulseAvatarGlow, glowStyle]} />
+              <Animated.View style={[styles.pulseAvatarRing, ringStyle]}>
+                <LinearGradient colors={[DS.primary, DS.accent, DS.warning, DS.primary]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+              </Animated.View>
+              <View style={[styles.pulseAvatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+                <SafeAvatar
+                  avatar={avatar}
+                  size={44}
+                  fallbackIcon="people"
+                  fallbackColor={DS.primary}
+                  borderWidth={0}
+                />
+              </View>
+            </View>
+          </PressableScale>
+
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.pulseName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+              {baby?.name ? `Invite for ${baby.name}` : 'Invite your family'}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <View style={[styles.pulseLiveDot, { backgroundColor: hasAttention ? DS.warning : statusColor }]} />
+              <Text style={[styles.pulseSubText, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                {statusLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <PressableScale onPress={onBabyPress} activeScale={0.9}>
+              <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                <Ionicons name={baby ? 'swap-horizontal-outline' : 'add-outline'} size={18} color={isDark ? DS.gray300 : DS.gray600} />
+              </View>
+            </PressableScale>
+            <PressableScale onPress={onRefresh} activeScale={0.9}>
+              <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                {refreshing
+                  ? <ActivityIndicator size="small" color={DS.primary} />
+                  : <Ionicons name="refresh-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />}
+              </View>
+            </PressableScale>
+          </View>
+        </View>
+
+        {/* Segmented stats */}
+        <View style={[styles.pulseStats, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' }]}>
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.primary }]}>{stats.total}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>total</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.success }]}>{stats.active}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>active</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: stats.partial > 0 ? DS.warning : DS.gray400 }]}>{stats.partial}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>partial</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.gray500 }]}>{stats.used}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>used</Text>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Aura Ribbon
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const AuraRibbon = React.memo<{
+  isDark: boolean; icon: keyof typeof Ionicons.glyphMap; color: string;
+  label: string; text: string; onPress?: () => void;
+}>(({ isDark, icon, color, label, text, onPress }) => (
+  <Animated.View entering={FadeInUp.delay(80).springify()}>
+    <PressableScale onPress={onPress} activeScale={0.98}>
+      <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+          <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={2}>{text}</Text>
+        </View>
+        {onPress && <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />}
+      </View>
+    </PressableScale>
+  </Animated.View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Role Selector — animated gradient pills
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const RoleSelector = React.memo<{
+  selected: RoleKey;
+  onSelect: (r: RoleKey) => void;
+  isDark: boolean;
+}>(({ selected, onSelect, isDark }) => (
+  <Animated.View entering={FadeInUp.delay(120).springify()}>
+    <SectionHeader title="Role" subtitle="What can they do?" icon="shield-outline" color={DS.primary} />
+    <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+      {(Object.keys(ROLE_META) as RoleKey[]).map((r) => {
+        const meta = ROLE_META[r];
+        const active = selected === r;
+        return (
+          <PressableScale key={r} onPress={() => onSelect(r)} activeScale={0.98}>
+            <View
+              style={[
+                styles.roleCard,
+                {
+                  backgroundColor: active
+                    ? isDark ? `${meta.color}20` : `${meta.color}10`
+                    : isDark ? DS.darkCard : DS.white,
+                  borderColor: active ? `${meta.color}60` : isDark ? DS.darkBorder : DS.gray200,
+                  borderWidth: active ? 2 : 1,
+                },
+              ]}
+            >
+              <LinearGradient colors={meta.gradient} style={styles.roleIcon}>
+                <Ionicons name={meta.icon} size={18} color="#fff" />
+              </LinearGradient>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.roleTitle, { color: isDark ? DS.white : DS.gray900 }]}>{meta.label}</Text>
+                <Text style={[styles.roleDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>
+                  {meta.description}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.roleCheck,
+                  active && { backgroundColor: meta.color, borderColor: meta.color },
+                  !active && { borderColor: isDark ? DS.gray600 : DS.gray300 },
+                ]}
+              >
+                {active && <Ionicons name="checkmark" size={14} color="#fff" />}
+              </View>
+            </View>
+          </PressableScale>
+        );
+      })}
+    </View>
+  </Animated.View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Input Row
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const InputRow = ({ icon, placeholder, value, onChangeText, themeColor, isDark, keyboardType, autoCapitalize, label }: any) => (
+  <View style={{ marginBottom: 10 }}>
+    {label && <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{label}</Text>}
+    <View style={[styles.inputRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.gray50, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+      <Ionicons name={icon} size={18} color={themeColor} style={{ opacity: 0.85 }} />
+      <TextInput
+        style={[styles.input, { color: isDark ? DS.white : DS.gray900 }]}
+        placeholder={placeholder}
+        placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize || 'words'}
+        returnKeyType="next"
+      />
+    </View>
+  </View>
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Success Capsule — compact generated-code display (no giant block)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const SuccessCapsule = React.memo<{
+  code: string;
+  role: RoleKey;
+  babyName?: string;
+  isDark: boolean;
+  onCopy: () => void;
+  onShare: (method: 'whatsapp' | 'sms' | 'email' | 'native') => void;
+  onRegenerate: () => void;
+  onDone: () => void;
+}>(({ code, role, babyName, isDark, onCopy, onShare, onRegenerate, onDone }) => {
+  const checkScale = useSharedValue(0);
+  const checkRotate = useSharedValue(0);
+  const ringPulse = useSharedValue(1);
+
+  useEffect(() => {
+    checkScale.value = withSequence(
+      withTiming(0, { duration: 0 }),
+      withSpring(1.15, { damping: 10, stiffness: 200 }),
+      withTiming(1, { duration: 200 })
+    );
+    checkRotate.value = withSequence(
+      withTiming(-180, { duration: 0 }),
+      withSpring(0, { damping: 12, stiffness: 150 })
+    );
+    ringPulse.value = withRepeat(
+      withSequence(withTiming(1.08, { duration: 1600 }), withTiming(1, { duration: 1600 })),
+      -1,
+      true
+    );
+  }, []);
+
+  const checkStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkScale.value }, { rotate: `${checkRotate.value}deg` }],
+  }));
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ scale: ringPulse.value }] }));
+
+  const meta = ROLE_META[role];
+
+  return (
+    <Animated.View entering={FadeInUp.springify()}>
+      <View style={[styles.successCapsule, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: `${meta.color}40` }]}>
+        <LinearGradient
+          colors={isDark ? [`${meta.color}20`, 'transparent'] : [`${meta.color}12`, 'transparent']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        />
+
+        {/* Success indicator row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+            <Animated.View style={[styles.successGlow, { backgroundColor: `${meta.color}30` }, ringStyle]} />
+            <Animated.View style={[styles.successCheck, checkStyle, { backgroundColor: meta.color }]}>
+              <Ionicons name="checkmark" size={22} color="#fff" />
+            </Animated.View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.successTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+              Invite ready
+            </Text>
+            <Text style={[styles.successSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+              {meta.label}{babyName ? ` · ${babyName}` : ''}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onDone} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 4 }}>
+            <Ionicons name="close" size={20} color={isDark ? DS.gray500 : DS.gray400} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Code + QR row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.codeLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>INVITE CODE</Text>
+            <Text style={[styles.codeText, { color: meta.color }]} numberOfLines={1}>{code}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              <Ionicons name="time-outline" size={11} color={isDark ? DS.gray500 : DS.gray400} />
+              <Text style={[styles.codeMeta, { color: isDark ? DS.gray500 : DS.gray400 }]}>7d · one-time use</Text>
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => onShare('native')} activeOpacity={0.85}>
+            <View style={[styles.qrBox, { backgroundColor: isDark ? DS.darkSurface : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <QRCode
+                value={code}
+                size={72}
+                color={isDark ? '#ffffff' : '#1a1a1a'}
+                backgroundColor={isDark ? '#1c1917' : '#ffffff'}
+              />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Share row */}
+        <View style={styles.shareRow}>
+          {([
+            { id: 'copy', icon: 'copy-outline', label: 'Copy', color: DS.primary, onPress: onCopy },
+            { id: 'whatsapp', icon: 'logo-whatsapp', label: 'WhatsApp', color: '#25d366', onPress: () => onShare('whatsapp') },
+            { id: 'sms', icon: 'chatbubble-outline', label: 'SMS', color: '#3b82f6', onPress: () => onShare('sms') },
+            { id: 'email', icon: 'mail-outline', label: 'Email', color: '#ef4444', onPress: () => onShare('email') },
+            { id: 'more', icon: 'share-outline', label: 'More', color: DS.gray500, onPress: () => onShare('native') },
+          ] as const).map((s) => (
+            <PressableScale key={s.id} onPress={s.onPress} activeScale={0.92} style={{ flex: 1 }}>
+              <View style={{ alignItems: 'center', gap: 4 }}>
+                <View style={[styles.shareBtnIcon, { backgroundColor: `${s.color}12` }]}>
+                  <Ionicons name={s.icon as any} size={18} color={s.color} />
+                </View>
+                <Text style={[styles.shareBtnLabel, { color: s.color }]} numberOfLines={1}>{s.label}</Text>
+              </View>
+            </PressableScale>
+          ))}
+        </View>
+
+        {/* Regenerate */}
+        <TouchableOpacity onPress={onRegenerate} style={styles.regenerateBtn}>
+          <Ionicons name="add-circle-outline" size={14} color={meta.color} />
+          <Text style={[styles.regenerateText, { color: meta.color }]}>Generate another code</Text>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Code Row — compact ribbon-style list item
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const CodeRow = React.memo<{
+  code: any;
+  index: number;
+  isDark: boolean;
+  onPress: (code: any) => void;
+  onResendPartial: (code: string) => void;
+  onRevoke: (code: string) => void;
+}>(({ code, index, isDark, onPress, onResendPartial, onRevoke }) => {
+  const status = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
+  const roleMeta = ROLE_META[code.role as RoleKey];
+  const isPartial = code.status === 'partial';
+  const isActive = code.status === 'active';
+
+  const partialParts: string[] = [];
+  if (code.used_by_name) partialParts.push(code.used_by_name);
+  if (code.used_by_email) partialParts.push(code.used_by_email);
+  if (code.used_by_phone) partialParts.push(code.used_by_phone);
+
+  return (
+    <Animated.View entering={FadeInUp.delay(index * 60).springify()}>
+      <PressableScale onPress={() => onPress(code)} activeScale={0.98}>
+        <View
+          style={[
+            styles.codeRow,
+            {
+              backgroundColor: isDark ? DS.darkCard : DS.white,
+              borderColor: isPartial ? `${DS.warning}40` : isDark ? DS.darkBorder : DS.gray200,
+              borderLeftColor: status.color,
+              borderLeftWidth: 3,
+            },
+          ]}
+        >
+          <View style={styles.codeRowMain}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Text style={[styles.codeRowCode, { color: isDark ? DS.white : DS.gray900 }]}>{code.code}</Text>
+                <View style={[styles.statusPill, { backgroundColor: `${status.color}15` }]}>
+                  <Ionicons name={status.icon} size={10} color={status.color} />
+                  <Text style={[styles.statusPillText, { color: status.color }]}>{status.label}</Text>
+                </View>
+              </View>
+              <Text style={[styles.codeRowMeta, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                {roleMeta?.label || code.role}{code.relationship ? ` · ${code.relationship}` : ''}
+              </Text>
+              {isPartial && partialParts.length > 0 && (
+                <Text style={[styles.codeRowPartialInfo, { color: DS.warning }]} numberOfLines={1}>
+                  {partialParts.join(' · ')}
+                </Text>
+              )}
+              {isActive && (
+                <Text style={[styles.codeRowExpiry, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+                  Expires {new Date(code.expiresAt).toLocaleDateString()}
+                </Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={isDark ? DS.gray600 : DS.gray300} />
+          </View>
+
+          {(isPartial || isActive) && (
+            <View style={styles.codeRowActions}>
+              {isPartial && (
+                <PressableScale onPress={() => onResendPartial(code.code)} activeScale={0.94}>
+                  <View style={[styles.codeActionBtn, { backgroundColor: `${DS.warning}15` }]}>
+                    <Ionicons name="refresh-outline" size={14} color={DS.warning} />
+                    <Text style={[styles.codeActionText, { color: DS.warning }]}>Resend</Text>
+                  </View>
+                </PressableScale>
+              )}
+              {isActive && (
+                <PressableScale onPress={() => onRevoke(code.code)} activeScale={0.94}>
+                  <View style={[styles.codeActionBtn, { backgroundColor: `${DS.danger}12` }]}>
+                    <Ionicons name="close-outline" size={14} color={DS.danger} />
+                    <Text style={[styles.codeActionText, { color: DS.danger }]}>Revoke</Text>
+                  </View>
+                </PressableScale>
+              )}
+            </View>
+          )}
+        </View>
+      </PressableScale>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Code Details Modal — preserved with all partial-signup logic
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function DetailItem({ label, value, icon, isDark }: { label: string; value: string; icon: string; isDark: boolean }) {
+  return (
+    <View style={[styles.detailItem, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.gray50 }]}>
+      <Ionicons name={icon as any} size={16} color={DS.primary} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.detailLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{label}</Text>
+        <Text style={[styles.detailValue, { color: isDark ? DS.white : DS.gray900 }]}>{value || '—'}</Text>
+      </View>
+    </View>
+  );
+}
+
+const CodeDetailsModal = React.memo(({
+  code, visible, onClose, isDark, primaryColor, onResendPartial,
+}: {
+  code: any; visible: boolean; onClose: () => void;
+  isDark: boolean; primaryColor: string; onResendPartial?: (code: string) => void;
+}) => {
+  if (!code) return null;
   const statusConfig = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
   const roleMeta = ROLE_META[code.role as RoleKey];
   const isPartial = code.status === 'partial';
 
-  // ─── Extract partial signup info ──────────────────────────────────────
   const partialEmail = code.used_by_email || null;
   const partialPhone = code.used_by_phone || null;
   const partialName = code.used_by_name || null;
@@ -170,229 +749,187 @@ function CodeDetailsModal({
   const partialUsedAt = code.used_at || null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={[styles.modalContent, isDark && styles.modalContentDark]}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={[styles.modalCard, { backgroundColor: isDark ? DS.darkCard : DS.white }]} onStartShouldSetResponder={() => true}>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, isDark && styles.textDark]}>Invite Code Details</Text>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
-              <Ionicons name="close" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
+            <Text style={[styles.modalTitle, { color: isDark ? DS.white : DS.gray900 }]}>Invite Details</Text>
+            <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+              <Ionicons name="close" size={22} color={isDark ? DS.gray400 : DS.gray500} />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.modalBody}>
-            {/* Code Display */}
-            <View style={[styles.modalCodeDisplay, { borderColor: isPartial ? '#f59e0b30' : primaryColor + '30' }]}>
-              <Text style={[styles.modalCodeText, { color: isPartial ? '#f59e0b' : primaryColor }]}>{code.code}</Text>
-              <View style={[styles.modalStatusBadge, { backgroundColor: statusConfig.color + '15' }]}>
-                <Ionicons name={statusConfig.icon} size={14} color={statusConfig.color} />
-                <Text style={[styles.modalStatusText, { color: statusConfig.color }]}>
-                  {statusConfig.label}
-                </Text>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
+            {/* Code display */}
+            <View style={[styles.modalCodeBlock, { borderColor: isPartial ? `${DS.warning}40` : `${primaryColor}40` }]}>
+              <LinearGradient
+                colors={isPartial ? [`${DS.warning}15`, 'transparent'] : [`${primaryColor}15`, 'transparent']}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              />
+              <Text style={[styles.modalCodeText, { color: isPartial ? DS.warning : primaryColor }]}>{code.code}</Text>
+              <View style={[styles.statusPill, { backgroundColor: `${statusConfig.color}15` }]}>
+                <Ionicons name={statusConfig.icon} size={12} color={statusConfig.color} />
+                <Text style={[styles.statusPillText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
               </View>
             </View>
 
-            {/* Partial Sign-up Warning with Full User Info */}
+            {/* Partial warning with user info */}
             {isPartial && (
-              <View style={[styles.partialModalWarning, { backgroundColor: '#f59e0b15', borderColor: '#f59e0b30' }]}>
-                <Ionicons name="warning" size={18} color="#f59e0b" />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.partialModalWarningText, { color: '#f59e0b' }]}>
-                    ⚠️ Partial Sign-up Detected
-                  </Text>
-                  
-                  {/* ─── User Info Section ─── */}
-                  <View style={styles.partialUserInfo}>
-                    <Text style={[styles.partialUserInfoLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                      User Information Provided:
-                    </Text>
-                    
-                    {partialName && (
-                      <View style={styles.partialInfoRow}>
-                        <Ionicons name="person-outline" size={14} color="#f59e0b" />
-                        <Text style={[styles.partialInfoText, { color: isDark ? '#e2e8f0' : '#1a1a1a' }]}>
-                          Name: <Text style={{ fontWeight: '700' }}>{partialName}</Text>
-                        </Text>
-                      </View>
-                    )}
-                    
-                    {partialEmail && (
-                      <View style={styles.partialInfoRow}>
-                        <Ionicons name="mail-outline" size={14} color="#f59e0b" />
-                        <Text style={[styles.partialInfoText, { color: isDark ? '#e2e8f0' : '#1a1a1a' }]}>
-                          Email: <Text style={{ fontWeight: '700' }}>{partialEmail}</Text>
-                        </Text>
-                      </View>
-                    )}
-                    
-                    {partialPhone && (
-                      <View style={styles.partialInfoRow}>
-                        <Ionicons name="call-outline" size={14} color="#f59e0b" />
-                        <Text style={[styles.partialInfoText, { color: isDark ? '#e2e8f0' : '#1a1a1a' }]}>
-                          Phone: <Text style={{ fontWeight: '700' }}>{partialPhone}</Text>
-                        </Text>
-                      </View>
-                    )}
-                    
-                    {partialUserId && (
-                      <View style={styles.partialInfoRow}>
-                        <Ionicons name="person-circle-outline" size={14} color="#f59e0b" />
-                        <Text style={[styles.partialInfoText, { color: isDark ? '#e2e8f0' : '#1a1a1a' }]}>
-                          User ID: <Text style={{ fontWeight: '500', fontSize: 11 }}>{partialUserId.substring(0, 12)}...</Text>
-                        </Text>
-                      </View>
-                    )}
-                    
-                    {partialUsedAt && (
-                      <View style={styles.partialInfoRow}>
-                        <Ionicons name="calendar-outline" size={14} color="#f59e0b" />
-                        <Text style={[styles.partialInfoText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-                          Started: {new Date(partialUsedAt).toLocaleString()}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  
-                  <Text style={[styles.partialModalSubtext, { color: isDark ? '#94a3b8' : '#64748b', marginTop: 8 }]}>
-                    This person started sign-up but didn't complete it. 
-                    {partialEmail ? ` Contact them at ${partialEmail} to help them finish.` : ' Resend the invite to help them complete registration.'}
-                  </Text>
+              <View style={[styles.partialWarnBox, { backgroundColor: `${DS.warning}10`, borderColor: `${DS.warning}30` }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="warning" size={16} color={DS.warning} />
+                  <Text style={[styles.partialWarnTitle, { color: DS.warning }]}>Partial sign-up detected</Text>
                 </View>
+                <Text style={[styles.partialWarnLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>User information provided:</Text>
+                {partialName && (
+                  <View style={styles.partialInfoRow}>
+                    <Ionicons name="person-outline" size={13} color={DS.warning} />
+                    <Text style={[styles.partialInfoText, { color: isDark ? DS.gray200 : DS.gray800 }]}>{partialName}</Text>
+                  </View>
+                )}
+                {partialEmail && (
+                  <View style={styles.partialInfoRow}>
+                    <Ionicons name="mail-outline" size={13} color={DS.warning} />
+                    <Text style={[styles.partialInfoText, { color: isDark ? DS.gray200 : DS.gray800 }]}>{partialEmail}</Text>
+                  </View>
+                )}
+                {partialPhone && (
+                  <View style={styles.partialInfoRow}>
+                    <Ionicons name="call-outline" size={13} color={DS.warning} />
+                    <Text style={[styles.partialInfoText, { color: isDark ? DS.gray200 : DS.gray800 }]}>{partialPhone}</Text>
+                  </View>
+                )}
+                {partialUserId && (
+                  <View style={styles.partialInfoRow}>
+                    <Ionicons name="person-circle-outline" size={13} color={DS.warning} />
+                    <Text style={[styles.partialInfoText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                      ID: {partialUserId.substring(0, 12)}…
+                    </Text>
+                  </View>
+                )}
+                {partialUsedAt && (
+                  <View style={styles.partialInfoRow}>
+                    <Ionicons name="calendar-outline" size={13} color={DS.warning} />
+                    <Text style={[styles.partialInfoText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                      Started {new Date(partialUsedAt).toLocaleString()}
+                    </Text>
+                  </View>
+                )}
+                <Text style={[styles.partialWarnFoot, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                  {partialEmail
+                    ? `Contact them at ${partialEmail} to help them finish.`
+                    : 'Resend the invite to help them complete registration.'}
+                </Text>
               </View>
             )}
 
-            {/* Details Grid */}
-            <View style={styles.modalDetailsGrid}>
+            {/* Details grid */}
+            <View style={styles.detailsGrid}>
               <DetailItem label="Role" value={roleMeta?.label || code.role} icon={roleMeta?.icon || 'person'} isDark={isDark} />
               <DetailItem label="Relationship" value={code.relationship || 'Not specified'} icon="heart" isDark={isDark} />
               <DetailItem label="Created" value={new Date(code.created_at).toLocaleDateString()} icon="calendar" isDark={isDark} />
               <DetailItem label="Expires" value={new Date(code.expiresAt).toLocaleDateString()} icon="time" isDark={isDark} />
               {code.used_by && !isPartial && (
-                <DetailItem label="Used By" value={code.used_by || 'Unknown'} icon="person" isDark={isDark} />
-              )}
-              {code.used_by_email && !isPartial && (
-                <DetailItem label="Used Email" value={code.used_by_email} icon="mail" isDark={isDark} />
-              )}
-              {code.used_by_phone && !isPartial && (
-                <DetailItem label="Used Phone" value={code.used_by_phone} icon="call" isDark={isDark} />
+                <DetailItem label="Used By" value={code.used_by} icon="person" isDark={isDark} />
               )}
               {code.used_at && (
                 <DetailItem label="Used At" value={new Date(code.used_at).toLocaleString()} icon="calendar" isDark={isDark} />
               )}
             </View>
 
-            {/* QR Code */}
-            <View style={styles.modalQrSection}>
-              <Text style={[styles.modalSectionLabel, isDark && { color: '#94a3b8' }]}>QR Code</Text>
-              <View style={[styles.modalQrWrap, isDark && styles.modalQrWrapDark]}>
+            {/* QR */}
+            <View style={{ alignItems: 'center', marginVertical: 14 }}>
+              <View style={[styles.modalQrBox, { backgroundColor: isDark ? DS.darkSurface : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
                 <QRCode
                   value={code.code}
-                  size={120}
+                  size={110}
                   color={isDark ? '#ffffff' : '#1a1a1a'}
-                  backgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
-                  logo={require('../../../assets/icon.png')}
-                  logoSize={24}
-                  logoBackgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
+                  backgroundColor={isDark ? '#1c1917' : '#ffffff'}
                 />
               </View>
             </View>
 
             {/* Actions */}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: primaryColor + '15' }]}
-                onPress={() => {
-                  Clipboard.setStringAsync(code.code);
-                  onClose();
-                }}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <PressableScale
+                onPress={() => { Clipboard.setStringAsync(code.code); onClose(); }}
+                activeScale={0.96}
+                style={{ flex: 1 }}
               >
-                <Ionicons name="copy-outline" size={20} color={primaryColor} />
-                <Text style={[styles.modalActionText, { color: primaryColor }]}>Copy Code</Text>
-              </TouchableOpacity>
+                <View style={[styles.modalActionBtn, { backgroundColor: `${primaryColor}15` }]}>
+                  <Ionicons name="copy-outline" size={18} color={primaryColor} />
+                  <Text style={[styles.modalActionText, { color: primaryColor }]}>Copy</Text>
+                </View>
+              </PressableScale>
               {isPartial && onResendPartial && (
-                <TouchableOpacity
-                  style={[styles.modalActionBtn, { backgroundColor: '#f59e0b15' }]}
-                  onPress={() => {
-                    onResendPartial(code.code);
-                    onClose();
-                  }}
+                <PressableScale
+                  onPress={() => { onResendPartial(code.code); onClose(); }}
+                  activeScale={0.96}
+                  style={{ flex: 1 }}
                 >
-                  <Ionicons name="refresh-outline" size={20} color="#f59e0b" />
-                  <Text style={[styles.modalActionText, { color: '#f59e0b' }]}>Resend</Text>
-                </TouchableOpacity>
+                  <View style={[styles.modalActionBtn, { backgroundColor: `${DS.warning}15` }]}>
+                    <Ionicons name="refresh-outline" size={18} color={DS.warning} />
+                    <Text style={[styles.modalActionText, { color: DS.warning }]}>Resend</Text>
+                  </View>
+                </PressableScale>
               )}
               {(code.status === 'active' || code.status === 'partial') && (
-                <TouchableOpacity
-                  style={[styles.modalActionBtn, { backgroundColor: '#ef444415' }]}
+                <PressableScale
                   onPress={() => {
-                    let message = code.status === 'partial' 
-                      ? `📱 You started signing up for LittleLoom but didn't finish.\n\n🎫 Code: ${code.code}\n🔗 https://littleloom.app/join?code=${code.code}`
-                      : `👋 Join me on LittleLoom! Use code: ${code.code}\n🔗 https://littleloom.app/join?code=${code.code}`;
-                    
-                    
+                    const lines: string[] = [];
+                    lines.push(isPartial
+                      ? `📱 You started signing up for LittleLoom but didn't finish!`
+                      : `👋 Join me on LittleLoom!`);
+                    lines.push(`🎫 Code: ${code.code}`);
+                    lines.push(`🔗 https://littleloom.app/join?code=${code.code}`);
                     if (isPartial) {
-                      if (partialEmail) message += `\n\n📧 Your email: ${partialEmail}`;
-                      if (partialPhone) message += `\n📱 Your phone: ${partialPhone}`;
-                      if (partialName) message += `\n👤 Your name: ${partialName}`;
-                      message += `\n\nComplete your registration to join the family! 🎉`;
+                      if (partialEmail) lines.push(`📧 Your email: ${partialEmail}`);
+                      if (partialPhone) lines.push(`📱 Your phone: ${partialPhone}`);
+                      if (partialName) lines.push(`👤 Your name: ${partialName}`);
+                      lines.push(``, `Complete your registration to join the family! 🎉`);
                     }
-                    
-                    Share.share({ message });
+                    Share.share({ message: lines.join('\n') });
                     onClose();
                   }}
+                  activeScale={0.96}
+                  style={{ flex: 1 }}
                 >
-                  <Ionicons name="share-outline" size={20} color="#ef4444" />
-                  <Text style={[styles.modalActionText, { color: '#ef4444' }]}>Share</Text>
-                </TouchableOpacity>
+                  <View style={[styles.modalActionBtn, { backgroundColor: `${DS.danger}12` }]}>
+                    <Ionicons name="share-outline" size={18} color={DS.danger} />
+                    <Text style={[styles.modalActionText, { color: DS.danger }]}>Share</Text>
+                  </View>
+                </PressableScale>
               )}
             </View>
-          </View>
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
   );
-}
-
-function DetailItem({ label, value, icon, isDark }: { label: string; value: string; icon: string; isDark: boolean }) {
-  return (
-    <View style={[styles.detailItem, isDark && styles.detailItemDark]}>
-      <Ionicons name={icon as any} size={16} color="#667eea" />
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.detailLabel, isDark && { color: '#94a3b8' }]}>{label}</Text>
-        <Text style={[styles.detailValue, isDark && styles.textDark]}>{value || '—'}</Text>
-      </View>
-    </View>
-  );
-}
+});
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN — Unified Invite Flow
+   MAIN SCREEN
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function CoParentInviteScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { isDark, colors } = useApp();
-  const { themeColors, shouldReduceMotion, triggerHaptic, avatar } = useCustomization();
+  const { themeColors, triggerHaptic, avatar } = useCustomization();
   const { userProfile, skipSetup, completeSetup, setupComplete } = useAuth();
-  const { currentBaby } = useBaby();
-  const { 
-    generateInviteCode, 
-    getActiveInviteCodes, 
+  const { currentBaby, babies } = useBaby();
+  const {
+    generateInviteCode,
+    getActiveInviteCodes,
     revokeInviteCode,
     getPartialSignupInfo,
-    recoverPartialSignup,
   } = useFamily();
+  const sweetAlert = useSweetAlert();
 
-  const dynamicPrimary = themeColors.primary || colors.primary;
-  const dynamicSecondary = themeColors.secondary || colors.primaryLight;
-  const dynamicGradient = [dynamicPrimary, dynamicSecondary] as [string, string];
+  const primary = themeColors?.primary || colors?.primary || DS.primary;
+  const secondary = themeColors?.secondary || colors?.primaryLight || DS.accent;
 
-  
   const [role, setRole] = useState<RoleKey>('parent2');
   const [relationship, setRelationship] = useState('');
   const [fullName, setFullName] = useState('');
@@ -404,86 +941,94 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
   const [activeCodes, setActiveCodes] = useState<any[]>([]);
   const [isLoadingCodes, setIsLoadingCodes] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' as const });
-  
-  
   const [selectedCode, setSelectedCode] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
+  const headerAnim = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
+  }));
+
   const isOnboarding = useMemo(() => !setupComplete, [setupComplete]);
 
-  
-  const ringProgress = useSharedValue(0);
+  useEffect(() => { loadActiveCodes(); }, []);
 
-  useEffect(() => {
-    if (!shouldReduceMotion) {
-      ringProgress.value = withRepeat(withTiming(1, { duration: 3000 }), -1, false);
-    }
-    return () => {
-      ringProgress.value = 0;
-    };
-  }, [shouldReduceMotion]);
-
-  const ring1Style = useAnimatedStyle(() => ({
-    opacity: interpolate(ringProgress.value, [0, 0.5, 1], [0.4, 0.2, 0]),
-    transform: [{ scale: interpolate(ringProgress.value, [0, 1], [1, 1.6]) }],
-  }));
-  const ring2Style = useAnimatedStyle(() => ({
-    opacity: interpolate(ringProgress.value, [0, 0.5, 1], [0.3, 0.15, 0]),
-    transform: [{ scale: interpolate(ringProgress.value, [0, 1], [1, 1.4]) }],
-  }));
-
-  
-  const checkScale = useSharedValue(0);
-  const checkRotate = useSharedValue(0);
-  const checkStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: checkScale.value }, { rotate: `${checkRotate.value}deg` }],
-  }));
-  const triggerSuccessAnim = useCallback(() => {
-    checkScale.value = withSequence(
-      withTiming(0, { duration: 0 }),
-      withSpring(1.2, { damping: 10, stiffness: 200 }),
-      withTiming(1, { duration: 200 })
-    );
-    checkRotate.value = withSequence(withTiming(-180, { duration: 0 }), withSpring(0, { damping: 12, stiffness: 150 }));
-  }, [checkScale, checkRotate]);
-
-  
-  useEffect(() => {
-    loadActiveCodes();
-  }, []);
-
-  const loadActiveCodes = async () => {
+  const loadActiveCodes = useCallback(async () => {
     setIsLoadingCodes(true);
     try {
       const codes = await getActiveInviteCodes();
       if (codes) {
-        
-        const sorted = codes.sort((a, b) => {
-          const priority: Record<string, number> = { partial: 0, active: 1, used: 2, expired: 3, revoked: 4 };
-          const priorityA = priority[a.status] ?? 5;
-          const priorityB = priority[b.status] ?? 5;
-          if (priorityA !== priorityB) return priorityA - priorityB;
+        const priority: Record<string, number> = { partial: 0, active: 1, used: 2, expired: 3, revoked: 4 };
+        setActiveCodes([...codes].sort((a, b) => {
+          const pa = priority[a.status] ?? 5, pb = priority[b.status] ?? 5;
+          if (pa !== pb) return pa - pb;
           return b.created_at - a.created_at;
-        });
-        setActiveCodes(sorted);
+        }));
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { if (__DEV__) console.warn('[CoParentInvite] loadActiveCodes', e); }
     finally { setIsLoadingCodes(false); }
-  };
+  }, [getActiveInviteCodes]);
+
+  const stats = useMemo(() => {
+    return {
+      total: activeCodes.length,
+      active: activeCodes.filter(c => c.status === 'active').length,
+      partial: activeCodes.filter(c => c.status === 'partial').length,
+      used: activeCodes.filter(c => c.status === 'used').length,
+    };
+  }, [activeCodes]);
+
+  const topRibbon = useMemo(() => {
+    if (stats.partial > 0) {
+      return {
+        icon: 'warning-outline' as const,
+        color: DS.warning,
+        label: 'Needs attention',
+        text: `${stats.partial} invite${stats.partial === 1 ? '' : 's'} started but didn't finish — resend to help`,
+        onPress: () => {
+          const partial = activeCodes.find(c => c.status === 'partial');
+          if (partial) { setSelectedCode(partial); setModalVisible(true); }
+        },
+      };
+    }
+    if (stats.active > 0) {
+      return {
+        icon: 'checkmark-circle-outline' as const,
+        color: DS.success,
+        label: 'Invites active',
+        text: `${stats.active} code${stats.active === 1 ? '' : 's'} waiting to be used · share or wait`,
+      };
+    }
+    if (!currentBaby) {
+      return {
+        icon: 'information-circle-outline' as const,
+        color: DS.info,
+        label: 'Baby profile needed',
+        text: `Invite codes link to a baby. Add one first to get started`,
+        onPress: () => navigation.navigate('CreateBabyProfile' as never),
+      };
+    }
+    return {
+      icon: 'sparkles-outline' as const,
+      color: DS.primary,
+      label: 'Ready to invite',
+      text: `Pick a role, enter their relationship, and generate a one-time code`,
+    };
+  }, [stats, activeCodes, currentBaby, navigation]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ visible: true, message, type });
   }, []);
 
-  const validate = () => {
+  const validate = useCallback(() => {
     if (!relationship.trim()) { showToast('Please enter their relationship to the baby', 'error'); return false; }
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       showToast('Please enter a valid email', 'error'); return false;
     }
     return true;
-  };
+  }, [relationship, email, showToast]);
 
-  
   const handleGenerate = useCallback(async () => {
     if (!validate()) return;
     if (!currentBaby?.id) {
@@ -491,577 +1036,441 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
       navigation.navigate('CreateBabyProfile' as never);
       return;
     }
-    triggerHaptic('medium');
+    HAPTIC_MEDIUM();
     setIsGenerating(true);
-
     try {
-      const result = await generateInviteCode(role, relationship.trim(), fullName.trim() || undefined, email.trim() || undefined, phone.trim() || undefined);
-
+      const result = await generateInviteCode(
+        role,
+        relationship.trim(),
+        fullName.trim() || undefined,
+        email.trim() || undefined,
+        phone.trim() || undefined,
+      );
       if (result.success && result.code) {
         const code = result.code.padStart(6, '0').slice(0, 6);
         setGeneratedCode(code);
-        triggerHaptic('success');
-        triggerSuccessAnim();
+        HAPTIC_SUCCESS();
         showToast('Invite code generated!');
         await loadActiveCodes();
       } else {
         showToast(result.message || 'Failed to generate code', 'error');
       }
     } catch (e) {
-      console.error(e);
+      if (__DEV__) console.warn('[CoParentInvite] generate', e);
       showToast('Something went wrong', 'error');
     } finally {
       setIsGenerating(false);
     }
-  }, [relationship, fullName, email, phone, currentBaby, userProfile, role, triggerHaptic, showToast, triggerSuccessAnim, generateInviteCode]);
-  
-  
-  const handleShare = useCallback(async (method: 'copy' | 'whatsapp' | 'sms' | 'email' | 'native') => {
-    if (!generatedCode) return;
+  }, [validate, currentBaby, generateInviteCode, role, relationship, fullName, email, phone, loadActiveCodes, showToast, navigation]);
+
+  const handleShare = useCallback(async (method: 'copy' | 'whatsapp' | 'sms' | 'email' | 'native', codeOverride?: string) => {
+    const code = codeOverride || generatedCode;
+    if (!code) return;
     const roleLabel = ROLE_META[role].label;
     const babyName = currentBaby?.name || 'our baby';
-    const message = `👋 Join me on LittleLoom!\n\n👶 Baby: ${babyName}\n🎫 Code: ${generatedCode}\n👤 Role: ${roleLabel}\n\nDownload the app and enter this code on the sign-up screen.`;
-    const url = `https://littleloom.app/join?code=${generatedCode}`;
-    triggerHaptic('light');
+    const message = `👋 Join me on LittleLoom!\n\n👶 Baby: ${babyName}\n🎫 Code: ${code}\n👤 Role: ${roleLabel}\n\nDownload the app and enter this code on the sign-up screen.`;
+    const url = `https://littleloom.app/join?code=${code}`;
+    HAPTIC_LIGHT();
 
-    switch (method) {
-      case 'copy':
-        await Clipboard.setStringAsync(`${message}\n${url}`);
-        showToast('Copied to clipboard'); break;
-      case 'whatsapp':
-        Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message + '\n' + url)}`)
-          .catch(() => showToast('WhatsApp not installed', 'error')); break;
-      case 'sms':
-        Linking.openURL(`sms:?body=${encodeURIComponent(message)}`)
-          .catch(() => showToast('SMS not available', 'error')); break;
-      case 'email':
-        Linking.openURL(`mailto:?subject=${encodeURIComponent(`LittleLoom Invite - ${babyName}`)}&body=${encodeURIComponent(message + '\n\n' + url)}`)
-          .catch(() => showToast('Email not available', 'error')); break;
-      case 'native':
-        await Share.share({ message, title: `Invite to LittleLoom - ${babyName}` }); break;
+    try {
+      switch (method) {
+        case 'copy':
+          await Clipboard.setStringAsync(`${message}\n${url}`);
+          showToast('Copied to clipboard');
+          break;
+        case 'whatsapp':
+          await Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message + '\n' + url)}`);
+          break;
+        case 'sms':
+          await Linking.openURL(`sms:?body=${encodeURIComponent(message)}`);
+          break;
+        case 'email':
+          await Linking.openURL(`mailto:?subject=${encodeURIComponent(`LittleLoom Invite - ${babyName}`)}&body=${encodeURIComponent(message + '\n\n' + url)}`);
+          break;
+        case 'native':
+          await Share.share({ message, title: `Invite to LittleLoom - ${babyName}` });
+          break;
+      }
+    } catch {
+      showToast('Could not open app', 'error');
     }
-  }, [generatedCode, role, currentBaby, triggerHaptic, showToast]);
+  }, [generatedCode, role, currentBaby, showToast]);
 
-  
   const handleRevoke = useCallback(async (code: string) => {
-    const success = await revokeInviteCode(code);
-    if (success) {
-      showToast('Code revoked');
-      await loadActiveCodes();
-      if (generatedCode === code) setGeneratedCode('');
-    } else {
-      showToast('Could not revoke code', 'error');
-    }
-  }, [revokeInviteCode, generatedCode, showToast]);
+    sweetAlert.confirm(
+      'Revoke code?',
+      'This code will stop working immediately. The person won\'t be able to use it.',
+      async () => {
+        const success = await revokeInviteCode(code);
+        if (success) {
+          showToast('Code revoked');
+          await loadActiveCodes();
+          if (generatedCode === code) setGeneratedCode('');
+        } else {
+          showToast('Could not revoke code', 'error');
+        }
+      },
+      () => {},
+      'Revoke',
+      'Cancel',
+      true,
+    );
+  }, [revokeInviteCode, generatedCode, showToast, loadActiveCodes, sweetAlert]);
 
-  
   const handleResendPartial = useCallback(async (code: string) => {
     try {
-      
       const partialInfo = await getPartialSignupInfo(code);
-      if (!partialInfo.exists) {
-        showToast('No partial signup found for this code', 'error');
-        return;
-      }
+      if (!partialInfo.exists) { showToast('No partial signup found for this code', 'error'); return; }
 
-      
       const roleLabel = ROLE_META[role]?.label || 'Family Member';
       const babyName = currentBaby?.name || 'our baby';
-      
-      let message = `📱 You started signing up for LittleLoom but didn't finish!\n\n`;
-      message += `👶 Baby: ${babyName}\n`;
-      message += `🎫 Code: ${code}\n`;
-      message += `👤 Role: ${roleLabel}\n\n`;
-      message += `🔗 Continue here: https://littleloom.app/join?code=${code}\n\n`;
-      
-      
-      if (partialInfo.name) {
-        message += `👤 Your name: ${partialInfo.name}\n`;
-      }
-      if (partialInfo.email) {
-        message += `📧 Your email: ${partialInfo.email}\n`;
-      }
-      if (partialInfo.phone) {
-        message += `📱 Your phone: ${partialInfo.phone}\n`;
-      }
-      
-      message += `\nComplete your registration to join the family! 🎉`;
-      
-      await Share.share({ message, title: 'Complete Your Sign-Up' });
+      const lines = [
+        `📱 You started signing up for LittleLoom but didn't finish!`,
+        ``,
+        `👶 Baby: ${babyName}`,
+        `🎫 Code: ${code}`,
+        `👤 Role: ${roleLabel}`,
+        ``,
+        `🔗 Continue here: https://littleloom.app/join?code=${code}`,
+      ];
+      if (partialInfo.name) lines.push(``, `👤 Your name: ${partialInfo.name}`);
+      if (partialInfo.email) lines.push(`📧 Your email: ${partialInfo.email}`);
+      if (partialInfo.phone) lines.push(`📱 Your phone: ${partialInfo.phone}`);
+      lines.push(``, `Complete your registration to join the family! 🎉`);
+
+      await Share.share({ message: lines.join('\n'), title: 'Complete Your Sign-Up' });
       showToast('Share sent with all user info!');
-    } catch (error) {
-      console.error('Error resending partial:', error);
+    } catch (e) {
+      if (__DEV__) console.warn('[CoParentInvite] resendPartial', e);
       showToast('Could not resend invite', 'error');
     }
   }, [currentBaby, role, getPartialSignupInfo, showToast]);
 
   const handleSkip = useCallback(async () => {
-    triggerHaptic('light');
+    HAPTIC_LIGHT();
     setIsLoading(true);
     try {
       await skipSetup('parent2');
       showToast('Skipped for now - you can add later in Family settings', 'info');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Main' as never }],
-      });
-    } catch (error) {
-      console.error('handleSkip error:', error);
+      navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+    } catch {
       showToast('Could not skip', 'error');
-      try {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Main' as never }],
-        });
-      } catch (e) {
-        console.error('Fallback navigation failed:', e);
-        navigation.replace('Main' as never);
-      }
+      navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
     } finally {
       setIsLoading(false);
     }
-  }, [skipSetup, triggerHaptic, showToast, navigation]);
+  }, [skipSetup, showToast, navigation]);
 
   const handleContinue = useCallback(async () => {
-    triggerHaptic('medium');
+    HAPTIC_MEDIUM();
     setIsLoading(true);
     try {
       await completeSetup('parent2');
       showToast('Setup complete! Welcome to the family', 'success');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Main' as never }],
-      });
-    } catch (error) {
-      console.error('handleContinue error:', error);
+      navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+    } catch {
       showToast('Could not save progress', 'error');
-      try {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Main' as never }],
-        });
-      } catch (e) {
-        console.error('Fallback navigation failed:', e);
-        navigation.replace('Main' as never);
-      }
+      navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
     } finally {
       setIsLoading(false);
     }
-  }, [completeSetup, triggerHaptic, showToast, navigation]);
+  }, [completeSetup, showToast, navigation]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.navigate('Main' as never);
   };
 
-  const handleCodePress = (code: any) => {
+  const openCode = (code: any) => {
+    HAPTIC_LIGHT();
     setSelectedCode(code);
     setModalVisible(true);
   };
 
-  const getStatusColor = (status: string) => {
-    return STATUS_CONFIG[status]?.color || '#64748b';
-  };
+  const bgColors = isDark
+    ? [DS.darkBg, '#12121e', DS.darkBg]
+    : ['#f8faff', '#eef0f5', '#e4e8f0'];
 
-  const getStatusLabel = (status: string) => {
-    return STATUS_CONFIG[status]?.label || status;
-  };
-
-  
-  const renderStatusBadge = (status: string) => {
-    const config = STATUS_CONFIG[status];
-    if (!config) return null;
-    return (
-      <View style={[styles.activeStatusBadge, { backgroundColor: config.color + '15' }]}>
-        <Ionicons name={config.icon} size={12} color={config.color} />
-        <Text style={[styles.activeStatusText, { color: config.color }]}>
-          {config.label}
-        </Text>
-      </View>
-    );
-  };
-
-  // ─── Render Partial User Info in List ─────────────────────────────────
-  const renderPartialUserInfo = (code: any) => {
-    const parts: string[] = [];
-    if (code.used_by_name) parts.push(`👤 ${code.used_by_name}`);
-    if (code.used_by_email) parts.push(`📧 ${code.used_by_email}`);
-    if (code.used_by_phone) parts.push(`📱 ${code.used_by_phone}`);
-    return parts.length > 0 ? parts.join(' • ') : null;
-  };
-
+  /* ─── RENDER ─── */
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={isDark ? [colors.background, colors.surface] : ['#f8faff', '#eef2ff']}
-        style={styles.gradient}
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <LinearGradient colors={bgColors as any} style={StyleSheet.absoluteFill} />
+
+      {/* ═══ STICKY HEADER ═══ */}
+      <Animated.View
+        entering={FadeIn.duration(400)}
+        style={[
+          styles.stickyHeader,
+          {
+            paddingTop: HEADER_TOP_PADDING,
+            backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)',
+            borderBottomColor: isDark ? DS.darkBorder : DS.gray200,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+          },
+          headerAnim,
+        ]}
       >
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <ScrollView
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 },
-            ]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+        <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <View style={styles.headerInner}>
+          <TouchableOpacity
+            onPress={handleBack}
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
           >
-            {/* ── Header ── */}
-            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp} style={styles.headerRow}>
-              <TouchableOpacity style={[styles.backBtn, isDark && styles.backBtnDark]} onPress={handleBack}>
-                <BlurView intensity={60} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-                <Ionicons name={isOnboarding ? 'close' : 'arrow-back'} size={22} color={isDark ? '#fff' : '#1a1a1a'} />
-              </TouchableOpacity>
-              <Text style={[styles.headerTitle, isDark && styles.textDark]}>
-                {isOnboarding ? 'Invite Co-Parent' : 'Invite Family'}
-              </Text>
-              <View style={{ width: 46 }} />
-            </Animated.View>
+            <Ionicons name={isOnboarding ? 'close' : 'arrow-back'} size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>
+              INVITE
+            </GradientText>
+            <Text style={[styles.headerSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              {isOnboarding ? 'Co-parent setup' : 'Family sharing'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('FamilySharing' as never)}
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+          >
+            <Ionicons name="people-outline" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
-            {/* ── Hero ── */}
-            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(80)} style={styles.hero}>
-              <View style={styles.avatarWrapper}>
-                <Animated.View style={[styles.pulseRing, ring1Style, { borderColor: dynamicPrimary }]} />
-                <Animated.View style={[styles.pulseRing, ring2Style, { borderColor: dynamicSecondary }]} />
-                <View style={[styles.iconContainer, isDark && { backgroundColor: 'rgba(255,255,255,0.08)' }, { borderColor: dynamicPrimary + '40' }]}>
-                  <SafeAvatar
-                    avatar={avatar}
-                    size={68}
-                    fallbackIcon="people"
-                    fallbackColor={dynamicPrimary}
-                    fallbackBgColor={dynamicPrimary + '15'}
-                    borderWidth={2}
-                    borderColor={dynamicPrimary + '50'}
-                    animated={!shouldReduceMotion}
-                  />
-                </View>
-                <View style={[styles.badge, { backgroundColor: dynamicPrimary }]}>
-                  <Ionicons name="add" size={14} color="#fff" />
+      {/* ═══ MAIN SCROLL ═══ */}
+      <Animated.ScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingTop: HEADER_TOTAL_HEIGHT + 12, paddingBottom: insets.bottom + 120 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Pulse Header */}
+        <InvitePulse
+          isDark={isDark}
+          avatar={avatar}
+          baby={currentBaby}
+          userProfile={userProfile}
+          stats={stats}
+          onAvatarPress={() => navigation.navigate('Profile' as never)}
+          onBabyPress={() => {
+            if (!currentBaby) navigation.navigate('CreateBabyProfile' as never);
+            else if (babies && babies.length > 1) navigation.navigate('SwitchBaby' as never, { returnTo: 'CoParentInviteScreen' } as never);
+            else navigation.navigate('EditProfile' as never, { mode: 'baby', babyId: currentBaby.id } as never);
+          }}
+          onRefresh={loadActiveCodes}
+          refreshing={isLoadingCodes}
+        />
+
+        {/* Aura Ribbon */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <AuraRibbon isDark={isDark} {...topRibbon} />
+        </View>
+
+        {/* Role Selection */}
+        <View style={{ marginTop: DS.space.lg }}>
+          <RoleSelector selected={role} onSelect={setRole} isDark={isDark} />
+        </View>
+
+        {/* Form / Success */}
+        {!generatedCode ? (
+          <Animated.View entering={FadeInUp.delay(160).springify()} style={{ marginTop: DS.space.lg }}>
+            <SectionHeader title="Details" subtitle="Who are you inviting?" icon="person-outline" color={secondary} />
+            <View style={{ paddingHorizontal: DS.space.lg }}>
+              <View style={[styles.formCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <InputRow
+                  icon="heart-outline"
+                  label="Relationship *"
+                  placeholder={ROLE_META[role].placeholder}
+                  value={relationship}
+                  onChangeText={setRelationship}
+                  themeColor={primary}
+                  isDark={isDark}
+                />
+                <InputRow
+                  icon="person-outline"
+                  label="Full name"
+                  placeholder="Optional"
+                  value={fullName}
+                  onChangeText={setFullName}
+                  themeColor={primary}
+                  isDark={isDark}
+                />
+                <InputRow
+                  icon="mail-outline"
+                  label="Email"
+                  placeholder="Optional — for reminders"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  themeColor={primary}
+                  isDark={isDark}
+                />
+                <InputRow
+                  icon="call-outline"
+                  label="Phone"
+                  placeholder="Optional"
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  themeColor={primary}
+                  isDark={isDark}
+                />
+
+                <View style={[styles.permPill, { backgroundColor: `${primary}10` }]}>
+                  <Ionicons name="shield-checkmark-outline" size={14} color={primary} />
+                  <Text style={[styles.permPillText, { color: isDark ? DS.gray300 : DS.gray700 }]}>
+                    {ROLE_META[role].permissions.join(' · ')}
+                  </Text>
                 </View>
               </View>
-              <Text style={[styles.heroTitle, isDark && styles.textDark]}>
-                {isOnboarding ? 'Invite Your Partner' : 'Invite Family Member'}
-              </Text>
-              <Text style={[styles.heroSubtitle, isDark && { color: '#94a3b8' }]}>
-                {currentBaby
-                  ? `Share the journey of raising ${currentBaby.name} together`
-                  : 'Share the journey of raising your little one together'}
-              </Text>
-            </Animated.View>
+            </View>
 
-            {/* ── No baby yet: link to creation screen ── */}
-            {!currentBaby && (
-              <Animated.View
-                entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}
-                style={[
-                  styles.infoPill,
-                  {
-                    backgroundColor: dynamicPrimary + '12',
-                    borderRadius: 16,
-                    padding: 14,
-                    marginBottom: 20,
-                    borderWidth: 1,
-                    borderColor: dynamicPrimary + '30',
-                  },
-                ]}
+            {/* Generate button */}
+            <Animated.View entering={FadeInUp.delay(220).springify()} style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
+              <PressableScale
+                onPress={handleGenerate}
+                disabled={!relationship.trim() || isGenerating}
+                activeScale={0.97}
               >
-                <Ionicons name="information-circle" size={18} color={dynamicPrimary} />
-                <Text style={[styles.infoPillText, isDark && { color: '#94a3b8' }]}>
-                  Add your baby's profile first — invite codes need a baby to link to.
-                </Text>
-                <TouchableOpacity onPress={() => navigation.navigate('CreateBabyProfile' as never)}>
-                  <Text style={{ color: dynamicPrimary, fontWeight: '800', fontSize: 12 }}>Add Baby</Text>
-                </TouchableOpacity>
-              </Animated.View>
-            )}
-
-            {/* ── Role Selection ── */}
-            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(120)} style={styles.section}>
-              <Text style={[styles.sectionLabel, isDark && { color: '#94a3b8' }]}>Select their role</Text>
-              <View style={styles.roleCards}>
-                {(Object.keys(ROLE_META) as RoleKey[]).map((r) => {
-                  const meta = ROLE_META[r];
-                  const active = role === r;
-                  return (
-                    <TouchableOpacity
-                      key={r}
-                      activeOpacity={0.85}
-                      onPress={() => { setRole(r); triggerHaptic('light'); }}
-                      style={[
-                        styles.roleCard,
-                        active && { borderColor: meta.color, backgroundColor: meta.color + '08' },
-                        isDark && styles.roleCardDark,
-                      ]}
-                    >
-                      <LinearGradient colors={meta.gradient} style={styles.roleCardIcon}>
-                        <Ionicons name={meta.icon} size={20} color="#fff" />
-                      </LinearGradient>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.roleCardTitle, isDark && styles.textDark]}>{meta.label}</Text>
-                        <Text style={[styles.roleCardDesc, isDark && { color: '#94a3b8' }]} numberOfLines={2}>
-                          {meta.description}
-                        </Text>
-                      </View>
-                      <View style={[styles.roleCheck, active && { backgroundColor: meta.color, borderColor: meta.color }]}>
-                        {active && <Ionicons name="checkmark" size={14} color="#fff" />}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+                <LinearGradient
+                  colors={relationship.trim() && !isGenerating ? [primary, secondary] : [DS.gray300, DS.gray400]}
+                  style={styles.generateBtn}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                >
+                  {isGenerating ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="key" size={20} color="#fff" />
+                      <Text style={styles.generateBtnText}>Generate Invite Code</Text>
+                      <Ionicons name="arrow-forward" size={18} color="#fff" />
+                    </>
+                  )}
+                </LinearGradient>
+              </PressableScale>
+              <Text style={[styles.generateHint, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+                One-time use · expires in 7 days
+              </Text>
             </Animated.View>
+          </Animated.View>
+        ) : (
+          <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
+            <SuccessCapsule
+              code={generatedCode}
+              role={role}
+              babyName={currentBaby?.name}
+              isDark={isDark}
+              onCopy={() => handleShare('copy')}
+              onShare={(m) => handleShare(m as any)}
+              onRegenerate={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setGeneratedCode('');
+              }}
+              onDone={() => setGeneratedCode('')}
+            />
+          </View>
+        )}
 
-            {/* ── Details Form ── */}
-            {!generatedCode && (
-              <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(160)} style={styles.section}>
-                <Text style={[styles.sectionLabel, isDark && { color: '#94a3b8' }]}>Their details</Text>
-                <View style={[styles.formCard, isDark && styles.formCardDark]}>
-                  <BlurView intensity={isDark ? 30 : 70} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
+        {/* Codes list */}
+        <View style={{ marginTop: DS.space.lg }}>
+          <SectionHeader
+            title="All Codes"
+            subtitle={`${activeCodes.length} total`}
+            icon="key-outline"
+            color={primary}
+            action={loadActiveCodes}
+            actionLabel="Refresh"
+          />
+          <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
+            {isLoadingCodes ? (
+              <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+                <ActivityIndicator color={primary} />
+              </View>
+            ) : activeCodes.length === 0 ? (
+              <View style={[styles.emptyState, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <View style={[styles.emptyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+                  <Ionicons name="key-outline" size={32} color={isDark ? DS.gray500 : DS.gray400} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray900 }]}>No codes yet</Text>
+                <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                  Generate your first invite above
+                </Text>
+              </View>
+            ) : (
+              activeCodes.map((code, index) => (
+                <CodeRow
+                  key={code.code}
+                  code={code}
+                  index={index}
+                  isDark={isDark}
+                  onPress={openCode}
+                  onResendPartial={handleResendPartial}
+                  onRevoke={handleRevoke}
+                />
+              ))
+            )}
+          </View>
+        </View>
 
-                  <InputRow icon="heart-outline" placeholder={ROLE_META[role].placeholder} value={relationship} onChangeText={setRelationship} themeColor={dynamicPrimary} isDark={isDark} />
-                  <InputRow icon="person-outline" placeholder="Full Name (optional)" value={fullName} onChangeText={setFullName} themeColor={dynamicPrimary} isDark={isDark} />
-                  <InputRow icon="mail-outline" placeholder="Email (optional)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" themeColor={dynamicPrimary} isDark={isDark} />
-                  <InputRow icon="call-outline" placeholder="Phone (optional)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" themeColor={dynamicPrimary} isDark={isDark} />
-
-                  <View style={styles.infoPill}>
-                    <Ionicons name="shield-checkmark" size={16} color={dynamicPrimary} />
-                    <Text style={[styles.infoPillText, isDark && { color: '#94a3b8' }]}>
-                      They'll use this code when signing up. Expires in 7 days and can only be used once.
+        {/* Footer actions */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.xl }}>
+          {isOnboarding ? (
+            <>
+              {!generatedCode && (
+                <PressableScale onPress={handleSkip} activeScale={0.97}>
+                  <View style={[styles.secondaryBtn, { borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                    <Text style={[styles.secondaryBtnText, { color: isDark ? DS.gray400 : DS.gray600 }]}>
+                      Skip for now
                     </Text>
                   </View>
-                </View>
-              </Animated.View>
-            )}
-
-            {/* ── Generate / Success ── */}
-            {generatedCode ? (
-              <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.springify()} style={styles.section}>
-                <Text style={[styles.sectionLabel, isDark && { color: '#94a3b8' }]}>Invite ready</Text>
-                <View style={[styles.codeCard, isDark && styles.codeCardDark]}>
-                  <BlurView intensity={isDark ? 30 : 80} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
-
-                  <Animated.View style={[styles.checkBurst, checkStyle]}>
-                    <LinearGradient colors={['#10b981', '#34d399']} style={styles.checkCircle}>
-                      <Ionicons name="checkmark" size={32} color="#fff" />
-                    </LinearGradient>
-                  </Animated.View>
-
-                  <Text style={[styles.codeLabel, isDark && { color: '#94a3b8' }]}>INVITE CODE</Text>
-                  <Text style={[styles.codeText, { color: dynamicPrimary }]}>{generatedCode}</Text>
-
-                  <View style={[styles.qrWrap, isDark && styles.qrWrapDark]}>
-                    <TouchableOpacity 
-                      onPress={() => handleShare('native')}
-                      activeOpacity={0.8}
-                    >
-                      <QRCode
-                        value={generatedCode}
-                        size={130}
-                        color={isDark ? '#ffffff' : '#1a1a1a'}
-                        backgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
-                        logo={require('../../../assets/icon.png')}
-                        logoSize={24}
-                        logoBackgroundColor={isDark ? '#1a1a2e' : '#ffffff'}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  <Text style={[styles.codeSub, isDark && { color: '#94a3b8' }]}>
-                    Valid for 7 days • One-time use • {ROLE_META[role].label}
-                  </Text>
-
-                  <View style={styles.shareGrid}>
-                    <ShareButton icon="copy-outline" label="Copy" color="#667eea" onPress={() => handleShare('copy')} />
-                    <ShareButton icon="logo-whatsapp" label="WhatsApp" color="#25d366" onPress={() => handleShare('whatsapp')} />
-                    <ShareButton icon="chatbubble-outline" label="SMS" color="#3b82f6" onPress={() => handleShare('sms')} />
-                    <ShareButton icon="mail-outline" label="Email" color="#ef4444" onPress={() => handleShare('email')} />
-                    <ShareButton icon="share-outline" label="More" color="#64748b" onPress={() => handleShare('native')} />
-                  </View>
-
-                  <TouchableOpacity style={styles.resetBtn} onPress={() => setGeneratedCode('')}>
-                    <Text style={[styles.resetText, { color: dynamicPrimary }]}>Generate Another Code</Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            ) : (
-              <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)}>
-                <TouchableOpacity
-                  style={[styles.generateBtn, (!relationship.trim() || isGenerating) && styles.generateBtnDisabled, { shadowColor: dynamicPrimary }]}
-                  onPress={handleGenerate}
-                  disabled={!relationship.trim() || isGenerating}
-                  activeOpacity={0.85}
-                >
-                  <LinearGradient colors={dynamicGradient} style={styles.generateGradient}>
-                    {isGenerating ? <ActivityIndicator color="#fff" /> : (
+                </PressableScale>
+              )}
+              {generatedCode && (
+                <PressableScale onPress={handleContinue} disabled={isLoading} activeScale={0.97}>
+                  <LinearGradient colors={[DS.success, '#059669']} style={styles.primaryBtn}>
+                    {isLoading ? <ActivityIndicator color="#fff" /> : (
                       <>
-                        <Ionicons name="key" size={20} color="#fff" />
-                        <Text style={styles.generateText}>Generate Invite Code</Text>
+                        <Text style={styles.primaryBtnText}>Continue to Dashboard</Text>
+                        <Ionicons name="arrow-forward" size={18} color="#fff" />
                       </>
                     )}
                   </LinearGradient>
-                </TouchableOpacity>
-              </Animated.View>
-            )}
-
-            {/* ─── Active Codes List ── */}
-            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(240)} style={styles.section}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={[styles.sectionLabel, isDark && { color: '#94a3b8' }]}>
-                  All Codes ({activeCodes.length})
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TouchableOpacity onPress={loadActiveCodes} disabled={isLoadingCodes} style={{ padding: 4 }}>
-                    <Ionicons name="refresh" size={18} color={dynamicPrimary} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {isLoadingCodes ? (
-                <View style={{ alignItems: 'center', padding: 20 }}>
-                  <ActivityIndicator color={dynamicPrimary} />
-                </View>
-              ) : activeCodes.length === 0 ? (
-                <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
-                  <Ionicons name="key-outline" size={32} color={isDark ? '#64748b' : '#94a3b8'} />
-                  <Text style={[styles.emptyStateText, isDark && { color: '#94a3b8' }]}>
-                    No invite codes generated yet
-                  </Text>
-                  <Text style={[styles.emptyStateSub, isDark && { color: '#64748b' }]}>
-                    Generate your first invite code above
-                  </Text>
-                </View>
-              ) : (
-                activeCodes.map((code, index) => {
-                  const statusConfig = STATUS_CONFIG[code.status] || STATUS_CONFIG.active;
-                  const roleMeta = ROLE_META[code.role as RoleKey];
-                  const isPartial = code.status === 'partial';
-                  const partialUserInfo = renderPartialUserInfo(code);
-                  
-                  return (
-                    <Animated.View
-                      key={code.code}
-                      entering={shouldReduceMotion ? undefined : FadeInUp.delay(index * 60)}
-                      style={[
-                        styles.activeCodeRow, 
-                        isDark && styles.activeCodeRowDark,
-                        isPartial && styles.activeCodeRowPartial,
-                      ]}
-                    >
-                      <TouchableOpacity
-                        style={styles.activeCodeTouchable}
-                        onPress={() => handleCodePress(code)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.activeCodeMain}>
-                          <View style={[styles.activeDot, { backgroundColor: getStatusColor(code.status) }]} />
-                          <View style={{ flex: 1 }}>
-                            <View style={styles.activeCodeHeader}>
-                              <Text style={[styles.activeCodeText, isDark && styles.textDark, { letterSpacing: 2 }]}>
-                                {code.code}
-                              </Text>
-                              {renderStatusBadge(code.status)}
-                            </View>
-                            <Text style={[styles.activeCodeMeta, isDark && { color: '#94a3b8' }]}>
-                              {roleMeta?.label || code.role} • {code.relationship || 'Family'}
-                              {code.status === 'used' && code.used_by && ` • Used by: ${code.used_by}`}
-                            </Text>
-                            
-                            {/* ─── Display Partial User Info ─── */}
-                            {isPartial && partialUserInfo && (
-                              <Text style={[styles.activeCodeUserInfo, { color: '#f59e0b' }]}>
-                                {partialUserInfo}
-                              </Text>
-                            )}
-                            
-                            {isPartial && (
-                              <Text style={[styles.activeCodePartial, { color: '#f59e0b' }]}>
-                                ⚠️ Partial sign-up - user didn't complete registration
-                              </Text>
-                            )}
-                            {code.status === 'active' && (
-                              <Text style={[styles.activeCodeExpiry, { color: '#f59e0b' }]}>
-                                Expires: {new Date(code.expiresAt).toLocaleDateString()}
-                              </Text>
-                            )}
-                          </View>
-                          <Ionicons name="chevron-forward" size={18} color={isDark ? '#64748b' : '#94a3b8'} />
-                        </View>
-                      </TouchableOpacity>
-                      
-                      <View style={styles.activeCodeActions}>
-                        {isPartial && (
-                          <TouchableOpacity 
-                            style={[styles.resendBtnSmall, { backgroundColor: '#f59e0b15' }]} 
-                            onPress={() => handleResendPartial(code.code)}
-                          >
-                            <Ionicons name="refresh-outline" size={16} color="#f59e0b" />
-                          </TouchableOpacity>
-                        )}
-                        {code.status === 'active' && (
-                          <TouchableOpacity 
-                            style={[styles.revokeBtnSmall, { backgroundColor: '#ef444415' }]} 
-                            onPress={() => handleRevoke(code.code)}
-                          >
-                            <Ionicons name="close" size={16} color="#ef4444" />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </Animated.View>
-                  );
-                })
+                </PressableScale>
               )}
-            </Animated.View>
-
-            {/* ── Footer Actions ── */}
-            <View style={styles.footerActions}>
-              {isOnboarding ? (
-                <>
-                  {!generatedCode && (
-                    <TouchableOpacity style={styles.skipBtn} onPress={handleSkip}>
-                      <Text style={[styles.skipText, isDark && { color: '#64748b' }]}>Skip for now</Text>
-                      <Text style={[styles.skipSub, isDark && { color: '#475569' }]}>You can always add later in Family settings</Text>
-                    </TouchableOpacity>
-                  )}
-                  {generatedCode && (
-                    <TouchableOpacity style={styles.continueBtn} onPress={handleContinue} disabled={isLoading}>
-                      <LinearGradient colors={['#10b981', '#059669']} style={styles.continueGradient}>
-                        {isLoading ? <ActivityIndicator color="#fff" /> : (
-                          <Text style={styles.continueText}>Continue to Dashboard →</Text>
-                        )}
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  )}
-                </>
-              ) : (
-                <TouchableOpacity style={styles.doneBtn} onPress={handleBack}>
-                  <Text style={[styles.doneText, isDark && { color: '#94a3b8' }]}>Done</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Signed-in info */}
-            <View style={styles.footer}>
-              <Text style={[styles.footerText, isDark && { color: '#64748b' }]}>
-                Signed in as {userProfile?.fullName}
+              <Text style={[styles.footerHint, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+                You can always invite more people later in Family settings
               </Text>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </LinearGradient>
+            </>
+          ) : (
+            <PressableScale onPress={handleBack} activeScale={0.97}>
+              <View style={[styles.secondaryBtn, { borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <Text style={[styles.secondaryBtnText, { color: isDark ? DS.gray300 : DS.gray700 }]}>Done</Text>
+              </View>
+            </PressableScale>
+          )}
+        </View>
 
-      <Toast {...toast} onHide={() => setToast(prev => ({ ...prev, visible: false }))} />
+        {/* Signed-in info */}
+        <View style={{ alignItems: 'center', marginTop: DS.space.lg, marginBottom: DS.space.lg }}>
+          <Text style={[styles.footerText, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+            Signed in as {userProfile?.fullName || 'Parent'}
+          </Text>
+        </View>
 
-      {/* ── Code Details Modal ── */}
+        <View style={{ height: 20 }} />
+      </Animated.ScrollView>
+
+      {/* Toast */}
+      <Toast {...toast} onHide={() => setToast(p => ({ ...p, visible: false }))} />
+
+      {/* Details modal */}
       <CodeDetailsModal
         code={selectedCode}
         visible={modalVisible}
-        onClose={() => {
-          setModalVisible(false);
-          setSelectedCode(null);
-        }}
+        onClose={() => { setModalVisible(false); setSelectedCode(null); }}
         isDark={isDark}
-        primaryColor={dynamicPrimary}
+        primaryColor={primary}
         onResendPartial={handleResendPartial}
       />
     </View>
@@ -1069,472 +1478,251 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SUB-COMPONENTS
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const InputRow = ({ icon, placeholder, value, onChangeText, themeColor, isDark, keyboardType, autoCapitalize }: any) => (
-  <View style={[styles.inputRow, isDark && styles.inputRowDark]}>
-    <Ionicons name={icon} size={18} color={themeColor} style={{ marginRight: 10, opacity: 0.8 }} />
-    <TextInput
-      style={[styles.input, isDark && styles.textDark]}
-      placeholder={placeholder}
-      placeholderTextColor={isDark ? '#64748b' : themeColor + '80'}
-      value={value}
-      onChangeText={onChangeText}
-      keyboardType={keyboardType}
-      autoCapitalize={autoCapitalize || 'words'}
-    />
-  </View>
-);
-
-const ShareButton = ({ icon, label, color, onPress }: any) => (
-  <TouchableOpacity style={styles.shareBtn} onPress={onPress} activeOpacity={0.7}>
-    <View style={[styles.shareIconBg, { backgroundColor: color + '12' }]}>
-      <Ionicons name={icon} size={20} color={color} />
-    </View>
-    <Text style={[styles.shareLabel, { color }]}>{label}</Text>
-  </TouchableOpacity>
-);
-
-/* ═══════════════════════════════════════════════════════════════════════════
    STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  gradient: { flex: 1 },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 22 },
-  textDark: { color: '#fff' },
 
   /* Toast */
   toast: {
-    position: 'absolute', top: 60, alignSelf: 'center',
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14,
     shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2, shadowRadius: 16, elevation: 10, zIndex: 999,
+    shadowOpacity: 0.2, shadowRadius: 16, elevation: 10,
   },
   toastText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   /* Header */
-  headerRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20,
+  stickyHeader: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
+    paddingBottom: DS.space.md,
   },
-  backBtn: {
-    width: 46, height: 46, borderRadius: 14, overflow: 'hidden',
+  headerInner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: DS.space.lg, height: 48,
+  },
+  headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
+  headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
+
+  /* Pulse */
+  pulseWrap: {
+    marginHorizontal: DS.space.lg, marginTop: DS.space.md,
+    borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden',
+    borderWidth: 1, ...DS.shadow.md,
+  },
+  pulseGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  pulseGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  pulseAvatarWrap: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseAvatarGlow: { position: 'absolute', width: 66, height: 66, borderRadius: 33, backgroundColor: `${DS.primary}35` },
+  pulseAvatarRing: { position: 'absolute', width: 62, height: 62, borderRadius: 31, overflow: 'hidden' },
+  pulseAvatarInner: {
+    width: 54, height: 54, borderRadius: 27, overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
   },
-  backBtnDark: { backgroundColor: 'rgba(40,40,50,0.6)', borderColor: 'rgba(255,255,255,0.06)' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', letterSpacing: -0.3 },
+  pulseName: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3, maxWidth: '75%' },
+  pulseLiveDot: { width: 6, height: 6, borderRadius: 3 },
+  pulseSubText: { fontSize: 12, fontWeight: '500', flex: 1 },
+  pulseIconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  pulseStats: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: DS.space.md, paddingVertical: DS.space.sm,
+    borderRadius: DS.radius.lg, marginTop: DS.space.md,
+  },
+  pulseStat: { alignItems: 'center', flex: 1 },
+  pulseStatVal: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  pulseStatLbl: { fontSize: 10, fontWeight: '600', marginTop: 1 },
+  pulseStatDiv: { width: 1, height: 22 },
 
-  /* Hero */
-  hero: { alignItems: 'center', marginBottom: 28 },
-  avatarWrapper: { width: 140, height: 140, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  pulseRing: { position: 'absolute', width: 120, height: 120, borderRadius: 60, borderWidth: 1.5 },
-  iconContainer: {
-    width: 110, height: 110, borderRadius: 55, backgroundColor: 'rgba(102,126,234,0.08)',
-    alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(102,126,234,0.25)',
+  /* Ribbon */
+  ribbon: {
+    flexDirection: 'row', alignItems: 'center', gap: DS.space.md,
+    paddingVertical: DS.space.md, paddingHorizontal: DS.space.md,
+    borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm,
   },
-  badge: {
-    position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff',
-  },
-  heroTitle: { fontSize: 30, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', letterSpacing: -0.8, marginBottom: 8 },
-  heroSubtitle: { fontSize: 15, color: '#64748b', textAlign: 'center', lineHeight: 22, maxWidth: 300, fontWeight: '500' },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1, lineHeight: 16 },
 
-  /* Sections */
-  section: { marginBottom: 24 },
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionLabel: {
-    fontSize: 13, fontWeight: '800', color: '#64748b', textTransform: 'uppercase',
-    letterSpacing: 0.8, marginBottom: 12, marginLeft: 4,
+  /* Section */
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginHorizontal: DS.space.lg, marginBottom: DS.space.md, marginTop: DS.space.sm,
   },
+  sectionIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
+  sectionActionText: { fontSize: 12, fontWeight: '700' },
 
-  /* Role Cards */
-  roleCards: { gap: 10 },
+  /* Role */
   roleCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1.5, borderColor: 'transparent',
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: 12, borderRadius: DS.radius.lg,
   },
-  roleCardDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
-  roleCardIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  roleCardTitle: { fontSize: 15, fontWeight: '700', color: '#1a1a1a', letterSpacing: -0.2, marginBottom: 2 },
-  roleCardDesc: { fontSize: 12, fontWeight: '500', color: '#94a3b8', lineHeight: 17 },
-  roleCheck: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center' },
+  roleIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  roleTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  roleDesc: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
+  roleCheck: {
+    width: 24, height: 24, borderRadius: 12,
+    borderWidth: 2, alignItems: 'center', justifyContent: 'center',
+  },
 
   /* Form */
   formCard: {
-    borderRadius: 24, padding: 20, backgroundColor: 'rgba(255,255,255,0.5)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', overflow: 'hidden', gap: 12,
+    padding: DS.space.md, borderRadius: DS.radius.xl, borderWidth: 1,
+    ...DS.shadow.sm,
   },
-  formCardDark: { backgroundColor: 'rgba(30,30,40,0.3)', borderColor: 'rgba(255,255,255,0.05)' },
+  inputLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 5, marginLeft: 2 },
   inputRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)',
-    borderRadius: 14, paddingHorizontal: 14, height: 54, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    height: 48, paddingHorizontal: 14, borderRadius: DS.radius.md, borderWidth: 1,
   },
-  inputRowDark: { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.06)' },
-  input: { flex: 1, fontSize: 15, fontWeight: '600', color: '#1a1a1a' },
-  infoPill: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, paddingHorizontal: 4 },
-  infoPillText: { flex: 1, fontSize: 12, fontWeight: '500', color: '#64748b', lineHeight: 17 },
+  input: { flex: 1, fontSize: 14, fontWeight: '600' },
+  permPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 8, borderRadius: DS.radius.sm,
+    marginTop: 8,
+  },
+  permPillText: { fontSize: 11, fontWeight: '600', flex: 1 },
 
   /* Generate */
   generateBtn: {
-    borderRadius: 18, overflow: 'hidden', shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25, shadowRadius: 20, elevation: 10, marginTop: 4,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    paddingVertical: 16, borderRadius: DS.radius.lg,
+    ...DS.shadow.md,
   },
-  generateBtnDisabled: { opacity: 0.5 },
-  generateGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 17, gap: 10 },
-  generateText: { color: '#fff', fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },
+  generateBtnText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
+  generateHint: { fontSize: 11, fontWeight: '500', textAlign: 'center', marginTop: 8 },
 
-  /* Success / Code */
-  codeCard: {
-    borderRadius: 28, padding: 26, backgroundColor: 'rgba(255,255,255,0.7)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)', alignItems: 'center', gap: 12, overflow: 'hidden',
+  /* Success capsule */
+  successCapsule: {
+    padding: DS.space.lg, borderRadius: DS.radius['2xl'], borderWidth: 1.5,
+    overflow: 'hidden', ...DS.shadow.md,
   },
-  codeCardDark: { backgroundColor: 'rgba(30,30,40,0.4)', borderColor: 'rgba(255,255,255,0.06)' },
-  checkBurst: { marginBottom: 2 },
-  checkCircle: {
-    width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#10b981', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 12,
+  successGlow: {
+    position: 'absolute', width: 44, height: 44, borderRadius: 22,
   },
-  codeLabel: { fontSize: 11, fontWeight: '800', color: '#94a3b8', letterSpacing: 2, marginTop: 4 },
-  codeText: { fontSize: 34, fontWeight: '900', letterSpacing: 8, textAlign: 'center' },
-  qrWrap: { 
-    padding: 12, 
-    borderRadius: 16, 
-    backgroundColor: '#fff', 
-    borderWidth: 1, 
-    borderColor: 'rgba(0,0,0,0.06)', 
-    marginVertical: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
+  successCheck: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
   },
-  qrWrapDark: { 
-    backgroundColor: '#1a1a2e', 
-    borderColor: 'rgba(255,255,255,0.08)' 
+  successTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  successSub: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  codeLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase' },
+  codeText: { fontSize: 30, fontWeight: '900', letterSpacing: 5, marginVertical: 4 },
+  codeMeta: { fontSize: 11, fontWeight: '500' },
+  qrBox: {
+    padding: 6, borderRadius: DS.radius.md, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
   },
-  codeSub: { fontSize: 12, fontWeight: '600', color: '#94a3b8', textAlign: 'center' },
-  shareGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 8, width: '100%' },
-  shareBtn: { alignItems: 'center', gap: 6, minWidth: 64 },
-  shareIconBg: { width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  shareLabel: { fontSize: 11, fontWeight: '700' },
-  resetBtn: { marginTop: 8, padding: 8 },
-  resetText: { fontSize: 13, fontWeight: '800' },
+  shareRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    marginTop: DS.space.lg, paddingTop: DS.space.md,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(128,128,128,0.15)',
+  },
+  shareBtnIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  shareBtnLabel: { fontSize: 10, fontWeight: '700', marginTop: 4 },
+  regenerateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, marginTop: DS.space.sm,
+  },
+  regenerateText: { fontSize: 12, fontWeight: '700' },
 
-  /* Active Codes List */
-  activeCodeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-    borderRadius: 14,
+  /* Codes list */
+  codeRow: {
+    padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1,
+    ...DS.shadow.sm,
   },
-  activeCodeRowPartial: {
-    backgroundColor: 'rgba(245,158,11,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.15)',
+  codeRowMain: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  codeRowCode: { fontSize: 17, fontWeight: '800', letterSpacing: 2 },
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
   },
-  activeCodeTouchable: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.02)',
+  statusPillText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  codeRowMeta: { fontSize: 12, fontWeight: '500', marginTop: 3 },
+  codeRowPartialInfo: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  codeRowExpiry: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+  codeRowActions: {
+    flexDirection: 'row', gap: 8, marginTop: DS.space.sm,
+    paddingTop: DS.space.sm, borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.15)',
   },
-  activeCodeRowDark: { 
-    backgroundColor: 'rgba(255,255,255,0.03)' 
+  codeActionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: DS.radius.sm,
   },
-  activeCodeMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  activeDot: { 
-    width: 8, 
-    height: 8, 
-    borderRadius: 4,
-    flexShrink: 0,
-  },
-  activeCodeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  activeCodeText: { 
-    fontSize: 16, 
-    fontWeight: '800', 
-    color: '#1a1a1a',
-    letterSpacing: 2,
-  },
-  activeStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  activeStatusText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  activeCodeMeta: { 
-    fontSize: 12, 
-    fontWeight: '500', 
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-  activeCodeUserInfo: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 1,
-  },
-  activeCodePartial: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 1,
-  },
-  activeCodeExpiry: {
-    fontSize: 11,
-    fontWeight: '500',
-    marginTop: 1,
-  },
-  activeCodeActions: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  revokeBtnSmall: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  resendBtnSmall: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
+  codeActionText: { fontSize: 11, fontWeight: '700' },
 
-  /* Empty State */
+  /* Empty */
   emptyState: {
-    alignItems: 'center',
-    padding: 30,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.02)',
+    paddingVertical: DS.space['3xl'], alignItems: 'center',
+    borderRadius: DS.radius.lg, borderWidth: 1,
   },
-  emptyStateDark: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
-  emptyStateText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#94a3b8',
-    marginTop: 8,
-  },
-  emptyStateSub: {
-    fontSize: 12,
-    color: '#cbd5e1',
-    marginTop: 2,
-  },
+  emptyIcon: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
+  emptyTitle: { fontSize: 15, fontWeight: '800', marginBottom: 4 },
+  emptySub: { fontSize: 12, fontWeight: '500', textAlign: 'center' },
 
-  /* Footer Actions */
-  footerActions: { marginTop: 8, marginBottom: 16, gap: 12 },
-  skipBtn: { alignItems: 'center', paddingVertical: 10 },
-  skipText: { color: '#94a3b8', fontSize: 15, fontWeight: '700' },
-  skipSub: { color: '#cbd5e1', fontSize: 12, fontWeight: '500', marginTop: 4 },
-  continueBtn: {
-    borderRadius: 18, overflow: 'hidden', shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8,
+  /* Buttons */
+  primaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 16, borderRadius: DS.radius.lg, ...DS.shadow.md,
   },
-  continueGradient: { paddingVertical: 16, alignItems: 'center' },
-  continueText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  doneBtn: { alignItems: 'center', paddingVertical: 12 },
-  doneText: { color: '#94a3b8', fontSize: 15, fontWeight: '700' },
+  primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  secondaryBtn: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, borderRadius: DS.radius.lg, borderWidth: 1,
+  },
+  secondaryBtnText: { fontSize: 14, fontWeight: '700' },
+  footerHint: { fontSize: 11, fontWeight: '500', textAlign: 'center', marginTop: DS.space.sm },
 
-  /* Footer */
-  footer: { alignItems: 'center', marginTop: 4, marginBottom: 20 },
-  footerText: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+  footerText: { fontSize: 11, fontWeight: '500' },
 
-  /* ─── Modal Styles ─── */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+  /* Modal */
+  modalBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
   },
-  modalContent: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    overflow: 'hidden',
-    maxHeight: '90%',
-  },
-  modalContentDark: {
-    backgroundColor: '#1a1a2e',
+  modalCard: {
+    width: '100%', maxWidth: 420, borderRadius: DS.radius['2xl'],
+    padding: DS.space.lg, ...DS.shadow.lg,
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: DS.space.md,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1a1a1a',
+  modalTitle: { fontSize: 18, fontWeight: '800' },
+  modalCodeBlock: {
+    padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    overflow: 'hidden', marginBottom: DS.space.md,
   },
-  modalCloseBtn: {
-    padding: 4,
+  modalCodeText: { fontSize: 26, fontWeight: '900', letterSpacing: 4 },
+  partialWarnBox: {
+    padding: DS.space.md, borderRadius: DS.radius.md, borderWidth: 1,
+    marginBottom: DS.space.md, gap: 6,
   },
-  modalBody: {
-    padding: 20,
-  },
-  modalCodeDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.2)',
-    backgroundColor: 'rgba(102,126,234,0.03)',
-    marginBottom: 16,
-  },
-  modalCodeText: {
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 4,
-  },
-  modalStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  modalStatusText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  modalDetailsGrid: {
-    gap: 8,
-    marginBottom: 16,
-  },
+  partialWarnTitle: { fontSize: 13, fontWeight: '800' },
+  partialWarnLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4, marginBottom: 2 },
+  partialInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
+  partialInfoText: { fontSize: 12, fontWeight: '600', flex: 1 },
+  partialWarnFoot: { fontSize: 11, fontWeight: '500', lineHeight: 15, marginTop: 6, fontStyle: 'italic' },
+  detailsGrid: { gap: 6, marginBottom: DS.space.sm },
   detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.02)',
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    padding: 10, borderRadius: DS.radius.sm,
   },
-  detailItemDark: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  detailLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#94a3b8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
-  modalQrSection: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalSectionLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#64748b',
-    marginBottom: 8,
-  },
-  modalQrWrap: {
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalQrWrapDark: {
-    backgroundColor: '#1a1a2e',
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 10,
+  detailLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  detailValue: { fontSize: 13, fontWeight: '700', marginTop: 1 },
+  modalQrBox: {
+    padding: 10, borderRadius: DS.radius.md, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
   },
   modalActionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 11, borderRadius: DS.radius.md,
   },
-  modalActionText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  /* ─── Partial Modal Warning ─── */
-  partialModalWarning: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 16,
-  },
-  partialModalWarningText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  partialModalSubtext: {
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 1,
-  },
-  partialUserInfo: {
-    marginTop: 8,
-    paddingLeft: 4,
-  },
-  partialUserInfoLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  partialInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 2,
-  },
-  partialInfoText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  modalActionText: { fontSize: 12, fontWeight: '700' },
 });
