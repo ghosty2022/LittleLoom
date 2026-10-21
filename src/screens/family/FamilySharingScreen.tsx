@@ -289,8 +289,7 @@ const SafeAvatar: React.FC<{
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PULSE HEADER — Brilliant, modern, swift (NO hero card)
-   Compact glass capsule: avatar stack + live counts + floating actions
+   PULSE HEADER
    ═══════════════════════════════════════════════════════════════════════════ */
 interface PulseHeaderProps {
   isDark: boolean;
@@ -323,7 +322,6 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
   const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
 
-  // Avatar stack — up to 4 members
   const avatarStack = members.slice(0, 4);
   const extra = Math.max(0, members.length - 4);
   const totalChat = unreadChat;
@@ -364,14 +362,12 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
           pointerEvents="none"
         />
 
-        {/* Back button overlay */}
         <PressableScale onPress={onBack} activeScale={0.9} haptic="light">
           <View style={[styles.pulseBackBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.gray100 }]}>
             <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
           </View>
         </PressableScale>
 
-        {/* Main row: animated avatar ring + info + actions */}
         <View style={styles.pulseRow}>
           <PressableScale onPress={onBabyPress} activeScale={0.94}>
             <View style={styles.pulseAvatarWrap}>
@@ -438,9 +434,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
           </View>
         </View>
 
-        {/* Avatar stack + stats strip */}
         <View style={[styles.pulseStats, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' }]}>
-          {/* Avatar stack */}
           <View style={styles.avatarStack}>
             {avatarStack.map((m, i) => {
               const roleCfg = ROLE_CONFIG[m.role] || ROLE_CONFIG[UserRole.VIEWER];
@@ -479,7 +473,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   AURA RIBBON (context line)
+   AURA RIBBON
    ═══════════════════════════════════════════════════════════════════════════ */
 const AuraRibbon = React.memo<{
   isDark: boolean; icon: keyof typeof Ionicons.glyphMap; color: string;
@@ -559,7 +553,7 @@ const SectionHeader = React.memo(({ title, subtitle, icon, color = DS.primary, a
 ));
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   FAMILY HEALTH SCORE — compact circular + stats
+   FAMILY HEALTH CARD
    ═══════════════════════════════════════════════════════════════════════════ */
 const FamilyHealthCard = React.memo(({ members, isDark }: { members: FamilyMember[]; isDark: boolean }) => {
   const score = useMemo(() => {
@@ -940,7 +934,6 @@ const SettingsTab = ({
 
   return (
     <View style={{ gap: 10, paddingTop: DS.space.md }}>
-      {/* Summary */}
       <Animated.View entering={FadeInUp.delay(40).springify()}>
         <View style={[styles.summaryCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
           <LinearGradient colors={[`${DS.primary}10`, `${DS.accent}06`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
@@ -963,24 +956,20 @@ const SettingsTab = ({
         </View>
       </Animated.View>
 
-      {/* Communication */}
       <SectionHeader title="Communication" icon="chatbubbles-outline" color={DS.accent} />
       {renderRow('chatbubbles-outline', DS.accent, 'Family Chat',
         unreadCount > 0 ? `${unreadCount} unread messages` : 'Message your family',
         onOpenFamilyChat, false, unreadCount)}
 
-      {/* Family Management */}
       <SectionHeader title="Family Management" icon="people-outline" color={DS.primary} />
       {renderRow('people-outline', DS.primary, 'Family Members', 'See everyone in this family', onOpenMembers)}
       {renderRow('shield-checkmark-outline', DS.warning, 'Roles & Permissions', 'Control what family members can access', onOpenAccess)}
       {isPrimaryParent && renderRow('person-add', DS.success, 'Invite Co-Parent', 'Send an invite to your partner', onOpenInvite)}
 
-      {/* Data & Privacy */}
       <SectionHeader title="Data & Privacy" icon="lock-closed-outline" color={DS.info} />
       {renderRow('cloud-upload-outline', DS.success, 'Export & Backup', 'Backup all family records', onOpenBackup)}
       {renderRow('notifications-outline', '#4facfe', 'Notifications & Reminders', 'Alerts for family activity', onOpenReminders)}
 
-      {/* Danger Zone */}
       <SectionHeader title="Danger Zone" icon="warning-outline" color={DS.danger} />
       {renderRow('exit-outline', DS.danger, 'Leave Family', 'Remove yourself from this family group', onLeaveFamily, true)}
     </View>
@@ -988,7 +977,7 @@ const SettingsTab = ({
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MODALS
+   ACTION MODAL
    ═══════════════════════════════════════════════════════════════════════════ */
 const ActionModal = ({ visible, onClose, title, children, isDark }: {
   visible: boolean; onClose: () => void; title: string; children: React.ReactNode; isDark: boolean;
@@ -1295,12 +1284,19 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // ⚠️ KEY FIX: Use Animated.ScrollView from reanimated via createAnimatedComponent
+  //    — reanimated exports Animated.ScrollView only in v3+ via `Animated.ScrollView`
+  //    If your reanimated version doesn't have it, we fall back to a wrapped version.
+  // ═══════════════════════════════════════════════════════════════════
+  const AnimatedScrollView = Animated.ScrollView as React.ComponentType<any>;
+
   return (
     <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
       <LinearGradient colors={isDark ? ['#0c0a09', '#12121e', '#0c0a09'] : ['#f8faff', '#eef0f5', '#e4e8f0']} style={StyleSheet.absoluteFill} />
 
-      {/* Sticky header (appears on scroll) */}
+      {/* Sticky header */}
       <Animated.View
         style={[
           styles.stickyHeader,
@@ -1336,14 +1332,13 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         </View>
       </Animated.View>
 
-      <Animated.ScrollView
+      <AnimatedScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         contentContainerStyle={{ paddingTop: HEADER_TOP_PADDING + 8, paddingBottom: insets.bottom + 120 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={DS.primary} colors={[DS.primary, DS.accent]} />}
       >
-        {/* Pulse Header — NO hero card */}
         <PulseHeader
           isDark={isDark}
           currentBaby={currentBaby}
@@ -1362,17 +1357,14 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
           onChat={() => navigation.navigate('FamilyChatList')}
         />
 
-        {/* Ribbon */}
         <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
           <AuraRibbon isDark={isDark} {...topRibbon} />
         </View>
 
-        {/* Tab bar */}
         <View style={{ marginTop: DS.space.md }}>
           <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} />
         </View>
 
-        {/* ═══ MEMBERS TAB ═══ */}
         {activeTab === 'members' && (
           <View style={{ paddingTop: DS.space.md }}>
             <FamilyHealthCard members={members} isDark={isDark} />
@@ -1450,12 +1442,10 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
           </View>
         )}
 
-        {/* ═══ ACTIVITY TAB ═══ */}
         {activeTab === 'activity' && (
           <ActivityTimeline events={timelineEvents} isDark={isDark} />
         )}
 
-        {/* ═══ ACCESS TAB ═══ */}
         {activeTab === 'access' && (
           <View style={{ paddingHorizontal: DS.space.lg }}>
             <AccessTab
@@ -1468,7 +1458,6 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
           </View>
         )}
 
-        {/* ═══ SETTINGS TAB ═══ */}
         {activeTab === 'settings' && (
           <View style={{ paddingHorizontal: DS.space.lg }}>
             <SettingsTab
@@ -1490,9 +1479,9 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         )}
 
         <View style={{ height: 40 }} />
-      </Animated.ScrollView>
+      </AnimatedScrollView>
 
-      {/* ═══ MEMBER DETAIL MODAL ═══ */}
+      {/* MEMBER DETAIL MODAL */}
       <ActionModal
         visible={showMemberModal}
         onClose={() => { setShowMemberModal(false); setSelectedMember(null); }}
@@ -1589,7 +1578,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
         )}
       </ActionModal>
 
-      {/* ═══ EDIT MEMBER MODAL ═══ */}
+      {/* EDIT MEMBER MODAL */}
       <ActionModal visible={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Member" isDark={isDark}>
         <View style={{ gap: DS.space.lg }}>
           <TouchableOpacity style={{ alignSelf: 'center', position: 'relative' }} onPress={handleImagePick}>
@@ -1652,7 +1641,6 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  /* Sticky header */
   stickyHeader: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
     paddingBottom: DS.space.md, borderBottomWidth: StyleSheet.hairlineWidth,
@@ -1665,7 +1653,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
   headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
 
-  /* Pulse header */
   pulseWrap: {
     marginHorizontal: DS.space.lg, marginTop: DS.space.md,
     borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden',
@@ -1699,7 +1686,6 @@ const styles = StyleSheet.create({
   pulseStatVal: { fontSize: 14, fontWeight: '800' },
   pulseStatLbl: { fontSize: 9, fontWeight: '600', marginTop: 1 },
 
-  /* Ribbon */
   ribbon: {
     flexDirection: 'row', alignItems: 'center', gap: DS.space.md,
     paddingVertical: DS.space.md, paddingHorizontal: DS.space.md,
@@ -1709,25 +1695,21 @@ const styles = StyleSheet.create({
   ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
   ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1 },
 
-  /* Tab bar */
   tabBar: { flexDirection: 'row', marginHorizontal: DS.space.lg, padding: 4, borderRadius: DS.radius.full, gap: 2 },
   tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 9, borderRadius: DS.radius.full },
   tabLabel: { fontSize: 11, fontWeight: '600' },
 
-  /* Section */
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: DS.space.lg, marginBottom: DS.space.md, marginTop: DS.space.sm },
   sectionIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
   sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
   sectionAction: { fontSize: 12, fontWeight: '700' },
 
-  /* Card */
   card: {
     marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg,
     padding: DS.space.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm,
   },
 
-  /* Health */
   healthRing: { width: 72, height: 72, borderRadius: 36, borderWidth: 5, alignItems: 'center', justifyContent: 'center' },
   healthRingFill: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 5, borderTopColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: 'transparent' },
   healthRingInner: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center' },
@@ -1740,7 +1722,6 @@ const styles = StyleSheet.create({
   healthStatVal: { fontSize: 14, fontWeight: '800' },
   healthStatLbl: { fontSize: 9, fontWeight: '600' },
 
-  /* Goals */
   goalCard: { width: 132, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden' },
   goalTitle: { fontSize: 11, fontWeight: '700', marginTop: 4, marginBottom: 2 },
   goalVal: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
@@ -1749,7 +1730,6 @@ const styles = StyleSheet.create({
   goalBarFill: { height: '100%', borderRadius: 2 },
   goalUnit: { fontSize: 9, fontWeight: '500', marginTop: 4 },
 
-  /* Member card */
   memberCard: { borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
   memberStrip: { height: 3, width: '100%' },
   memberRow: { flexDirection: 'row', alignItems: 'center', padding: DS.space.md },
@@ -1766,7 +1746,6 @@ const styles = StyleSheet.create({
   pendingInline: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
   pendingInlineText: { fontSize: 10, fontWeight: '600' },
 
-  /* Empty */
   emptyCard: { alignItems: 'center', paddingVertical: DS.space['2xl'], marginHorizontal: 0, borderRadius: DS.radius.lg, borderWidth: 1 },
   emptyIcon: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
   emptyTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
@@ -1774,7 +1753,6 @@ const styles = StyleSheet.create({
   emptyBtn: { marginTop: DS.space.md, paddingHorizontal: DS.space.lg, paddingVertical: 8, borderRadius: 10 },
   emptyBtnText: { color: DS.white, fontSize: 12, fontWeight: '700' },
 
-  /* Timeline */
   timelineRow: { flexDirection: 'row', gap: DS.space.sm, marginBottom: DS.space.md },
   timelineLeft: { width: 24, alignItems: 'center', paddingTop: 14 },
   timelineDot: { width: 10, height: 10, borderRadius: 5, zIndex: 1 },
@@ -1783,7 +1761,6 @@ const styles = StyleSheet.create({
   timelineTitle: { fontSize: 13, fontWeight: '700' },
   timelineMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
 
-  /* Permissions */
   readOnlyBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: DS.radius.md, borderWidth: 1 },
   readOnlyText: { fontSize: 11, fontWeight: '600', flex: 1 },
   permCard: { padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, gap: 8 },
@@ -1800,7 +1777,6 @@ const styles = StyleSheet.create({
   permFooter: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4, marginTop: DS.space.sm },
   permFooterText: { fontSize: 11, fontWeight: '500', flex: 1, lineHeight: 16 },
 
-  /* Settings */
   summaryCard: { padding: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden' },
   summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
   summaryItem: { alignItems: 'center', flex: 1 },
@@ -1814,7 +1790,6 @@ const styles = StyleSheet.create({
   setBadge: { minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   setBadgeText: { color: DS.white, fontSize: 10, fontWeight: '800' },
 
-  /* Invite cards */
   inviteCard: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.md, borderWidth: 1 },
   inviteIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   inviteCode: { fontSize: 13, fontWeight: '800', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
@@ -1823,7 +1798,6 @@ const styles = StyleSheet.create({
   inviteMeta: { fontSize: 10, fontWeight: '500', marginTop: 2 },
   inviteAction: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
 
-  /* Modal */
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   modalCard: { width: '100%', maxWidth: 420, maxHeight: '85%', borderRadius: DS.radius['2xl'], overflow: 'hidden', ...DS.shadow.lg },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: DS.space.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.05)' },

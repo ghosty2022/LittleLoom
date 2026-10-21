@@ -1,4 +1,3 @@
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -10,10 +9,7 @@ import {
   TouchableWithoutFeedback,
   Platform,
   StatusBar,
-  Animated as RNAnimated,
-  Easing as RNEasing,
   TextInput,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,21 +18,48 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   withSpring,
-  withDelay,
   withSequence,
   runOnJS,
-  FadeInUp,
-  FadeOutDown,
   Easing,
-  interpolate,
-  Extrapolate,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Aura
+   ═══════════════════════════════════════════════════════════════════════════ */
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkCard: '#292524',
+  darkSurface: '#1c1917',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 12 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.18, shadowRadius: 48, elevation: 24 },
+  },
+};
 
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   TYPES
+   ═══════════════════════════════════════════════════════════════════════════ */
 export type AlertType = 'success' | 'error' | 'warning' | 'info' | 'question' | 'loading';
 export type AlertStyle = 'toast' | 'modal' | 'bottom-sheet';
 export type AlertPosition = 'top' | 'center' | 'bottom';
@@ -71,7 +94,6 @@ export interface SweetAlertConfig {
     variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
     icon?: keyof typeof Ionicons.glyphMap;
   }[];
-  
   isPrompt?: boolean;
   promptType?: PromptType;
   promptPlaceholder?: string;
@@ -80,8 +102,9 @@ export interface SweetAlertConfig {
   onPromptCancel?: () => void;
 }
 
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   ALERT CONFIG
+   ═══════════════════════════════════════════════════════════════════════════ */
 const ALERT_CONFIG: Record<AlertType, {
   colors: [string, string];
   icon: keyof typeof Ionicons.glyphMap;
@@ -89,52 +112,17 @@ const ALERT_CONFIG: Record<AlertType, {
   hapticType: Haptics.NotificationFeedbackType;
   bgTint: string;
 }> = {
-  success: {
-    colors: ['#10b981', '#34d399'],
-    icon: 'checkmark-circle',
-    defaultColor: '#10b981',
-    hapticType: Haptics.NotificationFeedbackType.Success,
-    bgTint: 'rgba(16,185,129,0.08)',
-  },
-  error: {
-    colors: ['#ef4444', '#f87171'],
-    icon: 'close-circle',
-    defaultColor: '#ef4444',
-    hapticType: Haptics.NotificationFeedbackType.Error,
-    bgTint: 'rgba(239,68,68,0.08)',
-  },
-  warning: {
-    colors: ['#f59e0b', '#fbbf24'],
-    icon: 'warning',
-    defaultColor: '#f59e0b',
-    hapticType: Haptics.NotificationFeedbackType.Warning,
-    bgTint: 'rgba(245,158,11,0.08)',
-  },
-  info: {
-    colors: ['#3b82f6', '#60a5fa'],
-    icon: 'information-circle',
-    defaultColor: '#3b82f6',
-    hapticType: Haptics.NotificationFeedbackType.Success,
-    bgTint: 'rgba(59,130,246,0.08)',
-  },
-  question: {
-    colors: ['#8b5cf6', '#a78bfa'],
-    icon: 'help-circle',
-    defaultColor: '#8b5cf6',
-    hapticType: Haptics.NotificationFeedbackType.Success,
-    bgTint: 'rgba(139,92,246,0.08)',
-  },
-  loading: {
-    colors: ['#6366f1', '#818cf8'],
-    icon: 'sync',
-    defaultColor: '#6366f1',
-    hapticType: Haptics.NotificationFeedbackType.Success,
-    bgTint: 'rgba(99,102,241,0.08)',
-  },
+  success: { colors: ['#10b981', '#34d399'], icon: 'checkmark-circle', defaultColor: '#10b981', hapticType: Haptics.NotificationFeedbackType.Success, bgTint: 'rgba(16,185,129,0.10)' },
+  error: { colors: ['#ef4444', '#f87171'], icon: 'close-circle', defaultColor: '#ef4444', hapticType: Haptics.NotificationFeedbackType.Error, bgTint: 'rgba(239,68,68,0.10)' },
+  warning: { colors: ['#f59e0b', '#fbbf24'], icon: 'warning', defaultColor: '#f59e0b', hapticType: Haptics.NotificationFeedbackType.Warning, bgTint: 'rgba(245,158,11,0.10)' },
+  info: { colors: ['#6366f1', '#818cf8'], icon: 'information-circle', defaultColor: '#6366f1', hapticType: Haptics.NotificationFeedbackType.Success, bgTint: 'rgba(99,102,241,0.10)' },
+  question: { colors: ['#ec4899', '#f472b6'], icon: 'help-circle', defaultColor: '#ec4899', hapticType: Haptics.NotificationFeedbackType.Success, bgTint: 'rgba(236,72,153,0.10)' },
+  loading: { colors: ['#6366f1', '#818cf8'], icon: 'sync', defaultColor: '#6366f1', hapticType: Haptics.NotificationFeedbackType.Success, bgTint: 'rgba(99,102,241,0.10)' },
 };
 
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLOBAL EVENT BUS
+   ═══════════════════════════════════════════════════════════════════════════ */
 type AlertListener = (config: SweetAlertConfig) => void;
 type HideListener = () => void;
 
@@ -148,99 +136,96 @@ const flushQueue = () => {
   if (!isProviderMounted || pendingQueue.length === 0) return;
   const queue = [...pendingQueue];
   pendingQueue.length = 0;
-  queue.forEach(config => {
-    alertListeners.forEach(listener => listener(config));
+  queue.forEach((config) => {
+    alertListeners.forEach((listener) => listener(config));
   });
 };
 
 const emitShow = (config: SweetAlertConfig) => {
   if (!isProviderMounted) {
-    if (pendingQueue.length < MAX_QUEUE_SIZE) {
-      pendingQueue.push(config);
-    }
+    if (pendingQueue.length < MAX_QUEUE_SIZE) pendingQueue.push(config);
     return;
   }
-  alertListeners.forEach(listener => listener(config));
+  alertListeners.forEach((listener) => listener(config));
 };
 
 const emitHide = () => {
-  
   pendingQueue.length = 0;
-  hideListeners.forEach(listener => listener());
+  hideListeners.forEach((listener) => listener());
 };
-
-
 
 export const showSweetAlert = (config: SweetAlertConfig) => emitShow(config);
 export const hideSweetAlert = () => emitHide();
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   PULSING DOT (aura)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
+  const pulse = useSharedValue(1);
+  const halo = useSharedValue(1);
+  useEffect(() => {
+    pulse.value = withSequence(withTiming(1.15, { duration: 900 }), withTiming(1, { duration: 900 }));
+    halo.value = withSequence(withTiming(1.8, { duration: 1400 }), withTiming(1, { duration: 1400 }));
+    const id = setInterval(() => {
+      pulse.value = withSequence(withTiming(1.15, { duration: 900 }), withTiming(1, { duration: 900 }));
+      halo.value = withSequence(withTiming(1.8, { duration: 1400 }), withTiming(1, { duration: 1400 }));
+    }, 1400);
+    return () => clearInterval(id);
+  }, [pulse, halo]);
+  const dotStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+  const haloStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: halo.value }],
+    opacity: 1 - (halo.value - 1) / 0.8,
+  }));
+  return (
+    <View style={{ width: size * 2, height: size * 2, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={[{ position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: color }, haloStyle]} />
+      <Animated.View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }, dotStyle]} />
+    </View>
+  );
+};
 
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOADING RING
+   ═══════════════════════════════════════════════════════════════════════════ */
 const LoadingRing: React.FC<{ color: string; size?: number }> = React.memo(({ color, size = 40 }) => {
   const rotation = useSharedValue(0);
-
   useEffect(() => {
-    rotation.value = withTiming(360, { 
-      duration: 1000, 
-      easing: Easing.linear 
-    });
+    rotation.value = withTiming(360, { duration: 1000, easing: Easing.linear });
     const interval = setInterval(() => {
       rotation.value = 0;
-      rotation.value = withTiming(360, { 
-        duration: 1000, 
-        easing: Easing.linear 
-      });
+      rotation.value = withTiming(360, { duration: 1000, easing: Easing.linear });
     }, 1000);
     return () => clearInterval(interval);
   }, [rotation]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
-
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }] }));
   return (
     <Animated.View style={[animatedStyle, { width: size, height: size, justifyContent: 'center', alignItems: 'center' }]}>
-      <View style={[styles.loadingRing, { 
-        width: size, 
-        height: size, 
-        borderRadius: size / 2,
-        borderColor: `${color}30`,
-        borderTopColor: color,
-        borderWidth: 3,
-      }]} />
+      <View style={{ width: size, height: size, borderRadius: size / 2, borderColor: `${color}30`, borderTopColor: color, borderWidth: 3 }} />
     </Animated.View>
   );
 });
 
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROGRESS BAR
+   ═══════════════════════════════════════════════════════════════════════════ */
 const ProgressBar: React.FC<{ progress: number; color: string }> = React.memo(({ progress, color }) => {
   const widthAnim = useSharedValue(0);
-
   useEffect(() => {
     widthAnim.value = withTiming(progress, { duration: 300, easing: Easing.out(Easing.ease) });
   }, [progress, widthAnim]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    width: `${widthAnim.value * 100}%`,
-  }));
-
+  const animatedStyle = useAnimatedStyle(() => ({ width: `${widthAnim.value * 100}%` }));
   return (
-    <View style={styles.progressTrack}>
+    <View style={[styles.progressTrack, { backgroundColor: `${color}15` }]}>
       <Animated.View style={[styles.progressFill, animatedStyle, { backgroundColor: color }]} />
     </View>
   );
 });
 
-
-
-interface ToastProps {
-  config: SweetAlertConfig;
-  isDark: boolean;
-  onDismiss: () => void;
-}
-
-const SweetAlertToast: React.FC<ToastProps> = React.memo(({ config, isDark, onDismiss }) => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOAST
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SweetAlertToast: React.FC<{ config: SweetAlertConfig; isDark: boolean; onDismiss: () => void }> = React.memo(({ config, isDark, onDismiss }) => {
   const type = config.type || 'info';
   const alertCfg = ALERT_CONFIG[type];
   const duration = config.duration || (type === 'error' ? 4000 : type === 'success' ? 2500 : 3000);
@@ -251,43 +236,31 @@ const SweetAlertToast: React.FC<ToastProps> = React.memo(({ config, isDark, onDi
   const translateY = useSharedValue(position === 'top' ? -80 : position === 'bottom' ? 80 : 30);
   const scale = useSharedValue(0.9);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressRef = useRef(0);
+  const dismissCalledRef = useRef(false);
 
   const dismissToast = useCallback(() => {
-    if (dismissTimerRef.current) {
-      clearTimeout(dismissTimerRef.current);
-      dismissTimerRef.current = null;
-    }
-    if (reduceMotion) {
-      runOnJS(onDismiss)();
-    } else {
-      opacity.value = withTiming(0, { duration: 250, easing: Easing.inOut(Easing.ease) });
-      translateY.value = withTiming(
-        position === 'top' ? -60 : position === 'bottom' ? 60 : 20,
-        { duration: 250, easing: Easing.inOut(Easing.ease) }
-      );
-      scale.value = withTiming(0.9, { duration: 250 });
-      dismissTimerRef.current = setTimeout(() => runOnJS(onDismiss)(), 250);
-    }
+    if (dismissCalledRef.current) return;
+    dismissCalledRef.current = true;
+    if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
+
+    if (reduceMotion) { runOnJS(onDismiss)(); return; }
+    opacity.value = withTiming(0, { duration: 220 });
+    translateY.value = withTiming(position === 'top' ? -60 : position === 'bottom' ? 60 : 20, { duration: 220 });
+    scale.value = withTiming(0.9, { duration: 220 });
+    dismissTimerRef.current = setTimeout(() => runOnJS(onDismiss)(), 220);
   }, [reduceMotion, position, onDismiss, opacity, translateY, scale]);
 
   useEffect(() => {
     if (reduceMotion) {
-      opacity.value = 1;
-      translateY.value = 0;
-      scale.value = 1;
+      opacity.value = 1; translateY.value = 0; scale.value = 1;
     } else {
-      opacity.value = withTiming(1, { duration: 350, easing: Easing.out(Easing.back(1.5)) });
+      opacity.value = withTiming(1, { duration: 300 });
       translateY.value = withSpring(0, { damping: 15, stiffness: 200 });
       scale.value = withSpring(1, { damping: 12 });
     }
-
     if (config.autoDismiss !== false) {
-      dismissTimerRef.current = setTimeout(() => {
-        dismissToast();
-      }, duration);
+      dismissTimerRef.current = setTimeout(dismissToast, duration);
     }
-
     return () => {
       if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     };
@@ -295,271 +268,142 @@ const SweetAlertToast: React.FC<ToastProps> = React.memo(({ config, isDark, onDi
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
+    transform: [{ translateY: translateY.value }, { scale: scale.value }],
   }));
 
-  const bgColor = isDark ? '#1e1e2e' : '#ffffff';
-  const textColor = isDark ? '#f1f5f9' : '#1e293b';
-  const subTextColor = isDark ? '#94a3b8' : '#64748b';
-  const borderColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const bgColor = isDark ? DS.darkCard : DS.white;
+  const textColor = isDark ? DS.white : DS.gray900;
+  const subTextColor = isDark ? DS.gray400 : DS.gray500;
+  const borderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
 
   return (
-    <View
-      style={[
-        styles.toastWrapper,
-        position === 'top' && styles.toastTop,
-        position === 'center' && styles.toastCenter,
-        position === 'bottom' && styles.toastBottom,
-      ]}
-      pointerEvents="box-none"
-    >
-      <Animated.View 
-        style={[
-          animatedStyle, 
-          styles.toastBox, 
-          { 
-            backgroundColor: bgColor,
-            borderColor,
-            shadowColor: alertCfg.defaultColor,
-          }
-        ]}
-      >
+    <View style={[styles.toastWrapper, position === 'top' && styles.toastTop, position === 'center' && styles.toastCenter, position === 'bottom' && styles.toastBottom]} pointerEvents="box-none">
+      <Animated.View style={[animatedStyle, styles.toastBox, { backgroundColor: bgColor, borderColor, shadowColor: alertCfg.defaultColor }]}>
+        <LinearGradient colors={[`${alertCfg.defaultColor}12`, 'transparent']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
         <View style={[styles.toastAccent, { backgroundColor: alertCfg.defaultColor }]} />
         <View style={[styles.toastIconWrap, { backgroundColor: alertCfg.bgTint }]}>
-          <Ionicons 
-            name={config.icon || alertCfg.icon} 
-            size={22} 
-            color={alertCfg.defaultColor} 
-          />
+          <Ionicons name={config.icon || alertCfg.icon} size={20} color={alertCfg.defaultColor} />
         </View>
-        <View style={styles.toastTextContainer}>
-          <Text style={[styles.toastTitle, { color: textColor }]} numberOfLines={2}>
-            {config.title}
-          </Text>
-          {config.message && (
-            <Text style={[styles.toastMessage, { color: subTextColor }]} numberOfLines={3}>
-              {config.message}
-            </Text>
-          )}
-          {config.progress !== undefined && (
-            <ProgressBar progress={config.progress} color={alertCfg.defaultColor} />
-          )}
+        <View style={{ flex: 1, paddingRight: 4 }}>
+          <Text style={[styles.toastTitle, { color: textColor }]} numberOfLines={2}>{config.title}</Text>
+          {config.message && <Text style={[styles.toastMessage, { color: subTextColor }]} numberOfLines={3}>{config.message}</Text>}
+          {config.progress !== undefined && <ProgressBar progress={config.progress} color={alertCfg.defaultColor} />}
         </View>
-        <TouchableOpacity 
-          onPress={dismissToast} 
-          style={styles.toastClose}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          activeOpacity={0.6}
-        >
-          <Ionicons name="close" size={18} color={subTextColor} />
+        <TouchableOpacity onPress={dismissToast} style={styles.toastClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Ionicons name="close" size={16} color={subTextColor} />
         </TouchableOpacity>
       </Animated.View>
     </View>
   );
 });
 
-// ─── Prompt Modal ───────────────────────────────────────────────────
-
-interface PromptModalProps {
-  config: SweetAlertConfig;
-  isDark: boolean;
-  themeColors: { primary: string; secondary: string; accent: string };
-  onDismiss: () => void;
-}
-
-const SweetAlertPrompt: React.FC<PromptModalProps> = React.memo(({ config, isDark, themeColors, onDismiss }) => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROMPT
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SweetAlertPrompt: React.FC<{ config: SweetAlertConfig; isDark: boolean; themeColors: { primary: string; secondary: string; accent: string }; onDismiss: () => void }> = React.memo(({ config, isDark, themeColors, onDismiss }) => {
   const [inputValue, setInputValue] = useState(config.promptValue || '');
   const [isSecure, setIsSecure] = useState(config.promptType === 'secure-text');
   const inputRef = useRef<TextInput>(null);
+  const dismissCalledRef = useRef(false);
 
-  const bgColor = isDark ? '#1a1a2e' : '#ffffff';
-  const textColor = isDark ? '#f1f5f9' : '#1a1a1a';
-  const subTextColor = isDark ? '#94a3b8' : '#64748b';
-  const borderColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
-  const inputBgColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const bgColor = isDark ? DS.darkCard : DS.white;
+  const textColor = isDark ? DS.white : DS.gray900;
+  const subTextColor = isDark ? DS.gray400 : DS.gray500;
+  const borderColor = isDark ? 'rgba(255,255,255,0.08)' : DS.gray200;
+  const inputBgColor = isDark ? 'rgba(255,255,255,0.06)' : DS.gray100;
 
   const overlayOpacity = useSharedValue(0);
-  const modalScale = useSharedValue(0.85);
-  const modalTranslateY = useSharedValue(30);
+  const modalScale = useSharedValue(0.88);
+  const modalTranslateY = useSharedValue(20);
 
   useEffect(() => {
     overlayOpacity.value = withTiming(1, { duration: 200 });
-    modalScale.value = withSpring(1, { damping: 14, stiffness: 200 });
-    modalTranslateY.value = withSpring(0, { damping: 14 });
-    setTimeout(() => inputRef.current?.focus(), 300);
-  }, [overlayOpacity, modalScale, modalTranslateY]);
+    modalScale.value = withSpring(1, { damping: 15, stiffness: 220 });
+    modalTranslateY.value = withSpring(0, { damping: 15 });
+    const t = setTimeout(() => inputRef.current?.focus(), 300);
+    return () => clearTimeout(t);
+  }, []);
 
   const animateOut = useCallback((callback?: () => void) => {
     overlayOpacity.value = withTiming(0, { duration: 180 });
     modalScale.value = withTiming(0.9, { duration: 180 });
     modalTranslateY.value = withTiming(20, { duration: 180 });
     setTimeout(() => callback?.(), 180);
-  }, [overlayOpacity, modalScale, modalTranslateY]);
+  }, []);
 
   const handleConfirm = useCallback(() => {
+    if (dismissCalledRef.current) return;
+    dismissCalledRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    animateOut(() => {
-      config.onPromptConfirm?.(inputValue);
-      onDismiss();
-    });
+    animateOut(() => { config.onPromptConfirm?.(inputValue); onDismiss(); });
   }, [config, inputValue, onDismiss, animateOut]);
 
   const handleCancel = useCallback(() => {
+    if (dismissCalledRef.current) return;
+    dismissCalledRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    animateOut(() => {
-      config.onPromptCancel?.();
-      onDismiss();
-    });
+    animateOut(() => { config.onPromptCancel?.(); onDismiss(); });
   }, [config, onDismiss, animateOut]);
 
   const handleDismiss = useCallback(() => {
-    animateOut(() => {
-      config.onDismiss?.();
-      onDismiss();
-    });
+    if (dismissCalledRef.current) return;
+    dismissCalledRef.current = true;
+    animateOut(() => { config.onDismiss?.(); onDismiss(); });
   }, [config, onDismiss, animateOut]);
 
-  const overlayStyle = useAnimatedStyle(() => ({
-    opacity: overlayOpacity.value,
-  }));
+  const overlayStyle = useAnimatedStyle(() => ({ opacity: overlayOpacity.value }));
+  const modalStyle = useAnimatedStyle(() => ({ transform: [{ scale: modalScale.value }, { translateY: modalTranslateY.value }] }));
 
-  const modalStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: modalScale.value },
-      { translateY: modalTranslateY.value },
-    ],
-  }));
-
-  const getKeyboardType = () => {
-    switch (config.promptType) {
-      case 'email': return 'email-address';
-      case 'phone': return 'phone-pad';
-      default: return 'default';
-    }
-  };
-
-  const getAutoCapitalize = () => {
-    switch (config.promptType) {
-      case 'email': return 'none';
-      default: return 'sentences';
-    }
-  };
-
-  const confirmColor = config.destructive ? '#ef4444' : (config.confirmColor || themeColors.primary);
+  const getKeyboardType = () => config.promptType === 'email' ? 'email-address' : config.promptType === 'phone' ? 'phone-pad' : 'default';
+  const getAutoCapitalize = () => config.promptType === 'email' ? 'none' : 'sentences';
+  const confirmColor = config.destructive ? DS.danger : (config.confirmColor || themeColors.primary || DS.primary);
 
   return (
-    <Modal
-      visible={true}
-      transparent
-      animationType="none"
-      statusBarTranslucent
-      onRequestClose={handleDismiss}
-    >
+    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleDismiss}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <Animated.View style={[styles.modalOverlay, overlayStyle]}>
         <TouchableWithoutFeedback onPress={handleDismiss}>
           <View style={StyleSheet.absoluteFill} />
         </TouchableWithoutFeedback>
-
         <Animated.View style={[styles.modalContainer, modalStyle, { backgroundColor: bgColor, borderColor }]}>
-          {/* Top gradient accent */}
-          <LinearGradient
-            colors={['#6366f1', '#8b5cf6']}
-            style={styles.modalTopAccent}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          />
-
-          {/* Icon */}
-          <View style={[styles.modalIconWrap, { backgroundColor: 'rgba(99,102,241,0.08)' }]}>
-            <LinearGradient
-              colors={['#6366f1', '#8b5cf6']}
-              style={styles.modalIconGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="lock-closed" size={28} color="#fff" />
+          <LinearGradient colors={['#6366f1', '#ec4899']} style={styles.modalTopAccent} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
+          <View style={[styles.modalIconWrap]}>
+            <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.modalIconGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              <Ionicons name="lock-closed" size={26} color={DS.white} />
             </LinearGradient>
           </View>
-
-          {/* Title */}
-          <Text style={[styles.modalTitle, { color: textColor }]}>
-            {config.title}
-          </Text>
-
-          {/* Message */}
-          {config.message && (
-            <Text style={[styles.modalMessage, { color: subTextColor }]}>
-              {config.message}
-            </Text>
-          )}
-
-          {/* Input */}
+          <Text style={[styles.modalTitle, { color: textColor }]}>{config.title}</Text>
+          {config.message && <Text style={[styles.modalMessage, { color: subTextColor }]}>{config.message}</Text>}
           <View style={[styles.promptInputContainer, { backgroundColor: inputBgColor, borderColor }]}>
             <TextInput
               ref={inputRef}
               style={[styles.promptInput, { color: textColor }]}
               value={inputValue}
               onChangeText={setInputValue}
-              placeholder={config.promptPlaceholder || 'Enter your password...'}
+              placeholder={config.promptPlaceholder || 'Enter value...'}
               placeholderTextColor={subTextColor}
               secureTextEntry={isSecure}
               keyboardType={getKeyboardType()}
               autoCapitalize={getAutoCapitalize()}
               autoCorrect={false}
-              autoFocus={true}
               returnKeyType="done"
               onSubmitEditing={handleConfirm}
             />
             {config.promptType === 'secure-text' && (
-              <TouchableOpacity
-                style={styles.promptToggleSecure}
-                onPress={() => setIsSecure(!isSecure)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={isSecure ? 'eye-off' : 'eye'}
-                  size={20}
-                  color={subTextColor}
-                />
+              <TouchableOpacity style={{ padding: 8 }} onPress={() => setIsSecure(!isSecure)}>
+                <Ionicons name={isSecure ? 'eye-off' : 'eye'} size={18} color={subTextColor} />
               </TouchableOpacity>
             )}
           </View>
-
-          {/* Buttons */}
           <View style={styles.modalButtonRow}>
             {config.showCancel !== false && (
-              <TouchableOpacity
-                style={[
-                  styles.modalCancelButton,
-                  { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9' },
-                ]}
-                onPress={handleCancel}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.modalCancelText, { color: isDark ? '#cbd5e1' : '#64748b' }]}>
-                  {config.cancelText || 'Cancel'}
-                </Text>
+              <TouchableOpacity style={[styles.modalCancelButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]} onPress={handleCancel}>
+                <Text style={[styles.modalCancelText, { color: isDark ? DS.gray300 : DS.gray600 }]}>{config.cancelText || 'Cancel'}</Text>
               </TouchableOpacity>
             )}
-
-            <TouchableOpacity
-              style={styles.modalConfirmButton}
-              onPress={handleConfirm}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={[confirmColor, config.destructive ? '#dc2626' : (themeColors.secondary || confirmColor)]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.modalConfirmGradient}
-              >
-                <Text style={styles.modalConfirmText}>
-                  {config.confirmText || 'Confirm'}
-                </Text>
+            <TouchableOpacity style={styles.modalConfirmButton} onPress={handleConfirm}>
+              <LinearGradient colors={[confirmColor, config.destructive ? '#dc2626' : (themeColors.secondary || confirmColor)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modalConfirmGradient}>
+                <Text style={styles.modalConfirmText}>{config.confirmText || 'Confirm'}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -569,217 +413,118 @@ const SweetAlertPrompt: React.FC<PromptModalProps> = React.memo(({ config, isDar
   );
 });
 
-// ─── Modal Component ────────────────────────────────────────────────
-
-interface ModalProps {
-  config: SweetAlertConfig;
-  isDark: boolean;
-  themeColors: { primary: string; secondary: string; accent: string };
-  onDismiss: () => void;
-}
-
-const SweetAlertModal: React.FC<ModalProps> = React.memo(({ config, isDark, themeColors, onDismiss }) => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODAL
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SweetAlertModal: React.FC<{ config: SweetAlertConfig; isDark: boolean; themeColors: { primary: string; secondary: string; accent: string }; onDismiss: () => void }> = React.memo(({ config, isDark, themeColors, onDismiss }) => {
   const type = config.type || 'info';
   const alertCfg = ALERT_CONFIG[type];
-
   const iconColor = config.iconColor || alertCfg.defaultColor;
-  const confirmColor = config.destructive ? '#ef4444' : (config.confirmColor || themeColors.primary);
+  const confirmColor = config.destructive ? DS.danger : (config.confirmColor || themeColors.primary || DS.primary);
+  const dismissCalledRef = useRef(false);
 
-  const bgColor = isDark ? '#1a1a2e' : '#ffffff';
-  const textColor = isDark ? '#f1f5f9' : '#1a1a1a';
-  const subTextColor = isDark ? '#94a3b8' : '#64748b';
-  const borderColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const bgColor = isDark ? DS.darkCard : DS.white;
+  const textColor = isDark ? DS.white : DS.gray900;
+  const subTextColor = isDark ? DS.gray400 : DS.gray500;
+  const borderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
 
   const overlayOpacity = useSharedValue(0);
-  const modalScale = useSharedValue(0.85);
-  const modalTranslateY = useSharedValue(30);
+  const modalScale = useSharedValue(0.88);
+  const modalTranslateY = useSharedValue(20);
 
   useEffect(() => {
     overlayOpacity.value = withTiming(1, { duration: 200 });
-    modalScale.value = withSpring(1, { damping: 14, stiffness: 200 });
-    modalTranslateY.value = withSpring(0, { damping: 14 });
-  }, [overlayOpacity, modalScale, modalTranslateY]);
+    modalScale.value = withSpring(1, { damping: 15, stiffness: 220 });
+    modalTranslateY.value = withSpring(0, { damping: 15 });
+  }, []);
 
   const animateOut = useCallback((callback?: () => void) => {
     overlayOpacity.value = withTiming(0, { duration: 180 });
     modalScale.value = withTiming(0.9, { duration: 180 });
     modalTranslateY.value = withTiming(20, { duration: 180 });
     setTimeout(() => callback?.(), 180);
-  }, [overlayOpacity, modalScale, modalTranslateY]);
+  }, []);
 
   const handleConfirm = useCallback(() => {
+    if (dismissCalledRef.current) return;
+    dismissCalledRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    animateOut(() => {
-      config.onConfirm?.();
-      onDismiss();
-    });
+    animateOut(() => { config.onConfirm?.(); onDismiss(); });
   }, [config, onDismiss, animateOut]);
 
   const handleCancel = useCallback(() => {
+    if (dismissCalledRef.current) return;
+    dismissCalledRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    animateOut(() => {
-      config.onCancel?.();
-      onDismiss();
-    });
+    animateOut(() => { config.onCancel?.(); onDismiss(); });
   }, [config, onDismiss, animateOut]);
 
   const handleDismiss = useCallback(() => {
-    animateOut(() => {
-      config.onDismiss?.();
-      onDismiss();
-    });
+    if (dismissCalledRef.current) return;
+    dismissCalledRef.current = true;
+    animateOut(() => { config.onDismiss?.(); onDismiss(); });
   }, [config, onDismiss, animateOut]);
 
-  const overlayStyle = useAnimatedStyle(() => ({
-    opacity: overlayOpacity.value,
-  }));
-
-  const modalStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: modalScale.value },
-      { translateY: modalTranslateY.value },
-    ],
-  }));
-
-  const renderIcon = () => {
-    if (type === 'loading') {
-      return <LoadingRing color={iconColor} size={56} />;
-    }
-    return (
-      <View style={[styles.modalIconWrap, { backgroundColor: alertCfg.bgTint }]}>
-        <LinearGradient
-          colors={alertCfg.colors}
-          style={styles.modalIconGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Ionicons name={config.icon || alertCfg.icon} size={28} color="#fff" />
-        </LinearGradient>
-      </View>
-    );
-  };
+  const overlayStyle = useAnimatedStyle(() => ({ opacity: overlayOpacity.value }));
+  const modalStyle = useAnimatedStyle(() => ({ transform: [{ scale: modalScale.value }, { translateY: modalTranslateY.value }] }));
 
   return (
-    <Modal
-      visible={true}
-      transparent
-      animationType="none"
-      statusBarTranslucent
-      onRequestClose={handleDismiss}
-    >
+    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={handleDismiss}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <Animated.View style={[styles.modalOverlay, overlayStyle]}>
         <TouchableWithoutFeedback onPress={config.type !== 'loading' ? handleDismiss : undefined}>
           <View style={StyleSheet.absoluteFill} />
         </TouchableWithoutFeedback>
-
         <Animated.View style={[styles.modalContainer, modalStyle, { backgroundColor: bgColor, borderColor }]}>
-          {/* Top gradient accent */}
-          <LinearGradient
-            colors={alertCfg.colors}
-            style={styles.modalTopAccent}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          />
-
-          {/* Icon */}
-          {renderIcon()}
-
-          {/* Title */}
-          <Text style={[styles.modalTitle, { color: textColor }]}>
-            {config.title}
-          </Text>
-
-          {/* Message */}
-          {config.message && (
-            <Text style={[styles.modalMessage, { color: subTextColor }]}>
-              {config.message}
-            </Text>
-          )}
-
-          {/* Progress */}
-          {config.progress !== undefined && (
-            <View style={styles.modalProgressWrap}>
-              <ProgressBar progress={config.progress} color={alertCfg.defaultColor} />
-              <Text style={[styles.modalProgressText, { color: subTextColor }]}>
-                {Math.round(config.progress * 100)}%
-              </Text>
+          <LinearGradient colors={alertCfg.colors} style={styles.modalTopAccent} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
+          {type === 'loading' ? (
+            <LoadingRing color={iconColor} size={52} />
+          ) : (
+            <View style={styles.modalIconWrap}>
+              <LinearGradient colors={alertCfg.colors} style={styles.modalIconGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                <Ionicons name={config.icon || alertCfg.icon} size={26} color={DS.white} />
+              </LinearGradient>
             </View>
           )}
-
-          {/* Action Buttons (custom) */}
-          {config.actionButtons && config.actionButtons.length > 0 && (
+          <Text style={[styles.modalTitle, { color: textColor }]}>{config.title}</Text>
+          {config.message && <Text style={[styles.modalMessage, { color: subTextColor }]}>{config.message}</Text>}
+          {config.progress !== undefined && (
+            <View style={{ width: '100%', marginBottom: 20 }}>
+              <ProgressBar progress={config.progress} color={alertCfg.defaultColor} />
+              <Text style={[styles.modalProgressText, { color: subTextColor }]}>{Math.round(config.progress * 100)}%</Text>
+            </View>
+          )}
+          {config.actionButtons && config.actionButtons.length > 0 ? (
             <View style={styles.customActionsRow}>
               {config.actionButtons.map((btn, idx) => (
                 <TouchableOpacity
                   key={idx}
-                  style={[
-                    styles.customActionBtn,
-                    btn.variant === 'primary' && { backgroundColor: themeColors.primary },
-                    btn.variant === 'danger' && { backgroundColor: '#ef4444' },
-                    btn.variant === 'ghost' && { backgroundColor: 'transparent' },
-                    btn.variant === 'secondary' || !btn.variant && { 
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f1f5f9' 
-                    },
-                  ]}
-                  onPress={() => {
-                    btn.onPress();
-                    if (config.type !== 'loading') handleDismiss();
-                  }}
+                  style={[styles.customActionBtn, {
+                    backgroundColor:
+                      btn.variant === 'primary' ? themeColors.primary :
+                      btn.variant === 'danger' ? DS.danger :
+                      btn.variant === 'ghost' ? 'transparent' :
+                      isDark ? 'rgba(255,255,255,0.08)' : DS.gray100,
+                  }]}
+                  onPress={() => { btn.onPress(); if (config.type !== 'loading') handleDismiss(); }}
                   activeOpacity={0.75}
                 >
-                  {btn.icon && (
-                    <Ionicons 
-                      name={btn.icon} 
-                      size={16} 
-                      color={btn.variant === 'primary' || btn.variant === 'danger' ? '#fff' : textColor} 
-                      style={{ marginRight: 6 }}
-                    />
-                  )}
-                  <Text style={[
-                    styles.customActionText,
-                    { color: btn.variant === 'primary' || btn.variant === 'danger' ? '#fff' : textColor }
-                  ]}>
-                    {btn.text}
-                  </Text>
+                  {btn.icon && <Ionicons name={btn.icon} size={14} color={btn.variant === 'primary' || btn.variant === 'danger' ? DS.white : textColor} style={{ marginRight: 6 }} />}
+                  <Text style={[styles.customActionText, { color: btn.variant === 'primary' || btn.variant === 'danger' ? DS.white : textColor }]}>{btn.text}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          )}
-
-          {/* Standard Buttons */}
-          {!config.actionButtons && (
+          ) : (
             <View style={styles.modalButtonRow}>
               {config.showCancel !== false && config.cancelText && (
-                <TouchableOpacity
-                  style={[
-                    styles.modalCancelButton,
-                    { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9' },
-                  ]}
-                  onPress={handleCancel}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.modalCancelText, { color: isDark ? '#cbd5e1' : '#64748b' }]}>
-                    {config.cancelText}
-                  </Text>
+                <TouchableOpacity style={[styles.modalCancelButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]} onPress={handleCancel} activeOpacity={0.7}>
+                  <Text style={[styles.modalCancelText, { color: isDark ? DS.gray300 : DS.gray600 }]}>{config.cancelText}</Text>
                 </TouchableOpacity>
               )}
-
               {config.showConfirm !== false && (
-                <TouchableOpacity
-                  style={styles.modalConfirmButton}
-                  onPress={handleConfirm}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={[confirmColor, config.destructive ? '#dc2626' : (themeColors.secondary || confirmColor)]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.modalConfirmGradient}
-                  >
-                    <Text style={styles.modalConfirmText}>
-                      {config.confirmText || 'OK'}
-                    </Text>
+                <TouchableOpacity style={styles.modalConfirmButton} onPress={handleConfirm} activeOpacity={0.85}>
+                  <LinearGradient colors={[confirmColor, config.destructive ? '#dc2626' : (themeColors.secondary || confirmColor)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.modalConfirmGradient}>
+                    <Text style={styles.modalConfirmText}>{config.confirmText || 'OK'}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               )}
@@ -791,79 +536,61 @@ const SweetAlertModal: React.FC<ModalProps> = React.memo(({ config, isDark, them
   );
 });
 
-// ─── Bottom Sheet Component ─────────────────────────────────────────
-
-interface BottomSheetProps {
-  config: SweetAlertConfig;
-  isDark: boolean;
-  themeColors: { primary: string; secondary: string; accent: string };
-  onDismiss: () => void;
-}
-
-const SweetAlertBottomSheet: React.FC<BottomSheetProps> = React.memo(({ config, isDark, themeColors, onDismiss }) => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOTTOM SHEET
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SweetAlertBottomSheet: React.FC<{ config: SweetAlertConfig; isDark: boolean; themeColors: { primary: string; secondary: string; accent: string }; onDismiss: () => void }> = React.memo(({ config, isDark, themeColors, onDismiss }) => {
   const type = config.type || 'info';
   const alertCfg = ALERT_CONFIG[type];
   const translateY = useSharedValue(SCREEN_H);
   const opacity = useSharedValue(0);
+  const dismissCalledRef = useRef(false);
 
   useEffect(() => {
     opacity.value = withTiming(1, { duration: 200 });
     translateY.value = withSpring(0, { damping: 20, stiffness: 250 });
-  }, [opacity, translateY]);
+  }, []);
 
   const dismiss = useCallback(() => {
+    if (dismissCalledRef.current) return;
+    dismissCalledRef.current = true;
     opacity.value = withTiming(0, { duration: 200 });
-    translateY.value = withTiming(SCREEN_H * 0.5, { duration: 250, easing: Easing.inOut(Easing.ease) });
+    translateY.value = withTiming(SCREEN_H * 0.5, { duration: 250 });
     setTimeout(onDismiss, 250);
-  }, [onDismiss, opacity, translateY]);
+  }, [onDismiss]);
 
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
+  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
+  const overlayStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
-  const overlayStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
-
-  const bgColor = isDark ? '#1a1a2e' : '#ffffff';
-  const textColor = isDark ? '#f1f5f9' : '#1a1a1a';
-  const subTextColor = isDark ? '#94a3b8' : '#64748b';
+  const bgColor = isDark ? DS.darkCard : DS.white;
+  const textColor = isDark ? DS.white : DS.gray900;
+  const subTextColor = isDark ? DS.gray400 : DS.gray500;
 
   return (
-    <Modal visible={true} transparent animationType="none" statusBarTranslucent>
+    <Modal visible transparent animationType="none" statusBarTranslucent>
       <Animated.View style={[styles.sheetOverlay, overlayStyle]}>
-        <TouchableWithoutFeedback onPress={dismiss}>
-          <View style={StyleSheet.absoluteFill} />
-        </TouchableWithoutFeedback>
-
+        <TouchableWithoutFeedback onPress={dismiss}><View style={StyleSheet.absoluteFill} /></TouchableWithoutFeedback>
         <Animated.View style={[styles.sheetContainer, sheetStyle, { backgroundColor: bgColor }]}>
-          {/* Handle bar */}
           <View style={styles.sheetHandleBar}>
-            <View style={[styles.sheetHandle, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)' }]} />
+            <View style={[styles.sheetHandle, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : DS.gray300 }]} />
           </View>
-
-          {/* Icon */}
-          <View style={[styles.sheetIconWrap, { backgroundColor: alertCfg.bgTint }]}>
-            <LinearGradient colors={alertCfg.colors} style={styles.sheetIconGradient}>
-              <Ionicons name={config.icon || alertCfg.icon} size={28} color="#fff" />
+          <View style={styles.sheetIconWrap}>
+            <LinearGradient colors={alertCfg.colors} style={styles.sheetIconGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              <Ionicons name={config.icon || alertCfg.icon} size={26} color={DS.white} />
             </LinearGradient>
           </View>
-
           <Text style={[styles.sheetTitle, { color: textColor }]}>{config.title}</Text>
-          {config.message && (
-            <Text style={[styles.sheetMessage, { color: subTextColor }]}>{config.message}</Text>
-          )}
-
+          {config.message && <Text style={[styles.sheetMessage, { color: subTextColor }]}>{config.message}</Text>}
           <View style={styles.sheetButtonCol}>
             {config.showConfirm !== false && (
-              <TouchableOpacity style={styles.sheetPrimaryBtn} onPress={() => { config.onConfirm?.(); dismiss(); }} activeOpacity={0.8}>
-                <LinearGradient colors={[themeColors.primary, themeColors.secondary || themeColors.primary]} style={styles.sheetPrimaryGradient}>
+              <TouchableOpacity style={styles.sheetPrimaryBtn} onPress={() => { config.onConfirm?.(); dismiss(); }}>
+                <LinearGradient colors={[themeColors.primary || DS.primary, themeColors.secondary || DS.accent]} style={styles.sheetPrimaryGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                   <Text style={styles.sheetPrimaryText}>{config.confirmText || 'OK'}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             )}
             {config.showCancel !== false && config.cancelText && (
-              <TouchableOpacity style={[styles.sheetSecondaryBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]} onPress={() => { config.onCancel?.(); dismiss(); }} activeOpacity={0.7}>
+              <TouchableOpacity style={[styles.sheetSecondaryBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]} onPress={() => { config.onCancel?.(); dismiss(); }}>
                 <Text style={[styles.sheetSecondaryText, { color: subTextColor }]}>{config.cancelText}</Text>
               </TouchableOpacity>
             )}
@@ -874,14 +601,10 @@ const SweetAlertBottomSheet: React.FC<BottomSheetProps> = React.memo(({ config, 
   );
 });
 
-// ─── Queue Item Type ────────────────────────────────────────────────
-
-interface AlertQueueItem {
-  id: string;
-  config: SweetAlertConfig;
-}
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROVIDER
+   ═══════════════════════════════════════════════════════════════════════════ */
+interface AlertQueueItem { id: string; config: SweetAlertConfig; }
 
 interface SweetAlertProviderProps {
   children: React.ReactNode;
@@ -890,14 +613,7 @@ interface SweetAlertProviderProps {
   reduceMotion?: boolean;
 }
 
-
-
-export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
-  children,
-  isDark,
-  themeColors,
-  reduceMotion = false,
-}) => {
+export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({ children, isDark, themeColors, reduceMotion = false }) => {
   const [toastQueue, setToastQueue] = useState<AlertQueueItem[]>([]);
   const [modalQueue, setModalQueue] = useState<AlertQueueItem[]>([]);
   const [sheetQueue, setSheetQueue] = useState<AlertQueueItem[]>([]);
@@ -907,48 +623,34 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
   const sweetAlert = useCallback((config: SweetAlertConfig) => {
     const id = `alert_${++idCounter.current}_${Date.now()}`;
     const fullConfig = { ...config, reduceMotion: config.reduceMotion ?? reduceMotion };
-    
-    
-    if (config.isPrompt) {
-      setPromptQueue(prev => [...prev, { id, config: fullConfig }]);
-      return;
-    }
-    
-    const style = fullConfig.style || 'toast';
 
-    if (style === 'modal') {
-      setModalQueue(prev => [...prev, { id, config: fullConfig }]);
-    } else if (style === 'bottom-sheet') {
-      setSheetQueue(prev => [...prev, { id, config: fullConfig }]);
+    if (config.isPrompt) {
+      setPromptQueue((prev) => [...prev, { id, config: fullConfig }]);
     } else {
-      setToastQueue(prev => [...prev, { id, config: fullConfig }]);
+      const style = fullConfig.style || 'toast';
+      if (style === 'modal') setModalQueue((prev) => [...prev, { id, config: fullConfig }]);
+      else if (style === 'bottom-sheet') setSheetQueue((prev) => [...prev, { id, config: fullConfig }]);
+      else setToastQueue((prev) => [...prev, { id, config: fullConfig }]);
     }
 
     if (fullConfig.haptic !== false && fullConfig.type !== 'loading') {
-      const type = fullConfig.type || 'info';
-      Haptics.notificationAsync(ALERT_CONFIG[type].hapticType).catch(() => {});
+      const t = fullConfig.type || 'info';
+      Haptics.notificationAsync(ALERT_CONFIG[t].hapticType).catch(() => {});
     }
   }, [reduceMotion]);
 
   useEffect(() => {
     isProviderMounted = true;
-
     const handleShow: AlertListener = (config) => sweetAlert(config);
     const handleHide: HideListener = () => {
-      
-      setModalQueue(prev => {
-        
-        return [];
-      });
+      setModalQueue([]);
       setToastQueue([]);
       setSheetQueue([]);
       setPromptQueue([]);
     };
-
     alertListeners.add(handleShow);
     hideListeners.add(handleHide);
     flushQueue();
-
     return () => {
       isProviderMounted = false;
       alertListeners.delete(handleShow);
@@ -956,21 +658,10 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
     };
   }, [sweetAlert]);
 
-  const dismissToast = useCallback((id: string) => {
-    setToastQueue(prev => prev.filter(item => item.id !== id));
-  }, []);
-
-  const dismissModal = useCallback((id: string) => {
-    setModalQueue(prev => prev.filter(item => item.id !== id));
-  }, []);
-
-  const dismissSheet = useCallback((id: string) => {
-    setSheetQueue(prev => prev.filter(item => item.id !== id));
-  }, []);
-
-  const dismissPrompt = useCallback((id: string) => {
-    setPromptQueue(prev => prev.filter(item => item.id !== id));
-  }, []);
+  const dismissToast = useCallback((id: string) => setToastQueue((prev) => prev.filter((i) => i.id !== id)), []);
+  const dismissModal = useCallback((id: string) => setModalQueue((prev) => prev.filter((i) => i.id !== id)), []);
+  const dismissSheet = useCallback((id: string) => setSheetQueue((prev) => prev.filter((i) => i.id !== id)), []);
+  const dismissPrompt = useCallback((id: string) => setPromptQueue((prev) => prev.filter((i) => i.id !== id)), []);
 
   const activeModal = modalQueue[0] || null;
   const activeSheet = sheetQueue[0] || null;
@@ -979,577 +670,141 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({
   return (
     <>
       {children}
-
-      {/* Toasts */}
-      {toastQueue.map(item => (
-        <SweetAlertToast
-          key={item.id}
-          config={item.config}
-          isDark={isDark}
-          onDismiss={() => dismissToast(item.id)}
-        />
+      {toastQueue.map((item) => (
+        <SweetAlertToast key={item.id} config={item.config} isDark={isDark} onDismiss={() => dismissToast(item.id)} />
       ))}
-
-      {/* Modals */}
-      {activeModal && (
-        <SweetAlertModal
-          key={activeModal.id}
-          config={activeModal.config}
-          isDark={isDark}
-          themeColors={themeColors}
-          onDismiss={() => dismissModal(activeModal.id)}
-        />
-      )}
-
-      {/* Bottom Sheets */}
-      {activeSheet && (
-        <SweetAlertBottomSheet
-          key={activeSheet.id}
-          config={activeSheet.config}
-          isDark={isDark}
-          themeColors={themeColors}
-          onDismiss={() => dismissSheet(activeSheet.id)}
-        />
-      )}
-
-      {/* Prompts */}
-      {activePrompt && (
-        <SweetAlertPrompt
-          key={activePrompt.id}
-          config={activePrompt.config}
-          isDark={isDark}
-          themeColors={themeColors}
-          onDismiss={() => dismissPrompt(activePrompt.id)}
-        />
-      )}
+      {activeModal && <SweetAlertModal key={activeModal.id} config={activeModal.config} isDark={isDark} themeColors={themeColors} onDismiss={() => dismissModal(activeModal.id)} />}
+      {activeSheet && <SweetAlertBottomSheet key={activeSheet.id} config={activeSheet.config} isDark={isDark} themeColors={themeColors} onDismiss={() => dismissSheet(activeSheet.id)} />}
+      {activePrompt && <SweetAlertPrompt key={activePrompt.id} config={activePrompt.config} isDark={isDark} themeColors={themeColors} onDismiss={() => dismissPrompt(activePrompt.id)} />}
     </>
   );
 };
 
-// ─── Hook ───────────────────────────────────────────────────────────
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOOK
+   ═══════════════════════════════════════════════════════════════════════════ */
 export const useSweetAlert = () => {
   const toast = useCallback((title: string, message?: string, type: AlertType = 'info') => {
-    showSweetAlert({ 
-      title, 
-      message, 
-      type, 
-      style: 'toast', 
-      position: 'top', 
-      autoDismiss: true, 
-      duration: 3000 
-    });
+    showSweetAlert({ title, message, type, style: 'toast', position: 'top', autoDismiss: true, duration: 3000 });
   }, []);
-
   const success = useCallback((title: string, message?: string) => {
-    showSweetAlert({ 
-      title, 
-      message, 
-      type: 'success', 
-      style: 'toast', 
-      position: 'top', 
-      autoDismiss: true, 
-      duration: 2500 
-    });
+    showSweetAlert({ title, message, type: 'success', style: 'toast', position: 'top', autoDismiss: true, duration: 2500 });
   }, []);
-
   const error = useCallback((title: string, message?: string) => {
-    showSweetAlert({ 
-      title, 
-      message, 
-      type: 'error', 
-      style: 'toast', 
-      position: 'top', 
-      autoDismiss: true, 
-      duration: 4000 
-    });
+    showSweetAlert({ title, message, type: 'error', style: 'toast', position: 'top', autoDismiss: true, duration: 4000 });
   }, []);
-
   const warning = useCallback((title: string, message?: string) => {
-    showSweetAlert({ 
-      title, 
-      message, 
-      type: 'warning', 
-      style: 'toast', 
-      position: 'top', 
-      autoDismiss: true, 
-      duration: 3500 
-    });
+    showSweetAlert({ title, message, type: 'warning', style: 'toast', position: 'top', autoDismiss: true, duration: 3500 });
   }, []);
-
   const info = useCallback((title: string, message?: string) => {
-    showSweetAlert({ 
-      title, 
-      message, 
-      type: 'info', 
-      style: 'toast', 
-      position: 'top', 
-      autoDismiss: true, 
-      duration: 3000 
-    });
+    showSweetAlert({ title, message, type: 'info', style: 'toast', position: 'top', autoDismiss: true, duration: 3000 });
   }, []);
-
-  const confirm = useCallback((
-    title: string,
-    message: string,
-    onConfirm: () => void,
-    onCancel?: () => void,
-    confirmText?: string,
-    cancelText?: string,
-    isDanger?: boolean
-  ) => {
-    showSweetAlert({
-      title,
-      message,
-      type: 'question',
-      style: 'modal',
-      showCancel: true,
-      showConfirm: true,
-      confirmText: confirmText || 'Confirm',
-      cancelText: cancelText || 'Cancel',
-      destructive: isDanger,
-      onConfirm,
-      onCancel,
-    });
+  const confirm = useCallback((title: string, message: string, onConfirm: () => void, onCancel?: () => void, confirmText?: string, cancelText?: string, isDanger?: boolean) => {
+    showSweetAlert({ title, message, type: 'question', style: 'modal', showCancel: true, showConfirm: true, confirmText: confirmText || 'Confirm', cancelText: cancelText || 'Cancel', destructive: isDanger, onConfirm, onCancel });
   }, []);
-
   const alert = useCallback((title: string, message?: string, type: AlertType = 'info') => {
-    showSweetAlert({
-      title,
-      message,
-      type,
-      style: 'modal',
-      showConfirm: true,
-      showCancel: false,
-      confirmText: 'OK',
-    });
+    showSweetAlert({ title, message, type, style: 'modal', showConfirm: true, showCancel: false, confirmText: 'OK' });
   }, []);
-
-  const bottomSheet = useCallback((
-    title: string,
-    message?: string,
-    onConfirm?: () => void,
-    confirmText?: string,
-    type: AlertType = 'info'
-  ) => {
-    showSweetAlert({
-      title,
-      message,
-      type,
-      style: 'bottom-sheet',
-      showConfirm: true,
-      showCancel: true,
-      confirmText: confirmText || 'Done',
-      cancelText: 'Close',
-      onConfirm,
-    });
+  const bottomSheet = useCallback((title: string, message?: string, onConfirm?: () => void, confirmText?: string, type: AlertType = 'info') => {
+    showSweetAlert({ title, message, type, style: 'bottom-sheet', showConfirm: true, showCancel: true, confirmText: confirmText || 'Done', cancelText: 'Close', onConfirm });
   }, []);
-
   const loading = useCallback((title: string, message?: string, progress?: number) => {
+    showSweetAlert({ title, message, type: 'loading', style: 'modal', showConfirm: false, showCancel: false, progress, autoDismiss: false });
+  }, []);
+  const hideLoading = useCallback(() => hideSweetAlert(), []);
+  const show = useCallback((config: SweetAlertConfig) => showSweetAlert(config), []);
+  const hide = useCallback(() => hideSweetAlert(), []);
+  const prompt = useCallback((title: string, message: string, type: PromptType = 'plain-text', onConfirm: (value: string) => void, onCancel?: () => void, confirmText = 'Confirm', cancelText = 'Cancel', placeholder?: string, defaultValue?: string) => {
     showSweetAlert({
-      title,
-      message,
-      type: 'loading',
-      style: 'modal',
-      showConfirm: false,
-      showCancel: false,
-      progress,
-      autoDismiss: false,
-    });
-  }, []);
-
-  const hideLoading = useCallback(() => {
-    hideSweetAlert();
-  }, []);
-
-  const show = useCallback((config: SweetAlertConfig) => {
-    showSweetAlert(config);
-  }, []);
-
-  const hide = useCallback(() => {
-    
-    hideSweetAlert();
-  }, []);
-
-  
-
-  const prompt = useCallback((
-    title: string,
-    message: string,
-    type: 'plain-text' | 'secure-text' | 'email' | 'phone' = 'plain-text',
-    onConfirm: (value: string) => void,
-    onCancel?: () => void,
-    confirmText: string = 'Confirm',
-    cancelText: string = 'Cancel',
-    placeholder?: string,
-    defaultValue?: string
-  ) => {
-    showSweetAlert({
-      title,
-      message,
-      isPrompt: true,
-      promptType: type,
+      title, message, isPrompt: true, promptType: type,
       promptPlaceholder: placeholder || (type === 'secure-text' ? 'Enter your password...' : 'Enter value...'),
       promptValue: defaultValue || '',
-      showCancel: true,
-      showConfirm: true,
-      confirmText,
-      cancelText,
-      onPromptConfirm: onConfirm,
-      onPromptCancel: onCancel,
+      showCancel: true, showConfirm: true, confirmText, cancelText,
+      onPromptConfirm: onConfirm, onPromptCancel: onCancel,
       destructive: type === 'secure-text',
     });
   }, []);
-
-  
-
-  const securePrompt = useCallback((
-    title: string,
-    message: string,
-    onConfirm: (password: string) => void,
-    onCancel?: () => void,
-    confirmText: string = 'Confirm',
-    cancelText: string = 'Cancel'
-  ) => {
-    prompt(
-      title,
-      message,
-      'secure-text',
-      onConfirm,
-      onCancel,
-      confirmText,
-      cancelText,
-      'Enter your password...'
-    );
+  const securePrompt = useCallback((title: string, message: string, onConfirm: (password: string) => void, onCancel?: () => void, confirmText = 'Confirm', cancelText = 'Cancel') => {
+    prompt(title, message, 'secure-text', onConfirm, onCancel, confirmText, cancelText, 'Enter your password...');
   }, [prompt]);
 
-  return useMemo(() => ({
-    toast, success, error, warning, info, confirm, alert, 
-    bottomSheet, loading, hideLoading, show, hide,
-    prompt, securePrompt
-  }), [toast, success, error, warning, info, confirm, alert, 
-       bottomSheet, loading, hideLoading, show, hide,
-       prompt, securePrompt]);
+  return useMemo(() => ({ toast, success, error, warning, info, confirm, alert, bottomSheet, loading, hideLoading, show, hide, prompt, securePrompt }), [
+    toast, success, error, warning, info, confirm, alert, bottomSheet, loading, hideLoading, show, hide, prompt, securePrompt,
+  ]);
 };
 
-
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
-  
-  loadingRing: {
-    borderStyle: 'solid',
-  },
+  progressTrack: { height: 4, borderRadius: 2, overflow: 'hidden', marginTop: 8, width: '100%' },
+  progressFill: { height: '100%', borderRadius: 2 },
 
-  
-  progressTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(0,0,0,0.06)',
-    overflow: 'hidden',
-    marginTop: 8,
-    width: '100%',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-
-  
-  toastWrapper: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 99999,
-    elevation: 99999,
-    paddingHorizontal: 16,
-  },
-  toastTop: {
-    top: Platform.OS === 'ios' ? 52 : 36,
-  },
-  toastCenter: {
-    top: '40%',
-  },
-  toastBottom: {
-    bottom: Platform.OS === 'ios' ? 100 : 80,
-  },
+  toastWrapper: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 99999, elevation: 99999, paddingHorizontal: 16 },
+  toastTop: { top: Platform.OS === 'ios' ? 52 : 36 },
+  toastCenter: { top: '40%' },
+  toastBottom: { bottom: Platform.OS === 'ios' ? 100 : 80 },
   toastBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderRadius: 20,
-    padding: 14,
-    paddingRight: 12,
-    minWidth: 280,
-    maxWidth: SCREEN_W - 32,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 12,
-    overflow: 'hidden',
+    flexDirection: 'row', alignItems: 'flex-start', borderRadius: DS.radius.lg,
+    padding: 12, paddingRight: 10, minWidth: 260, maxWidth: SCREEN_W - 32,
+    borderWidth: 1, ...DS.shadow.md, overflow: 'hidden',
   },
-  toastAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    borderTopLeftRadius: 20,
-    borderBottomLeftRadius: 20,
-  },
-  toastIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    marginLeft: 6,
-  },
-  toastTextContainer: {
-    flex: 1,
-    paddingRight: 4,
-  },
-  toastTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-  toastMessage: {
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2,
-  },
-  toastClose: {
-    padding: 4,
-    marginLeft: 4,
-    marginTop: 2,
-  },
+  toastAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, borderTopLeftRadius: DS.radius.lg, borderBottomLeftRadius: DS.radius.lg },
+  toastIconWrap: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginRight: 10, marginLeft: 6 },
+  toastTitle: { fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  toastMessage: { fontSize: 11, lineHeight: 16, marginTop: 2, fontWeight: '500' },
+  toastClose: { padding: 4, marginLeft: 4, marginTop: 2 },
 
-  
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    padding: 24,
-  },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 24 },
   modalContainer: {
-    width: Math.min(SCREEN_W - 48, 380),
-    borderRadius: 28,
-    padding: 28,
-    paddingTop: 32,
-    alignItems: 'center',
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 24 },
-    shadowOpacity: 0.2,
-    shadowRadius: 48,
-    elevation: 24,
+    width: Math.min(SCREEN_W - 48, 380), borderRadius: DS.radius['2xl'],
+    padding: 24, paddingTop: 28, alignItems: 'center',
+    borderWidth: 1, overflow: 'hidden', ...DS.shadow.lg,
   },
-  modalTopAccent: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 4,
-  },
-  modalIconWrap: {
-    marginBottom: 20,
-  },
+  modalTopAccent: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
+  modalIconWrap: { marginBottom: 16 },
   modalIconGradient: {
-    width: 64,
-    height: 64,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+    width: 56, height: 56, borderRadius: 20, alignItems: 'center', justifyContent: 'center', ...DS.shadow.md,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 10,
-    letterSpacing: -0.3,
-    lineHeight: 26,
-  },
-  modalMessage: {
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 24,
-    paddingHorizontal: 4,
-  },
-  modalProgressWrap: {
-    width: '100%',
-    marginBottom: 20,
-  },
-  modalProgressText: {
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  modalButtonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  modalCancelButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  modalCancelText: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  modalConfirmButton: {
-    flex: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  modalConfirmGradient: {
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  modalConfirmText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
+  modalTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3, lineHeight: 24 },
+  modalMessage: { fontSize: 13, fontWeight: '500', textAlign: 'center', lineHeight: 19, marginBottom: 20, paddingHorizontal: 4 },
+  modalProgressText: { fontSize: 11, fontWeight: '600', textAlign: 'center', marginTop: 6 },
+  modalButtonRow: { flexDirection: 'row', gap: 10, width: '100%' },
+  modalCancelButton: { flex: 1, paddingVertical: 13, borderRadius: DS.radius.md, alignItems: 'center' },
+  modalCancelText: { fontSize: 14, fontWeight: '700' },
+  modalConfirmButton: { flex: 1, borderRadius: DS.radius.md, overflow: 'hidden' },
+  modalConfirmGradient: { paddingVertical: 13, alignItems: 'center' },
+  modalConfirmText: { color: DS.white, fontSize: 14, fontWeight: '800' },
 
-  
   promptInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    minHeight: 52,
+    flexDirection: 'row', alignItems: 'center', width: '100%',
+    borderRadius: DS.radius.md, paddingHorizontal: 14, marginBottom: 18,
+    borderWidth: 1, minHeight: 48,
   },
-  promptInput: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '500',
-    paddingVertical: 14,
-  },
-  promptToggleSecure: {
-    padding: 8,
-    marginLeft: 4,
-  },
+  promptInput: { flex: 1, fontSize: 14, fontWeight: '500', paddingVertical: 12 },
 
-  
-  customActionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    width: '100%',
-    justifyContent: 'center',
-  },
-  customActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-  },
-  customActionText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  customActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: '100%', justifyContent: 'center' },
+  customActionBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: DS.radius.md },
+  customActionText: { fontSize: 13, fontWeight: '700' },
 
-  
-  sheetOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   sheetContainer: {
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingHorizontal: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    paddingTop: 8,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 24,
+    borderTopLeftRadius: DS.radius['2xl'], borderTopRightRadius: DS.radius['2xl'],
+    paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingTop: 6, alignItems: 'center', ...DS.shadow.lg,
   },
-  sheetHandleBar: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  sheetHandle: {
-    width: 40,
-    height: 5,
-    borderRadius: 3,
-  },
-  sheetIconWrap: {
-    marginVertical: 16,
-  },
-  sheetIconGradient: {
-    width: 64,
-    height: 64,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 8,
-    letterSpacing: -0.3,
-  },
-  sheetMessage: {
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 24,
-    paddingHorizontal: 8,
-  },
-  sheetButtonCol: {
-    width: '100%',
-    gap: 10,
-  },
-  sheetPrimaryBtn: {
-    width: '100%',
-    borderRadius: 18,
-    overflow: 'hidden',
-  },
-  sheetPrimaryGradient: {
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  sheetPrimaryText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  sheetSecondaryBtn: {
-    width: '100%',
-    borderRadius: 18,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  sheetSecondaryText: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
+  sheetHandleBar: { width: '100%', alignItems: 'center', paddingVertical: 8 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2 },
+  sheetIconWrap: { marginVertical: 14 },
+  sheetIconGradient: { width: 56, height: 56, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  sheetTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
+  sheetMessage: { fontSize: 13, fontWeight: '500', textAlign: 'center', lineHeight: 19, marginBottom: 20, paddingHorizontal: 8 },
+  sheetButtonCol: { width: '100%', gap: 8 },
+  sheetPrimaryBtn: { width: '100%', borderRadius: DS.radius.md, overflow: 'hidden' },
+  sheetPrimaryGradient: { paddingVertical: 14, alignItems: 'center' },
+  sheetPrimaryText: { color: DS.white, fontSize: 14, fontWeight: '800' },
+  sheetSecondaryBtn: { width: '100%', borderRadius: DS.radius.md, paddingVertical: 13, alignItems: 'center' },
+  sheetSecondaryText: { fontSize: 13, fontWeight: '700' },
 });
 
 export default SweetAlertProvider;
