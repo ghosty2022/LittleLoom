@@ -19,6 +19,7 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
 import { useDateTimePicker } from '../../hooks/useDateTimePicker';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
