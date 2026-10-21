@@ -35,6 +35,7 @@ import Animated, {
   useAnimatedScrollHandler,
   withSpring,
   withTiming,
+  withRepeat,
   interpolate,
   Extrapolate,
 } from 'react-native-reanimated';
@@ -1566,7 +1567,11 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
   compactSpacing,
   onProfilePress,
 }) => {
-  const headerPaddingTop = Platform.OS === 'ios' ? (compactSpacing ? 44 : 52) : (compactSpacing ? 28 : 36);
+  const insets = useSafeAreaInsets();
+  // Respect punch-hole, waterfall, notch, and dynamic island.
+  // insets.top is 0 on devices without a cutout, so this is safe everywhere.
+  const baseTop = Platform.OS === 'ios' ? (compactSpacing ? 8 : 12) : (compactSpacing ? 8 : 12);
+  const headerPaddingTop = insets.top + baseTop;
   const headerPaddingBottom = compactSpacing ? 8 : 12;
 
   const headerBg = isDark ? (fullTheme?.glassBg || 'rgba(26,26,42,0.96)') : (fullTheme?.glassBg || 'rgba(255,255,255,0.96)');
@@ -1597,12 +1602,16 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           />
         </TouchableOpacity>
 
-        {/* Center: Logo with gradient text */}
-        <View style={styles.stickyHeaderCenter}>
+        {/* Center: Logo with gradient text — absolutely centered so the
+            asymmetric right action row can't push it off-axis */}
+        <View style={styles.stickyHeaderCenter} pointerEvents="box-none">
           <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>
             LITTLELOOM
           </GradientText>
-          <Text style={[styles.headerSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+          <Text
+            style={[styles.headerSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}
+            numberOfLines={1}
+          >
             {currentBaby?.name || userProfile?.fullName || 'Welcome'}
           </Text>
         </View>
@@ -2694,8 +2703,22 @@ const styles = StyleSheet.create({
   stickyHeaderContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1000, paddingHorizontal: DS.space.lg },
   stickyHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 48 },
   stickyHeaderLeft: { width: 40, alignItems: 'flex-start' },
-  stickyHeaderCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
+  stickyHeaderCenter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'box-none',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+
   headerSubtitle: { fontSize: 11, fontWeight: '500', marginTop: -2 },
   stickyHeaderRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   headerIconBtn: { width: 36, height: 36, borderRadius: 18 },

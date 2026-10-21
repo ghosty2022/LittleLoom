@@ -1103,7 +1103,7 @@ export default function CommunityScreen({ navigation }: Props) {
                   THE LOOM
                 </GradientText>
                 <Text style={[styles.heroSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-                  Weave stories, share wisdom, grow together.
+                  A safe space for parents to share, support & grow together.
                 </Text>
               </View>
             </View>
@@ -1412,8 +1412,9 @@ export default function CommunityScreen({ navigation }: Props) {
           ]}
         >
           <View style={styles.headerInner}>
+            {/* Left: profile avatar only */}
             <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'center' }}
+              style={styles.headerLeftSlot}
               onPress={() => {
                 if (canInteract) {
                   navigation.navigate(ROUTES.EDIT_PROFILE);
@@ -1434,15 +1435,20 @@ export default function CommunityScreen({ navigation }: Props) {
                   <View style={styles.headerOnlineDot} />
                 </View>
               )}
-              <View style={{ marginLeft: 10 }}>
-                <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={[styles.headerTitle]}>
-                  THE LOOM
-                </GradientText>
-                <Text style={[styles.headerSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}>
-                  {currentUser?.displayName || 'Welcome'}
-                </Text>
-              </View>
             </TouchableOpacity>
+
+            {/* Center: brand + community label (absolutely centered) */}
+            <View style={styles.headerCenterSlot} pointerEvents="box-none">
+              <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={[styles.headerTitle]}>
+                THE LOOM
+              </GradientText>
+              <Text
+                style={[styles.headerSubtitle, { color: isDark ? DS.gray400 : DS.gray500 }]}
+                numberOfLines={1}
+              >
+                Parent Community
+              </Text>
+            </View>
 
             <View style={styles.headerActions}>
               <TouchableOpacity onPress={() => setShowSearch(!showSearch)} style={styles.headerIconBtn}>
@@ -1722,6 +1728,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: DS.space.lg,
     height: 48,
   },
+  headerLeftSlot: {
+    width: 40,
+    alignItems: 'flex-start',
+  },
+  headerCenterSlot: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: { fontSize: DS.text.xl.size, fontWeight: '800', letterSpacing: -0.5 },
   headerSubtitle: { fontSize: DS.text.xs.size, fontWeight: '500', marginTop: -2 },
   headerOnlineIndicator: {
@@ -1778,7 +1797,6 @@ const styles = StyleSheet.create({
     borderRadius: DS.radius.xl,
     padding: DS.space.lg,
     overflow: 'hidden',
-    ...DS.shadow.md,
   },
   auraGlowTopLeft: {
     position: 'absolute',
