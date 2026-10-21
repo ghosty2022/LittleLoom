@@ -1,8 +1,3 @@
-
-
-
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dimensions,
@@ -36,18 +31,40 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BackupRestore'>;
 
-const COLORS = {
-  success: '#43e97b',
-  warning: '#fee140',
-  danger: '#ff4757',
-  info: '#4facfe',
-  purple: '#9b59b6',
-  orange: '#e67e22',
+/* ─── AURA DS ────────────────────────────────────────────────────── */
+const AURA = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  accent: '#ec4899',
+  secondary: '#8b5cf6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray700: '#44403c',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
 };
 
+const COLORS = {
+  success: AURA.success,
+  warning: AURA.warning,
+  danger: AURA.danger,
+  info: AURA.info,
+  purple: AURA.secondary,
+  orange: '#fb923c',
+};
 
-
-
+/* ═══════════════════════════════════════════════════════════════════
+   StatPill
+   ═══════════════════════════════════════════════════════════════════ */
 
 const StatPill: React.FC<{
   icon: string;
@@ -64,6 +81,10 @@ const StatPill: React.FC<{
     <Text style={[styles.statPillLabel, isDark && styles.textMuted]}>{label}</Text>
   </View>
 ));
+
+/* ═══════════════════════════════════════════════════════════════════
+   ActionCard
+   ═══════════════════════════════════════════════════════════════════ */
 
 const ActionCard: React.FC<{
   icon: string;
@@ -104,10 +125,18 @@ const ActionCard: React.FC<{
           <Text style={[styles.badgeText, { color }]}>{badge}</Text>
         </View>
       )}
-      <Ionicons name="chevron-forward" size={20} color={isDark ? '#666' : '#999'} />
+      <Ionicons
+        name="chevron-forward"
+        size={20}
+        color={isDark ? AURA.gray500 : AURA.gray400}
+      />
     </LinearGradient>
   </TouchableOpacity>
 ));
+
+/* ═══════════════════════════════════════════════════════════════════
+   LocalBackupItem
+   ═══════════════════════════════════════════════════════════════════ */
 
 const LocalBackupItem: React.FC<{
   backup: LocalBackupInfo;
@@ -125,14 +154,16 @@ const LocalBackupItem: React.FC<{
       style={[
         styles.localBackupIcon,
         {
-          backgroundColor: backup.isEncrypted ? `${COLORS.purple}20` : `${COLORS.success}20`,
+          backgroundColor: backup.isEncrypted
+            ? `${AURA.secondary}20`
+            : `${AURA.success}20`,
         },
       ]}
     >
       <Ionicons
         name={backup.isEncrypted ? 'lock-closed' : 'document-text'}
         size={22}
-        color={backup.isEncrypted ? COLORS.purple : COLORS.success}
+        color={backup.isEncrypted ? AURA.secondary : AURA.success}
       />
     </View>
     <View style={styles.localBackupInfo}>
@@ -146,26 +177,30 @@ const LocalBackupItem: React.FC<{
     </View>
     <View style={styles.localBackupActions}>
       <TouchableOpacity
-        style={styles.localBackupAction}
+        style={[styles.localBackupAction, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }]}
         onPress={onShare}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Ionicons name="share-outline" size={20} color={isDark ? '#888' : '#666'} />
+        <Ionicons
+          name="share-outline"
+          size={20}
+          color={isDark ? AURA.gray400 : AURA.gray500}
+        />
       </TouchableOpacity>
       <TouchableOpacity
-        style={styles.localBackupAction}
+        style={[styles.localBackupAction, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }]}
         onPress={onDelete}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
+        <Ionicons name="trash-outline" size={20} color={AURA.danger} />
       </TouchableOpacity>
     </View>
   </TouchableOpacity>
 ));
 
-// ═══════════════════════════════════════════════════════════════════
-
-
+/* ═══════════════════════════════════════════════════════════════════
+   EncryptModal
+   ═══════════════════════════════════════════════════════════════════ */
 
 const EncryptModal: React.FC<{
   visible: boolean;
@@ -218,7 +253,7 @@ const EncryptModal: React.FC<{
               <TextInput
                 style={[styles.input, isDark && styles.textLight]}
                 placeholder="Password (min 6 chars)"
-                placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.6)'}
                 value={pw}
                 onChangeText={setPw}
                 secureTextEntry={!show}
@@ -234,7 +269,7 @@ const EncryptModal: React.FC<{
               <TextInput
                 style={[styles.input, isDark && styles.textLight]}
                 placeholder="Confirm Password"
-                placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.6)'}
                 value={confirm}
                 onChangeText={setConfirm}
                 secureTextEntry={!show}
@@ -263,6 +298,10 @@ const EncryptModal: React.FC<{
     </Modal>
   );
 };
+
+/* ═══════════════════════════════════════════════════════════════════
+   PasswordModal
+   ═══════════════════════════════════════════════════════════════════ */
 
 const PasswordModal: React.FC<{
   visible: boolean;
@@ -311,7 +350,7 @@ const PasswordModal: React.FC<{
               <TextInput
                 style={[styles.input, isDark && styles.textLight]}
                 placeholder="Backup Password"
-                placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.6)'}
                 value={pw}
                 onChangeText={setPw}
                 secureTextEntry={!show}
@@ -336,7 +375,7 @@ const PasswordModal: React.FC<{
                   end={{ x: 1, y: 1 }}
                 >
                   {isLoading ? (
-                    <ActivityIndicator color="#fff" size="small" />
+                    <ActivityIndicator color={AURA.white} size="small" />
                   ) : (
                     <Text style={styles.modalConfirmText}>Continue</Text>
                   )}
@@ -349,6 +388,10 @@ const PasswordModal: React.FC<{
     </Modal>
   );
 };
+
+/* ═══════════════════════════════════════════════════════════════════
+   AutoBackupModal
+   ═══════════════════════════════════════════════════════════════════ */
 
 const AutoBackupModal: React.FC<{
   visible: boolean;
@@ -401,8 +444,8 @@ const AutoBackupModal: React.FC<{
                 <Switch
                   value={local.enabled}
                   onValueChange={v => setLocal({ ...local, enabled: v })}
-                  trackColor={{ false: '#767577', true: primaryColor }}
-                  thumbColor={local.enabled ? '#fff' : '#f4f3f4'}
+                  trackColor={{ false: isDark ? AURA.gray700 : AURA.gray300, true: primaryColor }}
+                  thumbColor={local.enabled ? AURA.white : isDark ? AURA.gray500 : '#f4f3f4'}
                 />
               </View>
 
@@ -416,6 +459,7 @@ const AutoBackupModal: React.FC<{
                           key={f}
                           style={[
                             styles.freqButton,
+                            isDark && { backgroundColor: 'rgba(255,255,255,0.06)' },
                             local.frequency === f && { backgroundColor: primaryColor },
                           ]}
                           onPress={() => setLocal({ ...local, frequency: f })}
@@ -423,6 +467,7 @@ const AutoBackupModal: React.FC<{
                           <Text
                             style={[
                               styles.freqButtonText,
+                              isDark && local.frequency !== f && { color: AURA.gray400 },
                               local.frequency === f && styles.freqButtonTextActive,
                             ]}
                           >
@@ -441,6 +486,7 @@ const AutoBackupModal: React.FC<{
                           key={c}
                           style={[
                             styles.keepButton,
+                            isDark && { backgroundColor: 'rgba(255,255,255,0.06)' },
                             local.keepCount === c && { backgroundColor: primaryColor },
                           ]}
                           onPress={() => setLocal({ ...local, keepCount: c })}
@@ -448,6 +494,7 @@ const AutoBackupModal: React.FC<{
                           <Text
                             style={[
                               styles.keepButtonText,
+                              isDark && local.keepCount !== c && { color: AURA.gray400 },
                               local.keepCount === c && styles.keepButtonTextActive,
                             ]}
                           >
@@ -468,8 +515,8 @@ const AutoBackupModal: React.FC<{
                     <Switch
                       value={local.encryptBackups}
                       onValueChange={v => setLocal({ ...local, encryptBackups: v })}
-                      trackColor={{ false: '#767577', true: primaryColor }}
-                      thumbColor={local.encryptBackups ? '#fff' : '#f4f3f4'}
+                      trackColor={{ false: isDark ? AURA.gray700 : AURA.gray300, true: primaryColor }}
+                      thumbColor={local.encryptBackups ? AURA.white : isDark ? AURA.gray500 : '#f4f3f4'}
                     />
                   </View>
 
@@ -479,7 +526,7 @@ const AutoBackupModal: React.FC<{
                       <TextInput
                         style={[styles.input, isDark && styles.textLight]}
                         placeholder="Backup Password"
-                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(102,126,234,0.6)'}
+                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(99,102,241,0.6)'}
                         value={local.encryptionPassword ?? ''}
                         onChangeText={v => setLocal({ ...local, encryptionPassword: v })}
                         secureTextEntry={!show}
@@ -517,9 +564,9 @@ const AutoBackupModal: React.FC<{
   );
 };
 
-// ═══════════════════════════════════════════════════════════════════
-
-
+/* ═══════════════════════════════════════════════════════════════════
+   Main Screen
+   ═══════════════════════════════════════════════════════════════════ */
 
 export default function BackupRestoreScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
@@ -558,7 +605,6 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     encryptBackups: false,
   });
 
-  
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -593,7 +639,6 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     setLastBackup(backups.length > 0 ? backups[0].dateFormatted : null);
   }, []);
 
-  
   const handleCreateBackup = useCallback(
     async (encrypted = false, password?: string) => {
       const uid = userIdRef.current;
@@ -631,7 +676,6 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     [autoBackupSettings.keepCount, refreshBackups, sweetAlert, triggerHaptic]
   );
 
-  
   const performRestore = useCallback(
     async (content: string, password?: string) => {
       const uid = userIdRef.current;
@@ -726,7 +770,6 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     [pendingContent, performRestore, sweetAlert]
   );
 
-  
   const handleLocalBackupPress = useCallback(
     async (backup: LocalBackupInfo) => {
       triggerHaptic('light');
@@ -845,14 +888,16 @@ export default function BackupRestoreScreen({ navigation }: Props) {
     );
   }, [localBackups, sweetAlert, refreshBackups]);
 
-  
+  const primary = themeColors?.primary || AURA.primary;
+  const secondary = themeColors?.secondary || AURA.accent;
+
   if (isLoading) {
     return (
       <LinearGradient
-        colors={isDark ? ['#0f0f1e', '#1a1a2e'] : ['#f8faff', '#f0f4ff']}
+        colors={isDark ? [AURA.darkBg, '#1a1428'] : ['#f8faff', '#eef0ff']}
         style={[styles.container, styles.loadingContainer]}
       >
-        <ActivityIndicator size="large" color={themeColors.primary} />
+        <ActivityIndicator size="large" color={primary} />
         <Text style={[styles.loadingText, isDark && styles.textLight]}>
           Loading backup data...
         </Text>
@@ -862,7 +907,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
 
   return (
     <LinearGradient
-      colors={isDark ? ['#0f0f1e', '#1a1a2e'] : ['#f8faff', '#f0f4ff']}
+      colors={isDark ? [AURA.darkBg, '#1a1428'] : ['#f8faff', '#eef0ff']}
       style={styles.container}
     >
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
@@ -877,8 +922,14 @@ export default function BackupRestoreScreen({ navigation }: Props) {
           entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)}
           style={styles.header}
         >
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#1a1a1a'} />
+          <TouchableOpacity
+            style={[
+              styles.backButton,
+              { backgroundColor: isDark ? AURA.darkCard : 'rgba(0,0,0,0.05)' },
+            ]}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color={isDark ? AURA.white : AURA.gray900} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, isDark && styles.textLight]}>Backup & Restore</Text>
           <Text style={[styles.headerSubtitle, isDark && styles.textMuted]}>
@@ -888,10 +939,14 @@ export default function BackupRestoreScreen({ navigation }: Props) {
 
         <Animated.View
           entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)}
-          style={[styles.infoCard, isDark && styles.infoCardDark]}
+          style={[
+            styles.infoCard,
+            isDark && styles.infoCardDark,
+            { borderColor: `${AURA.primary}26` },
+          ]}
         >
           <BlurView intensity={isDark ? 40 : 90} style={styles.infoBlur} tint={isDark ? 'dark' : 'light'}>
-            <Ionicons name="shield-checkmark" size={32} color={themeColors.primary} style={styles.infoIcon} />
+            <Ionicons name="shield-checkmark" size={32} color={AURA.primary} style={styles.infoIcon} />
             <Text style={[styles.infoTitle, isDark && styles.textLight]}>Your Data, Always Yours</Text>
             <Text style={[styles.infoText, isDark && styles.textMuted]}>
               Create encrypted JSON backups of all your baby tracking data.
@@ -903,9 +958,9 @@ export default function BackupRestoreScreen({ navigation }: Props) {
           entering={shouldReduceMotion ? undefined : FadeInUp.delay(300)}
           style={styles.statsRow}
         >
-          <StatPill icon="heart-outline" label="Babies" value={stats.babies} color={themeColors.primary} isDark={isDark} />
-          <StatPill icon="list-outline" label="Entries" value={stats.entries} color={COLORS.info} isDark={isDark} />
-          <StatPill icon="save-outline" label="Est. Size" value={stats.size} color={COLORS.success} isDark={isDark} />
+          <StatPill icon="heart-outline" label="Babies" value={stats.babies} color={AURA.primary} isDark={isDark} />
+          <StatPill icon="list-outline" label="Entries" value={stats.entries} color={AURA.info} isDark={isDark} />
+          <StatPill icon="save-outline" label="Est. Size" value={stats.size} color={AURA.success} isDark={isDark} />
         </Animated.View>
 
         <Animated.View
@@ -917,7 +972,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
             icon="cloud-upload-outline"
             title="Create Backup"
             subtitle="Export all data to a shareable file"
-            color={COLORS.success}
+            color={AURA.success}
             onPress={() => handleCreateBackup(false)}
             isLoading={isCreating}
             isDark={isDark}
@@ -927,7 +982,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
             icon="lock-closed-outline"
             title="Encrypted Backup"
             subtitle="Password-protect your backup"
-            color={COLORS.purple}
+            color={AURA.secondary}
             onPress={() => setShowEncryptModal(true)}
             isLoading={isCreating}
             isDark={isDark}
@@ -937,7 +992,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
             icon="cloud-download-outline"
             title="Restore from File"
             subtitle="Import data from a backup file"
-            color={themeColors.primary}
+            color={AURA.primary}
             onPress={handlePickBackupFile}
             isLoading={isRestoring}
             isDark={isDark}
@@ -952,13 +1007,21 @@ export default function BackupRestoreScreen({ navigation }: Props) {
             <Text style={[styles.sectionLabel, isDark && styles.textMuted]}>
               Local Backups ({localBackups.length})
             </Text>
-            <Ionicons name={showLocalBackups ? 'chevron-up' : 'chevron-down'} size={20} color="#888" />
+            <Ionicons
+              name={showLocalBackups ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={AURA.gray400}
+            />
           </TouchableOpacity>
           {showLocalBackups && (
             <Animated.View entering={shouldReduceMotion ? undefined : FadeIn}>
               {localBackups.length === 0 ? (
                 <View style={[styles.emptyState, isDark && styles.emptyStateDark]}>
-                  <Ionicons name="folder-open-outline" size={40} color={isDark ? '#444' : '#ccc'} />
+                  <Ionicons
+                    name="folder-open-outline"
+                    size={40}
+                    color={isDark ? AURA.gray700 : AURA.gray300}
+                  />
                   <Text style={[styles.emptyStateText, isDark && styles.textMuted]}>
                     No local backups yet
                   </Text>
@@ -1002,7 +1065,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
                 ? `${autoBackupSettings.frequency} • Keep ${autoBackupSettings.keepCount}`
                 : 'Schedule automatic backups'
             }
-            color={COLORS.warning}
+            color={AURA.warning}
             onPress={() => setShowAutoBackupModal(true)}
             badge={autoBackupSettings.enabled ? 'ON' : 'OFF'}
             isDark={isDark}
@@ -1024,7 +1087,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
             entering={shouldReduceMotion ? undefined : FadeInUp.delay(800)}
             style={styles.lastBackup}
           >
-            <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+            <Ionicons name="checkmark-circle" size={16} color={AURA.success} />
             <Text style={[styles.lastBackupText, isDark && styles.textLight]}>
               Last backup: {lastBackup}
             </Text>
@@ -1040,7 +1103,7 @@ export default function BackupRestoreScreen({ navigation }: Props) {
         <View style={styles.progressOverlay}>
           <BlurView intensity={80} style={styles.progressBlur} tint="dark">
             <View style={styles.progressContent}>
-              <ActivityIndicator size="large" color="#fff" />
+              <ActivityIndicator size="large" color={AURA.white} />
               <Text style={styles.progressMessage}>{restoreProgress.message}</Text>
               <View style={styles.progressBarContainer}>
                 <View style={[styles.progressBar, { width: `${restoreProgress.progress}%` }]} />
@@ -1056,8 +1119,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
         onClose={() => setShowEncryptModal(false)}
         onConfirm={pw => handleCreateBackup(true, pw)}
         isDark={isDark}
-        primaryColor={themeColors.primary}
-        secondaryColor={themeColors.secondary}
+        primaryColor={primary}
+        secondaryColor={secondary}
       />
 
       <PasswordModal
@@ -1069,8 +1132,8 @@ export default function BackupRestoreScreen({ navigation }: Props) {
         }}
         onConfirm={handlePasswordConfirm}
         isDark={isDark}
-        primaryColor={themeColors.primary}
-        secondaryColor={themeColors.secondary}
+        primaryColor={primary}
+        secondaryColor={secondary}
         title="Enter Backup Password"
         subtitle="This backup is password protected"
         isLoading={isPasswordLoading}
@@ -1082,29 +1145,30 @@ export default function BackupRestoreScreen({ navigation }: Props) {
         onSave={handleSaveAutoBackupSettings}
         settings={autoBackupSettings}
         isDark={isDark}
-        primaryColor={themeColors.primary}
-        secondaryColor={themeColors.secondary}
+        primaryColor={primary}
+        secondaryColor={secondary}
       />
     </LinearGradient>
   );
 }
 
-// ─── STYLES ──────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════
+   Styles
+   ═══════════════════════════════════════════════════════════════════ */
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingContainer: { justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 16, fontSize: 16, fontWeight: '500' },
   content: { paddingHorizontal: 20 },
-  textLight: { color: '#fff' },
-  textMuted: { color: '#888' },
+  textLight: { color: AURA.white },
+  textMuted: { color: AURA.gray500 },
 
   header: { marginBottom: 24 },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -1112,32 +1176,32 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     letterSpacing: -0.5,
     marginBottom: 6,
   },
-  headerSubtitle: { fontSize: 15, color: '#666', fontWeight: '500' },
+  headerSubtitle: { fontSize: 15, color: AURA.gray500, fontWeight: '500' },
 
   infoCard: {
     borderRadius: 24,
     overflow: 'hidden',
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.15)',
+    borderColor: 'rgba(99,102,241,0.15)',
   },
-  infoCardDark: { borderColor: 'rgba(102,126,234,0.2)' },
+  infoCardDark: { borderColor: 'rgba(99,102,241,0.2)' },
   infoBlur: { padding: 24, alignItems: 'center' },
   infoIcon: { marginBottom: 12 },
   infoTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     marginBottom: 8,
     textAlign: 'center',
   },
   infoText: {
     fontSize: 14,
-    color: '#666',
+    color: AURA.gray500,
     textAlign: 'center',
     lineHeight: 20,
     fontWeight: '500',
@@ -1154,8 +1218,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.5)',
   },
   statPillDark: {
-    backgroundColor: 'rgba(30,30,40,0.5)',
-    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(41,37,36,0.5)',
+    borderColor: AURA.darkBorder,
   },
   statPillIcon: {
     width: 36,
@@ -1165,14 +1229,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 8,
   },
-  statPillValue: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', textAlign: 'center' },
-  statPillLabel: { fontSize: 12, color: '#888', fontWeight: '600', marginTop: 2 },
+  statPillValue: { fontSize: 20, fontWeight: '800', color: AURA.gray900, textAlign: 'center' },
+  statPillLabel: { fontSize: 12, color: AURA.gray500, fontWeight: '600', marginTop: 2 },
 
   actionsSection: { marginBottom: 24 },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#888',
+    color: AURA.gray500,
     marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -1190,7 +1254,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
   },
-  actionCardDark: { borderColor: 'rgba(255,255,255,0.08)' },
+  actionCardDark: { borderColor: AURA.darkBorder },
   actionCardGradient: { flexDirection: 'row', alignItems: 'center', padding: 20, gap: 16 },
   actionIcon: {
     width: 52,
@@ -1200,8 +1264,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionText: { flex: 1 },
-  actionTitle: { fontSize: 17, fontWeight: '700', color: '#1a1a1a', marginBottom: 4 },
-  actionSubtitle: { fontSize: 13, color: '#888', fontWeight: '500' },
+  actionTitle: { fontSize: 17, fontWeight: '700', color: AURA.gray900, marginBottom: 4 },
+  actionSubtitle: { fontSize: 13, color: AURA.gray500, fontWeight: '500' },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginRight: 8 },
   badgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
 
@@ -1217,8 +1281,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
   },
   localBackupItemDark: {
-    backgroundColor: 'rgba(30,30,40,0.4)',
-    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(41,37,36,0.4)',
+    borderColor: AURA.darkBorder,
   },
   localBackupIcon: {
     width: 44,
@@ -1229,10 +1293,10 @@ const styles = StyleSheet.create({
     marginRight: 14,
   },
   localBackupInfo: { flex: 1 },
-  localBackupName: { fontSize: 15, fontWeight: '700', color: '#1a1a1a', marginBottom: 2 },
-  localBackupMeta: { fontSize: 12, color: '#888', fontWeight: '500' },
+  localBackupName: { fontSize: 15, fontWeight: '700', color: AURA.gray900, marginBottom: 2 },
+  localBackupMeta: { fontSize: 12, color: AURA.gray500, fontWeight: '500' },
   localBackupActions: { flexDirection: 'row', gap: 8 },
-  localBackupAction: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.03)' },
+  localBackupAction: { padding: 8, borderRadius: 8 },
 
   emptyState: {
     alignItems: 'center',
@@ -1240,11 +1304,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.5)',
     borderRadius: 16,
   },
-  emptyStateDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
-  emptyStateText: { marginTop: 12, fontSize: 14, color: '#888', fontWeight: '600' },
-  moreBackupsText: { textAlign: 'center', fontSize: 13, color: '#888', marginTop: 8, fontWeight: '500' },
+  emptyStateDark: { backgroundColor: 'rgba(41,37,36,0.4)' },
+  emptyStateText: { marginTop: 12, fontSize: 14, color: AURA.gray500, fontWeight: '600' },
+  moreBackupsText: { textAlign: 'center', fontSize: 13, color: AURA.gray500, marginTop: 8, fontWeight: '500' },
   clearAllButton: { alignItems: 'center', padding: 14, marginTop: 8 },
-  clearAllText: { color: COLORS.danger, fontSize: 14, fontWeight: '600' },
+  clearAllText: { color: AURA.danger, fontSize: 14, fontWeight: '600' },
 
   autoBackupSection: { marginBottom: 24 },
   lastBackup: {
@@ -1254,17 +1318,17 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 16,
     padding: 12,
-    backgroundColor: 'rgba(67,233,123,0.1)',
+    backgroundColor: `${AURA.success}10`,
     borderRadius: 14,
   },
-  lastBackupText: { fontSize: 14, color: '#43e97b', fontWeight: '600' },
-  note: { fontSize: 13, color: '#888', textAlign: 'center', fontWeight: '500', lineHeight: 18 },
+  lastBackupText: { fontSize: 14, color: AURA.success, fontWeight: '600' },
+  note: { fontSize: 13, color: AURA.gray500, textAlign: 'center', fontWeight: '500', lineHeight: 18 },
 
   progressOverlay: { ...StyleSheet.absoluteFill, zIndex: 1000 },
   progressBlur: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   progressContent: { width: '80%', alignItems: 'center', padding: 32 },
   progressMessage: {
-    color: '#fff',
+    color: AURA.white,
     fontSize: 16,
     fontWeight: '600',
     marginTop: 20,
@@ -1278,8 +1342,8 @@ const styles = StyleSheet.create({
     marginTop: 20,
     overflow: 'hidden',
   },
-  progressBar: { height: '100%', backgroundColor: '#43e97b', borderRadius: 3 },
-  progressPercent: { color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 12 },
+  progressBar: { height: '100%', backgroundColor: AURA.success, borderRadius: 3 },
+  progressPercent: { color: AURA.white, fontSize: 14, fontWeight: '700', marginTop: 12 },
 
   modalOverlay: {
     flex: 1,
@@ -1297,35 +1361,35 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.5)',
   },
   modalContentDark: {
-    backgroundColor: 'rgba(30,30,40,0.95)',
+    backgroundColor: 'rgba(41,37,36,0.95)',
     borderColor: 'rgba(255,255,255,0.1)',
   },
   modalHeader: { alignItems: 'center', marginBottom: 24 },
   modalTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: AURA.gray900,
     marginTop: 12,
     marginBottom: 4,
   },
-  modalSubtitle: { fontSize: 14, color: '#888', textAlign: 'center', fontWeight: '500' },
+  modalSubtitle: { fontSize: 14, color: AURA.gray500, textAlign: 'center', fontWeight: '500' },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(102,126,234,0.08)',
+    backgroundColor: 'rgba(99,102,241,0.08)',
     borderRadius: 16,
     paddingHorizontal: 16,
     marginBottom: 16,
     height: 56,
     borderWidth: 1,
-    borderColor: 'rgba(102,126,234,0.15)',
+    borderColor: 'rgba(99,102,241,0.15)',
   },
   inputContainerDark: {
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderColor: 'rgba(255,255,255,0.1)',
   },
   inputIcon: { marginRight: 12 },
-  input: { flex: 1, fontSize: 16, fontWeight: '500', color: '#1a1a1a' },
+  input: { flex: 1, fontSize: 16, fontWeight: '500', color: AURA.gray900 },
   modalButtons: { flexDirection: 'row', gap: 12, marginTop: 8 },
   modalCancelButton: {
     flex: 1,
@@ -1335,7 +1399,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalCancelText: { fontSize: 15, fontWeight: '700', color: '#888' },
+  modalCancelText: { fontSize: 15, fontWeight: '700', color: AURA.gray500 },
   modalConfirmButton: { flex: 2, borderRadius: 16, overflow: 'hidden' },
   modalConfirmGradient: {
     paddingVertical: 14,
@@ -1343,7 +1407,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 50,
   },
-  modalConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  modalConfirmText: { fontSize: 15, fontWeight: '700', color: AURA.white },
 
   settingRow: {
     flexDirection: 'row',
@@ -1354,10 +1418,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 12,
   },
-  settingRowDark: { backgroundColor: 'rgba(30,30,40,0.4)' },
+  settingRowDark: { backgroundColor: 'rgba(41,37,36,0.4)' },
   settingInfo: { flex: 1, marginRight: 12 },
-  settingLabel: { fontSize: 15, fontWeight: '700', color: '#1a1a1a', marginBottom: 2 },
-  settingDesc: { fontSize: 12, color: '#888', fontWeight: '500' },
+  settingLabel: { fontSize: 15, fontWeight: '700', color: AURA.gray900, marginBottom: 2 },
+  settingDesc: { fontSize: 12, color: AURA.gray500, fontWeight: '500' },
   frequencyButtons: { flexDirection: 'row', gap: 8 },
   freqButton: {
     paddingHorizontal: 16,
@@ -1365,8 +1429,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.05)',
   },
-  freqButtonText: { fontSize: 13, fontWeight: '600', color: '#888' },
-  freqButtonTextActive: { color: '#fff' },
+  freqButtonText: { fontSize: 13, fontWeight: '600', color: AURA.gray500 },
+  freqButtonTextActive: { color: AURA.white },
   keepCountButtons: { flexDirection: 'row', gap: 8 },
   keepButton: {
     width: 40,
@@ -1376,6 +1440,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  keepButtonText: { fontSize: 14, fontWeight: '700', color: '#888' },
-  keepButtonTextActive: { color: '#fff' },
+  keepButtonText: { fontSize: 14, fontWeight: '700', color: AURA.gray500 },
+  keepButtonTextActive: { color: AURA.white },
 });
