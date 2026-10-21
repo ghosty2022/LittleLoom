@@ -1,47 +1,142 @@
-
-
-
-
-import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
-
-import { useCustomization } from '../../hooks/useCustomization';
-import { Dimensions, Modal, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Dimensions,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  type ViewToken,
+} from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeIn,
-  FadeInUp,
   FadeInDown,
   FadeInRight,
-  useSharedValue,
-  useAnimatedStyle,
-  interpolate,
-  Extrapolation,
+  FadeInUp,
+  FadeOut,
   Layout,
+  interpolate,
+  Extrapolate,
   useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withSpring,
 } from 'react-native-reanimated';
-import { format, isSameDay, differenceInHours, differenceInDays, differenceInMonths, parseISO, isValid, addMonths, startOfDay } from 'date-fns';
+import * as Haptics from 'expo-haptics';
+import {
+  format,
+  isSameDay,
+  differenceInHours,
+  differenceInMonths,
+  parseISO,
+  isValid,
+  addMonths,
+  startOfDay,
+} from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '@/types/navigation';
 
-import { useTracker } from '@/hooks/useTrackerContext';
-import { useBaby } from '@/context/BabyContext';
-import { TrackerEntry, UnifiedTrackerConfig } from '@/types/trackers';
-import { SafeAvatar } from '@/components/SafeAvatar';
-import { useSweetAlert } from '@/components/SweetAlert';
-import { TimelinePicker } from '@/components/trackers/TimelinePicker';
+import { useCustomization } from '../../hooks/useCustomization';
+import { useTracker } from '../../hooks/useTrackerContext';
+import { useBaby } from '../../context/BabyContext';
+import { TrackerEntry, UnifiedTrackerConfig } from '../../types/trackers';
+import { SafeAvatar } from '../../components/SafeAvatar';
+import { useSweetAlert } from '../../components/SweetAlert';
+import { TimelinePicker } from '../../components/trackers/TimelinePicker';
+import { usePredictiveReminders, PredictiveReminder } from '../../hooks/usePredictiveReminders';
+import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
+import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
+import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
+import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
+import { TimelineCorrelation } from '../../components/trackers/TrackerCorrelationBadge';
+import type { RootStackParamList } from '../../types/navigation';
 
-import { usePredictiveReminders, PredictiveReminder } from '@/hooks/usePredictiveReminders';
-import { useGrowthIntelligence } from '@/hooks/useGrowthIntelligence';
-import { useTrackerAchievements } from '@/hooks/useTrackerAchievements';
-import { useTrackerProgressive } from '@/hooks/useTrackerProgressive';
-import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';
-import { TimelineCorrelation } from '@/components/trackers/TrackerCorrelationBadge';
+const { width: SCREEN_W } = Dimensions.get('window');
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
+const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
+const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
+
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  primaryGhost: 'rgba(99,102,241,0.08)',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32, '4xl': 40 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  text: {
+    xs: { size: 11, line: 14, weight: '500' as const },
+    sm: { size: 13, line: 18, weight: '500' as const },
+    base: { size: 15, line: 22, weight: '400' as const },
+    lg: { size: 17, line: 24, weight: '600' as const },
+    xl: { size: 20, line: 28, weight: '700' as const },
+    '2xl': { size: 26, line: 34, weight: '800' as const },
+  },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
+};
+
+const TRACKER_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string; label: string; emoji: string }> = {
+  potty: { icon: 'water-outline', color: '#06b6d4', label: 'Potty', emoji: '💧' },
+  feed: { icon: 'restaurant-outline', color: '#f59e0b', label: 'Feeding', emoji: '🍼' },
+  sleep: { icon: 'moon-outline', color: '#8b5cf6', label: 'Sleep', emoji: '😴' },
+  growth: { icon: 'trending-up-outline', color: '#10b981', label: 'Growth', emoji: '📏' },
+  medication: { icon: 'medical-outline', color: '#ef4444', label: 'Medication', emoji: '💊' },
+  milestone: { icon: 'trophy-outline', color: '#fbbf24', label: 'Milestone', emoji: '🏆' },
+  diaper: { icon: 'shirt-outline', color: '#3b82f6', label: 'Diaper', emoji: '👶' },
+  note: { icon: 'document-text-outline', color: '#6b7280', label: 'Note', emoji: '📝' },
+  pump: { icon: 'swap-horizontal-outline', color: '#8b5cf6', label: 'Pump', emoji: '🔄' },
+  pumping: { icon: 'swap-horizontal-outline', color: '#8b5cf6', label: 'Pumping', emoji: '🔄' },
+  bath: { icon: 'water-outline', color: '#3b82f6', label: 'Bath', emoji: '🛁' },
+  play: { icon: 'game-controller-outline', color: '#ec4899', label: 'Play', emoji: '🎮' },
+  walk: { icon: 'walk-outline', color: '#10b981', label: 'Walk', emoji: '🚶' },
+  temperature: { icon: 'thermometer-outline', color: '#f97316', label: 'Temp', emoji: '🌡️' },
+  symptom: { icon: 'pulse-outline', color: '#ef4444', label: 'Symptom', emoji: '🤒' },
+  tummy_time: { icon: 'fitness-outline', color: '#10b981', label: 'Tummy Time', emoji: '🤸' },
+  reading: { icon: 'book-outline', color: '#6366f1', label: 'Reading', emoji: '📚' },
+  default: { icon: 'ellipse-outline', color: '#9ca3af', label: 'Activity', emoji: '•' },
+};
+
+const getTrackerCfg = (type?: string) => TRACKER_CONFIG[type || ''] || TRACKER_CONFIG.default;
 
 type TimelineScreenRouteProp = RouteProp<RootStackParamList, 'Timeline'>;
 type TimelineScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -55,137 +150,38 @@ interface SmartSection {
   component: React.ReactNode;
 }
 
-
-
-const SPACING = {
-  xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, xxxxl: 48,
-};
-
-const RADIUS = {
-  xs: 6, sm: 10, md: 14, lg: 18, xl: 22, full: 999,
-};
-
-const SHADOW = {
-  none: { shadowOpacity: 0, elevation: 0 },
-  xs: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
-  sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
-  md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4 },
-  lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.07, shadowRadius: 24, elevation: 6 },
-  xl: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.1, shadowRadius: 32, elevation: 10 },
-};
-
-
-
 const safeArray = <T,>(arr: T[] | undefined | null): T[] => arr || [];
 const safeString = (s: string | undefined | null): string => s || '';
 const safeNumber = (n: number | undefined | null, fallback = 0): number => {
   if (n === undefined || n === null || Number.isNaN(n) || !Number.isFinite(n)) return fallback;
   return n;
 };
-
 const safeParseDate = (d?: string | null): Date | null => {
   if (!d) return null;
   try {
     const p = parseISO(d);
     return isValid(p) ? p : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 };
-
 const safeDiffMonths = (a: Date | string, b: Date | string): number => {
   const left = safeParseDate(typeof a === 'string' ? a : undefined) || (a instanceof Date ? a : null);
   const right = safeParseDate(typeof b === 'string' ? b : undefined) || (b instanceof Date ? b : null);
   if (!left || !right) return 0;
   return Math.max(0, differenceInMonths(left, right));
 };
-
-const safeDiffDays = (a: Date | string, b: Date | string): number => {
-  const left = safeParseDate(typeof a === 'string' ? a : undefined) || (a instanceof Date ? a : null);
-  const right = safeParseDate(typeof b === 'string' ? b : undefined) || (b instanceof Date ? b : null);
-  if (!left || !right) return 0;
-  return differenceInDays(left, right);
-};
-
-const safeFmt = (d: Date | string | null | undefined, fmt: string): string => {
-  const p = safeParseDate(typeof d === 'string' ? d : undefined) || (d instanceof Date ? d : null);
-  if (!p) return '—';
-  try { return format(p, fmt); } catch { return '—'; }
-};
-
-
-
-const useHubTheme = () => {
-  const { isDark, colors, fullThemeColors } = useCustomization();
-
-  return useMemo(() => ({
-    primary: colors?.primary || '#667eea',
-    secondary: colors?.secondary || '#764ba2',
-    isDark: !!isDark,
-    bgColors: isDark ? ['#0a0a1a', '#12122a'] : ['#f8faff', '#eef2ff'],
-    statusBar: isDark ? 'light-content' : 'dark-content' as const,
-    blur: isDark ? 'dark' : 'light' as const,
-    text: {
-      primary: fullThemeColors?.text || (isDark ? '#ffffff' : '#1a1a1a'),
-      secondary: fullThemeColors?.textSecondary || (isDark ? '#94a3b8' : '#64748b'),
-      muted: fullThemeColors?.textMuted || (isDark ? '#64748b' : '#94a3b8'),
-    },
-    surface: {
-      bg: fullThemeColors?.surface || (isDark ? 'rgba(30,30,45,0.8)' : 'rgba(255,255,255,0.9)'),
-      card: fullThemeColors?.card || (isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)'),
-      border: fullThemeColors?.border || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
-    },
-    borderRadius: fullThemeColors?.borderRadius || 12,
-  }), [isDark, colors, fullThemeColors]);
-};
-
-
-
 const getDateTitle = (timestamp: number): string => {
   const date = new Date(timestamp);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-
   if (date >= today) return 'Today';
   if (date >= yesterday) return 'Yesterday';
-
   const days = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  if (days < 7) {
-    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return daysOfWeek[date.getDay()] ?? 'Unknown';
-  }
+  if (days < 7) return format(date, 'EEEE');
   return format(date, 'MMM d, yyyy');
-};
-
-const getTrackerIcon = (trackerId: string): string => {
-  const iconMap: Record<string, string> = {
-    potty: 'water-outline',
-    feed: 'nutrition-outline',
-    sleep: 'moon-outline',
-    growth: 'trending-up-outline',
-    milestone: 'trophy-outline',
-    medication: 'medical-outline',
-    diaper: 'shirt-outline',
-    pumping: 'swap-horizontal-outline',
-    temperature: 'thermometer-outline',
-    symptom: 'pulse-outline',
-    note: 'document-text-outline',
-    play: 'game-controller-outline',
-    reading: 'book-outline',
-    tummy_time: 'fitness-outline',
-    mood: 'happy-outline',
-  };
-  return iconMap[trackerId] || 'cube-outline';
-};
-
-const getPriorityColor = (priority: string, theme: any) => {
-  switch (priority) {
-    case 'urgent': return '#ef4444';
-    case 'high': return '#f59e0b';
-    case 'normal': return theme.primary;
-    case 'low': return theme.text.muted;
-    default: return theme.primary;
-  }
 };
 
 const getRarityGradient = (rarity: string): [string, string] => {
@@ -197,420 +193,421 @@ const getRarityGradient = (rarity: string): [string, string] => {
   }
 };
 
-
-
-const GlassCard = ({ children, style, onPress, active = false, shadow = 'md' }: { 
-  children: React.ReactNode; 
-  style?: any; 
-  onPress?: () => void; 
-  active?: boolean;
-  shadow?: keyof typeof SHADOW;
-}) => {
-  const theme = useHubTheme();
-  const Wrapper = onPress ? TouchableOpacity : View;
-  return (
-    <Wrapper 
-      onPress={onPress} 
-      activeOpacity={onPress ? 0.85 : 1} 
-      style={[
-        styles.glassCard,
-        SHADOW[shadow],
-        active && { borderColor: theme.primary, borderWidth: 2 },
-        style
-      ]}
-    >
-      <LinearGradient
-        colors={theme.isDark 
-          ? ['rgba(45,45,60,0.9)', 'rgba(35,35,50,0.7)'] 
-          : ['rgba(255,255,255,0.95)', 'rgba(250,250,255,0.8)']}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <View style={[styles.glassBorder, { 
-        backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' 
-      }]} />
-      <View style={styles.glassContent}>{children}</View>
-    </Wrapper>
-  );
-};
-
-
-
-const SectionHeader = ({ 
-  title, 
-  subtitle, 
-  action, 
-  actionLabel,
-  icon,
-}: { 
-  title: string; 
-  subtitle?: string; 
-  action?: () => void; 
-  actionLabel?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-}) => {
-  const theme = useHubTheme();
-  return (
-    <View style={styles.sectionHeader}>
-      <View style={styles.sectionHeaderLeft}>
-        {icon && (
-          <View style={[styles.sectionHeaderIcon, { backgroundColor: `${theme.primary}12` }]}>
-            <Ionicons name={icon} size={16} color={theme.primary} />
-          </View>
-        )}
-        <View>
-          <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>{title}</Text>
-          {subtitle && (
-            <Text style={[styles.sectionSubtitle, { color: theme.text.muted }]}>{subtitle}</Text>
-          )}
-        </View>
-      </View>
-      {action && (
-        <TouchableOpacity onPress={action} style={styles.sectionAction} activeOpacity={0.7}>
-          <Text style={[styles.sectionActionText, { color: theme.primary }]}>
-            {actionLabel || 'See All'}
-          </Text>
-          <Ionicons name="chevron-forward" size={14} color={theme.primary} />
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-};
-
-
-
-const TabBar = ({ tabs, activeTab, onChange }: { 
-  tabs: { key: TimelineTab; label: string; icon: keyof typeof Ionicons.glyphMap }[]; 
-  activeTab: TimelineTab; 
-  onChange: (t: TimelineTab) => void;
-}) => {
-  const theme = useHubTheme();
-  return (
-    <View style={[styles.tabBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.key;
-        return (
-          <TouchableOpacity
-            key={tab.key}
-            onPress={() => onChange(tab.key)}
-            style={[
-              styles.tabItem,
-              isActive && { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.12)' : '#fff', ...SHADOW.sm }
-            ]}
-          >
-            <Ionicons name={tab.icon} size={16} color={isActive ? theme.primary : theme.text.muted} />
-            <Text style={[
-              styles.tabLabel,
-              { color: isActive ? theme.primary : theme.text.muted },
-              isActive && { fontWeight: '700' }
-            ]}>
-              {tab.label}
+/* ════════════════════════════════════════════════════════════
+   GradientText (same aura as Home/Community)
+   ════════════════════════════════════════════════════════════ */
+const GradientText = React.memo(
+  ({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'], ...props }: {
+    children: React.ReactNode;
+    style?: any;
+    colors?: string[];
+    [k: string]: any;
+  }) => {
+    const raw = typeof children === 'string' ? children : String(children ?? '');
+    const letters = raw.split('');
+    const interpolateColor = (c1: string, c2: string, t: number) => {
+      const r1 = parseInt(c1.slice(1, 3), 16);
+      const g1 = parseInt(c1.slice(3, 5), 16);
+      const b1 = parseInt(c1.slice(5, 7), 16);
+      const r2 = parseInt(c2.slice(1, 3), 16);
+      const g2 = parseInt(c2.slice(3, 5), 16);
+      const b2 = parseInt(c2.slice(5, 7), 16);
+      const r = Math.round(r1 + (r2 - r1) * t);
+      const g = Math.round(g1 + (g2 - g1) * t);
+      const b = Math.round(b1 + (b2 - b1) * t);
+      return `rgb(${r}, ${g}, ${b})`;
+    };
+    return (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {letters.map((letter, index) => {
+          const position = index / Math.max(letters.length - 1, 1);
+          const colorIndex = position * (colors.length - 1);
+          const lowerIndex = Math.floor(colorIndex);
+          const upperIndex = Math.min(lowerIndex + 1, colors.length - 1);
+          const fraction = colorIndex - lowerIndex;
+          const startColor = colors[lowerIndex] || colors[0];
+          const endColor = colors[upperIndex] || colors[colors.length - 1];
+          const color = interpolateColor(startColor, endColor, fraction);
+          return (
+            <Text key={index} style={[style, { color }]} {...props}>
+              {letter}
             </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-};
-
-
-
-const AIPatternPredictor = ({ entries, theme, onPress }: { entries: TrackerEntry[]; theme: any; onPress: () => void }) => {
-  const predictions = useMemo(() => {
-    if (!entries.length) return [];
-    return [
-      { pattern: 'Next Feed', predictedTime: '2:30 PM', confidence: 85, basedOn: '3-day pattern', emoji: '🍼', color: '#f59e0b' },
-      { pattern: 'Nap Window', predictedTime: '3:45 PM', confidence: 72, basedOn: 'Sleep cycles', emoji: '😴', color: '#8b5cf6' },
-      { pattern: 'Diaper Change', predictedTime: '4:15 PM', confidence: 68, basedOn: 'Frequency analysis', emoji: '👶', color: '#10b981' },
-    ];
-  }, [entries]);
-
-  if (!predictions.length) return null;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <GlassCard onPress={onPress}>
-        <View style={styles.predictorHeader}>
-          <View style={[styles.predictorIconBg, { backgroundColor: `${theme.primary}15` }]}>
-            <Ionicons name="sparkles" size={20} color={theme.primary} />
-          </View>
-          <View style={styles.predictorTitleWrap}>
-            <Text style={[styles.predictorTitle, { color: theme.text.primary }]}>AI Pattern Predictor</Text>
-            <Text style={[styles.predictorSubtitle, { color: theme.text.muted }]}>Based on your tracking history</Text>
-          </View>
-        </View>
-        <View style={styles.predictorList}>
-          {predictions.map((pred, i) => (
-            <View key={i} style={[styles.predictorItem, i < predictions.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.surface.border }]}>
-              <View style={styles.predictorLeft}>
-                <Text style={styles.predictorEmoji}>{pred.emoji}</Text>
-                <View>
-                  <Text style={[styles.predictorMilestone, { color: theme.text.primary }]}>{pred.pattern}</Text>
-                  <Text style={[styles.predictorCategory, { color: theme.text.muted }]}>{pred.basedOn}</Text>
-                </View>
-              </View>
-              <View style={styles.predictorRight}>
-                <View style={styles.predictorBarBg}>
-                  <View style={[styles.predictorBarFill, { width: `${pred.confidence}%`, backgroundColor: pred.confidence > 70 ? '#10b981' : pred.confidence > 50 ? '#f59e0b' : '#ef4444' }]} />
-                </View>
-                <Text style={[styles.predictorConfidence, { color: theme.text.secondary }]}>{pred.confidence}% confidence</Text>
-                <Text style={[styles.predictorAge, { color: pred.color }]}>~{pred.predictedTime}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-};
-
-
-
-const ActivityBalanceRadar = ({ entries, theme }: { entries: TrackerEntry[]; theme: any }) => {
-  const dimensions = useMemo(() => {
-    const counts: Record<string, number> = {};
-    entries.forEach(e => { counts[e.trackerId] = (counts[e.trackerId] || 0) + 1; });
-    const total = entries.length || 1;
-    return [
-      { key: 'feed', label: 'Feeding', color: '#f59e0b', value: Math.round((counts['feed'] || 0) / total * 100) },
-      { key: 'sleep', label: 'Sleep', color: '#8b5cf6', value: Math.round((counts['sleep'] || 0) / total * 100) },
-      { key: 'diaper', label: 'Diaper', color: '#10b981', value: Math.round((counts['diaper'] || 0) / total * 100) },
-      { key: 'milestone', label: 'Milestone', color: '#ec4899', value: Math.round((counts['milestone'] || 0) / total * 100) },
-      { key: 'growth', label: 'Growth', color: '#6366f1', value: Math.round((counts['growth'] || 0) / total * 100) },
-    ];
-  }, [entries]);
-
-  const size = 140;
-  const center = size / 2;
-  const radius = size * 0.38;
-  const angleStep = (Math.PI * 2) / dimensions.length;
-
-  return (
-    <Animated.View entering={FadeInUp.delay(250).springify()}>
-      <GlassCard>
-        <View style={styles.radarHeader}>
-          <Text style={[styles.radarTitle, { color: theme.text.primary }]}>Activity Balance</Text>
-          <Text style={[styles.radarSubtitle, { color: theme.text.muted }]}>Last 30 days distribution</Text>
-        </View>
-        <View style={styles.radarContainer}>
-          <View style={[styles.radarCanvas, { width: size, height: size }]}>
-            {[0.25, 0.5, 0.75, 1].map((r, i) => (
-              <View key={i} style={[styles.radarRing, { width: radius * 2 * r, height: radius * 2 * r, borderRadius: radius * r, borderColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', left: center - radius * r, top: center - radius * r }]} />
-            ))}
-            {dimensions.map((_, i) => {
-              const angle = i * angleStep - Math.PI / 2;
-              return <View key={`axis-${i}`} style={[styles.radarAxis, { left: center, top: center, width: radius, transform: [{ rotate: `${angle * 180 / Math.PI}deg` }], backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]} />;
-            })}
-            <View style={StyleSheet.absoluteFill}>
-              {dimensions.map((d, i) => {
-                const angle = i * angleStep - Math.PI / 2;
-                const r = (d.value / 100) * radius;
-                const x = center + Math.cos(angle) * r;
-                const y = center + Math.sin(angle) * r;
-                return <View key={`pt-${i}`} style={[styles.radarPoint, { left: x - 4, top: y - 4, backgroundColor: d.color }]} />;
-              })}
-            </View>
-          </View>
-          <View style={styles.radarLegend}>
-            {dimensions.map((d, i) => (
-              <View key={d.key} style={styles.radarLegendItem}>
-                <View style={[styles.radarLegendDot, { backgroundColor: d.color }]} />
-                <Text style={[styles.radarLegendLabel, { color: theme.text.secondary }]}>{d.label}</Text>
-                <Text style={[styles.radarLegendValue, { color: theme.text.primary }]}>{d.value}%</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-};
-
-// ─── Weekly Heatmap ────────────────────────────────────────────────────────
-
-const WeeklyHeatmap = ({ entries, theme }: { entries: TrackerEntry[]; theme: any }) => {
-  const heatmapData = useMemo(() => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const now = new Date();
-    return days.map((day, i) => {
-      const d = new Date(now);
-      d.setDate(d.getDate() - (6 - i));
-      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-      const dayEnd = dayStart + 86400000;
-      const count = entries.filter(e => e.timestamp >= dayStart && e.timestamp < dayEnd).length;
-      return { day, count, date: format(d, 'MMM d') };
-    });
-  }, [entries]);
-
-  const maxCount = Math.max(...heatmapData.map(d => d.count), 1);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(300).springify()}>
-      <GlassCard>
-        <View style={styles.heatmapHeader}>
-          <Text style={[styles.heatmapTitle, { color: theme.text.primary }]}>Weekly Activity</Text>
-          <View style={styles.heatmapLegend}>
-            <View style={[styles.heatmapLegendDot, { backgroundColor: '#10b981' }]} />
-            <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>High</Text>
-            <View style={[styles.heatmapLegendDot, { backgroundColor: theme.primary }]} />
-            <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>Normal</Text>
-            <View style={[styles.heatmapLegendDot, { backgroundColor: '#ef4444' }]} />
-            <Text style={[styles.heatmapLegendText, { color: theme.text.muted }]}>Low</Text>
-          </View>
-        </View>
-        <View style={styles.heatmapGrid}>
-          {heatmapData.map((day, i) => (
-            <View key={i} style={styles.heatmapCell}>
-              <View style={[styles.heatmapBlock, { backgroundColor: `${theme.primary}${Math.round((day.count / maxCount) * 40 + 10).toString(16).padStart(2, '0')}`, borderColor: theme.primary }]}>
-                <Text style={[styles.heatmapValue, { color: theme.text.primary }]}>{day.count}</Text>
-              </View>
-              <Text style={[styles.heatmapWeek, { color: theme.text.muted }]}>{day.day}</Text>
-              <Text style={[styles.heatmapDate, { color: theme.text.muted }]}>{day.date}</Text>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-};
-
-// ─── Health Trend Correlation ──────────────────────────────────────────────
-
-const HealthTrendCorrelation = ({ entries, theme }: { entries: TrackerEntry[]; theme: any }) => {
-  const correlations = useMemo(() => {
-    const feedCount = entries.filter(e => e.trackerId === 'feed').length;
-    const sleepCount = entries.filter(e => e.trackerId === 'sleep').length;
-    const diaperCount = entries.filter(e => e.trackerId === 'diaper').length;
-    const total = entries.length || 1;
-
-    return [
-      { label: 'Feeding Consistency', value: feedCount > 0 ? Math.min(95, Math.round((feedCount / 7) * 100)) : 0, icon: '🍼', color: '#f59e0b', detail: `${feedCount} feeds logged` },
-      { label: 'Sleep Tracking', value: sleepCount > 0 ? Math.min(95, Math.round((sleepCount / 7) * 100)) : 0, icon: '😴', color: '#8b5cf6', detail: `${sleepCount} sleeps logged` },
-      { label: 'Care Completeness', value: Math.min(100, Math.round(((feedCount + sleepCount + diaperCount) / total) * 100)), icon: '💚', color: '#10b981', detail: 'Overall care coverage' },
-    ];
-  }, [entries]);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(350).springify()}>
-      <GlassCard>
-        <View style={styles.correlationHeader}>
-          <Text style={[styles.correlationTitle, { color: theme.text.primary }]}>Health Trends</Text>
-          <Text style={[styles.correlationSubtitle, { color: theme.text.muted }]}>Tracking completeness</Text>
-        </View>
-        <View style={styles.correlationList}>
-          {correlations.map((corr, i) => (
-            <View key={i} style={styles.correlationItem}>
-              <View style={styles.correlationLeft}>
-                <Text style={styles.correlationIcon}>{corr.icon}</Text>
-                <View>
-                  <Text style={[styles.correlationLabel, { color: theme.text.primary }]}>{corr.label}</Text>
-                  <Text style={[styles.correlationDetail, { color: theme.text.muted }]}>{corr.detail}</Text>
-                </View>
-              </View>
-              <View style={styles.correlationRight}>
-                <View style={[styles.correlationBarBg, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
-                  <View style={[styles.correlationBarFill, { width: `${corr.value}%`, backgroundColor: corr.color }]} />
-                </View>
-                <Text style={[styles.correlationValue, { color: corr.color }]}>{corr.value}%</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </GlassCard>
-    </Animated.View>
-  );
-};
-
-// ─── Quick Action Suggestions ─────────────────────────────────────────────
-
-const QuickActionSuggestions = ({ theme, onPress, entries }: { theme: any; onPress: (action: string) => void; entries: TrackerEntry[] }) => {
-  const getLastEntryTime = (trackerId: string): string => {
-    const lastEntry = entries.filter(e => e?.trackerId === trackerId).sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0))[0];
-    if (!lastEntry?.timestamp) return 'Not yet today';
-    const diff = Date.now() - lastEntry.timestamp;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
-  };
-
-  const suggestions = useMemo(() => [
-    { id: 'feed', title: 'Log Feed', icon: 'nutrition-outline', color: '#f59e0b', getDesc: () => getLastEntryTime('feed') },
-    { id: 'sleep', title: 'Log Sleep', icon: 'moon-outline', color: '#8b5cf6', getDesc: () => getLastEntryTime('sleep') },
-    { id: 'diaper', title: 'Log Diaper', icon: 'shirt-outline', color: '#10b981', getDesc: () => getLastEntryTime('diaper') },
-    { id: 'milestone', title: 'Milestone', icon: 'trophy-outline', color: '#ec4899', getDesc: () => 'Record win' },
-  ], [entries]);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(400).springify()}>
-      <View style={styles.suggestionsHeader}>
-        <Text style={[styles.suggestionsTitle, { color: theme.text.primary }]}>Quick Actions</Text>
-        <Text style={[styles.suggestionsSubtitle, { color: theme.text.muted }]}>Tap to log instantly</Text>
+          );
+        })}
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionsScroll}>
-        {suggestions.map((suggestion) => (
-          <TouchableOpacity key={suggestion.id} onPress={() => onPress(suggestion.id)} style={styles.suggestionCard} activeOpacity={0.7}>
-            <View style={[styles.suggestionIconCircle, { borderColor: suggestion.color + '40' }]}>
-              <Ionicons name={suggestion.icon as any} size={24} color={suggestion.color} />
+    );
+  },
+);
+
+/* ════════════════════════════════════════════════════════════
+   PressableScale — springy haptic touch (matches Home/More)
+   ════════════════════════════════════════════════════════════ */
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+
+const PressableScale = React.memo<{
+  children: React.ReactNode;
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: any;
+  activeScale?: number;
+  haptic?: 'light' | 'medium' | 'heavy' | 'success' | 'warning';
+}>(({ children, onPress, disabled = false, style, activeScale = 0.96, haptic = 'light' }) => {
+  const scale = useSharedValue(1);
+  const { triggerHaptic, hapticFeedback } = useCustomization();
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const onPressIn = useCallback(() => { scale.value = withTiming(activeScale, { duration: 80 }); }, [activeScale, scale]);
+  const onPressOut = useCallback(() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }, [scale]);
+  const handlePress = useCallback(() => {
+    if (disabled) return;
+    if (hapticFeedback) triggerHaptic(haptic).catch(() => {});
+    onPress?.();
+  }, [disabled, hapticFeedback, triggerHaptic, haptic, onPress]);
+  return (
+    <AnimatedTouchable
+      style={[style, animatedStyle]}
+      onPress={handlePress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      activeOpacity={disabled ? 1 : 0.8}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+/* ════════════════════════════════════════════════════════════
+   PULSE HEADER — replaces the old hero card
+   Floating glass capsule w/ animated gradient ring, live counts,
+   mini sparkline + insight ribbon
+   ════════════════════════════════════════════════════════════ */
+const PulseHeader = React.memo<{
+  isDark: boolean;
+  currentBaby: any;
+  todayCount: number;
+  weekCount: number;
+  streak: number;
+  weekSpark: number[];
+  onBabyPress: () => void;
+  onAchievementsPress: () => void;
+  onCalendarPress: () => void;
+  onAddPress: () => void;
+}>(({ isDark, currentBaby, todayCount, weekCount, streak, weekSpark, onBabyPress, onAchievementsPress, onCalendarPress, onAddPress }) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const auraGlow = useSharedValue(0.4);
+
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 9000 }), -1, false);
+    auraGlow.value = withRepeat(withSequence(withTiming(0.85, { duration: 1800 }), withTiming(0.4, { duration: 1800 })), -1, true);
+  }, [pulse, rotate, auraGlow]);
+
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: auraGlow.value, transform: [{ scale: pulse.value }] }));
+
+  const maxSpark = Math.max(...weekSpark, 1);
+  const sparkWidth = 78;
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View
+        style={[
+          styles.pulseWrap,
+          {
+            backgroundColor: isDark ? DS.darkCard : DS.white,
+            borderColor: isDark ? DS.darkBorder : DS.gray200,
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={
+            isDark
+              ? ['rgba(99,102,241,0.20)', 'rgba(236,72,153,0.10)', 'rgba(139,92,246,0.05)']
+              : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']
+          }
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <LinearGradient
+          colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']}
+          style={styles.pulseGlowL}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          pointerEvents="none"
+        />
+        <LinearGradient
+          colors={[`${DS.accent}${isDark ? '35' : '22'}`, 'transparent']}
+          style={styles.pulseGlowR}
+          start={{ x: 1, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          pointerEvents="none"
+        />
+
+        {/* Row 1: avatar + name + buttons */}
+        <View style={styles.pulseRow}>
+          <PressableScale onPress={onBabyPress} activeScale={0.94} haptic="light">
+            <View style={styles.pulseAvatarWrap}>
+              <Animated.View style={[styles.pulseAvatarGlow, glowStyle]} />
+              <Animated.View style={[styles.pulseAvatarRing, ringStyle]}>
+                <LinearGradient
+                  colors={[DS.primary, DS.accent, DS.warning, DS.primary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </Animated.View>
+              <View style={[styles.pulseAvatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+                <SafeAvatar avatar={currentBaby?.avatar} gender={currentBaby?.gender} size={46} showBadge={false} />
+              </View>
             </View>
-            <Text style={[styles.suggestionTitle, { color: theme.text.primary }]}>{suggestion.title}</Text>
-            <Text style={[styles.suggestionTime, { color: theme.text.muted }]}>{suggestion.getDesc()}</Text>
-          </TouchableOpacity>
+          </PressableScale>
+
+          <View style={styles.pulseInfo}>
+            <View style={styles.pulseNameRow}>
+              <Text style={[styles.pulseName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                {currentBaby?.name || 'Little One'}
+              </Text>
+              {currentBaby?.birthDate && (
+                <View style={[styles.pulseAgePill, { backgroundColor: `${DS.primary}18` }]}>
+                  <Text style={[styles.pulseAgeText, { color: DS.primary }]}>
+                    {safeDiffMonths(new Date(), currentBaby.birthDate)}mo
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.pulseSubRow}>
+              <View style={[styles.pulseLiveDot, { backgroundColor: DS.success }]} />
+              <Text style={[styles.pulseSubText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                {todayCount} logged today · {weekCount} this week
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.pulseActions}>
+            <PressableScale onPress={onCalendarPress} activeScale={0.9}>
+              <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                <Ionicons name="calendar-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
+              </View>
+            </PressableScale>
+            <PressableScale onPress={onAchievementsPress} activeScale={0.9}>
+              <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                <Ionicons name="trophy-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
+              </View>
+            </PressableScale>
+            <PressableScale onPress={onAddPress} activeScale={0.9} haptic="medium">
+              <LinearGradient
+                colors={[DS.primary, DS.accent]}
+                style={styles.pulseAddBtn}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Ionicons name="add" size={22} color={DS.white} />
+              </LinearGradient>
+            </PressableScale>
+          </View>
+        </View>
+
+        {/* Row 2: KPI chips + sparkline */}
+        <View style={[styles.pulseStats, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' }]}>
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.primary }]}>{streak}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>day streak</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.accent }]}>{todayCount}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>today</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.success }]}>{weekCount}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>7 days</Text>
+          </View>
+
+          {/* Sparkline */}
+          <View style={styles.sparkWrap}>
+            {weekSpark.map((v, i) => {
+              const h = Math.max(4, Math.round((v / maxSpark) * 26));
+              const isToday = i === weekSpark.length - 1;
+              return (
+                <View key={i} style={styles.sparkCol}>
+                  <View
+                    style={[
+                      styles.sparkBar,
+                      {
+                        height: h,
+                        backgroundColor: isToday ? DS.primary : `${DS.primary}45`,
+                      },
+                    ]}
+                  />
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ════════════════════════════════════════════════════════════
+   Insight Ribbon — one-line contextual insight strip
+   ════════════════════════════════════════════════════════════ */
+const InsightRibbon = React.memo<{
+  isDark: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  label: string;
+  text: string;
+  onPress?: () => void;
+}>(({ isDark, icon, color, label, text, onPress }) => (
+  <Animated.View entering={FadeInUp.delay(120).springify()}>
+    <PressableScale onPress={onPress} activeScale={0.98}>
+      <View
+        style={[
+          styles.ribbon,
+          {
+            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white,
+            borderColor: isDark ? DS.darkBorder : DS.gray200,
+          },
+        ]}
+      >
+        <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+          <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={1}>
+            {text}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+      </View>
+    </PressableScale>
+  </Animated.View>
+));
+
+/* ════════════════════════════════════════════════════════════
+   Tab Bar
+   ════════════════════════════════════════════════════════════ */
+const TabBar = ({ tabs, activeTab, onChange }: {
+  tabs: { key: TimelineTab; label: string; icon: keyof typeof Ionicons.glyphMap }[];
+  activeTab: TimelineTab;
+  onChange: (t: TimelineTab) => void;
+}) => (
+  <View style={styles.tabBar}>
+    {tabs.map((tab) => {
+      const isActive = activeTab === tab.key;
+      return (
+        <TouchableOpacity
+          key={tab.key}
+          onPress={() => onChange(tab.key)}
+          style={[styles.tabItem, isActive && styles.tabItemActive]}
+          activeOpacity={0.8}
+        >
+          <Ionicons name={tab.icon} size={15} color={isActive ? DS.primary : DS.gray400} />
+          <Text style={[styles.tabLabel, { color: isActive ? DS.primary : DS.gray400 }, isActive && { fontWeight: '700' }]}>
+            {tab.label}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+);
+
+/* ════════════════════════════════════════════════════════════
+   Quick Logs (row of colored chips)
+   ════════════════════════════════════════════════════════════ */
+const QuickLogs = ({ onLog }: { onLog: (id: string) => void }) => {
+  const items = [
+    { id: 'feed', label: 'Feed', emoji: '🍼', color: '#f59e0b', grad: ['#fa709a', '#fee140'] as [string, string] },
+    { id: 'sleep', label: 'Sleep', emoji: '😴', color: '#8b5cf6', grad: ['#11998e', '#38ef7d'] as [string, string] },
+    { id: 'diaper', label: 'Diaper', emoji: '👶', color: '#3b82f6', grad: ['#fc5c7d', '#6a82fb'] as [string, string] },
+    { id: 'milestone', label: 'Win', emoji: '🏆', color: '#ec4899', grad: ['#f59e0b', '#fbbf24'] as [string, string] },
+  ];
+  return (
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: DS.space.sm, paddingVertical: 4 }}
+      >
+        {items.map((it) => (
+          <PressableScale key={it.id} onPress={() => onLog(it.id)} activeScale={0.92}>
+            <LinearGradient
+              colors={it.grad}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.quickChip}
+            >
+              <Text style={styles.quickEmoji}>{it.emoji}</Text>
+              <Text style={styles.quickLabel}>{it.label}</Text>
+            </LinearGradient>
+          </PressableScale>
         ))}
       </ScrollView>
     </Animated.View>
   );
 };
 
-// ─── Upcoming Events Timeline ─────────────────────────────────────────────
+/* ════════════════════════════════════════════════════════════
+   Weekly Velocity — compact progress bars
+   ════════════════════════════════════════════════════════════ */
+const WeeklyVelocity = ({ entries, isDark }: { entries: TrackerEntry[]; isDark: boolean }) => {
+  const days = useMemo(() => {
+    const labels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const now = new Date();
+    return labels.map((label, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (6 - i));
+      const s = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const e = s + 86400000;
+      const count = entries.filter(x => x.timestamp >= s && x.timestamp < e).length;
+      return { label, count, isToday: i === 6 };
+    });
+  }, [entries]);
 
-const UpcomingEventsTimeline = ({ reminders, theme, onPress }: { reminders: PredictiveReminder[]; theme: any; onPress: (r: PredictiveReminder) => void }) => {
-  const upcoming = useMemo(() => safeArray(reminders).filter(r => r.suggestedTime && new Date(r.suggestedTime) >= new Date()).slice(0, 4), [reminders]);
-  if (!upcoming.length) return null;
+  const max = Math.max(...days.map(d => d.count), 1);
 
   return (
-    <Animated.View entering={FadeInUp.delay(450).springify()}>
-      <SectionHeader title="Upcoming Events" subtitle="Predicted from patterns" icon="time-outline" />
-      <View style={styles.calendarTimeline}>
-        {upcoming.map((event, i) => (
-          <TouchableOpacity key={event.id || i} onPress={() => onPress(event)} style={styles.calendarItem}>
-            <View style={styles.calendarLeft}>
-              <View style={[styles.calendarLine, { backgroundColor: theme.surface.border }]} />
-              <View style={[styles.calendarDot, { backgroundColor: event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary }]} />
-              {i === upcoming.length - 1 && <View style={[styles.calendarLineEnd, { backgroundColor: 'transparent' }]} />}
-            </View>
-            <View style={[styles.calendarCard, { backgroundColor: theme.isDark ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.85)' }]}>
-              <View style={styles.calendarHeader}>
-                <Text style={styles.calendarEmoji}>{event.emoji || '⏰'}</Text>
-                <View style={styles.calendarMeta}>
-                  <Text style={[styles.calendarTitle, { color: theme.text.primary }]}>{event.title}</Text>
-                  <Text style={[styles.calendarCategory, { color: theme.text.muted }]}>{event.description}</Text>
+    <Animated.View entering={FadeInUp.delay(150).springify()}>
+      <View style={[styles.velocityCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={styles.velocityHeader}>
+          <View style={[styles.velocityIcon, { backgroundColor: `${DS.primary}15` }]}>
+            <Ionicons name="pulse" size={14} color={DS.primary} />
+          </View>
+          <Text style={[styles.velocityTitle, { color: isDark ? DS.gray300 : DS.gray700 }]}>Weekly Velocity</Text>
+          <Text style={[styles.velocitySub, { color: isDark ? DS.gray500 : DS.gray400 }]}>{entries.length} total</Text>
+        </View>
+        <View style={styles.velocityBars}>
+          {days.map((d, i) => {
+            const h = Math.max(6, Math.round((d.count / max) * 34));
+            return (
+              <View key={i} style={styles.velocityCol}>
+                <Text style={[styles.velocityCount, { color: d.isToday ? DS.primary : isDark ? DS.gray500 : DS.gray400 }]}>{d.count || ''}</Text>
+                <View style={[styles.velocityBarTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+                  <View style={[styles.velocityBar, { height: h, backgroundColor: d.isToday ? DS.primary : `${DS.primary}50` }]} />
                 </View>
-                <View style={[styles.calendarBadge, { backgroundColor: `${event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary}15` }]}>
-                  <Text style={[styles.calendarBadgeText, { color: event.priority === 'urgent' ? '#ef4444' : event.priority === 'high' ? '#f59e0b' : theme.primary }]}>
-                    {event.confidence || 0}% ready
-                  </Text>
-                </View>
+                <Text style={[styles.velocityDay, { color: d.isToday ? DS.primary : isDark ? DS.gray500 : DS.gray400, fontWeight: d.isToday ? '800' : '600' }]}>
+                  {d.label}
+                </Text>
               </View>
-              <Text style={[styles.calendarAge, { color: theme.primary }]}>
-                {event.suggestedTime ? format(new Date(event.suggestedTime), 'h:mm a') : 'Soon'}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+            );
+          })}
+        </View>
       </View>
     </Animated.View>
   );
 };
 
-// ─── Smart Insight Card ────────────────────────────────────────────────────
-
-const SmartInsightCard: React.FC<{ insight: any; theme: any; onAction: (trackerId: string) => void; onDismiss: () => void; index: number; }> = ({ insight, theme, onAction, onDismiss, index }) => {
-  const getInsightIcon = (type: string) => {
-    switch (type) {
+/* ════════════════════════════════════════════════════════════
+   Smart cards (retained + restyled with aura)
+   ════════════════════════════════════════════════════════════ */
+const SmartInsightCard: React.FC<{ insight: any; isDark: boolean; onAction: (trackerId: string) => void; onDismiss: () => void; index: number }> = ({ insight, isDark, onAction, onDismiss, index }) => {
+  const getIcon = (t: string) => {
+    switch (t) {
       case 'anomaly': return 'warning-outline';
       case 'pattern': return 'git-branch-outline';
       case 'milestone': return 'trophy-outline';
@@ -619,284 +616,235 @@ const SmartInsightCard: React.FC<{ insight: any; theme: any; onAction: (trackerI
       default: return 'information-circle-outline';
     }
   };
-
-  const getPriorityBg = (priority: string) => {
-    switch (priority) {
-      case 'warning': return 'rgba(239,68,68,0.12)';
-      case 'good': return 'rgba(16,185,129,0.12)';
-      case 'info': return 'rgba(59,130,246,0.12)';
-      default: return theme.surface.card;
-    }
-  };
-
+  const warning = insight?.priority === 'warning';
+  const color = warning ? DS.danger : DS.primary;
   return (
-    <Animated.View entering={FadeInRight.delay(index * 80).springify()} layout={Layout.springify()} style={[styles.smartCard, { backgroundColor: getPriorityBg(insight?.priority) }]}>
-      <View style={styles.smartCardHeader}>
-        <View style={[styles.smartIconContainer, { backgroundColor: `${insight?.priority === 'warning' ? '#ef4444' : theme.primary}20` }]}>
-          <Ionicons name={getInsightIcon(insight?.type) as any} size={20} color={insight?.priority === 'warning' ? '#ef4444' : theme.primary} />
-        </View>
-        <View style={styles.smartCardContent}>
-          <Text style={[styles.smartCardTitle, { color: theme.text.primary }]}>{insight?.emoji} {insight?.title}</Text>
-          <Text style={[styles.smartCardDesc, { color: theme.text.secondary }]} numberOfLines={2}>{insight?.description}</Text>
-        </View>
-        <TouchableOpacity onPress={onDismiss} style={styles.dismissBtn}>
-          <Ionicons name="close" size={18} color={theme.text.muted} />
-        </TouchableOpacity>
-      </View>
-      {insight?.action && (
-        <TouchableOpacity style={[styles.smartActionBtn, { backgroundColor: `${theme.primary}15` }]} onPress={() => onAction(insight.action.trackerId)}>
-          <Ionicons name="add-circle-outline" size={16} color={theme.primary} />
-          <Text style={[styles.smartActionText, { color: theme.primary }]}>{insight.action.message}</Text>
-          <Ionicons name="arrow-forward" size={14} color={theme.primary} />
-        </TouchableOpacity>
-      )}
-    </Animated.View>
-  );
-};
-
-// ─── Smart Correlation Card ───────────────────────────────────────────────
-
-const SmartCorrelationCard: React.FC<{ correlation: TimelineCorrelation; theme: any; onNavigate: (trackerId: string) => void; index: number; }> = ({ correlation, theme, onNavigate, index }) => {
-  const getCorrelationIcon = (type: string) => {
-    switch (type) {
-      case 'feed_sleep_pattern': return ['🍼', '😴'];
-      case 'growth_milestone_correlation': return ['📏', '🏆'];
-      case 'health_alert': return ['🌡️', '💊'];
-      case 'activity_cluster': return ['⚡', '🔗'];
-      default: return ['🔗', '✨'];
-    }
-  };
-
-  const [icon1, icon2] = getCorrelationIcon(correlation?.type || '');
-  const safeConfidence = safeNumber(correlation?.confidence, 0);
-  const safeColor = correlation?.color || theme.primary;
-  const primaryTs = correlation?.primaryEntry?.timestamp || 0;
-  const relatedId = correlation?.relatedEntry?.trackerId || '';
-
-  return (
-    <Animated.View entering={FadeInUp.delay(index * 100).springify()} style={[styles.correlationCard, { borderColor: `${safeColor}40` }]}>
-      <LinearGradient colors={[`${safeColor}08`, `${safeColor}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-      <View style={styles.correlationHeader}>
-        <View style={styles.correlationIcons}>
-          <Text style={styles.correlationEmoji}>{icon1}</Text>
-          <View style={[styles.correlationLink, { backgroundColor: safeColor }]}>
-            <Ionicons name="link" size={10} color="#fff" />
+    <Animated.View entering={FadeInRight.delay(index * 80).springify()} layout={Layout.springify()}>
+      <View style={[styles.smartCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={styles.smartCardHead}>
+          <View style={[styles.smartIcon, { backgroundColor: `${color}15` }]}>
+            <Ionicons name={getIcon(insight?.type) as any} size={18} color={color} />
           </View>
-          <Text style={styles.correlationEmoji}>{icon2}</Text>
-        </View>
-        <View style={[styles.confidenceBadge, { backgroundColor: `${safeColor}20` }]}>
-          <Text style={[styles.confidenceText, { color: safeColor }]}>{safeConfidence}% match</Text>
-        </View>
-      </View>
-      <Text style={[styles.correlationInsight, { color: theme.text.primary }]}>{correlation?.insight || 'Pattern detected'}</Text>
-      <View style={styles.correlationMeta}>
-        <View style={styles.correlationTimeWrap}>
-          <Ionicons name="time-outline" size={12} color={theme.text.muted} />
-          <Text style={[styles.correlationTime, { color: theme.text.muted }]}>{primaryTs ? format(primaryTs, 'MMM d, h:mm a') : 'Unknown time'}</Text>
-        </View>
-        <TouchableOpacity style={[styles.correlationAction, { backgroundColor: `${safeColor}15` }]} onPress={() => onNavigate(relatedId)}>
-          <Text style={[styles.correlationActionText, { color: safeColor }]}>View {relatedId}</Text>
-        </TouchableOpacity>
-      </View>
-    </Animated.View>
-  );
-};
-
-// ─── Smart Reminder Card ──────────────────────────────────────────────────
-
-const SmartReminderCard: React.FC<{ reminder: PredictiveReminder; theme: any; onApply: (reminder: PredictiveReminder) => void; onDismiss: (id: string) => void; index: number; }> = ({ reminder, theme, onApply, onDismiss, index }) => {
-  const suggestedTime = reminder?.suggestedTime;
-  const isOverdue = suggestedTime && new Date(suggestedTime) < new Date();
-  const hoursUntil = suggestedTime ? Math.max(0, differenceInHours(new Date(suggestedTime), new Date())) : null;
-  const safePriority = reminder?.priority || 'normal';
-  const safeId = reminder?.id || `reminder-${index}`;
-  const actionLabel = reminder?.action?.label || 'Apply';
-
-  return (
-    <Animated.View entering={FadeInUp.delay(index * 120).springify()} style={[styles.reminderCard, { borderLeftColor: getPriorityColor(safePriority, theme), borderLeftWidth: 4, backgroundColor: isOverdue ? 'rgba(239,68,68,0.06)' : theme.surface.card }]}>
-      <View style={styles.reminderHeader}>
-        <Text style={styles.reminderEmoji}>{reminder?.emoji || '⏰'}</Text>
-        <View style={styles.reminderContent}>
-          <Text style={[styles.reminderTitle, { color: theme.text.primary }]}>{reminder?.title || 'Reminder'}</Text>
-          <Text style={[styles.reminderDesc, { color: theme.text.secondary }]} numberOfLines={2}>{reminder?.description || ''}</Text>
-        </View>
-        <TouchableOpacity onPress={() => onDismiss(safeId)} style={styles.dismissBtn}>
-          <Ionicons name="close" size={18} color={theme.text.muted} />
-        </TouchableOpacity>
-      </View>
-      <View style={styles.reminderMeta}>
-        {suggestedTime && (
-          <View style={styles.reminderTimeBadge}>
-            <Ionicons name="time-outline" size={12} color={isOverdue ? '#ef4444' : theme.primary} />
-            <Text style={[styles.reminderTimeText, { color: isOverdue ? '#ef4444' : theme.primary }]}>{isOverdue ? 'Overdue' : hoursUntil === 0 ? 'Due now' : `In ${hoursUntil}h`}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.smartTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+              {insight?.emoji} {insight?.title}
+            </Text>
+            <Text style={[styles.smartDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>
+              {insight?.description}
+            </Text>
           </View>
+          <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close" size={18} color={DS.gray400} />
+          </TouchableOpacity>
+        </View>
+        {insight?.action && (
+          <TouchableOpacity
+            style={[styles.smartAction, { backgroundColor: `${color}12` }]}
+            onPress={() => onAction(insight.action.trackerId)}
+          >
+            <Ionicons name="add-circle-outline" size={14} color={color} />
+            <Text style={[styles.smartActionText, { color }]}>{insight.action.message}</Text>
+            <Ionicons name="arrow-forward" size={12} color={color} />
+          </TouchableOpacity>
         )}
-        <View style={[styles.confidenceBadge, { backgroundColor: `${theme.primary}15` }]}>
-          <Ionicons name="analytics-outline" size={12} color={theme.primary} />
-          <Text style={[styles.confidenceText, { color: theme.primary }]}>{safeNumber(reminder?.confidence, 0)}% confidence</Text>
-        </View>
       </View>
-      <View style={styles.reminderActions}>
-        <TouchableOpacity style={[styles.reminderActionBtn, { backgroundColor: theme.primary }]} onPress={() => onApply(reminder)}>
-          <Ionicons name={actionLabel === 'Log Feed' ? 'nutrition' : 'add'} size={16} color="#fff" />
-          <Text style={styles.reminderActionText}>{actionLabel}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.reminderActionBtnSecondary, { borderColor: `${theme.primary}30` }]} onPress={() => {}}>
-          <Text style={[styles.reminderActionTextSecondary, { color: theme.primary }]}>Details</Text>
-        </TouchableOpacity>
-      </View>
-      {reminder?.basedOn && reminder.basedOn.length > 0 && (
-        <View style={styles.basedOnContainer}>
-          <Text style={[styles.basedOnLabel, { color: theme.text.muted }]}>Based on:</Text>
-          {safeArray(reminder.basedOn).map((b, i) => (
-            <View key={i} style={[styles.basedOnChip, { backgroundColor: `${theme.primary}10` }]}>
-              <Ionicons name="analytics-outline" size={10} color={theme.primary} />
-              <Text style={[styles.basedOnText, { color: theme.primary }]}>{b?.dataPoint || 'Data'}: {b?.value || 'N/A'}</Text>
-            </View>
-          ))}
-        </View>
-      )}
     </Animated.View>
   );
 };
 
-// ─── Growth Score Card ────────────────────────────────────────────────────
-
-const GrowthScoreCard: React.FC<{ growthIndex: any; theme: any; onPress: () => void; }> = ({ growthIndex, theme, onPress }) => {
-  if (!growthIndex) return null;
-
-  const nutritionScore = growthIndex?.nutritionScore;
-  const restScore = growthIndex?.restScore;
-  const physicalScore = growthIndex?.physicalScore;
-  const cognitiveScore = growthIndex?.cognitiveScore;
-  const healthStability = growthIndex?.healthStability;
-  const compositeIndex = safeNumber(growthIndex?.compositeIndex, 0);
-
-  const scores = [
-    { label: 'Nutrition', score: nutritionScore, icon: '🍎', color: '#FF9F43' },
-    { label: 'Rest', score: restScore, icon: '😴', color: '#5F27CD' },
-    { label: 'Physical', score: physicalScore, icon: '💪', color: '#10AC84' },
-    { label: 'Cognitive', score: cognitiveScore, icon: '🧠', color: '#FFD700' },
-    { label: 'Health', score: healthStability, icon: '❤️', color: '#EE5A24' },
-  ];
-
-  const getScoreColor = (value: number) => {
-    if (value >= 80) return '#10b981';
-    if (value >= 60) return '#f59e0b';
-    return '#ef4444';
-  };
-
-  const safeMilestones = safeArray(growthIndex?.milestoneReadiness);
-
+const SmartCorrelationCard: React.FC<{ correlation: TimelineCorrelation; isDark: boolean; onNavigate: (id: string) => void; index: number }> = ({ correlation, isDark, onNavigate, index }) => {
+  const color = correlation?.color || DS.primary;
+  const conf = safeNumber(correlation?.confidence, 0);
+  const ts = correlation?.primaryEntry?.timestamp || 0;
   return (
-    <Animated.View entering={FadeInUp.delay(50).springify()}>
-      <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
-        <LinearGradient colors={[`${theme.primary}15`, `${theme.secondary}08`]} style={styles.growthCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-          <View style={styles.growthHeader}>
-            <View style={styles.growthTitleRow}>
-              <Text style={styles.growthEmoji}>📊</Text>
-              <Text style={[styles.growthTitle, { color: theme.text.primary }]}>Growth Intelligence</Text>
-            </View>
-            <View style={[styles.compositeBadge, { backgroundColor: `${getScoreColor(compositeIndex)}20` }]}>
-              <Text style={[styles.compositeText, { color: getScoreColor(compositeIndex) }]}>{compositeIndex}</Text>
-            </View>
+    <Animated.View entering={FadeInUp.delay(index * 100).springify()}>
+      <View style={[styles.corrCard, { borderColor: `${color}40`, backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : `${color}06` }]}>
+        <View style={styles.corrHead}>
+          <View style={[styles.corrBadge, { backgroundColor: `${color}18` }]}>
+            <Ionicons name="link" size={12} color={color} />
+            <Text style={[styles.corrBadgeText, { color }]}>{conf}% match</Text>
           </View>
-          <View style={styles.scoresGrid}>
-            {scores.map((item) => (
-              <View key={item.label} style={styles.scoreItem}>
-                <Text style={styles.scoreEmoji}>{item.icon}</Text>
-                <View style={styles.scoreBarContainer}>
-                  <View style={[styles.scoreBar, { width: `${safeNumber(item.score?.value, 0)}%`, backgroundColor: item.color }]} />
-                </View>
-                <Text style={[styles.scoreValue, { color: theme.text.primary }]}>{safeNumber(item.score?.value, 0)}</Text>
-                <Text style={[styles.scoreLabel, { color: theme.text.muted }]}>{item.label}</Text>
-              </View>
-            ))}
+          <Text style={[styles.corrTime, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+            {ts ? format(ts, 'MMM d, h:mm a') : '—'}
+          </Text>
+        </View>
+        <Text style={[styles.corrInsight, { color: isDark ? DS.gray200 : DS.gray700 }]}>
+          {correlation?.insight || 'Pattern detected'}
+        </Text>
+        <TouchableOpacity
+          style={[styles.corrAction, { backgroundColor: `${color}12` }]}
+          onPress={() => onNavigate(correlation?.relatedEntry?.trackerId || '')}
+        >
+          <Text style={[styles.corrActionText, { color }]}>View related</Text>
+          <Ionicons name="chevron-forward" size={12} color={color} />
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+};
+
+const SmartReminderCard: React.FC<{ reminder: PredictiveReminder; isDark: boolean; onApply: (r: PredictiveReminder) => void; onDismiss: (id: string) => void; index: number }> = ({ reminder, isDark, onApply, onDismiss, index }) => {
+  const time = reminder?.suggestedTime;
+  const overdue = time && new Date(time) < new Date();
+  const hours = time ? Math.max(0, differenceInHours(new Date(time), new Date())) : null;
+  const priority = reminder?.priority || 'normal';
+  const priorityColor = priority === 'urgent' ? DS.danger : priority === 'high' ? DS.warning : DS.primary;
+  return (
+    <Animated.View entering={FadeInUp.delay(index * 120).springify()}>
+      <View style={[styles.reminderCard, { borderLeftColor: priorityColor, backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={styles.reminderHead}>
+          <Text style={styles.reminderEmoji}>{reminder?.emoji || '⏰'}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.reminderTitle, { color: isDark ? DS.white : DS.gray900 }]}>{reminder?.title}</Text>
+            <Text style={[styles.reminderDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>
+              {reminder?.description}
+            </Text>
           </View>
-          {safeMilestones.length > 0 && (
-            <View style={styles.milestonePreview}>
-              <Text style={[styles.milestonePreviewTitle, { color: theme.text.secondary }]}>🎯 Upcoming Milestones</Text>
-              {safeMilestones.slice(0, 2).map((m: any, idx: number) => (
-                <View key={idx} style={styles.milestoneRow}>
-                  <View style={styles.milestoneProgressBg}>
-                    <View style={[styles.milestoneProgressFill, { width: `${safeNumber(m?.readinessPercent, 0)}%`, backgroundColor: safeNumber(m?.readinessPercent, 0) > 80 ? '#10b981' : '#f59e0b' }]} />
-                  </View>
-                  <Text style={[styles.milestoneText, { color: theme.text.primary }]}>{m?.category || 'Milestone'} — {safeNumber(m?.readinessPercent, 0)}%</Text>
-                </View>
-              ))}
+          <TouchableOpacity onPress={() => onDismiss(reminder?.id || '')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close" size={18} color={DS.gray400} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.reminderMeta}>
+          {time && (
+            <View style={[styles.reminderTimeBadge, { backgroundColor: overdue ? `${DS.danger}12` : `${DS.primary}12` }]}>
+              <Ionicons name="time-outline" size={11} color={overdue ? DS.danger : DS.primary} />
+              <Text style={[styles.reminderTimeText, { color: overdue ? DS.danger : DS.primary }]}>
+                {overdue ? 'Overdue' : hours === 0 ? 'Due now' : `In ${hours}h`}
+              </Text>
             </View>
           )}
-        </LinearGradient>
-      </TouchableOpacity>
+          <View style={[styles.reminderTimeBadge, { backgroundColor: `${DS.success}12` }]}>
+            <Ionicons name="analytics-outline" size={11} color={DS.success} />
+            <Text style={[styles.reminderTimeText, { color: DS.success }]}>{safeNumber(reminder?.confidence, 0)}% confidence</Text>
+          </View>
+        </View>
+        <View style={styles.reminderActions}>
+          <PressableScale onPress={() => onApply(reminder)} activeScale={0.96} style={{ flex: 1 }}>
+            <LinearGradient
+              colors={[priorityColor, priorityColor + 'CC']}
+              style={styles.reminderPrimaryBtn}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name="add" size={14} color={DS.white} />
+              <Text style={styles.reminderPrimaryText}>{reminder?.action?.label || 'Apply'}</Text>
+            </LinearGradient>
+          </PressableScale>
+        </View>
+      </View>
     </Animated.View>
   );
 };
 
-// ─── Streak Banner ────────────────────────────────────────────────────────
+const GrowthScoreCard: React.FC<{ growthIndex: any; isDark: boolean; onPress: () => void }> = ({ growthIndex, isDark, onPress }) => {
+  if (!growthIndex) return null;
+  const scores = [
+    { label: 'Nutrition', value: growthIndex?.nutritionScore?.value, color: '#FF9F43', icon: '🍎' },
+    { label: 'Rest', value: growthIndex?.restScore?.value, color: '#5F27CD', icon: '😴' },
+    { label: 'Physical', value: growthIndex?.physicalScore?.value, color: '#10AC84', icon: '💪' },
+    { label: 'Cognitive', value: growthIndex?.cognitiveScore?.value, color: '#FFD700', icon: '🧠' },
+    { label: 'Health', value: growthIndex?.healthStability?.value, color: '#EE5A24', icon: '❤️' },
+  ];
+  const composite = safeNumber(growthIndex?.compositeIndex, 0);
+  const compositeColor = composite >= 80 ? DS.success : composite >= 60 ? DS.warning : DS.danger;
+  return (
+    <Animated.View entering={FadeInUp.delay(80).springify()}>
+      <PressableScale onPress={onPress} activeScale={0.98}>
+        <LinearGradient
+          colors={isDark ? ['rgba(99,102,241,0.14)', 'rgba(236,72,153,0.06)'] : [`${DS.primary}10`, `${DS.accent}06`]}
+          style={[styles.growthCard, { borderColor: isDark ? DS.darkBorder : DS.gray200 }]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.growthHead}>
+            <Text style={[styles.growthTitle, { color: isDark ? DS.white : DS.gray900 }]}>📊 Growth Intelligence</Text>
+            <View style={[styles.growthComposite, { backgroundColor: `${compositeColor}18` }]}>
+              <Text style={[styles.growthCompositeText, { color: compositeColor }]}>{composite}</Text>
+            </View>
+          </View>
+          <View style={styles.growthGrid}>
+            {scores.map((s) => {
+              const v = safeNumber(s.value, 0);
+              return (
+                <View key={s.label} style={styles.growthItem}>
+                  <Text style={styles.growthItemEmoji}>{s.icon}</Text>
+                  <View style={styles.growthBar}>
+                    <View style={[styles.growthFill, { width: `${v}%`, backgroundColor: s.color }]} />
+                  </View>
+                  <Text style={[styles.growthItemLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{s.label}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </LinearGradient>
+      </PressableScale>
+    </Animated.View>
+  );
+};
 
-const StreakBanner: React.FC<{ streak: any; theme: any; onAction: () => void; }> = ({ streak, theme, onAction }) => {
+const StreakBanner: React.FC<{ streak: any; isDark: boolean; onAction: () => void }> = ({ streak, isDark, onAction }) => {
   if (!streak || streak.currentStreak === 0) return null;
-
-  const isAtRisk = streak?.streakAtRisk;
+  const atRisk = streak?.streakAtRisk;
   const progress = Math.min(safeNumber(streak?.currentStreak, 0) / 30, 1);
-
   return (
     <Animated.View entering={FadeInUp.springify()}>
-      <TouchableOpacity onPress={onAction} style={[styles.streakBanner, { backgroundColor: isAtRisk ? 'rgba(239,68,68,0.08)' : `${theme.primary}08`, borderColor: isAtRisk ? 'rgba(239,68,68,0.2)' : `${theme.primary}15` }]}>
-        <View style={styles.streakIconContainer}>
-          <Text style={styles.streakEmoji}>{isAtRisk ? '⏰' : '🔥'}</Text>
-          {isAtRisk && (
-            <View style={styles.streakPulse}>
-              <View style={[styles.pulseRing, { borderColor: '#ef4444' }]} />
+      <PressableScale onPress={onAction} activeScale={0.98}>
+        <View
+          style={[
+            styles.streakCard,
+            {
+              backgroundColor: atRisk ? `${DS.danger}08` : `${DS.warning}08`,
+              borderColor: atRisk ? `${DS.danger}30` : `${DS.warning}30`,
+            },
+          ]}
+        >
+          <Text style={styles.streakEmoji}>{atRisk ? '⏰' : '🔥'}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.streakTitle, { color: atRisk ? DS.danger : isDark ? DS.white : DS.gray900 }]}>
+              {atRisk ? 'Streak at risk!' : `${safeNumber(streak.currentStreak, 0)}-day streak`}
+            </Text>
+            <Text style={[styles.streakSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              {atRisk ? `Log an entry in ${safeNumber(streak?.hoursUntilBreak, 0)}h to keep it alive` : `Best: ${safeNumber(streak.longestStreak, 0)} days · Keep going!`}
+            </Text>
+            <View style={[styles.streakProgress, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+              <View style={[styles.streakProgressFill, { width: `${progress * 100}%`, backgroundColor: atRisk ? DS.danger : DS.warning }]} />
             </View>
-          )}
-        </View>
-        <View style={styles.streakContent}>
-          <Text style={[styles.streakTitle, { color: isAtRisk ? '#ef4444' : theme.text.primary }]}>{isAtRisk ? 'Streak at Risk!' : `${safeNumber(streak?.currentStreak, 0)} Day Streak`}</Text>
-          <Text style={[styles.streakSubtitle, { color: theme.text.secondary }]}>{isAtRisk ? `Log an entry in ${safeNumber(streak?.hoursUntilBreak, 0)}h to keep it alive` : `Best: ${safeNumber(streak?.longestStreak, 0)} days • Keep it up!`}</Text>
-          <View style={styles.streakProgressBg}>
-            <View style={[styles.streakProgressFill, { width: `${progress * 100}%`, backgroundColor: isAtRisk ? '#ef4444' : theme.primary }]} />
           </View>
+          <Ionicons name={atRisk ? 'alert-circle' : 'chevron-forward'} size={18} color={atRisk ? DS.danger : DS.gray400} />
         </View>
-        <Ionicons name={isAtRisk ? 'alert-circle' : 'chevron-forward'} size={20} color={isAtRisk ? '#ef4444' : theme.text.muted} />
-      </TouchableOpacity>
+      </PressableScale>
     </Animated.View>
   );
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MAIN SCREEN — INSTANT LOADING (NO LOADING SCREEN)
-// ═══════════════════════════════════════════════════════════════════════════
-
-export default function EnhancedTimelineScreen() {
+/* ════════════════════════════════════════════════════════════
+   MAIN SCREEN
+   ════════════════════════════════════════════════════════════ */
+export default function TimelineScreen() {
   const navigation = useNavigation<TimelineScreenNavigationProp>();
   const route = useRoute<TimelineScreenRouteProp>();
   const insets = useSafeAreaInsets();
-  const theme = useHubTheme();
-  const { triggerHaptic, borderRadiusValue, shouldReduceMotion, fontSizeMultiplier } = useCustomization();
+  const { triggerHaptic, darkMode } = useCustomization();
+  const isDark = darkMode ?? false;
 
-  const { currentBaby: babyFromContext, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
-  const { entries: trackerEntries, isLoading: trackerLoading, refreshEntries, deleteEntry, getTracker, getEntries, currentBabyId } = useTracker();
-
+  const { currentBaby, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
+  const { entries: trackerEntries, refreshEntries, deleteEntry, getTracker, getEntries } = useTracker();
   const { success, confirm, error } = useSweetAlert();
-  const currentBaby = babyFromContext;
 
-  // Load data in background, NEVER show loading screen
+  const { correlations: timelineCorrelations } = useTimelineCorrelations();
+  const { reminders: predictiveReminders } = usePredictiveReminders();
+  const { growthIndex } = useGrowthIntelligence();
+  const { achievements, stats: achievementStats, streak: globalStreak, newlyUnlocked } = useTrackerAchievements();
+
   useEffect(() => { loadBabies(); }, [loadBabies]);
 
   useFocusEffect(
     useCallback(() => {
       refreshEntries();
       refreshCurrentBaby();
-    }, [refreshEntries, refreshCurrentBaby])
+    }, [refreshEntries, refreshCurrentBaby]),
   );
 
-  const { correlations: timelineCorrelations } = useTimelineCorrelations();
-  const { reminders: predictiveReminders } = usePredictiveReminders();
-  const { growthIndex } = useGrowthIntelligence();
-  const { achievements, stats: achievementStats, streak: globalStreak, newlyUnlocked, isLoading: achievementsLoading } = useTrackerAchievements();
-
-  const scrollY = useSharedValue(0);
   const [activeTab, setActiveTab] = useState<TimelineTab>('timeline');
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
@@ -908,7 +856,6 @@ export default function EnhancedTimelineScreen() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(new Set());
   const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
-  const [showAchievementToast, setShowAchievementToast] = useState(false);
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
 
   useEffect(() => {
@@ -917,20 +864,10 @@ export default function EnhancedTimelineScreen() {
 
   useEffect(() => {
     if (!babyLoading && !currentBaby) {
-      const timer = setTimeout(() => setShowBabyRequiredModal(true), 400);
-      return () => clearTimeout(timer);
+      const t = setTimeout(() => setShowBabyRequiredModal(true), 500);
+      return () => clearTimeout(t);
     }
   }, [babyLoading, currentBaby]);
-
-  useEffect(() => {
-    const safeNewlyUnlocked = safeArray(newlyUnlocked);
-    if (safeNewlyUnlocked.length > 0) {
-      setShowAchievementToast(true);
-      triggerHaptic('success');
-      const timer = setTimeout(() => setShowAchievementToast(false), 6000);
-      return () => clearTimeout(timer);
-    }
-  }, [newlyUnlocked, triggerHaptic]);
 
   const allEntries = useMemo(() => {
     if (!currentBaby || !Array.isArray(trackerEntries)) return [];
@@ -938,97 +875,93 @@ export default function EnhancedTimelineScreen() {
   }, [trackerEntries, currentBaby]);
 
   const { insights: allInsights, dismissInsight } = useTrackerProgressive(selectedFilter === 'all' ? 'feed' : selectedFilter);
-
   const activeInsights = useMemo(() => safeArray(allInsights).filter(i => !dismissedInsights.has(i?.id)), [allInsights, dismissedInsights]);
   const activeReminders = useMemo(() => safeArray(predictiveReminders).filter(r => !dismissedReminders.has(r?.id)), [predictiveReminders, dismissedReminders]);
 
+  /* Stats for pulse header */
+  const { todayCount, weekCount, streak, weekSpark } = useMemo(() => {
+    const todayStart = startOfDay(new Date()).getTime();
+    const today = allEntries.filter(e => e?.timestamp >= todayStart).length;
+    const weekAgo = todayStart - 6 * 86400000;
+    const week = allEntries.filter(e => e?.timestamp >= weekAgo).length;
+    const spark: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      const s = todayStart - (6 - i) * 86400000;
+      const e = s + 86400000;
+      spark.push(allEntries.filter(x => x.timestamp >= s && x.timestamp < e).length);
+    }
+    const dayKeys = new Set<string>();
+    allEntries.forEach(a => {
+      if (!a?.timestamp) return;
+      const d = new Date(a.timestamp);
+      d.setHours(0, 0, 0, 0);
+      dayKeys.add(String(d.getTime()));
+    });
+    let streakCount = 0;
+    let cursor = todayStart;
+    while (dayKeys.has(String(cursor))) {
+      streakCount++;
+      cursor -= 86400000;
+    }
+    return { todayCount: today, weekCount: week, streak: streakCount, weekSpark: spark };
+  }, [allEntries]);
+
+  /* Smart sections */
   const smartSections = useMemo((): SmartSection[] => {
-    const sections: SmartSection[] = [];
-
+    const s: SmartSection[] = [];
     if (globalStreak?.streakAtRisk) {
-      sections.push({ id: 'streak-urgent', type: 'streak', priority: 'urgent', component: <StreakBanner streak={globalStreak} theme={theme} onAction={() => setShowTimelinePicker(true)} /> });
+      s.push({ id: 'streak-urgent', type: 'streak', priority: 'urgent', component: <StreakBanner streak={globalStreak} isDark={isDark} onAction={() => setShowTimelinePicker(true)} /> });
     }
-
-    activeInsights.filter(i => i?.priority === 'warning' || i?.type === 'anomaly').forEach((insight, idx) => {
-      sections.push({
-        id: `insight-${insight?.id || idx}`,
-        type: 'insight',
-        priority: 'high',
-        component: <SmartInsightCard key={insight?.id || idx} insight={insight} theme={theme} onAction={(trackerId) => navigation.navigate('AddEntry', { trackerId })} onDismiss={() => { if (insight?.id) { setDismissedInsights(prev => new Set([...prev, insight.id])); dismissInsight(insight.id); } }} index={idx} />
-      });
+    activeInsights.filter(i => i?.priority === 'warning' || i?.type === 'anomaly').forEach((i, idx) => {
+      s.push({ id: `insight-${i?.id || idx}`, type: 'insight', priority: 'high', component: <SmartInsightCard insight={i} isDark={isDark} onAction={(t) => navigation.navigate('AddEntry', { trackerId: t })} onDismiss={() => { if (i?.id) { setDismissedInsights(p => new Set([...p, i.id])); dismissInsight(i.id); } }} index={idx} /> });
     });
-
-    activeReminders.filter(r => r?.suggestedTime && new Date(r.suggestedTime) < new Date()).forEach((reminder, idx) => {
-      sections.push({
-        id: `reminder-${reminder?.id || idx}`,
-        type: 'reminder',
-        priority: 'high',
-        component: <SmartReminderCard key={reminder?.id || idx} reminder={reminder} theme={theme} onApply={(r) => { navigation.navigate('AddEntry', { trackerId: r?.action?.params?.trackerId as string }); }} onDismiss={(id) => setDismissedReminders(prev => new Set([...prev, id]))} index={idx} />
-      });
+    activeReminders.filter(r => r?.suggestedTime && new Date(r.suggestedTime) < new Date()).forEach((r, idx) => {
+      s.push({ id: `rem-${r?.id || idx}`, type: 'reminder', priority: 'high', component: <SmartReminderCard reminder={r} isDark={isDark} onApply={(rem) => navigation.navigate('AddEntry', { trackerId: rem?.action?.params?.trackerId as string })} onDismiss={(id) => setDismissedReminders(p => new Set([...p, id]))} index={idx} /> });
     });
-
     if (growthIndex) {
-      sections.push({ id: 'growth-score', type: 'growth', priority: 'normal', component: <GrowthScoreCard growthIndex={growthIndex} theme={theme} onPress={() => navigation.navigate('GrowthDashboard')} /> });
+      s.push({ id: 'growth', type: 'growth', priority: 'normal', component: <GrowthScoreCard growthIndex={growthIndex} isDark={isDark} onPress={() => navigation.navigate('GrowthDashboard')} /> });
     }
-
-    activeReminders.filter(r => !r?.suggestedTime || new Date(r.suggestedTime) >= new Date()).slice(0, 3).forEach((reminder, idx) => {
-      sections.push({
-        id: `reminder-${reminder?.id || idx}`,
-        type: 'reminder',
-        priority: 'normal',
-        component: <SmartReminderCard key={reminder?.id || idx} reminder={reminder} theme={theme} onApply={(r) => { navigation.navigate('AddEntry', { trackerId: r?.action?.params?.trackerId as string }); }} onDismiss={(id) => setDismissedReminders(prev => new Set([...prev, id]))} index={idx} />
-      });
+    activeReminders.filter(r => !r?.suggestedTime || new Date(r.suggestedTime) >= new Date()).slice(0, 2).forEach((r, idx) => {
+      s.push({ id: `rem-${r?.id || idx}`, type: 'reminder', priority: 'normal', component: <SmartReminderCard reminder={r} isDark={isDark} onApply={(rem) => navigation.navigate('AddEntry', { trackerId: rem?.action?.params?.trackerId as string })} onDismiss={(id) => setDismissedReminders(p => new Set([...p, id]))} index={idx} /> });
     });
-
-    activeInsights.filter(i => i?.priority !== 'warning' && i?.type !== 'anomaly').forEach((insight, idx) => {
-      sections.push({
-        id: `insight-${insight?.id || idx}`,
-        type: 'insight',
-        priority: 'normal',
-        component: <SmartInsightCard key={insight?.id || idx} insight={insight} theme={theme} onAction={(trackerId) => navigation.navigate('AddEntry', { trackerId })} onDismiss={() => { if (insight?.id) { setDismissedInsights(prev => new Set([...prev, insight.id])); dismissInsight(insight.id); } }} index={idx} />
-      });
+    activeInsights.filter(i => i?.priority !== 'warning' && i?.type !== 'anomaly').forEach((i, idx) => {
+      s.push({ id: `insight-${i?.id || idx}`, type: 'insight', priority: 'normal', component: <SmartInsightCard insight={i} isDark={isDark} onAction={(t) => navigation.navigate('AddEntry', { trackerId: t })} onDismiss={() => { if (i?.id) { setDismissedInsights(p => new Set([...p, i.id])); dismissInsight(i.id); } }} index={idx} /> });
     });
-
-    safeArray(timelineCorrelations).slice(0, 3).forEach((correlation, idx) => {
-      sections.push({
-        id: `correlation-${correlation?.id || idx}`,
-        type: 'correlation',
-        priority: 'low',
-        component: <SmartCorrelationCard key={correlation?.id || idx} correlation={correlation} theme={theme} onNavigate={(trackerId) => navigation.navigate('AddEntry', { trackerId })} index={idx} />
-      });
+    safeArray(timelineCorrelations).slice(0, 3).forEach((c, idx) => {
+      s.push({ id: `corr-${c?.id || idx}`, type: 'correlation', priority: 'low', component: <SmartCorrelationCard correlation={c} isDark={isDark} onNavigate={(id) => navigation.navigate('AddEntry', { trackerId: id })} index={idx} /> });
     });
-
     if (globalStreak?.currentStreak > 0 && !globalStreak?.streakAtRisk) {
-      sections.push({ id: 'streak-normal', type: 'streak', priority: 'low', component: <StreakBanner streak={globalStreak} theme={theme} onAction={() => setShowTimelinePicker(true)} /> });
+      s.push({ id: 'streak-normal', type: 'streak', priority: 'low', component: <StreakBanner streak={globalStreak} isDark={isDark} onAction={() => setShowTimelinePicker(true)} /> });
     }
-
-    const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
-    return sections.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
-  }, [globalStreak, activeInsights, activeReminders, growthIndex, timelineCorrelations, theme, navigation, dismissInsight]);
+    const order = { urgent: 0, high: 1, normal: 2, low: 3 };
+    return s.sort((a, b) => order[a.priority] - order[b.priority]);
+  }, [globalStreak, activeInsights, activeReminders, growthIndex, timelineCorrelations, isDark, navigation, dismissInsight]);
 
   const groupedEvents = useMemo(() => {
     let filtered = allEntries;
     if (selectedFilter !== 'all') filtered = filtered.filter(e => e?.trackerId === selectedFilter);
-    if (searchQuery.trim()) { const q = searchQuery.toLowerCase(); filtered = filtered.filter(e => safeString(e?.title).toLowerCase().includes(q) || safeString(e?.notes).toLowerCase().includes(q) || safeString(e?.trackerId).toLowerCase().includes(q)); }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(e => safeString(e?.title).toLowerCase().includes(q) || safeString(e?.notes).toLowerCase().includes(q));
+    }
     if (selectedDate) filtered = filtered.filter(e => e?.timestamp && isSameDay(new Date(e.timestamp), selectedDate));
-
     const groups: { title: string; date: Date; events: TrackerEntry[] }[] = [];
-    let currentGroup: typeof groups[0] | null = null;
+    let cur: typeof groups[0] | null = null;
     filtered.forEach(event => {
       if (!event?.timestamp) return;
-      const eventDate = new Date(event.timestamp);
-      if (!currentGroup || !isSameDay(currentGroup.date, eventDate)) {
-        currentGroup = { title: getDateTitle(event.timestamp), date: eventDate, events: [] };
-        groups.push(currentGroup);
+      const ed = new Date(event.timestamp);
+      if (!cur || !isSameDay(cur.date, ed)) {
+        cur = { title: getDateTitle(event.timestamp), date: ed, events: [] };
+        groups.push(cur);
       }
-      currentGroup.events.push(event);
+      cur.events.push(event);
     });
     return groups;
   }, [allEntries, selectedFilter, searchQuery, selectedDate]);
 
   const entryCountByDay = useMemo(() => {
     const map = new Map<string, number>();
-    allEntries.forEach(e => { if (!e?.timestamp) return; const key = format(new Date(e.timestamp), 'yyyy-MM-dd'); map.set(key, (map.get(key) || 0) + 1); });
+    allEntries.forEach(e => { if (!e?.timestamp) return; const k = format(new Date(e.timestamp), 'yyyy-MM-dd'); map.set(k, (map.get(k) || 0) + 1); });
     return map;
   }, [allEntries]);
 
@@ -1040,58 +973,28 @@ export default function EnhancedTimelineScreen() {
     const cells: (Date | null)[] = [];
     for (let i = 0; i < firstWeekday; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, m, d));
-    const totalCells = cells.length;
-    const remainingCells = 7 - (totalCells % 7);
-    if (remainingCells < 7) { for (let i = 0; i < remainingCells; i++) cells.push(null); }
+    const remaining = 7 - (cells.length % 7);
+    if (remaining < 7) for (let i = 0; i < remaining; i++) cells.push(null);
     return cells;
   }, [calendarMonth]);
 
   const selectedDayEntries = useMemo(() => {
-    if (!selectedDate) return [] as TrackerEntry[];
+    if (!selectedDate) return [];
     return allEntries.filter(e => e?.timestamp && isSameDay(new Date(e.timestamp), selectedDate));
   }, [allEntries, selectedDate]);
 
-  const stats = useMemo(() => {
-    if (!currentBaby) {
-      return { today: 0, todayTrend: 0, total: 0, totalTrend: 0, weekTotal: 0, avgPerDay: 0, milestones: 0, achievements: 0, achievementTrend: 0, growthScore: 0, growthTrend: 0 };
-    }
-    const today = startOfDay(new Date());
-    const todayStart = today.getTime();
-    const yesterdayStart = todayStart - 86400000;
-    const weekAgo = todayStart - 7 * 86400000;
-    const safeAchievementStats = achievementStats || {};
-    
-    const todayCount = allEntries.filter(e => e?.timestamp >= todayStart).length;
-    const yesterdayCount = allEntries.filter(e => e?.timestamp >= yesterdayStart && e?.timestamp < todayStart).length;
-    const weekTotal = allEntries.filter(e => e?.timestamp >= weekAgo).length;
-    const avgPerDay = weekTotal / 7;
-    const todayTrend = yesterdayCount === 0 ? 100 : Math.round(((todayCount - yesterdayCount) / yesterdayCount) * 100);
-    const totalTrend = allEntries.length > 0 ? Math.min(100, Math.round((weekTotal / Math.max(allEntries.length, 1)) * 100)) : 0;
-    
-    return {
-      today: todayCount,
-      todayTrend,
-      total: allEntries.length,
-      totalTrend,
-      weekTotal,
-      avgPerDay: Math.round(avgPerDay * 10) / 10,
-      milestones: safeArray(getEntries('milestone')).length,
-      achievements: safeNumber(safeAchievementStats.unlocked, 0),
-      achievementTrend: safeNumber(safeAchievementStats.recentUnlocked, 0),
-      growthScore: safeNumber(growthIndex?.compositeIndex, 0),
-      growthTrend: safeNumber(growthIndex?.trend, 0),
-    };
-  }, [allEntries, getEntries, achievementStats, growthIndex]);
-
   const filterChips = useMemo(() => {
-    const base = [{ id: 'all', label: 'All', icon: 'grid-outline', color: theme.primary }];
-    const uniqueTrackerIds = [...new Set(safeArray(allEntries).map(e => e?.trackerId).filter(Boolean))];
-    const trackerChips = uniqueTrackerIds.map(id => {
-      const tracker = getTracker(id);
-      return { id, label: tracker?.name || id, icon: getTrackerIcon(id), color: tracker?.gradient?.[0] || tracker?.color || theme.primary };
-    });
-    return [...base, ...trackerChips];
-  }, [allEntries, getTracker, theme.primary]);
+    const base = [{ id: 'all', label: 'All', icon: 'grid-outline', color: DS.primary }];
+    const ids = [...new Set(safeArray(allEntries).map(e => e?.trackerId).filter(Boolean))];
+    return [
+      ...base,
+      ...ids.map(id => {
+        const t = getTracker(id);
+        const cfg = getTrackerCfg(id);
+        return { id, label: t?.name || cfg.label, icon: cfg.icon, color: t?.gradient?.[0] || t?.color || cfg.color };
+      }),
+    ];
+  }, [allEntries, getTracker]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1099,677 +1002,514 @@ export default function EnhancedTimelineScreen() {
     setRefreshing(false);
   }, [refreshEntries, refreshCurrentBaby, loadBabies]);
 
-  const handleEditEvent = useCallback((entry: TrackerEntry) => {
-    triggerHaptic('light');
-    navigation.navigate('AddEntry', { editMode: true, eventId: entry?.id, trackerId: entry?.trackerId });
-  }, [navigation, triggerHaptic]);
-
-  const handleDeleteEvent = useCallback((entry: TrackerEntry) => {
+  const handleDelete = useCallback((entry: TrackerEntry) => {
     triggerHaptic('warning');
-    confirm('Delete Entry', `Delete "${entry?.title || 'entry'}"? This cannot be undone.`,
-      async () => {
-        if (entry?.id) {
-          try {
-            await deleteEntry(entry.id);
-            await refreshEntries();
-            triggerHaptic('success');
-            success('Deleted', 'Entry removed from database');
-          } catch (err) {
-            error('Delete Failed', 'Could not remove entry. Please try again.');
-          }
+    confirm('Delete Entry', `Delete "${entry?.title || 'entry'}"?`, async () => {
+      if (entry?.id) {
+        try {
+          await deleteEntry(entry.id);
+          await refreshEntries();
+          triggerHaptic('success');
+          success('Deleted', 'Entry removed');
+        } catch {
+          error('Delete Failed', 'Could not remove entry.');
         }
-      },
-      () => triggerHaptic('light'),
-      'Delete',
-      'Cancel'
-    );
+      }
+    }, () => triggerHaptic('light'), 'Delete', 'Cancel');
   }, [deleteEntry, refreshEntries, triggerHaptic, confirm, success, error]);
 
   const handleEventPress = useCallback((entry: TrackerEntry) => {
     if (!entry?.id) return;
-    navigation.navigate('EntryDetail', { entryId: entry.id, trackerId: entry.trackerId });
-  }, [navigation]);
-
-  const handleScroll = useAnimatedScrollHandler({
-    onScroll: (event) => { 'worklet'; scrollY.value = event.contentOffset.y; },
-  }, [scrollY]);
-
-  const headerAnimatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(scrollY.value, [0, 80, 120], [0, 0.5, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(scrollY.value, [0, 100], [-10, 0], Extrapolation.CLAMP);
-    return { opacity, transform: [{ translateY }] };
-  });
-
-  const handleTabChange = useCallback((tab: TimelineTab) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setActiveTab(tab);
     triggerHaptic('light');
-  }, [triggerHaptic]);
+    navigation.navigate('EntryDetail', { entryId: entry.id, trackerId: entry.trackerId });
+  }, [navigation, triggerHaptic]);
 
-  // ─── QUICK LOG HANDLER ──────────────────────────────────────────────────
   const handleQuickLog = useCallback((trackerId: string) => {
     triggerHaptic('light');
     navigation.navigate('AddEntry', { trackerId });
   }, [navigation, triggerHaptic]);
 
+  const handleTabChange = useCallback((tab: TimelineTab) => {
+    triggerHaptic('light');
+    setActiveTab(tab);
+  }, [triggerHaptic]);
+
   const tabs = [
-    { key: 'timeline' as TimelineTab, label: 'Timeline', icon: 'time-outline' },
-    { key: 'insights' as TimelineTab, label: 'Insights', icon: 'bulb-outline' },
-    { key: 'growth' as TimelineTab, label: 'Growth', icon: 'trending-up-outline' },
-    { key: 'achievements' as TimelineTab, label: 'Achievements', icon: 'trophy-outline' },
-    { key: 'analytics' as TimelineTab, label: 'Analytics', icon: 'bar-chart-outline' },
+    { key: 'timeline' as TimelineTab, label: 'Timeline', icon: 'time-outline' as const },
+    { key: 'insights' as TimelineTab, label: 'Insights', icon: 'bulb-outline' as const },
+    { key: 'growth' as TimelineTab, label: 'Growth', icon: 'trending-up-outline' as const },
+    { key: 'achievements' as TimelineTab, label: 'Awards', icon: 'trophy-outline' as const },
+    { key: 'analytics' as TimelineTab, label: 'Stats', icon: 'bar-chart-outline' as const },
   ];
 
-  // ─── RENDER: NO LOADING SCREEN, ALWAYS RENDER ──────────────────────────
+  const topRibbon = useMemo(() => {
+    if (activeReminders.length > 0) {
+      const r = activeReminders[0];
+      return { icon: 'alarm-outline' as const, color: DS.warning, label: 'Reminder', text: r?.title || 'Upcoming', onPress: () => setActiveTab('insights') };
+    }
+    if (growthIndex) {
+      const score = safeNumber(growthIndex.compositeIndex, 0);
+      return { icon: 'sparkles' as const, color: DS.success, label: 'Growth', text: `Composite index at ${score} — ${score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : 'Learning'}`, onPress: () => navigation.navigate('GrowthDashboard') };
+    }
+    return { icon: 'sunny-outline' as const, color: DS.primary, label: 'Tip', text: 'Consistency builds the best patterns for your baby', onPress: () => setActiveTab('insights') };
+  }, [activeReminders, growthIndex, navigation]);
 
+  /* ---------------- RENDER ---------------- */
   return (
-    <View style={[styles.container, { backgroundColor: theme.bgColors[0] }]}>
-      <StatusBar barStyle={theme.statusBar} />
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <LinearGradient
+        colors={isDark ? ['#0c0a09', '#12121e', '#0c0a09'] : ['#f8faff', '#eef0f5', '#e4e8f0']}
+        style={StyleSheet.absoluteFill}
+      />
 
-      <LinearGradient colors={theme.isDark ? [theme.bgColors[0], theme.bgColors[1]] : ['#f8fafc', '#e2e8f0', '#dbeafe']} style={styles.backgroundGradient} />
-
-      {safeArray(newlyUnlocked).length > 0 && (
-        <View style={[styles.achievementInlineBadge, { backgroundColor: `${theme.primary}12` }]}>
-          <Ionicons name="trophy" size={12} color={theme.primary} />
-          <Text style={[styles.achievementInlineText, { color: theme.primary }]}>{safeArray(newlyUnlocked).length} new</Text>
+      {/* ─── Sticky Header ─── */}
+      <Animated.View
+        entering={FadeIn.duration(400)}
+        style={[styles.stickyHeader, { paddingTop: HEADER_TOP_PADDING, backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)', borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}
+      >
+        <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <View style={styles.headerInner}>
+          <TouchableOpacity
+            onPress={() => { triggerHaptic('light'); navigation.goBack(); }}
+            style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+          >
+            <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>
+              TIMELINE
+            </GradientText>
+            <Text style={[styles.headerSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              {currentBaby?.name || 'Your little one'}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => { triggerHaptic('light'); setShowSearch(v => !v); }}
+              style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+            >
+              <Ionicons name={showSearch ? 'close' : 'search'} size={20} color={isDark ? DS.white : DS.gray800} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { triggerHaptic('light'); navigation.navigate('Achievements'); }}
+              style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+            >
+              <Ionicons name="trophy-outline" size={20} color={isDark ? DS.white : DS.gray800} />
+              {achievementStats?.unlocked > 0 && (
+                <View style={styles.headerBadge}>
+                  <Text style={styles.headerBadgeText}>{achievementStats.unlocked}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
-      )}
-
-      {/* ─── STICKY HEADER (fades in on scroll) ───────────────────────── */}      
-      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerAnimatedStyle]}>
-        <BlurView intensity={theme.isDark ? 40 : 80} style={StyleSheet.absoluteFill} tint={theme.blur} />
-        <Text style={[styles.stickyTitle, { color: theme.text.primary }]}>{currentBaby?.name || 'Timeline'}</Text>
-        <Text style={[styles.stickySubtitle, { color: theme.text.secondary }]}>{stats.today} entries • {stats.achievements} achievements</Text>
       </Animated.View>
 
       <Animated.ScrollView
-        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{ paddingTop: HEADER_TOTAL_HEIGHT + 12, paddingBottom: insets.bottom + 120 }}
         showsVerticalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} progressViewOffset={insets.top + 100} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={DS.primary} colors={[DS.primary, DS.accent]} progressViewOffset={HEADER_TOTAL_HEIGHT} />
         }
       >
-        {/* ─── TOP HEADER (scrolls away) ─────────────────────────────────── */}
-        <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
-          <TouchableOpacity 
-            style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]} 
-            onPress={() => navigation.goBack()} 
-            activeOpacity={0.8}
-          >
-            <Ionicons name="arrow-back" size={22} color={theme.text.secondary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            onPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Timeline', returnLabel: 'Timeline' })} 
-            style={styles.babyPill}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={theme.isDark ? ['#2a2a4a', '#1a1a3e'] : ['#f0f4ff', '#e8eeff']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            {currentBaby ? (
-              <>
-                <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={36} showBadge={false} />
-                <View style={styles.babyPillText}>
-                  <Text style={[styles.babyPillName, { color: theme.text.primary }]} numberOfLines={1}>{currentBaby.name}</Text>
-                  <Text style={[styles.babyPillAge, { color: theme.text.secondary }]}>{safeDiffMonths(new Date(), currentBaby.birthDate)}mo</Text>
-                </View>
-                <Ionicons name="chevron-down" size={16} color={theme.text.muted} />
-              </>
-            ) : (
-              <>
-                <View style={[styles.babyPillNoBabyIcon, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(102,126,234,0.1)' }]}>
-                  <Ionicons name="add-circle" size={28} color={theme.isDark ? '#a3bffa' : '#667eea'} />
-                </View>
-                <View style={styles.babyPillText}>
-                  <Text style={[styles.babyPillName, { color: theme.isDark ? '#fff' : '#1e293b' }]} numberOfLines={1}>Add Baby</Text>
-                  <Text style={[styles.babyPillAge, { color: theme.isDark ? '#94a3b8' : '#64748b' }]}>Tap to create profile</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={theme.text.muted} />
-              </>
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.headerActions}>
-            <TouchableOpacity 
-              style={[styles.headerIconBtn, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]} 
-              onPress={() => navigation.navigate('Achievements')} 
-              activeOpacity={0.8}
-            >
-              <Ionicons name="trophy-outline" size={22} color={theme.text.secondary} />
-              {stats.achievements > 0 && (
-                <View style={styles.achievementBadge}>
-                  <Text style={styles.achievementBadgeText}>{stats.achievements}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.addBtn, { backgroundColor: theme.primary }]} 
-              onPress={() => setShowTimelinePicker(true)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="add" size={24} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-
-        {/* Search Bar */}
+        {/* Search bar */}
         {showSearch && (
-          <Animated.View entering={FadeInDown} style={styles.searchContainer}>
-            <BlurView intensity={theme.isDark ? 40 : 90} style={[styles.searchBlur, { borderRadius: borderRadiusValue }]} tint={theme.blur}>
-              <Ionicons name="search" size={20} color={theme.text.secondary} />
-              <TextInput 
-                style={[styles.searchInput, { color: theme.text.primary, fontSize: 16 * fontSizeMultiplier }]} 
-                placeholder="Search entries..." 
-                value={searchQuery} 
-                onChangeText={setSearchQuery} 
-                placeholderTextColor={theme.text.secondary} 
-                autoFocus 
+          <Animated.View entering={FadeInDown.duration(250)} exiting={FadeOut.duration(200)} style={styles.searchWrap}>
+            <View style={[styles.searchInner, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <Ionicons name="search" size={18} color={DS.gray400} />
+              <TextInput
+                style={[styles.searchInput, { color: isDark ? DS.white : DS.gray800 }]}
+                placeholder="Search entries..."
+                placeholderTextColor={DS.gray400}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoFocus
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <Ionicons name="close-circle" size={20} color={theme.text.secondary} />
+                  <Ionicons name="close-circle" size={18} color={DS.gray400} />
                 </TouchableOpacity>
               )}
-            </BlurView>
+            </View>
           </Animated.View>
         )}
 
-        {/* Smart Stats Overview */}
-        <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(100)} style={styles.statsContainer}>
-          <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContent}>
-            <View style={[styles.kpiCard, { borderRadius: borderRadiusValue, borderColor: `${theme.primary}30`, backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(102,126,234,0.06)' }]}>
-              <View style={styles.kpiTop}>
-                <Ionicons name="today-outline" size={18} color={theme.primary} />
-                <View style={[styles.kpiTrendBadge, { backgroundColor: stats.todayTrend >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)' }]}>
-                  <Ionicons name={stats.todayTrend >= 0 ? 'trending-up' : 'trending-down'} size={10} color={stats.todayTrend >= 0 ? '#10b981' : '#ef4444'} />
-                  <Text style={[styles.kpiTrendText, { color: stats.todayTrend >= 0 ? '#10b981' : '#ef4444' }]}>{Math.abs(stats.todayTrend)}%</Text>
-                </View>
-              </View>
-              <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: 28 * fontSizeMultiplier }]}>{stats.today}</Text>
-              <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Today</Text>
-              <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>vs {stats.avgPerDay}/day avg</Text>
-            </View>
+        {/* ═════ PULSE HEADER (replaces hero card) ═════ */}
+        <PulseHeader
+          isDark={isDark}
+          currentBaby={currentBaby}
+          todayCount={todayCount}
+          weekCount={weekCount}
+          streak={streak}
+          weekSpark={weekSpark}
+          onBabyPress={() => navigation.navigate('SwitchBaby', { returnTo: 'Timeline', returnLabel: 'Timeline' })}
+          onAchievementsPress={() => navigation.navigate('Achievements')}
+          onCalendarPress={() => setShowCalendar(true)}
+          onAddPress={() => setShowTimelinePicker(true)}
+        />
 
-            <View style={[styles.kpiCard, { borderRadius: borderRadiusValue, borderColor: `${theme.secondary}30`, backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(250,112,154,0.06)' }]}>
-              <View style={styles.kpiTop}>
-                <Ionicons name="albums-outline" size={18} color={theme.secondary} />
-                <View style={[styles.kpiTrendBadge, { backgroundColor: 'rgba(59,130,246,0.12)' }]}>
-                  <Ionicons name="layers-outline" size={10} color="#3b82f6" />
-                  <Text style={[styles.kpiTrendText, { color: '#3b82f6' }]}>{stats.weekTotal}w</Text>
-                </View>
-              </View>
-              <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: 28 * fontSizeMultiplier }]}>{stats.total}</Text>
-              <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Total</Text>
-              <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>{stats.totalTrend}% this week</Text>
-            </View>
+        {/* Insight ribbon */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <InsightRibbon isDark={isDark} {...topRibbon} />
+        </View>
 
-            <View style={[styles.kpiCard, { borderRadius: borderRadiusValue, borderColor: 'rgba(245,158,11,0.3)', backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(245,158,11,0.06)' }]}>
-              <View style={styles.kpiTop}>
-                <Ionicons name="trophy-outline" size={18} color="#f59e0b" />
-                {stats.achievementTrend > 0 && (
-                  <View style={[styles.kpiTrendBadge, { backgroundColor: 'rgba(245,158,11,0.12)' }]}>
-                    <Ionicons name="add-circle" size={10} color="#f59e0b" />
-                    <Text style={[styles.kpiTrendText, { color: '#f59e0b' }]}>+{stats.achievementTrend}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: 28 * fontSizeMultiplier }]}>{stats.achievements}</Text>
-              <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Achievements</Text>
-              <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>Unlocked</Text>
-            </View>
+        {/* Quick logs */}
+        <View style={{ marginTop: DS.space.md }}>
+          <QuickLogs onLog={handleQuickLog} />
+        </View>
 
-            <View style={[styles.kpiCard, { borderRadius: borderRadiusValue, borderColor: 'rgba(16,185,129,0.3)', backgroundColor: theme.isDark ? 'rgba(45,45,60,0.4)' : 'rgba(16,185,129,0.06)' }]}>
-              <View style={styles.kpiTop}>
-                <Ionicons name="trending-up-outline" size={18} color="#10b981" />
-                {stats.growthTrend !== 0 && (
-                  <View style={[styles.kpiTrendBadge, { backgroundColor: stats.growthTrend > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)' }]}>
-                    <Ionicons name={stats.growthTrend > 0 ? 'arrow-up' : 'arrow-down'} size={10} color={stats.growthTrend > 0 ? '#10b981' : '#ef4444'} />
-                    <Text style={[styles.kpiTrendText, { color: stats.growthTrend > 0 ? '#10b981' : '#ef4444' }]}>{Math.abs(stats.growthTrend)}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.kpiValue, { color: theme.text.primary, fontSize: 28 * fontSizeMultiplier }]}>{stats.growthScore}</Text>
-              <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Growth</Text>
-              <Text style={[styles.kpiSub, { color: theme.text.secondary }]}>Composite Index</Text>
-            </View>
-          </Animated.ScrollView>
-        </Animated.View>
+        {/* Weekly velocity */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <WeeklyVelocity entries={allEntries} isDark={isDark} />
+        </View>
 
-        {/* Tab Bar */}
-        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
+        {/* Tab bar */}
+        <View style={{ marginTop: DS.space.md }}>
+          <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
+        </View>
 
-        {/* Timeline Tab */}
+        {/* ─── TIMELINE TAB ─── */}
         {activeTab === 'timeline' && (
           <>
-            <QuickActionSuggestions theme={theme} entries={allEntries} onPress={handleQuickLog} />
-
-            {allEntries.length > 0 && (
-              <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(250)} style={{ marginHorizontal: 20, marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={[styles.sectionTitle, { color: theme.text.primary, fontSize: 16 }]}>Latest Entries</Text>
-                  <Text style={{ color: theme.text.muted, fontSize: 12, fontWeight: '600' }}>Last {Math.min(5, allEntries.length)} of {allEntries.length}</Text>
-                </View>
-                {allEntries.slice(0, 5).map((entry, idx) => {
-                  const t = getTracker(entry?.trackerId);
-                  const c = t?.gradient?.[0] || t?.color || theme.primary;
-                  return (
-                    <TouchableOpacity key={entry?.id || idx} style={[styles.latestEntryRow, { borderBottomColor: theme.surface.border }, idx === 0 && { borderTopWidth: 1, borderTopColor: theme.surface.border }]} onPress={() => handleEventPress(entry)} activeOpacity={0.7}>
-                      <View style={[styles.latestEntryIcon, { backgroundColor: `${c}12` }]}>
-                        <Text style={{ fontSize: 16 }}>{t?.emoji || '📋'}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.latestEntryTitle, { color: theme.text.primary }]} numberOfLines={1}>{entry?.title || t?.name || 'Entry'}</Text>
-                        <Text style={[styles.latestEntryMeta, { color: theme.text.muted }]}>{entry?.timestamp ? format(entry.timestamp, 'MMM d, h:mm a') : ''}</Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={14} color={theme.text.muted} />
-                    </TouchableOpacity>
-                  );
-                })}
-              </Animated.View>
-            )}
-
-            <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(200)} style={styles.filterContainer}>
-              <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
-                {filterChips.map((filter, index) => (
-                  <Animated.View key={filter.id} entering={FadeIn.delay(index * 50)}>
-                    <TouchableOpacity 
-                      onPress={() => { triggerHaptic('light'); setSelectedFilter(filter.id); }} 
-                      style={[styles.filterChip, { 
-                        borderRadius: borderRadiusValue, 
-                        backgroundColor: selectedFilter === filter.id ? filter.color : theme.surface.card, 
-                        borderColor: selectedFilter === filter.id ? filter.color : theme.surface.border 
-                      }]} 
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name={filter.icon as any} size={16} color={selectedFilter === filter.id ? '#fff' : filter.color} />
-                      <Text style={[styles.filterText, selectedFilter === filter.id && { color: '#fff', fontWeight: '700' }]}>{filter.label}</Text>
-                    </TouchableOpacity>
-                  </Animated.View>
-                ))}
-              </Animated.ScrollView>
-            </Animated.View>
-
-            <AIPatternPredictor entries={allEntries} theme={theme} onPress={() => handleTabChange('analytics')} />
-
+            {/* Date filter banner */}
             {selectedDate && (
-              <Animated.View entering={shouldReduceMotion ? undefined : FadeInDown} style={[styles.dateFilterBanner, { backgroundColor: `${theme.primary}15`, borderColor: `${theme.primary}40`, borderRadius: borderRadiusValue }]}>
-                <Ionicons name="calendar" size={16} color={theme.primary} />
-                <Text style={[styles.dateFilterText, { color: theme.primary }]}>{format(selectedDate, 'EEEE, MMM d, yyyy')}</Text>
-                <TouchableOpacity onPress={() => { triggerHaptic('light'); setSelectedDate(null); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="close-circle" size={18} color={theme.primary} />
+              <Animated.View entering={FadeInDown.duration(200)} style={styles.dateBanner}>
+                <Ionicons name="calendar" size={14} color={DS.primary} />
+                <Text style={styles.dateBannerText}>{format(selectedDate, 'EEEE, MMM d')}</Text>
+                <TouchableOpacity onPress={() => setSelectedDate(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={16} color={DS.primary} />
                 </TouchableOpacity>
               </Animated.View>
             )}
 
-            <View style={styles.timelineContainer}>
-              {groupedEvents.length === 0 ? (
-                <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(400)} style={styles.emptyState}>
-                  <View style={[styles.emptyIconContainer, { backgroundColor: theme.surface.card }]}>
-                    <Ionicons name="document-text-outline" size={64} color={theme.text.muted} />
-                  </View>
-                  <Text style={[styles.emptyTitle, { color: theme.text.primary, fontSize: 22 * fontSizeMultiplier }]}>{searchQuery ? 'No matches found' : selectedDate ? 'No entries this day' : 'No entries yet'}</Text>
-                  <Text style={[styles.emptySubtitle, { color: theme.text.secondary, fontSize: 15 * fontSizeMultiplier }]}>{searchQuery ? 'Try adjusting your search' : selectedDate ? 'Tap the banner above to clear the date' : "Start tracking with the + button"}</Text>
-                </Animated.View>
-              ) : (
-                groupedEvents.map((group, groupIndex) => (
-                  <View key={group.title} style={styles.daySection}>
-                    <Animated.View entering={shouldReduceMotion ? undefined : FadeInUp.delay(groupIndex * 100)}>
-                      <View style={styles.dateHeaderContainer}>
-                        <Text style={[styles.dateHeader, { color: theme.text.primary, fontSize: 18 * fontSizeMultiplier }]}>{group.title}</Text>
-                        <View style={[styles.dateBadge, { backgroundColor: `${theme.primary}20` }]}>
-                          <Text style={[styles.dateBadgeText, { color: theme.primary }]}>{group.events.length}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.eventsContainer}>
-                        {group.events.map((event, eventIndex) => {
-                          const tracker = (getTracker(event?.trackerId) || {
-                            id: event?.trackerId || 'activity',
-                            name: event?.trackerId ? event.trackerId.charAt(0).toUpperCase() + event.trackerId.slice(1) : 'Activity',
-                            emoji: '•',
-                            color: theme.primary,
-                            gradient: [theme.primary, theme.secondary],
-                          }) as UnifiedTrackerConfig;
-                          const isLast = eventIndex === group.events.length - 1;
-                          const time = event?.timestamp ? format(event.timestamp, 'h:mm a') : '';
+            {/* Filter chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 8, paddingVertical: 8 }}
+            >
+              {filterChips.map((f) => {
+                const active = selectedFilter === f.id;
+                return (
+                  <TouchableOpacity
+                    key={f.id}
+                    onPress={() => { triggerHaptic('light'); setSelectedFilter(f.id); }}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: active ? f.color : isDark ? 'rgba(255,255,255,0.04)' : DS.white,
+                        borderColor: active ? f.color : isDark ? DS.darkBorder : DS.gray200,
+                      },
+                    ]}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name={f.icon as any} size={14} color={active ? DS.white : f.color} />
+                    <Text style={[styles.filterChipText, { color: active ? DS.white : isDark ? DS.gray300 : DS.gray600 }, active && { fontWeight: '700' }]}>
+                      {f.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
-                          return (
-                            <Animated.View key={event?.id || `event-${groupIndex}-${eventIndex}`} entering={FadeInUp.delay(groupIndex * 100 + eventIndex * 50).springify()}>
-                              <View style={styles.eventRow}>
-                                <View style={styles.timeColumn}>
-                                  <Text style={[styles.timeText, { color: tracker.gradient?.[0] || tracker.color || theme.primary }]}>{time}</Text>
-                                  {!isLast && <View style={[styles.timelineLine, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}30` }]} />}
-                                </View>
-                                <TouchableOpacity style={styles.eventCardContainer} onPress={() => handleEventPress(event)} activeOpacity={0.9}>
-                                  <View style={[styles.timelineEntryCard, { borderRadius: borderRadiusValue, borderColor: theme.surface.border }]}>
-                                    <LinearGradient colors={theme.isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.85)'] : ['rgba(255,255,255,0.98)', 'rgba(250,250,255,0.92)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-                                    <View style={styles.timelineEntryContent}>
-                                      <View style={styles.timelineEntryHeader}>
-                                        <View style={[styles.timelineEntryIconBg, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}12` }]}>
-                                          <Text style={styles.timelineEntryEmoji}>{tracker.emoji}</Text>
-                                        </View>
-                                        <View style={styles.timelineEntryInfo}>
-                                          <Text style={[styles.timelineEntryTitle, { color: theme.text.primary }]} numberOfLines={1}>{event?.title || 'Entry'}</Text>
-                                          <Text style={[styles.timelineEntryTime, { color: theme.text.secondary }]}>{event?.timestamp ? format(event.timestamp, 'MMM d, h:mm a') : ''}{event?.loggedByName ? ` • by ${event.loggedByName}` : ''}</Text>
-                                        </View>
-                                        <View style={[styles.timelineEntryTypeBadge, { backgroundColor: `${tracker.gradient?.[0] || tracker.color || theme.primary}10` }]}>
-                                          <Text style={[styles.timelineEntryTypeText, { color: tracker.gradient?.[0] || tracker.color || theme.primary }]}>{tracker.name}</Text>
-                                        </View>
-                                      </View>
-                                      {event?.notes && <Text style={[styles.timelineEntryNotes, { color: theme.text.secondary }]} numberOfLines={2}>{event.notes}</Text>}
-                                      <View style={styles.timelineEntryActions}>
-                                        <TouchableOpacity style={[styles.timelineEntryActionBtn, { backgroundColor: `${theme.primary}08` }]} onPress={() => handleEditEvent(event)}>
-                                          <Ionicons name="create-outline" size={16} color={theme.primary} />
-                                          <Text style={[styles.timelineEntryActionText, { color: theme.primary }]}>Edit</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={[styles.timelineEntryActionBtn, { backgroundColor: '#ef444408' }]} onPress={() => handleDeleteEvent(event)}>
-                                          <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                                          <Text style={[styles.timelineEntryActionText, { color: '#ef4444' }]}>Delete</Text>
-                                        </TouchableOpacity>
-                                      </View>
-                                    </View>
-                                  </View>
-                                </TouchableOpacity>
-                              </View>
-                            </Animated.View>
-                          );
-                        })}
-                      </View>
-                    </Animated.View>
+            {/* Timeline list */}
+            {groupedEvents.length === 0 ? (
+              <View style={styles.emptyState}>
+                <LinearGradient colors={[`${DS.primary}12`, `${DS.accent}12`]} style={styles.emptyIconBg}>
+                  <Ionicons name="time-outline" size={40} color={DS.primary} />
+                </LinearGradient>
+                <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray700 }]}>
+                  {searchQuery ? 'No matches found' : selectedDate ? 'Nothing on this day' : 'Your timeline awaits'}
+                </Text>
+                <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                  {searchQuery ? 'Try different keywords' : selectedDate ? 'Clear the date filter to see more' : 'Log your first entry to begin'}
+                </Text>
+                {!searchQuery && !selectedDate && (
+                  <PressableScale onPress={() => setShowTimelinePicker(true)} activeScale={0.96}>
+                    <LinearGradient colors={[DS.primary, DS.accent]} style={styles.emptyCta}>
+                      <Ionicons name="add" size={16} color={DS.white} />
+                      <Text style={styles.emptyCtaText}>Log First Entry</Text>
+                    </LinearGradient>
+                  </PressableScale>
+                )}
+              </View>
+            ) : (
+              groupedEvents.map((group, gi) => (
+                <Animated.View key={group.title} entering={FadeInUp.delay(gi * 80).springify()} style={styles.group}>
+                  <View style={styles.groupHeader}>
+                    <Text style={[styles.groupTitle, { color: isDark ? DS.white : DS.gray900 }]}>{group.title}</Text>
+                    <View style={[styles.groupBadge, { backgroundColor: `${DS.primary}18` }]}>
+                      <Text style={[styles.groupBadgeText, { color: DS.primary }]}>{group.events.length}</Text>
+                    </View>
                   </View>
-                ))
-              )}
-              <View style={{ height: insets.bottom + 100 }} />
-            </View>
+                  {group.events.map((ev, ei) => {
+                    const cfg = getTrackerCfg(ev?.trackerId);
+                    const t = getTracker(ev?.trackerId);
+                    const color = t?.gradient?.[0] || t?.color || cfg.color;
+                    const isLast = ei === group.events.length - 1;
+                    return (
+                      <Animated.View key={ev?.id || `${gi}-${ei}`} entering={FadeInUp.delay(gi * 80 + ei * 40).springify()}>
+                        <View style={styles.eventRow}>
+                          <View style={styles.eventTimeCol}>
+                            <Text style={[styles.eventTime, { color }]}>
+                              {ev?.timestamp ? format(ev.timestamp, 'h:mm') : ''}
+                            </Text>
+                            <Text style={[styles.eventTimeAmPm, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+                              {ev?.timestamp ? format(ev.timestamp, 'a') : ''}
+                            </Text>
+                            {!isLast && <View style={[styles.eventLine, { backgroundColor: `${color}35` }]} />}
+                          </View>
+                          <PressableScale onPress={() => handleEventPress(ev)} activeScale={0.98} style={{ flex: 1, paddingBottom: 12 }}>
+                            <View style={[styles.eventCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                              <View style={[styles.eventIcon, { backgroundColor: `${color}15` }]}>
+                                <Text style={{ fontSize: 18 }}>{cfg.emoji}</Text>
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.eventTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                                  {ev?.title || cfg.label}
+                                </Text>
+                                <Text style={[styles.eventMeta, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                                  {ev?.loggedByName ? `by ${ev.loggedByName}` : t?.name || cfg.label}
+                                </Text>
+                              </View>
+                              <TouchableOpacity
+                                onPress={() => handleDelete(ev)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                style={styles.eventDeleteBtn}
+                              >
+                                <Ionicons name="trash-outline" size={14} color={DS.gray400} />
+                              </TouchableOpacity>
+                            </View>
+                          </PressableScale>
+                        </View>
+                      </Animated.View>
+                    );
+                  })}
+                </Animated.View>
+              ))
+            )}
           </>
         )}
 
-        {/* Insights Tab */}
+        {/* ─── INSIGHTS TAB ─── */}
         {activeTab === 'insights' && (
-          <>
-            {smartSections.length > 0 && (
-              <View style={styles.smartSectionsContainer}>
-                <View style={styles.smartSectionHeader}>
-                  <Ionicons name="sparkles" size={16} color={theme.primary} />
-                  <Text style={[styles.smartSectionTitle, { color: theme.text.secondary }]}>Smart Insights</Text>
-                  {activeReminders.length > 0 && <View style={[styles.badge, { backgroundColor: `${theme.primary}20` }]}><Text style={[styles.badgeText, { color: theme.primary }]}>{activeReminders.length}</Text></View>}
-                </View>
-                {smartSections.map((section) => (
-                  <View key={section.id} style={styles.smartSectionItem}>
-                    {section.component}
-                  </View>
-                ))}
+          <View style={{ paddingHorizontal: DS.space.lg }}>
+            {smartSections.length > 0 ? (
+              smartSections.map(s => <View key={s.id} style={{ marginBottom: 10 }}>{s.component}</View>)
+            ) : (
+              <View style={styles.emptyState}>
+                <LinearGradient colors={[`${DS.primary}12`, `${DS.accent}12`]} style={styles.emptyIconBg}>
+                  <Ionicons name="bulb-outline" size={40} color={DS.primary} />
+                </LinearGradient>
+                <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray700 }]}>No insights yet</Text>
+                <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                  Keep logging — we'll surface patterns and correlations as they emerge.
+                </Text>
               </View>
             )}
-            <HealthTrendCorrelation entries={allEntries} theme={theme} />
-          </>
+          </View>
         )}
 
-        {/* Growth Tab */}
+        {/* ─── GROWTH TAB ─── */}
         {activeTab === 'growth' && (
-          <>
-            {growthIndex && <GrowthScoreCard growthIndex={growthIndex} theme={theme} onPress={() => navigation.navigate('GrowthDashboard')} />}
-            <ActivityBalanceRadar entries={allEntries} theme={theme} />
-            <WeeklyHeatmap entries={allEntries} theme={theme} />
-            <UpcomingEventsTimeline reminders={predictiveReminders} theme={theme} onPress={(r) => navigation.navigate('AddEntry', { trackerId: r.action?.params?.trackerId as string })} />
-          </>
+          <View style={{ paddingHorizontal: DS.space.lg, gap: 12 }}>
+            {growthIndex && <GrowthScoreCard growthIndex={growthIndex} isDark={isDark} onPress={() => navigation.navigate('GrowthDashboard')} />}
+            <WeeklyVelocity entries={allEntries} isDark={isDark} />
+          </View>
         )}
 
-        {/* Achievements Tab */}
+        {/* ─── ACHIEVEMENTS TAB ─── */}
         {activeTab === 'achievements' && (
-          <>
-            <View style={styles.section}>
-              <SectionHeader title="Achievements" subtitle={`${stats.achievements} unlocked`} icon="trophy-outline" />
-              <GlassCard>
-                <View style={styles.achievementStats}>
-                  <View style={styles.achievementStat}><Text style={[styles.achievementStatValue, { color: theme.primary }]}>{stats.achievements}</Text><Text style={[styles.achievementStatLabel, { color: theme.text.secondary }]}>Unlocked</Text></View>
-                  <View style={styles.achievementStat}><Text style={[styles.achievementStatValue, { color: '#f59e0b' }]}>{safeNumber(globalStreak?.currentStreak, 0)}</Text><Text style={[styles.achievementStatLabel, { color: theme.text.secondary }]}>Day Streak</Text></View>
-                  <View style={styles.achievementStat}><Text style={[styles.achievementStatValue, { color: '#10b981' }]}>{stats.total}</Text><Text style={[styles.achievementStatLabel, { color: theme.text.secondary }]}>Entries</Text></View>
+          <View style={{ paddingHorizontal: DS.space.lg, gap: 12 }}>
+            <View style={[styles.awardsCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <View style={styles.awardsStats}>
+                <View style={styles.awardsStat}>
+                  <Text style={[styles.awardsVal, { color: DS.warning }]}>{safeNumber(achievementStats?.unlocked, 0)}</Text>
+                  <Text style={[styles.awardsLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>Unlocked</Text>
                 </View>
-              </GlassCard>
+                <View style={[styles.awardsDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+                <View style={styles.awardsStat}>
+                  <Text style={[styles.awardsVal, { color: DS.primary }]}>{safeNumber(globalStreak?.currentStreak, 0)}</Text>
+                  <Text style={[styles.awardsLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>Streak</Text>
+                </View>
+                <View style={[styles.awardsDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+                <View style={styles.awardsStat}>
+                  <Text style={[styles.awardsVal, { color: DS.success }]}>{allEntries.length}</Text>
+                  <Text style={[styles.awardsLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>Entries</Text>
+                </View>
+              </View>
             </View>
-            {globalStreak?.currentStreak > 0 && <StreakBanner streak={globalStreak} theme={theme} onAction={() => setShowTimelinePicker(true)} />}
-            <View style={styles.section}>
-              <SectionHeader title="Recent Achievements" icon="trophy-outline" />
-              {safeArray(achievements).slice(0, 6).map((achievement, i) => (
-                <Animated.View key={achievement?.id || i} entering={FadeInUp.delay(i * 60).springify()}>
-                  <GlassCard style={styles.achievedCard}>
-                    <View style={styles.achievedRow}>
-                      <View style={[styles.achievedIconBg, { backgroundColor: `${getRarityGradient(achievement?.rarity || 'common')[0]}20` }]}>
-                        <Text style={styles.achievedEmoji}>{achievement?.emoji || '🏆'}</Text>
-                      </View>
-                      <View style={styles.achievedContent}>
-                        <Text style={[styles.achievedTitle, { color: theme.text.primary }]}>{achievement?.title || 'Achievement'}</Text>
-                        <Text style={[styles.achievedDate, { color: theme.text.muted }]}>{achievement?.description || ''}</Text>
-                      </View>
-                      <LinearGradient colors={getRarityGradient(achievement?.rarity || 'common')} style={styles.achievedBadge} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                        <Text style={styles.achievedBadgeText}>{achievement?.rarity || 'common'}</Text>
-                      </LinearGradient>
+            {globalStreak?.currentStreak > 0 && <StreakBanner streak={globalStreak} isDark={isDark} onAction={() => setShowTimelinePicker(true)} />}
+            {safeArray(achievements).slice(0, 8).map((a, i) => {
+              const [c1, c2] = getRarityGradient(a?.rarity || 'common');
+              return (
+                <Animated.View key={a?.id || i} entering={FadeInUp.delay(i * 60).springify()}>
+                  <View style={[styles.achievementRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                    <LinearGradient colors={[`${c1}15`, `${c2}15`]} style={styles.achievementIconWrap}>
+                      <Text style={{ fontSize: 22 }}>{a?.emoji || '🏆'}</Text>
+                    </LinearGradient>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.achievementTitle, { color: isDark ? DS.white : DS.gray900 }]}>{a?.title || 'Achievement'}</Text>
+                      <Text style={[styles.achievementDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                        {a?.description || ''}
+                      </Text>
                     </View>
-                  </GlassCard>
+                    <LinearGradient colors={[c1, c2]} style={styles.rarityPill}>
+                      <Text style={styles.rarityPillText}>{a?.rarity || 'common'}</Text>
+                    </LinearGradient>
+                  </View>
                 </Animated.View>
-              ))}
-            </View>
-          </>
+              );
+            })}
+          </View>
         )}
 
-        {/* Analytics Tab */}
+        {/* ─── ANALYTICS TAB ─── */}
         {activeTab === 'analytics' && (
-          <>
-            <ActivityBalanceRadar entries={allEntries} theme={theme} />
-            <WeeklyHeatmap entries={allEntries} theme={theme} />
-            <View style={styles.section}>
-              <SectionHeader title="Entry Statistics" subtitle="Last 30 days" icon="bar-chart-outline" />
-              <GlassCard>
-                <View style={styles.analyticsGrid}>
-                  {[
-                    { label: 'Feeding', count: allEntries.filter(e => e.trackerId === 'feed').length, color: '#f59e0b', icon: '🍼' },
-                    { label: 'Sleep', count: allEntries.filter(e => e.trackerId === 'sleep').length, color: '#8b5cf6', icon: '😴' },
-                    { label: 'Diaper', count: allEntries.filter(e => e.trackerId === 'diaper').length, color: '#10b981', icon: '👶' },
-                    { label: 'Milestone', count: allEntries.filter(e => e.trackerId === 'milestone').length, color: '#ec4899', icon: '🏆' },
-                    { label: 'Growth', count: allEntries.filter(e => e.trackerId === 'growth').length, color: '#6366f1', icon: '📏' },
-                    { label: 'Medication', count: allEntries.filter(e => e.trackerId === 'medication').length, color: '#ef4444', icon: '💊' },
-                  ].map((stat, i) => (
-                    <View key={i} style={styles.analyticsItem}>
-                      <View style={[styles.analyticsIconBg, { backgroundColor: `${stat.color}15` }]}>
-                        <Text style={styles.analyticsEmoji}>{stat.icon}</Text>
+          <View style={{ paddingHorizontal: DS.space.lg, gap: 12 }}>
+            <WeeklyVelocity entries={allEntries} isDark={isDark} />
+            <View style={[styles.awardsCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <Text style={[styles.awardsTitle, { color: isDark ? DS.white : DS.gray900 }]}>Entry Breakdown</Text>
+              <View style={styles.breakdownGrid}>
+                {[
+                  { label: 'Feed', key: 'feed', color: '#f59e0b', emoji: '🍼' },
+                  { label: 'Sleep', key: 'sleep', color: '#8b5cf6', emoji: '😴' },
+                  { label: 'Diaper', key: 'diaper', color: '#3b82f6', emoji: '👶' },
+                  { label: 'Milestone', key: 'milestone', color: '#ec4899', emoji: '🏆' },
+                  { label: 'Growth', key: 'growth', color: '#10b981', emoji: '📏' },
+                  { label: 'Meds', key: 'medication', color: '#ef4444', emoji: '💊' },
+                ].map(s => {
+                  const count = allEntries.filter(e => e.trackerId === s.key).length;
+                  return (
+                    <View key={s.key} style={styles.breakdownItem}>
+                      <View style={[styles.breakdownIcon, { backgroundColor: `${s.color}15` }]}>
+                        <Text style={{ fontSize: 16 }}>{s.emoji}</Text>
                       </View>
-                      <Text style={[styles.analyticsCount, { color: theme.text.primary }]}>{stat.count}</Text>
-                      <Text style={[styles.analyticsLabel, { color: theme.text.muted }]}>{stat.label}</Text>
+                      <Text style={[styles.breakdownCount, { color: isDark ? DS.white : DS.gray900 }]}>{count}</Text>
+                      <Text style={[styles.breakdownLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{s.label}</Text>
                     </View>
-                  ))}
-                </View>
-              </GlassCard>
+                  );
+                })}
+              </View>
             </View>
-          </>
+          </View>
         )}
 
-        <View style={{ height: insets.bottom + 40 }} />
+        <View style={{ height: 40 }} />
       </Animated.ScrollView>
 
-      {/* Floating Action Button */}
-      <Animated.View entering={FadeIn.delay(600)} style={[styles.fabContainer, { bottom: insets.bottom + 20, right: 20 }]}>
-        <TouchableOpacity 
-          style={[styles.fab, { backgroundColor: theme.primary, borderRadius: borderRadiusValue }]} 
-          onPress={() => setShowTimelinePicker(true)} 
-          activeOpacity={0.8}
-        >
-          <LinearGradient colors={[theme.primary, theme.secondary]} style={[StyleSheet.absoluteFill, { borderRadius: borderRadiusValue }]} />
-          <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* Timeline Picker Modal */}
-      <TimelinePicker 
-        visible={showTimelinePicker} 
-        onClose={() => setShowTimelinePicker(false)} 
-        onSelect={(trackerId: string) => { 
-          setShowTimelinePicker(false); 
-          setTimeout(() => navigation.navigate('AddEntry', { trackerId }), 50); 
-        }} 
-        currentBabyName={currentBaby?.name} 
-        currentBabyAvatar={currentBaby?.avatar} 
-      />
-
-      {/* Calendar Modal */}
+      {/* ═══ Calendar Modal ═══ */}
       <Modal visible={showCalendar} transparent animationType="fade" onRequestClose={() => setShowCalendar(false)}>
-        <View style={styles.calendarModalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowCalendar(false)} />
-          <View style={[styles.calendarModalCard, { backgroundColor: theme.surface.card, borderColor: theme.surface.border, borderRadius: borderRadiusValue * 1.5 }]}>
-            <View style={styles.calendarModalHeader}>
-              <TouchableOpacity onPress={() => { triggerHaptic('light'); setCalendarMonth(addMonths(calendarMonth, -1)); }} style={styles.calendarNavBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="chevron-back" size={22} color={theme.text.primary} />
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowCalendar(false)}>
+          <View style={[styles.calendarCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+            <View style={styles.calendarHead}>
+              <TouchableOpacity onPress={() => setCalendarMonth(addMonths(calendarMonth, -1))} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="chevron-back" size={22} color={isDark ? DS.white : DS.gray800} />
               </TouchableOpacity>
-              <Text style={[styles.calendarModalTitle, { color: theme.text.primary }]}>{format(calendarMonth, 'MMMM yyyy')}</Text>
-              <TouchableOpacity onPress={() => { triggerHaptic('light'); setCalendarMonth(addMonths(calendarMonth, 1)); }} style={styles.calendarNavBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="chevron-forward" size={22} color={theme.text.primary} />
+              <Text style={[styles.calendarTitle, { color: isDark ? DS.white : DS.gray900 }]}>{format(calendarMonth, 'MMMM yyyy')}</Text>
+              <TouchableOpacity onPress={() => setCalendarMonth(addMonths(calendarMonth, 1))} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="chevron-forward" size={22} color={isDark ? DS.white : DS.gray800} />
               </TouchableOpacity>
             </View>
-            <View style={styles.calendarWeekRow}>
+            <View style={styles.weekRow}>
               {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                <Text key={`${d}-${i}`} style={[styles.calendarWeekLabel, { color: theme.text.muted }]}>{d}</Text>
+                <Text key={i} style={[styles.weekLabel, { color: DS.gray400 }]}>{d}</Text>
               ))}
             </View>
-            <View style={styles.calendarGrid}>
+            <View style={styles.calGrid}>
               {calendarCells.map((day, idx) => {
-                if (!day) return <View key={`empty-${idx}`} style={styles.calendarCell} />;
+                if (!day) return <View key={idx} style={styles.calCell} />;
                 const key = format(day, 'yyyy-MM-dd');
                 const count = entryCountByDay.get(key) || 0;
-                const isSelected = !!selectedDate && isSameDay(day, selectedDate);
+                const isSel = !!selectedDate && isSameDay(day, selectedDate);
                 const isToday = isSameDay(day, new Date());
-                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                 const isFuture = day > new Date();
-                
                 return (
-                  <TouchableOpacity 
-                    key={key} 
-                    style={styles.calendarCell} 
-                    activeOpacity={0.7} 
-                    onPress={() => { 
-                      if (!isFuture) {
-                        triggerHaptic('light'); 
-                        setSelectedDate(day);
-                      }
-                    }} 
+                  <TouchableOpacity
+                    key={key}
+                    style={styles.calCell}
+                    onPress={() => {
+                      if (isFuture) return;
+                      triggerHaptic('light');
+                      setSelectedDate(day);
+                    }}
                     disabled={isFuture}
                   >
-                    <View style={[
-                      styles.calendarDayCircle, 
-                      isSelected && { backgroundColor: theme.primary },
-                      !isSelected && isToday && { borderWidth: 2, borderColor: theme.primary, backgroundColor: `${theme.primary}10` },
-                      !isSelected && !isToday && count > 0 && { backgroundColor: `${theme.primary}08` },
-                      isFuture && { opacity: 0.4, borderWidth: 1, borderColor: theme.text.muted, borderStyle: 'dashed' }
-                    ]}>
-                      <Text style={[
-                        styles.calendarDayText, 
-                        { color: isSelected ? '#fff' : isToday ? theme.primary : theme.text.primary },
-                        isWeekend && !isSelected && !isToday && { color: theme.text.muted }
-                      ]}>
+                    <View
+                      style={[
+                        styles.calDay,
+                        isSel && { backgroundColor: DS.primary },
+                        !isSel && isToday && { borderWidth: 1.5, borderColor: DS.primary, backgroundColor: `${DS.primary}10` },
+                        isFuture && { opacity: 0.3 },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.calDayText,
+                          { color: isSel ? DS.white : isToday ? DS.primary : isDark ? DS.gray300 : DS.gray700 },
+                        ]}
+                      >
                         {day.getDate()}
                       </Text>
-                      {isFuture && (
-                        <View style={[styles.calendarFutureBadge, { backgroundColor: theme.text.muted + '30' }]}>
-                          <Text style={[styles.calendarFutureText, { color: theme.text.muted, fontSize: 7 }]}>✕</Text>
-                        </View>
-                      )}
                       {!isFuture && count > 0 && (
-                        <View style={styles.calendarEntryIndicator}>
-                          <View style={[styles.calendarEntryDot, { backgroundColor: isSelected ? '#fff' : theme.primary }]} />
-                          {count > 1 && <Text style={[styles.calendarEntryCount, { color: isSelected ? '#fff' : theme.primary }]}>{count}</Text>}
-                        </View>
+                        <View style={[styles.calDot, { backgroundColor: isSel ? DS.white : DS.primary }]} />
                       )}
                     </View>
                   </TouchableOpacity>
                 );
               })}
             </View>
-            <View style={[styles.calendarDayView, { borderTopColor: theme.surface.border }]}>
-              <View style={styles.calendarDayViewHeader}>
-                <Ionicons name="list-outline" size={14} color={theme.primary} />
-                <Text style={[styles.calendarDayViewTitle, { color: theme.text.primary }]}>{selectedDate ? format(selectedDate, 'EEEE, MMM d') : 'Tap a day'}</Text>
-                {!!selectedDate && !(selectedDate > new Date()) && (
-                  <View style={[styles.calendarDayViewCount, { backgroundColor: `${theme.primary}15` }]}>
-                    <Text style={[styles.calendarDayViewCountText, { color: theme.primary }]}>{selectedDayEntries.length}</Text>
-                  </View>
-                )}
-              </View>
-              <ScrollView style={styles.calendarDayViewList} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                {!selectedDate ? (
-                  <Text style={[styles.calendarDayViewEmpty, { color: theme.text.muted }]}>Pick a date above to preview that day's entries.</Text>
-                ) : selectedDate > new Date() ? (
-                  <View style={styles.calendarFutureMessage}>
-                    <Ionicons name="time-outline" size={32} color={theme.text.muted} />
-                    <Text style={[styles.calendarDayViewEmpty, { color: theme.text.muted, marginTop: 8 }]}>No entries in the future yet.</Text>
-                    <Text style={[styles.calendarDayViewEmpty, { color: theme.text.secondary, fontSize: 12 }]}>You can only log entries for today or past dates.</Text>
-                  </View>
-                ) : selectedDayEntries.length === 0 ? (
-                  <Text style={[styles.calendarDayViewEmpty, { color: theme.text.muted }]}>No entries logged this day.</Text>
-                ) : (
-                  selectedDayEntries.map((e) => {
-                    const t = getTracker(e.trackerId);
-                    const c = t?.gradient?.[0] || t?.color || theme.primary;
-                    return (
-                      <TouchableOpacity 
-                        key={e.id} 
-                        style={styles.calendarDayViewRow} 
-                        activeOpacity={0.75} 
-                        onPress={() => { 
-                          triggerHaptic('light'); 
-                          setShowCalendar(false); 
-                          setTimeout(() => navigation.navigate('EntryDetail', { entryId: e.id, trackerId: e.trackerId }), 60); 
-                        }}
-                      >
-                        <View style={[styles.calendarDayViewEmoji, { backgroundColor: `${c}15` }]}>
-                          <Text style={styles.calendarDayViewEmojiText}>{t?.emoji || '📋'}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.calendarDayViewRowTitle, { color: theme.text.primary }]} numberOfLines={1}>{e.title || t?.name || 'Entry'}</Text>
-                          <Text style={[styles.calendarDayViewRowMeta, { color: theme.text.muted }]}>{format(new Date(e.timestamp), 'h:mm a')}{e.loggedByName ? ` • ${e.loggedByName}` : ''}</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={14} color={theme.text.muted} />
-                      </TouchableOpacity>
-                    );
-                  })
-                )}
-              </ScrollView>
-            </View>
-            <View style={styles.calendarFooter}>
-              <TouchableOpacity onPress={() => { triggerHaptic('light'); setSelectedDate(null); }} style={[styles.calendarFooterBtn, { borderRadius: borderRadiusValue }]}>
-                <Text style={[styles.calendarFooterBtnText, { color: theme.text.secondary }]}>Clear</Text>
+            <View style={[styles.calFooter, { borderTopColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <TouchableOpacity onPress={() => { setSelectedDate(null); setShowCalendar(false); }} style={styles.calBtn}>
+                <Text style={[styles.calBtnText, { color: isDark ? DS.gray400 : DS.gray500 }]}>Clear</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { triggerHaptic('light'); const t = new Date(); setSelectedDate(t); setCalendarMonth(t); }} style={[styles.calendarFooterBtn, { borderRadius: borderRadiusValue }]}>
-                <Text style={[styles.calendarFooterBtnText, { color: theme.text.secondary }]}>Today</Text>
+              <TouchableOpacity onPress={() => { setSelectedDate(new Date()); setShowCalendar(false); }} style={styles.calBtn}>
+                <Text style={[styles.calBtnText, { color: DS.primary }]}>Today</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { triggerHaptic('light'); setShowCalendar(false); }} style={[styles.calendarFooterBtn, { backgroundColor: theme.primary, borderRadius: borderRadiusValue }]}>
-                <Text style={[styles.calendarFooterBtnText, { color: '#fff' }]}>Done</Text>
+              <TouchableOpacity onPress={() => setShowCalendar(false)} style={[styles.calBtn, { backgroundColor: DS.primary, borderRadius: 12 }]}>
+                <Text style={[styles.calBtnText, { color: DS.white }]}>Done</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </Pressable>
       </Modal>
 
-      {/* Baby Required Modal */}
+      {/* ═══ Timeline Picker ═══ */}
+      <TimelinePicker
+        visible={showTimelinePicker}
+        onClose={() => setShowTimelinePicker(false)}
+        onSelect={(trackerId: string) => {
+          setShowTimelinePicker(false);
+          setTimeout(() => navigation.navigate('AddEntry', { trackerId }), 50);
+        }}
+        currentBabyName={currentBaby?.name}
+        currentBabyAvatar={currentBaby?.avatar}
+      />
+
+      {/* ═══ Baby Required Modal ═══ */}
       <Modal visible={showBabyRequiredModal} transparent animationType="fade" onRequestClose={() => setShowBabyRequiredModal(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowBabyRequiredModal(false)}>
-          <View style={[styles.modalContent, { backgroundColor: theme.isDark ? 'rgba(26,26,42,0.98)' : 'rgba(255,255,255,0.98)' }]}>
-            <View style={styles.modalIconWrap}>
-              <LinearGradient colors={[theme.secondary, theme.primary]} style={styles.modalIconGradient}>
-                <Ionicons name="people-outline" size={32} color="#fff" />
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowBabyRequiredModal(false)}>
+          <View style={[styles.babyReqCard, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+            <LinearGradient colors={[DS.primary, DS.accent]} style={styles.babyReqIcon}>
+              <Ionicons name="people-outline" size={28} color={DS.white} />
+            </LinearGradient>
+            <Text style={[styles.babyReqTitle, { color: isDark ? DS.white : DS.gray900 }]}>Baby Profile Needed</Text>
+            <Text style={[styles.babyReqDesc, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              Create a baby profile to start tracking activities and unlock all features.
+            </Text>
+            <PressableScale
+              onPress={() => { setShowBabyRequiredModal(false); navigation.navigate('CreateBabyProfile'); }}
+              activeScale={0.97}
+              style={{ width: '100%' }}
+            >
+              <LinearGradient colors={[DS.primary, DS.accent]} style={styles.babyReqBtn}>
+                <Text style={styles.babyReqBtnText}>Create Baby Profile</Text>
+                <Ionicons name="arrow-forward" size={16} color={DS.white} />
               </LinearGradient>
-            </View>
-            <Text style={[styles.modalTitle, { color: theme.text.primary }]}>Baby Profile Needed</Text>
-            <Text style={[styles.modalDesc, { color: theme.text.secondary }]}>Create a baby profile to start tracking activities and unlock all features.</Text>
-            <TouchableOpacity style={[styles.modalPrimaryBtn, { backgroundColor: theme.primary }]} onPress={() => { setShowBabyRequiredModal(false); navigation.navigate('CreateBabyProfile'); }}>
-              <Text style={styles.modalPrimaryBtnText}>Create Baby Profile</Text>
-              <Ionicons name="arrow-forward" size={16} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.modalSecondaryBtn} onPress={() => setShowBabyRequiredModal(false)}>
-              <Text style={[styles.modalSecondaryBtnText, { color: theme.text.muted }]}>Maybe Later</Text>
+            </PressableScale>
+            <TouchableOpacity onPress={() => setShowBabyRequiredModal(false)} style={styles.babyReqSecondary}>
+              <Text style={[styles.babyReqSecondaryText, { color: isDark ? DS.gray500 : DS.gray400 }]}>Maybe later</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -1778,64 +1518,179 @@ export default function EnhancedTimelineScreen() {
   );
 }
 
-// ─── STYLES ──────────────────────────────────────────────────────────────────
-
+/* ════════════════════════════════════════════════════════════
+   STYLES
+   ════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  backgroundGradient: { ...StyleSheet.absoluteFill },
 
-  // ── Glass Card ──
-  glassCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    ...SHADOW.md,
-  },
-  glassBorder: {
+  /* Header */
+  stickyHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 1,
+    zIndex: 100,
+    paddingBottom: DS.space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  glassContent: { flex: 1 },
-
-  // ── Section Header ──
-  sectionHeader: {
+  headerInner: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    marginTop: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: DS.space.lg,
+    height: 48,
   },
-  sectionHeaderLeft: {
+  headerIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
+  headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
+  headerBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: DS.warning,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: DS.white,
+    paddingHorizontal: 3,
+  },
+  headerBadgeText: { color: DS.white, fontSize: 9, fontWeight: '800' },
+
+  /* Search */
+  searchWrap: { paddingHorizontal: DS.space.lg, marginBottom: DS.space.sm },
+  searchInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
   },
-  sectionHeaderIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sectionTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
-  sectionSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  sectionActionText: { fontSize: 13, fontWeight: '700' },
+  searchInput: { flex: 1, fontSize: 14, paddingVertical: 2 },
 
-  // ── Tab Bar ──
+  /* Pulse Header */
+  pulseWrap: {
+    marginHorizontal: DS.space.lg,
+    marginTop: DS.space.md,
+    borderRadius: DS.radius['2xl'],
+    padding: DS.space.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    ...DS.shadow.md,
+  },
+  pulseGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  pulseGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  pulseAvatarWrap: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseAvatarGlow: { position: 'absolute', width: 66, height: 66, borderRadius: 33, backgroundColor: `${DS.primary}35` },
+  pulseAvatarRing: { position: 'absolute', width: 62, height: 62, borderRadius: 31, overflow: 'hidden' },
+  pulseAvatarInner: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseInfo: { flex: 1 },
+  pulseNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pulseName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, maxWidth: '70%' },
+  pulseAgePill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  pulseAgeText: { fontSize: 11, fontWeight: '700' },
+  pulseSubRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  pulseLiveDot: { width: 6, height: 6, borderRadius: 3 },
+  pulseSubText: { fontSize: 12, fontWeight: '500' },
+  pulseActions: { flexDirection: 'row', gap: 6 },
+  pulseIconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  pulseAddBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  pulseStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: DS.space.md,
+    paddingVertical: DS.space.sm,
+    borderRadius: DS.radius.lg,
+    marginTop: DS.space.md,
+    gap: DS.space.md,
+  },
+  pulseStat: { alignItems: 'center' },
+  pulseStatVal: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  pulseStatLbl: { fontSize: 10, fontWeight: '600', marginTop: 1 },
+  pulseStatDiv: { width: 1, height: 22 },
+  sparkWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, marginLeft: 'auto', height: 34 },
+  sparkCol: { justifyContent: 'flex-end' },
+  sparkBar: { width: 5, borderRadius: 2 },
+
+  /* Ribbon */
+  ribbon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DS.space.md,
+    paddingVertical: DS.space.md,
+    paddingHorizontal: DS.space.md,
+    borderRadius: DS.radius.lg,
+    borderWidth: 1,
+    ...DS.shadow.sm,
+  },
+  ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
+  ribbonText: { fontSize: 13, fontWeight: '600', marginTop: 1 },
+
+  /* Quick Logs */
+  quickChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 999,
+    ...DS.shadow.sm,
+  },
+  quickEmoji: { fontSize: 16 },
+  quickLabel: { color: DS.white, fontSize: 13, fontWeight: '700' },
+
+  /* Velocity */
+  velocityCard: {
+    borderRadius: DS.radius.xl,
+    padding: DS.space.md,
+    borderWidth: 1,
+    ...DS.shadow.sm,
+  },
+  velocityHeader: { flexDirection: 'row', alignItems: 'center', gap: DS.space.sm, marginBottom: DS.space.md },
+  velocityIcon: { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  velocityTitle: { flex: 1, fontSize: 13, fontWeight: '700' },
+  velocitySub: { fontSize: 11, fontWeight: '600' },
+  velocityBars: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 6 },
+  velocityCol: { flex: 1, alignItems: 'center', gap: 3 },
+  velocityCount: { fontSize: 9, fontWeight: '700' },
+  velocityBarTrack: {
+    width: '100%',
+    height: 40,
+    justifyContent: 'flex-end',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  velocityBar: { width: '100%', borderRadius: 6 },
+  velocityDay: { fontSize: 10, fontWeight: '600' },
+
+  /* Tab bar */
   tabBar: {
     flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginHorizontal: DS.space.lg,
+    backgroundColor: 'rgba(99,102,241,0.06)',
+    borderRadius: DS.radius.full,
     padding: 4,
-    borderRadius: 16,
     gap: 2,
   },
   tabItem: {
@@ -1843,413 +1698,237 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 12,
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: DS.radius.full,
   },
-  tabLabel: { fontSize: 12, fontWeight: '600' },
-  
-  // ── Header Actions ──
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  achievementBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#f59e0b',
-    borderRadius: 12,
-    minWidth: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: '#fff',
+  tabItemActive: {
+    backgroundColor: DS.white,
+    ...DS.shadow.sm,
   },
-  achievementBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  tabLabel: { fontSize: 11, fontWeight: '600' },
 
-  // ── Header Container ──
-  headerContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    paddingTop: 0,
-  },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // ── Top Header ──
-  topHeader: {
+  /* Date banner */
+  dateBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
+    gap: 8,
+    marginHorizontal: DS.space.lg,
+    marginTop: DS.space.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: `${DS.primary}12`,
+    borderRadius: DS.radius.full,
   },
-  babyPill: {
+  dateBannerText: { flex: 1, fontSize: 12, fontWeight: '700', color: DS.primary },
+
+  /* Filter chips */
+  filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
-    borderRadius: RADIUS.full,
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: DS.radius.full,
+    borderWidth: 1,
+  },
+  filterChipText: { fontSize: 12, fontWeight: '600' },
+
+  /* Timeline groups */
+  group: { marginTop: DS.space.lg, paddingHorizontal: DS.space.lg },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: DS.space.md },
+  groupTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
+  groupBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  groupBadgeText: { fontSize: 11, fontWeight: '700' },
+  eventRow: { flexDirection: 'row', gap: DS.space.sm },
+  eventTimeCol: { width: 48, alignItems: 'flex-end', paddingTop: 12 },
+  eventTime: { fontSize: 12, fontWeight: '800' },
+  eventTimeAmPm: { fontSize: 9, fontWeight: '600', marginTop: -2, textTransform: 'uppercase' },
+  eventLine: { width: 2, flex: 1, marginTop: 4, borderRadius: 1 },
+  eventCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DS.space.md,
+    padding: DS.space.md,
+    borderRadius: DS.radius.lg,
+    borderWidth: 1,
+    ...DS.shadow.sm,
+  },
+  eventIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  eventTitle: { fontSize: 14, fontWeight: '700' },
+  eventMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  eventDeleteBtn: { padding: 4 },
+
+  /* Empty */
+  emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: DS.space.lg },
+  emptyIconBg: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
+  emptyTitle: { fontSize: 17, fontWeight: '800', marginBottom: 6, textAlign: 'center' },
+  emptySub: { fontSize: 13, fontWeight: '500', textAlign: 'center', lineHeight: 19, marginBottom: DS.space.lg },
+  emptyCta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999 },
+  emptyCtaText: { color: DS.white, fontSize: 13, fontWeight: '700' },
+
+  /* Smart cards */
+  smartCard: {
+    borderRadius: DS.radius.xl,
+    padding: DS.space.md,
+    borderWidth: 1,
+    ...DS.shadow.sm,
+  },
+  smartCardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: DS.space.md },
+  smartIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  smartTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  smartDesc: { fontSize: 12, lineHeight: 17 },
+  smartAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: DS.space.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
     alignSelf: 'flex-start',
-    gap: 10,
+  },
+  smartActionText: { fontSize: 12, fontWeight: '700' },
+
+  /* Correlation */
+  corrCard: { borderRadius: DS.radius.lg, padding: DS.space.md, borderWidth: 1 },
+  corrHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  corrBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  corrBadgeText: { fontSize: 10, fontWeight: '700' },
+  corrTime: { fontSize: 10, fontWeight: '600' },
+  corrInsight: { fontSize: 13, fontWeight: '600', lineHeight: 18, marginBottom: 8 },
+  corrAction: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  corrActionText: { fontSize: 11, fontWeight: '700' },
+
+  /* Reminder */
+  reminderCard: {
+    borderRadius: DS.radius.lg,
+    padding: DS.space.md,
+    borderLeftWidth: 4,
+    borderWidth: 1,
+    ...DS.shadow.sm,
+  },
+  reminderHead: { flexDirection: 'row', alignItems: 'flex-start', gap: DS.space.md },
+  reminderEmoji: { fontSize: 24 },
+  reminderTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  reminderDesc: { fontSize: 12, lineHeight: 17 },
+  reminderMeta: { flexDirection: 'row', gap: 6, marginTop: DS.space.sm, flexWrap: 'wrap' },
+  reminderTimeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  reminderTimeText: { fontSize: 10, fontWeight: '700' },
+  reminderActions: { flexDirection: 'row', marginTop: DS.space.md },
+  reminderPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: 10 },
+  reminderPrimaryText: { color: DS.white, fontSize: 12, fontWeight: '700' },
+
+  /* Growth */
+  growthCard: {
+    borderRadius: DS.radius.xl,
+    padding: DS.space.lg,
+    borderWidth: 1,
     overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(102,126,234,0.15)',
-    flex: 1,
+    ...DS.shadow.md,
   },
-  babyPillText: { flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 },
-  babyPillName: { fontSize: 15, fontWeight: '700', maxWidth: 140 },
-  babyPillAge: { fontSize: 12, fontWeight: '600' },
-  babyPillNoBabyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  growthHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: DS.space.md },
+  growthTitle: { fontSize: 15, fontWeight: '800' },
+  growthComposite: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  growthCompositeText: { fontSize: 16, fontWeight: '800' },
+  growthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  growthItem: { width: '30%', gap: 4 },
+  growthItemEmoji: { fontSize: 18 },
+  growthBar: { height: 5, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' },
+  growthFill: { height: '100%', borderRadius: 3 },
+  growthItemLabel: { fontSize: 10, fontWeight: '600' },
 
-  // ── Sticky Header ──
-  stickyHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
+  /* Streak */
+  streakCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.sm,
-    paddingTop: 8,
-    pointerEvents: 'none',
+    gap: DS.space.md,
+    padding: DS.space.md,
+    borderRadius: DS.radius.lg,
+    borderWidth: 1,
+    ...DS.shadow.sm,
   },
-  stickyTitle: { fontSize: 17, fontWeight: '800' },
-  stickySubtitle: { fontSize: 12, fontWeight: '500' },
-
-  // ── Search ──
-  searchContainer: { marginHorizontal: 20, marginBottom: 16, marginTop: 8 },
-  searchBlur: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 4, overflow: 'hidden' },
-  searchInput: { flex: 1, marginLeft: 10, paddingVertical: 12 },
-
-  // ── Stats ──
-  statsContainer: { marginBottom: 16 },
-  statsContent: { paddingHorizontal: 20, gap: 10 },
-  kpiCard: { width: 120, padding: 14, borderWidth: 1, borderRadius: 16 },
-  kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  kpiTrendBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
-  kpiTrendText: { fontSize: 10, fontWeight: '700' },
-  kpiValue: { fontWeight: '800', letterSpacing: -1, marginBottom: 2 },
-  kpiLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  kpiSub: { fontSize: 10, fontWeight: '500', marginTop: 2 },
-
-  // ── Smart Sections ──
-  smartSectionsContainer: { marginHorizontal: 20, marginBottom: 20 },
-  smartSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  smartSectionTitle: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  badge: { borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeText: { fontSize: 11, fontWeight: '700' },
-  smartSectionItem: { marginBottom: 10 },
-
-  // ── Smart Card ──
-  smartCard: { borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
-  smartCardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  smartIconContainer: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  smartCardContent: { flex: 1 },
-  smartCardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
-  smartCardDesc: { fontSize: 13, lineHeight: 18 },
-  dismissBtn: { padding: 4 },
-  smartActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, alignSelf: 'flex-start' },
-  smartActionText: { fontSize: 13, fontWeight: '600' },
-
-  // ── Correlation Card ──
-  correlationCard: { borderRadius: 16, padding: 16, borderWidth: 1, overflow: 'hidden', marginBottom: 10 },
-  correlationHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  correlationIcons: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  correlationEmoji: { fontSize: 24 },
-  correlationLink: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  confidenceBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
-  confidenceText: { fontSize: 11, fontWeight: '700' },
-  correlationInsight: { fontSize: 14, fontWeight: '600', lineHeight: 20, marginBottom: 10 },
-  correlationTimeWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  correlationTime: { fontSize: 12, fontWeight: '500' },
-  correlationAction: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  correlationActionText: { fontSize: 12, fontWeight: '600' },
-
-  // ── Reminder Card ──
-  reminderCard: { borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)' },
-  reminderHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  reminderEmoji: { fontSize: 28 },
-  reminderContent: { flex: 1 },
-  reminderTitle: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
-  reminderDesc: { fontSize: 13, lineHeight: 18 },
-  reminderMeta: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
-  reminderTimeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.04)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  reminderTimeText: { fontSize: 12, fontWeight: '600' },
-  reminderActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  reminderActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
-  reminderActionText: { fontSize: 13, fontWeight: '700', color: '#fff' },
-  reminderActionBtnSecondary: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
-  reminderActionTextSecondary: { fontSize: 13, fontWeight: '600' },
-  basedOnContainer: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 10 },
-  basedOnLabel: { fontSize: 11, fontWeight: '600' },
-  basedOnChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  basedOnText: { fontSize: 10, fontWeight: '600' },
-
-  // ── Growth Card ──
-  growthCard: { padding: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)', borderRadius: 20, overflow: 'hidden' },
-  growthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  growthTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  growthEmoji: { fontSize: 24 },
-  growthTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
-  compositeBadge: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
-  compositeText: { fontSize: 16, fontWeight: '800' },
-  scoresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  scoreItem: { width: '47%', gap: 6 },
-  scoreEmoji: { fontSize: 20 },
-  scoreBarContainer: { height: 6, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' },
-  scoreBar: { height: '100%', borderRadius: 3 },
-  scoreValue: { fontSize: 14, fontWeight: '800' },
-  scoreLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  milestonePreview: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
-  milestonePreviewTitle: { fontSize: 13, fontWeight: '700', marginBottom: 10 },
-  milestoneRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  milestoneProgressBg: { flex: 1, height: 6, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' },
-  milestoneProgressFill: { height: '100%', borderRadius: 3 },
-  milestoneText: { fontSize: 12, fontWeight: '600', width: 100, textAlign: 'right' },
-
-  // ── Streak Banner ──
-  streakBanner: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 10, gap: 12 },
-  streakIconContainer: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   streakEmoji: { fontSize: 28 },
-  streakPulse: { position: 'absolute', width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  pulseRing: { position: 'absolute', width: 44, height: 44, borderRadius: 22, borderWidth: 2 },
-  streakContent: { flex: 1, gap: 4 },
-  streakTitle: { fontSize: 15, fontWeight: '800' },
-  streakSubtitle: { fontSize: 12, fontWeight: '500' },
-  streakProgressBg: { height: 4, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 2, marginTop: 4, overflow: 'hidden' },
+  streakTitle: { fontSize: 14, fontWeight: '800' },
+  streakSub: { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  streakProgress: { height: 4, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
   streakProgressFill: { height: '100%', borderRadius: 2 },
 
-  // ── Predictor ──
-  predictorHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
-  predictorIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  predictorTitleWrap: { flex: 1 },
-  predictorTitle: { fontSize: 16, fontWeight: '800' },
-  predictorSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  predictorList: { paddingHorizontal: 16, paddingBottom: 16 },
-  predictorItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
-  predictorLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  predictorEmoji: { fontSize: 22 },
-  predictorMilestone: { fontSize: 14, fontWeight: '700' },
-  predictorCategory: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  predictorRight: { alignItems: 'flex-end', gap: 4 },
-  predictorBarBg: { width: 60, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.06)', overflow: 'hidden' },
-  predictorBarFill: { height: '100%', borderRadius: 2 },
-  predictorConfidence: { fontSize: 10, fontWeight: '600' },
-  predictorAge: { fontSize: 12, fontWeight: '700' },
+  /* Awards */
+  awardsCard: { borderRadius: DS.radius.xl, padding: DS.space.lg, borderWidth: 1, ...DS.shadow.sm },
+  awardsTitle: { fontSize: 15, fontWeight: '800', marginBottom: DS.space.md },
+  awardsStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
+  awardsStat: { alignItems: 'center', gap: 2 },
+  awardsVal: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+  awardsLbl: { fontSize: 11, fontWeight: '600' },
+  awardsDiv: { width: 1, height: 30 },
+  achievementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DS.space.md,
+    padding: DS.space.md,
+    borderRadius: DS.radius.lg,
+    borderWidth: 1,
+    ...DS.shadow.sm,
+  },
+  achievementIconWrap: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  achievementTitle: { fontSize: 13, fontWeight: '700' },
+  achievementDesc: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  rarityPill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
+  rarityPillText: { fontSize: 10, fontWeight: '800', color: DS.white, textTransform: 'uppercase' },
 
-  // ── Radar ──
-  radarHeader: { padding: 16, paddingBottom: 8 },
-  radarTitle: { fontSize: 16, fontWeight: '800' },
-  radarSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  radarContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, gap: 16 },
-  radarCanvas: { justifyContent: 'center', alignItems: 'center' },
-  radarRing: { position: 'absolute', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
-  radarAxis: { position: 'absolute', height: 1, transformOrigin: '0% 50%' },
-  radarPoint: { position: 'absolute', width: 8, height: 8, borderRadius: 4, borderWidth: 2, borderColor: '#fff' },
-  radarLegend: { flex: 1, gap: 10 },
-  radarLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  radarLegendDot: { width: 8, height: 8, borderRadius: 4 },
-  radarLegendLabel: { fontSize: 12, fontWeight: '600', flex: 1 },
-  radarLegendValue: { fontSize: 12, fontWeight: '700' },
+  /* Breakdown */
+  breakdownGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  breakdownItem: { width: '30%', alignItems: 'center', gap: 4 },
+  breakdownIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  breakdownCount: { fontSize: 18, fontWeight: '800' },
+  breakdownLabel: { fontSize: 10, fontWeight: '600' },
 
-  // ── Heatmap ──
-  heatmapHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
-  heatmapTitle: { fontSize: 16, fontWeight: '800' },
-  heatmapLegend: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  heatmapLegendDot: { width: 8, height: 8, borderRadius: 4 },
-  heatmapLegendText: { fontSize: 10, fontWeight: '600' },
-  heatmapGrid: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16, gap: 8 },
-  heatmapCell: { flex: 1, alignItems: 'center', gap: 4 },
-  heatmapBlock: { width: '100%', aspectRatio: 1, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 2 },
-  heatmapValue: { fontSize: 13, fontWeight: '700' },
-  heatmapWeek: { fontSize: 10, fontWeight: '600' },
-  heatmapDate: { fontSize: 9, fontWeight: '500' },
+  /* Modal backdrop */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
 
-  // ── Correlation ──
-  correlationHeader: { padding: 16, paddingBottom: 8 },
-  correlationTitle: { fontSize: 16, fontWeight: '800' },
-  correlationSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  correlationList: { paddingHorizontal: 16, paddingBottom: 16, gap: 12 },
-  correlationItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  correlationLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  correlationIcon: { fontSize: 20 },
-  correlationLabel: { fontSize: 13, fontWeight: '700' },
-  correlationDetail: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  correlationRight: { alignItems: 'flex-end', gap: 4, width: 80 },
-  correlationBarBg: { width: '100%', height: 4, borderRadius: 2, overflow: 'hidden' },
-  correlationBarFill: { height: '100%', borderRadius: 2 },
-  correlationValue: { fontSize: 12, fontWeight: '700' },
+  /* Calendar */
+  calendarCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: DS.radius['2xl'],
+    padding: DS.space.lg,
+    borderWidth: 1,
+    ...DS.shadow.lg,
+  },
+  calendarHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: DS.space.md },
+  calendarTitle: { fontSize: 16, fontWeight: '800' },
+  weekRow: { flexDirection: 'row', marginBottom: 4 },
+  weekLabel: { width: `${100 / 7}%`, textAlign: 'center', fontSize: 11, fontWeight: '700' },
+  calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  calCell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 2 },
+  calDay: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  calDayText: { fontSize: 13, fontWeight: '600' },
+  calDot: { position: 'absolute', bottom: 4, width: 4, height: 4, borderRadius: 2 },
+  calFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: DS.space.md, paddingTop: DS.space.md, borderTopWidth: 1 },
+  calBtn: { paddingHorizontal: 14, paddingVertical: 8 },
+  calBtnText: { fontSize: 13, fontWeight: '700' },
 
-  // ── Suggestions ──
-  suggestionsHeader: { marginHorizontal: 20, marginBottom: 10, marginTop: 4 },
-  suggestionsTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  suggestionsSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
-  suggestionsScroll: { paddingHorizontal: 20, gap: 20, paddingBottom: 4, paddingTop: 4 },
-  suggestionCard: { width: 80, alignItems: 'center', justifyContent: 'center' },
-  suggestionIconCircle: { width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center', marginBottom: 8, backgroundColor: 'transparent' },
-  suggestionTitle: { fontSize: 12, fontWeight: '700', textAlign: 'center', marginBottom: 2 },
-  suggestionTime: { fontSize: 10, fontWeight: '500', textAlign: 'center' },
-
-  // ── Calendar ──
-  calendarTimeline: { marginHorizontal: 16, gap: 0 },
-  calendarItem: { flexDirection: 'row', gap: 12 },
-  calendarLeft: { width: 24, alignItems: 'center', paddingTop: 16 },
-  calendarLine: { position: 'absolute', top: 0, bottom: 0, width: 2, left: 11 },
-  calendarLineEnd: { position: 'absolute', top: 0, bottom: '50%', width: 2, left: 11 },
-  calendarDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#fff', zIndex: 1 },
-  calendarCard: { flex: 1, padding: 14, borderRadius: 16, marginBottom: 12 },
-  calendarHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  calendarEmoji: { fontSize: 20 },
-  calendarMeta: { flex: 1 },
-  calendarTitle: { fontSize: 14, fontWeight: '700' },
-  calendarCategory: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  calendarBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  calendarBadgeText: { fontSize: 10, fontWeight: '700' },
-  calendarAge: { fontSize: 11, fontWeight: '600' },
-
-  calendarActiveDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4 },
-  dateFilterBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
-  dateFilterText: { flex: 1, fontSize: 14, fontWeight: '700' },
-  calendarModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  calendarModalCard: { width: '100%', maxWidth: 380, padding: 16, borderWidth: 1 },
-  calendarModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  calendarModalTitle: { fontSize: 17, fontWeight: '800' },
-  calendarNavBtn: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
-  calendarWeekRow: { flexDirection: 'row', marginBottom: 6 },
-  calendarWeekLabel: { width: `${100 / 7}%`, textAlign: 'center', fontSize: 12, fontWeight: '700' },
-  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  calendarCell: { width: `${100 / 7}%`, aspectRatio: 1, justifyContent: 'center', alignItems: 'center', padding: 2 },
-  calendarDayCircle: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  calendarDayText: { fontSize: 14, fontWeight: '600' },
-  calendarEntryIndicator: { position: 'absolute', bottom: 4, flexDirection: 'row', alignItems: 'center', gap: 2 },
-  calendarEntryDot: { width: 4, height: 4, borderRadius: 2 },
-  calendarEntryCount: { fontSize: 8, fontWeight: '700' },
-  calendarFutureBadge: { position: 'absolute', top: 2, right: 2, width: 14, height: 14, borderRadius: 7, justifyContent: 'center', alignItems: 'center' },
-  calendarFutureText: { fontSize: 7, fontWeight: '700' },
-  calendarFutureMessage: { paddingVertical: 20, alignItems: 'center' },
-  calendarFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 },
-  calendarFooterBtn: { paddingHorizontal: 18, paddingVertical: 10 },
-  calendarFooterBtnText: { fontSize: 14, fontWeight: '700' },
-  calendarDayView: { marginTop: 14, borderTopWidth: 1, paddingTop: 10 },
-  calendarDayViewHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
-  calendarDayViewTitle: { flex: 1, fontSize: 14, fontWeight: '800' },
-  calendarDayViewCount: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  calendarDayViewCountText: { fontSize: 11, fontWeight: '800' },
-  calendarDayViewList: { maxHeight: 140 },
-  calendarDayViewEmpty: { fontSize: 13, fontWeight: '500', paddingVertical: 14, textAlign: 'center' },
-  calendarDayViewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  calendarDayViewEmoji: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  calendarDayViewEmojiText: { fontSize: 15 },
-  calendarDayViewRowTitle: { fontSize: 14, fontWeight: '700' },
-  calendarDayViewRowMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-
-  // ── Filter ──
-  filterContainer: { marginBottom: 16 },
-  filterContent: { paddingHorizontal: 20, gap: 8 },
-  filterChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
-  filterText: { fontSize: 13, fontWeight: '600' },
-
-  // ── Timeline ──
-  scrollContent: { paddingBottom: 20 },
-  timelineContainer: { paddingHorizontal: 20 },
-  emptyState: { alignItems: 'center', marginTop: 40, paddingHorizontal: 20 },
-  emptyIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  emptyTitle: { fontWeight: '800', marginBottom: 8, textAlign: 'center' },
-  emptySubtitle: { fontWeight: '500', textAlign: 'center', lineHeight: 22 },
-  daySection: { marginBottom: 24 },
-  dateHeaderContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  dateHeader: { fontWeight: '800', letterSpacing: -0.5 },
-  dateBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
-  dateBadgeText: { fontSize: 12, fontWeight: '700' },
-  eventsContainer: { gap: 0 },
-  eventRow: { flexDirection: 'row', gap: 12 },
-  timeColumn: { width: 56, alignItems: 'flex-end', paddingTop: 16 },
-  timeText: { fontSize: 12, fontWeight: '700' },
-  timelineLine: { width: 2, flex: 1, marginTop: 4 },
-  eventCardContainer: { flex: 1, paddingBottom: 16 },
-  timelineEntryCard: { flex: 1, overflow: 'hidden', borderWidth: 1 },
-  timelineEntryContent: { padding: 14, gap: 8 },
-  timelineEntryHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  timelineEntryIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  timelineEntryEmoji: { fontSize: 18 },
-  timelineEntryInfo: { flex: 1, gap: 2 },
-  timelineEntryTitle: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
-  timelineEntryTime: { fontSize: 11, fontWeight: '500' },
-  timelineEntryTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  timelineEntryTypeText: { fontSize: 10, fontWeight: '700' },
-  timelineEntryNotes: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginLeft: 46 },
-  timelineEntryActions: { flexDirection: 'row', gap: 8, marginTop: 4, marginLeft: 46 },
-  timelineEntryActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  timelineEntryActionText: { fontSize: 11, fontWeight: '700' },
-
-  // ── Section ──
-  section: { marginBottom: 24 },
-  achievementStats: { flexDirection: 'row', padding: 16, gap: 16 },
-  achievementStat: { flex: 1, alignItems: 'center', gap: 4 },
-  achievementStatValue: { fontSize: 28, fontWeight: '800' },
-  achievementStatLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  achievedCard: { padding: 14, marginBottom: 8, marginHorizontal: 16 },
-  achievedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  achievedIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  achievedEmoji: { fontSize: 20 },
-  achievedContent: { flex: 1, gap: 2 },
-  achievedTitle: { fontSize: 14, fontWeight: '700' },
-  achievedDate: { fontSize: 11, fontWeight: '500' },
-  achievedBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  achievedBadgeText: { fontSize: 10, fontWeight: '700', color: '#fff' },
-
-  // ── Analytics ──
-  analyticsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 12 },
-  analyticsItem: { width: (SCREEN_W - 72) / 3, alignItems: 'center', gap: 6 },
-  analyticsIconBg: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  analyticsEmoji: { fontSize: 22 },
-  analyticsCount: { fontSize: 20, fontWeight: '800' },
-  analyticsLabel: { fontSize: 11, fontWeight: '600' },
-
-  // ── Latest Entries ──
-  latestEntryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1 },
-  latestEntryIcon: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  latestEntryTitle: { fontSize: 13, fontWeight: '700' },
-  latestEntryMeta: { fontSize: 10, fontWeight: '500', marginTop: 1 },
-
-  // ── FAB ──
-  fabContainer: { position: 'absolute', zIndex: 100 },
-  fab: { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
-
-  // ── Achievement Inline Badge ──
-  achievementInlineBadge: { position: 'absolute', top: 100, right: 20, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, zIndex: 50 },
-  achievementInlineText: { fontSize: 11, fontWeight: '700' },
-
-  // ── Modals ──
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalContent: { width: '100%', maxWidth: 360, borderRadius: 28, padding: 28, alignItems: 'center' },
-  modalIconWrap: { width: 64, height: 64, borderRadius: 24, marginBottom: 16, overflow: 'hidden' },
-  modalIconGradient: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-  modalTitle: { fontSize: 22, fontWeight: '800', marginBottom: 8, textAlign: 'center', letterSpacing: -0.3 },
-  modalDesc: { fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 24, paddingHorizontal: 8 },
-  modalPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', paddingVertical: 16, borderRadius: 18, gap: 8, marginBottom: 12 },
-  modalPrimaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  modalSecondaryBtn: { width: '100%', paddingVertical: 14, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  modalSecondaryBtnText: { fontSize: 15, fontWeight: '600' },
+  /* Baby required */
+  babyReqCard: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: DS.radius['2xl'],
+    padding: DS.space['2xl'],
+    alignItems: 'center',
+    ...DS.shadow.lg,
+  },
+  babyReqIcon: { width: 60, height: 60, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
+  babyReqTitle: { fontSize: 20, fontWeight: '800', marginBottom: 6, textAlign: 'center' },
+  babyReqDesc: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: DS.space.lg, paddingHorizontal: 6 },
+  babyReqBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, width: '100%' },
+  babyReqBtnText: { color: DS.white, fontSize: 14, fontWeight: '700' },
+  babyReqSecondary: { marginTop: DS.space.sm, paddingVertical: 10 },
+  babyReqSecondaryText: { fontSize: 13, fontWeight: '600' },
 });
