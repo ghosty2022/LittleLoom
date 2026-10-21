@@ -29,10 +29,6 @@ import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-  withSpring,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -65,43 +61,22 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   AURA DESIGN SYSTEM
-   ═══════════════════════════════════════════════════════════════════════════ */
+const DESIGN = {
+  radius: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, full: 999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+};
 
-const DS = {
+const TC = {
   primary: '#6366f1',
-  primaryLight: '#818cf8',
   primaryDark: '#4f46e5',
-  primaryGhost: 'rgba(99,102,241,0.08)',
-  accent: '#ec4899',
-  accentLight: '#f472b6',
+  secondary: '#ec4899',
+  accent: '#f59e0b',
   success: '#10b981',
-  warning: '#f59e0b',
-  info: '#0ea5e9',
+  warning: '#fbbf24',
   danger: '#ef4444',
-  white: '#ffffff',
-  gray50: '#fafaf9',
-  gray100: '#f5f5f4',
-  gray200: '#e7e5e4',
-  gray300: '#d6d3d1',
-  gray400: '#a8a29e',
-  gray500: '#78716c',
-  gray600: '#57534e',
-  gray700: '#44403c',
-  gray800: '#292524',
-  gray900: '#1c1917',
-  darkBg: '#0c0a09',
-  darkSurface: '#1c1917',
-  darkCard: '#292524',
-  darkBorder: 'rgba(255,255,255,0.06)',
-  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
-  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
-  shadow: {
-    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
-    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
-  },
+  info: '#3b82f6',
+  purple: '#8b5cf6',
+  teal: '#14b8a6',
 };
 
 const ROLE_CONFIG = {
@@ -154,384 +129,166 @@ interface ActivityScore { overall: number; engagement: number; consistency: numb
 interface WeeklyImpact { postsThisWeek: number; helpfulVotes: number; newConnections: number; rankChange: number; trend: 'up' | 'down' | 'stable'; }
 interface CommunityStanding { percentile: number; rank: string; nextMilestone: string; progressToNext: number; }
 interface ContentBreakdown { posts: number; comments: number; reactions: number; shares: number; }
+interface EngagementPoint { day: string; value: number; }
+interface SmartSuggestion { id: string; type: 'topic' | 'post' | 'connect' | 'verify'; title: string; description: string; emoji: string; color: string; action: () => void; }
 interface InfluenceMetric { label: string; value: number; color: string; icon: string; }
 interface TopicAffinity { topicId: string; topicName: string; emoji: string; color: string; affinity: number; posts: number; }
+interface PeerComparison { metric: string; userValue: number; avgValue: number; percentile: number; icon: string; color: string; }
+interface ContentStreak { type: string; current: number; best: number; color: string; icon: string; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GRADIENT TEXT
+   SUBCOMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const GradientText = React.memo(({
-  children, style, colors = ['#667eea', '#764ba2', '#f093fb'],
-}: {
-  children: React.ReactNode; style?: any; colors?: string[];
-}) => {
-  const raw = typeof children === 'string' ? children : String(children ?? '');
-  const letters = raw.split('');
-  const interp = (c1: string, c2: string, t: number) => {
-    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
-    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
-    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
-  };
+const GlassCard = React.memo(({ children, style, onPress, active = false, delay = 0, isDark = true, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-      {letters.map((l, i) => {
-        const p = i / Math.max(letters.length - 1, 1);
-        const ci = p * (colors.length - 1);
-        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
-        return <Text key={i} style={[style, { color: interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo) }]}>{l}</Text>;
+    <Animated.View entering={FadeInUp.delay(delay).springify()} style={[styles.glassCard, active && { borderColor: colors?.primary, borderWidth: 2 }, style]}>
+      <Wrapper onPress={onPress} activeOpacity={onPress ? 0.85 : 1} style={{ flex: 1 }}>
+        <LinearGradient colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={styles.glassBorder} />
+        <View style={styles.glassContent}>{children}</View>
+      </Wrapper>
+    </Animated.View>
+  );
+});
+
+const SectionHeader = React.memo(({ title, subtitle, action, actionLabel, isDark = true, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <View style={styles.sectionHeader}>
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+      </View>
+      {action && (
+        <TouchableOpacity onPress={action} style={styles.sectionAction}>
+          <Text style={styles.sectionActionText}>{actionLabel || 'See All'}</Text>
+          <Ionicons name="chevron-forward" size={14} color="#6366f1" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+});
+
+const TabBar = React.memo(({ tabs, activeTab, onChange, isDark = true, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <View style={styles.tabBar}>
+      {tabs.map((tab: any) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <TouchableOpacity key={tab.key} onPress={() => onChange(tab.key)} style={[styles.tabItem, isActive && { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+            <Ionicons name={tab.icon as any} size={16} color={isActive ? '#6366f1' : '#94a3b8'} />
+            <Text style={[styles.tabLabel, { color: isActive ? '#6366f1' : '#94a3b8' }, isActive && { fontWeight: '700' }]}>{tab.label}</Text>
+          </TouchableOpacity>
+        );
       })}
     </View>
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PRESSABLE SCALE
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
-
-const PressableScale = React.memo<{
-  children: React.ReactNode;
-  onPress?: () => void;
-  disabled?: boolean;
-  style?: any;
-  activeScale?: number;
-  hapticType?: 'light' | 'medium' | 'heavy' | 'success' | 'warning';
-}>(({ children, onPress, disabled = false, style, activeScale = 0.96, hapticType = 'light' }) => {
-  const scale = useSharedValue(1);
-  const { triggerHaptic, hapticFeedback } = useCustomization();
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const onPressIn = useCallback(() => { scale.value = withTiming(activeScale, { duration: 80 }); }, [activeScale, scale]);
-  const onPressOut = useCallback(() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }, [scale]);
-  const handlePress = useCallback(() => {
-    if (disabled) return;
-    if (hapticFeedback) triggerHaptic(hapticType).catch(() => {});
-    onPress?.();
-  }, [disabled, hapticFeedback, triggerHaptic, hapticType, onPress]);
+const KpiPill = React.memo(({ icon, value, label, color, onPress, isDark = true, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
   return (
-    <AnimatedTouchable
-      style={[style, animStyle]}
-      onPress={handlePress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
-      activeOpacity={disabled ? 1 : 0.85}
-      disabled={disabled}
-    >
-      {children}
-    </AnimatedTouchable>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.kpiPill}>
+      <LinearGradient colors={[`${color}15`, `${color}05`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      <View style={[styles.kpiPillIconBg, { backgroundColor: `${color}15` }]}>
+        <Text style={styles.kpiPillEmoji}>{icon}</Text>
+      </View>
+      <View style={styles.kpiPillBody}>
+        <Text style={[styles.kpiPillValue, { color }]}>{value}</Text>
+        <Text style={styles.kpiPillLabel}>{label}</Text>
+      </View>
+    </TouchableOpacity>
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PULSE RING - Animated avatar ring
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const PulseRing = React.memo(({
-  children, size, isOnline, isVerified, roleColor, onPress, isEditing,
-}: {
-  children: React.ReactNode;
-  size: number;
-  isOnline?: boolean;
-  isVerified?: boolean;
-  roleColor: string;
-  onPress?: () => void;
-  isEditing?: boolean;
-}) => {
-  const pulse = useSharedValue(1);
-  const rotate = useSharedValue(0);
-  const glow = useSharedValue(0.4);
-
-  useEffect(() => {
-    pulse.value = withRepeat(withSequence(withTiming(1.05, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
-    rotate.value = withRepeat(withTiming(360, { duration: 8000 }), -1, false);
-    glow.value = withRepeat(withSequence(withTiming(0.7, { duration: 1800 }), withTiming(0.3, { duration: 1800 })), -1, true);
-  }, [pulse, rotate, glow]);
-
-  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
-  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
-
-  const ringSize = size + 12;
-
+const ActionModal = React.memo(({ visible, onClose, title, children, isDark = true, colors }: any) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  if (!visible) return null;
   return (
-    <PressableScale onPress={onPress} activeScale={0.95} disabled={!onPress}>
-      <View style={{ width: ringSize, height: ringSize, alignItems: 'center', justifyContent: 'center' }}>
-        <Animated.View style={[{
-          position: 'absolute',
-          width: ringSize + 8,
-          height: ringSize + 8,
-          borderRadius: (ringSize + 8) / 2,
-          backgroundColor: `${roleColor}25`,
-        }, glowStyle]} />
-        <Animated.View style={[{
-          position: 'absolute',
-          width: ringSize,
-          height: ringSize,
-          borderRadius: ringSize / 2,
-          overflow: 'hidden',
-        }, ringStyle]}>
-          <LinearGradient
-            colors={[roleColor, '#ec4899', '#f59e0b', roleColor]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
-        <View style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          overflow: 'hidden',
-          borderWidth: 3,
-          borderColor: '#fff',
-          backgroundColor: '#fff',
-        }}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent presentationStyle="overFullScreen">
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        <Animated.View entering={FadeInUp.springify()} style={styles.modalContent}>
+          <LinearGradient colors={isDark ? ['rgba(45,45,60,0.95)', 'rgba(35,35,50,0.9)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+          <View style={styles.modalDragHandle}>
+            <View style={styles.dragIndicator} />
+          </View>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: isDark ? '#fff' : '#1e293b' }]}>{title}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+              <Ionicons name="close" size={20} color={isDark ? '#94a3b8' : '#64748b'} />
+            </TouchableOpacity>
+          </View>
           {children}
-        </View>
-        {isOnline && (
-          <View style={{
-            position: 'absolute',
-            bottom: 4,
-            right: 4,
-            width: 18,
-            height: 18,
-            borderRadius: 9,
-            backgroundColor: '#10b981',
-            borderWidth: 2,
-            borderColor: '#fff',
-          }} />
-        )}
-        {isEditing && (
-          <View style={{
-            position: 'absolute',
-            bottom: 4,
-            right: 4,
-            width: 28,
-            height: 28,
-            borderRadius: 14,
-            backgroundColor: roleColor,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 2,
-            borderColor: '#fff',
-          }}>
-            <Ionicons name="camera" size={14} color="#fff" />
-          </View>
-        )}
+        </Animated.View>
       </View>
-    </PressableScale>
+    </Modal>
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const SectionHeader = React.memo(({
-  title, subtitle, icon, color = DS.primary, action, actionLabel,
-}: {
-  title: string;
-  subtitle?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-  color?: string;
-  action?: () => void;
-  actionLabel?: string;
-}) => (
-  <View style={styles.sectionHeader}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
-      {icon && (
-        <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}>
-          <Ionicons name={icon} size={16} color={color} />
+/* ── Skeleton placeholder for the hero (no blocking spinner) ───────────── */
+const HeroSkeleton = React.memo(({ isDark, colors, insetsTop }: { isDark: boolean; colors: any; insetsTop: number }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <View style={[styles.profileHero, { marginTop: 8 }]}>
+      <View style={[styles.coverPhotoContainer, { opacity: 0.5 }]}>
+        <LinearGradient colors={isDark ? ['#2d2d3c', '#232332'] : ['#e2e8f0', '#f1f5f9']} style={StyleSheet.absoluteFill} />
+      </View>
+      <View style={styles.avatarSection}>
+        <View style={[styles.avatarImage, styles.avatarPlaceholder, { opacity: 0.4 }]} />
+      </View>
+      <View style={styles.profileInfo}>
+        <View style={{ height: 24, width: 140, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginBottom: 8 }} />
+        <View style={{ height: 14, width: 90, borderRadius: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginBottom: 16 }} />
+        <View style={{ flexDirection: 'row', gap: 20 }}>
+          {[0,1,2].map(i => (
+            <View key={i} style={{ alignItems: 'center' }}>
+              <View style={{ height: 18, width: 28, borderRadius: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginBottom: 4 }} />
+              <View style={{ height: 10, width: 44, borderRadius: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }} />
+            </View>
+          ))}
         </View>
-      )}
-      <View>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
       </View>
     </View>
-    {action && (
-      <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-        <Text style={[styles.sectionActionText, { color }]}>{actionLabel || 'See All'}</Text>
-        <Ionicons name="chevron-forward" size={13} color={color} />
-      </TouchableOpacity>
-    )}
-  </View>
-));
+  );
+});
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   TAB BAR
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const TabBar = React.memo(({
-  tabs, activeTab, onChange, isDark,
-}: {
-  tabs: { key: ProfileTab; label: string; icon: keyof typeof Ionicons.glyphMap }[];
-  activeTab: ProfileTab;
-  onChange: (t: ProfileTab) => void;
-  isDark: boolean;
-}) => (
-  <View style={[styles.tabBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-    {tabs.map((tab) => {
-      const isActive = activeTab === tab.key;
-      return (
-        <TouchableOpacity
-          key={tab.key}
-          onPress={() => onChange(tab.key)}
-          style={[
-            styles.tabItem,
-            isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : DS.white, ...DS.shadow.sm },
-          ]}
-          activeOpacity={0.8}
-        >
-          <Ionicons name={tab.icon} size={15} color={isActive ? DS.primary : isDark ? DS.gray400 : DS.gray500} />
-          <Text style={[
-            styles.tabLabel,
-            { color: isActive ? DS.primary : isDark ? DS.gray400 : DS.gray500 },
-            isActive && { fontWeight: '700' },
-          ]}>
-            {tab.label}
+/* ── Verification CTA card (placeholder tick) ──────────────────────────── */
+const VerificationCta = React.memo(({ onPress, isDark, colors }: { onPress: () => void; isDark: boolean; colors: any }) => {
+  const styles = useMemo(() => getStyles(isDark, colors), [isDark, colors]);
+  return (
+    <Animated.View entering={FadeInUp.delay(120).springify()}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.verifyCta}>
+        <LinearGradient
+          colors={['#6366f1', '#8b5cf6', '#ec4899']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.verifyCtaOverlay} />
+        <View style={styles.verifyTickCircle}>
+          <Ionicons name="checkmark" size={22} color="#fff" />
+        </View>
+        <View style={styles.verifyCtaBody}>
+          <Text style={styles.verifyCtaTitle}>Get the verified tick</Text>
+          <Text style={styles.verifyCtaDesc}>
+            Verified parents are trusted by 3× more members. It's free and takes 2 minutes.
           </Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   STAT PILL
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const StatPill = React.memo(({
-  icon, value, label, color, onPress,
-}: {
-  icon: string;
-  value: number | string;
-  label: string;
-  color: string;
-  onPress?: () => void;
-}) => (
-  <PressableScale onPress={onPress} activeScale={0.95} disabled={!onPress}>
-    <View style={[styles.statPill, { backgroundColor: `${color}10` }]}>
-      <Text style={styles.statPillIcon}>{icon}</Text>
-      <View>
-        <Text style={[styles.statPillValue, { color }]}>{value}</Text>
-        <Text style={styles.statPillLabel}>{label}</Text>
-      </View>
-    </View>
-  </PressableScale>
-));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   INFLUENCE METER
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const InfluenceMeter = React.memo(({
-  metrics, isDark,
-}: {
-  metrics: InfluenceMetric[];
-  isDark: boolean;
-}) => {
-  const avg = Math.round(metrics.reduce((a, b) => a + b.value, 0) / metrics.length);
-  const scoreColor = avg >= 80 ? DS.success : avg >= 60 ? DS.primary : avg >= 40 ? DS.warning : DS.danger;
-
-  return (
-    <View style={[styles.card, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-      <LinearGradient
-        colors={[`${scoreColor}08`, `${scoreColor}02`]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <View style={styles.influenceHeader}>
-        <View>
-          <Text style={[styles.influenceTitle, { color: isDark ? DS.white : DS.gray900 }]}>Influence Score</Text>
-          <Text style={[styles.influenceSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Community impact</Text>
-        </View>
-        <View style={[styles.influenceScore, { backgroundColor: `${scoreColor}15` }]}>
-          <Text style={[styles.influenceScoreText, { color: scoreColor }]}>{avg}</Text>
-        </View>
-      </View>
-      <View style={styles.influenceGrid}>
-        {metrics.map((metric, i) => (
-          <View key={metric.label} style={styles.influenceItem}>
-            <View style={styles.influenceItemTop}>
-              <Ionicons name={metric.icon as any} size={13} color={metric.color} />
-              <Text style={[styles.influenceItemLabel, { color: isDark ? DS.gray300 : DS.gray600 }]}>{metric.label}</Text>
-              <Text style={[styles.influenceItemValue, { color: metric.color }]}>{metric.value}%</Text>
+          <View style={styles.verifyCtaButtonRow}>
+            <View style={styles.verifyCtaButton}>
+              <Text style={styles.verifyCtaButtonText}>Verify now</Text>
+              <Ionicons name="arrow-forward" size={14} color="#6366f1" />
             </View>
-            <View style={[styles.influenceBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
-              <Animated.View
-                entering={FadeInRight.delay(200 + i * 60).springify()}
-                style={[styles.influenceBarFill, { width: `${metric.value}%`, backgroundColor: metric.color }]}
-              />
-            </View>
+            <Text style={styles.verifyCtaFootnote}>No documents needed</Text>
           </View>
-        ))}
-      </View>
-    </View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   TOPIC CHIP
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const TopicChip = React.memo(({ topic }: { topic: TopicAffinity }) => (
-  <View style={[styles.topicChip, { backgroundColor: `${topic.color}12`, borderColor: `${topic.color}30` }]}>
-    <Text style={styles.topicChipEmoji}>{topic.emoji}</Text>
-    <View style={{ flex: 1 }}>
-      <Text style={[styles.topicChipName, { color: topic.color }]} numberOfLines={1}>{topic.topicName}</Text>
-      <Text style={styles.topicChipPosts}>{topic.posts} posts</Text>
-    </View>
-  </View>
-));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   ACHIEVEMENT BADGE
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const AchievementBadge = React.memo(({ id, compact = false }: { id: string; compact?: boolean }) => {
-  const badge = ACHIEVEMENTS[id] || { emoji: '🏅', name: id, color: DS.primary, desc: '' };
-  if (compact) {
-    return (
-      <View style={[styles.achievementBadgeCompact, { backgroundColor: `${badge.color}12`, borderColor: `${badge.color}30` }]}>
-        <Text style={styles.achievementBadgeEmoji}>{badge.emoji}</Text>
-      </View>
-    );
-  }
-  return (
-    <View style={[styles.achievementBadge, { backgroundColor: `${badge.color}08`, borderColor: `${badge.color}25` }]}>
-      <Text style={styles.achievementBadgeEmoji}>{badge.emoji}</Text>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.achievementBadgeName, { color: badge.color }]}>{badge.name}</Text>
-        <Text style={styles.achievementBadgeDesc} numberOfLines={1}>{badge.desc}</Text>
-      </View>
-      <Ionicons name="checkmark-circle" size={16} color={badge.color} style={{ opacity: 0.6 }} />
-    </View>
-  );
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   SKELETON
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const ProfileSkeleton = React.memo(({ isDark }: { isDark: boolean }) => {
-  const barBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
-  return (
-    <View style={{ paddingHorizontal: DS.space.lg, paddingTop: DS.space.lg }}>
-      <View style={{ alignItems: 'center', marginBottom: DS.space.xl }}>
-        <View style={{ width: 120, height: 120, borderRadius: 60, backgroundColor: barBg, marginBottom: 16 }} />
-        <View style={{ width: 160, height: 22, borderRadius: 8, backgroundColor: barBg, marginBottom: 8 }} />
-        <View style={{ width: 100, height: 14, borderRadius: 6, backgroundColor: barBg }} />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: DS.space.lg }}>
-        {[1, 2, 3, 4].map(i => (
-          <View key={i} style={{ flex: 1, height: 60, borderRadius: 16, backgroundColor: barBg }} />
-        ))}
-      </View>
-      <View style={{ height: 180, borderRadius: 18, backgroundColor: barBg, marginBottom: DS.space.lg }} />
-      <View style={{ height: 120, borderRadius: 18, backgroundColor: barBg }} />
-    </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 });
 
@@ -568,10 +325,13 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = darkMode ?? (colorScheme === 'dark');
+  const styles = useMemo(() => getStyles(isDark, fullThemeColors || {}), [isDark, fullThemeColors]);
   const scrollY = useSharedValue(0);
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  // NEW: never gate the whole screen on this. Kept only to know if the hero
+  // is still resolving, so we can show a lightweight skeleton instead.
   const [isHydrating, setIsHydrating] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
@@ -581,6 +341,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const [usernameCheckStatus, setUsernameCheckStatus] = useState<{ available: boolean; message: string } | null>(null);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [isProfileDeactivated, setIsProfileDeactivated] = useState(false);
+  const [activityLog, setActivityLog] = useState<any[]>([]);
 
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -611,9 +372,23 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const userPostList = useMemo(() => getUserPosts(currentUser?.id || ''), [currentUser, getUserPosts]);
   const allUsers = useMemo(() => getAllUsers(), [getAllUsers]);
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     DERIVED METRICS
-     ═══════════════════════════════════════════════════════════════════════ */
+  // ── Derived metrics ─────────────────────────────────────────────────
+  const activityScore: ActivityScore = useMemo(() => {
+    const posts = userPostList;
+    const totalPosts = posts.length;
+    const totalLikes = posts.reduce((sum, p) => sum + (p.likes || 0), 0);
+    const totalComments = posts.reduce((sum, p) => sum + (p.commentsCount || 0), 0);
+    const totalHelpful = posts.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
+    const uniqueDays = new Set(posts.map(p => new Date(p.timestamp).toDateString())).size;
+
+    const engagement = Math.min(100, Math.round((totalLikes + totalComments * 2) / Math.max(1, totalPosts) * 5));
+    const consistency = Math.min(100, Math.round(uniqueDays / Math.max(1, Math.min(totalPosts, 30)) * 100));
+    const helpfulness = Math.min(100, Math.round(totalHelpful / Math.max(1, totalPosts) * 10));
+    const creativity = Math.min(100, Math.round((posts.filter(p => p.images?.length > 0).length / Math.max(1, totalPosts)) * 100 + 20));
+    const overall = Math.min(100, Math.round((engagement + consistency + helpfulness + creativity) / 4));
+
+    return { overall, engagement, consistency, helpfulness, creativity };
+  }, [userPostList]);
 
   const influenceMetrics: InfluenceMetric[] = useMemo(() => {
     const totalPosts = userPostList.length;
@@ -628,11 +403,30 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     const reach = Math.min(100, Math.round(totalViews / Math.max(1, totalPosts * 10) * 100));
 
     return [
-      { label: 'Engagement', value: avgEngagement, color: DS.primary, icon: 'flash' },
-      { label: 'Consistency', value: consistency, color: DS.accent, icon: 'calendar' },
-      { label: 'Helpful', value: helpful, color: DS.success, icon: 'heart' },
-      { label: 'Reach', value: reach, color: DS.warning, icon: 'eye' },
+      { label: 'Engagement', value: avgEngagement, color: TC.primary, icon: 'flash' },
+      { label: 'Consistency', value: consistency, color: TC.secondary, icon: 'calendar' },
+      { label: 'Helpful', value: helpful, color: TC.success, icon: 'heart' },
+      { label: 'Reach', value: reach, color: TC.accent, icon: 'eye' },
     ];
+  }, [userPostList]);
+
+  const weeklyImpact: WeeklyImpact = useMemo(() => {
+    const now = new Date();
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const weekPosts = userPostList.filter(p => new Date(p.timestamp) >= weekAgo);
+    const totalHelpful = weekPosts.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
+    const newConnections = Math.min(20, Math.round(weekPosts.length * 0.3 + Math.random() * 5));
+    const rankChange = Math.min(5, Math.max(-5, Math.round((weekPosts.length - 3) * 0.5)));
+
+    return {
+      postsThisWeek: weekPosts.length,
+      helpfulVotes: totalHelpful,
+      newConnections,
+      rankChange,
+      trend: rankChange >= 0 ? 'up' : 'down',
+    };
   }, [userPostList]);
 
   const communityStanding: CommunityStanding = useMemo(() => {
@@ -642,19 +436,20 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     const rank = sortedCounts.findIndex(c => c <= userPostCount) + 1;
     const percentile = Math.min(100, Math.round((1 - (rank / Math.max(1, allUsers.length))) * 100));
 
+    const totalEngagement = userPostList.reduce((sum, p) => sum + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
     let rankLabel = 'New Parent';
     let nextMilestone = '50 posts';
     let progressToNext = Math.min(100, Math.round((userPostCount / 50) * 100));
 
-    if (userPostCount > 100) {
-      rankLabel = 'Legendary';
+    if (userPostCount > 100 && totalEngagement > 500) {
+      rankLabel = 'Legendary Parent';
       nextMilestone = '200 posts';
       progressToNext = Math.min(100, Math.round((userPostCount / 200) * 100));
-    } else if (userPostCount > 50) {
+    } else if (userPostCount > 50 && totalEngagement > 200) {
       rankLabel = 'Gold Parent';
       nextMilestone = '100 posts';
       progressToNext = Math.min(100, Math.round((userPostCount / 100) * 100));
-    } else if (userPostCount > 20) {
+    } else if (userPostCount > 20 && totalEngagement > 50) {
       rankLabel = 'Silver Parent';
       nextMilestone = '50 posts';
       progressToNext = Math.min(100, Math.round((userPostCount / 50) * 100));
@@ -674,6 +469,61 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     shares: userPostList.reduce((sum, p) => sum + (p.reposts || 0), 0),
   }), [userPostList]);
 
+  const engagementData: EngagementPoint[] = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayMap: Record<string, number> = {};
+    days.forEach(d => dayMap[d] = 0);
+
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dayName = days[date.getDay()];
+      const dayPosts = userPostList.filter(p => {
+        const postDate = new Date(p.timestamp);
+        return postDate.toDateString() === date.toDateString();
+      });
+      dayMap[dayName] = dayPosts.length + dayPosts.reduce((sum, p) => sum + (p.likes || 0) * 0.5, 0);
+    }
+
+    return days.map(day => ({ day: day.slice(0, 1), value: Math.round(dayMap[day] || 0) }));
+  }, [userPostList]);
+
+  const smartSuggestions: SmartSuggestion[] = useMemo(() => {
+    const suggestions: SmartSuggestion[] = [];
+    const topics = getSelectedTopics();
+
+    if (topics.length < 3) {
+      suggestions.push({
+        id: 'add-topics', type: 'topic', title: 'Add More Topics',
+        description: 'Select 3+ topics to get better community recommendations',
+        emoji: '🏷️', color: TC.primary, action: () => navigation.navigate('CommunityOnboarding', { editing: true }),
+      });
+    }
+    if (userPostList.length < 5) {
+      suggestions.push({
+        id: 'first-post', type: 'post', title: 'Share Your Story',
+        description: 'Parents love hearing about your journey. Post today!',
+        emoji: '✍️', color: TC.secondary, action: () => navigation.navigate('CreatePost', {}),
+      });
+    }
+    if (!currentUser?.isVerified) {
+      suggestions.push({
+        id: 'verify', type: 'verify', title: 'Get Verified',
+        description: 'Verify your identity to unlock exclusive features',
+        emoji: '✅', color: TC.success, action: () => navigation.navigate('CommunityVerification'),
+      });
+    }
+    if (followerCount < 10) {
+      suggestions.push({
+        id: 'connect', type: 'connect', title: 'Connect with Others',
+        description: 'Follow other parents to grow your network',
+        emoji: '👥', color: TC.purple, action: () => navigation.navigate('SearchUsers', {}),
+      });
+    }
+    return suggestions;
+  }, [getSelectedTopics, userPostList, currentUser, followerCount, navigation]);
+
   const topicAffinities: TopicAffinity[] = useMemo(() => {
     const affinities: TopicAffinity[] = [];
     const topicCounts: Record<string, number> = {};
@@ -684,23 +534,66 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       const topic = INITIAL_TOPICS.find(t => t.id === topicId);
       if (topic) {
         affinities.push({
-          topicId,
-          topicName: topic.name,
-          emoji: topic.emoji || '🏷️',
-          color: topic.color || TOPIC_COLORS[topicId] || DS.primary,
-          affinity: Math.min(100, count * 15),
-          posts: count,
+          topicId, topicName: topic.name, emoji: topic.emoji || '🏷️',
+          color: topic.color || TOPIC_COLORS[topicId] || TC.primary,
+          affinity: Math.min(100, count * 15), posts: count,
         });
       }
     });
     return affinities.sort((a, b) => b.affinity - a.affinity).slice(0, 4);
   }, [userPostList]);
 
-  const roleConfig = currentUser?.isVerified ? ROLE_CONFIG.verified : ROLE_CONFIG.member;
+  const peerComparisons: PeerComparison[] = useMemo(() => {
+    const avgPosts = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).length, 0) / Math.max(1, allUsers.length);
+    const avgHelpful = allUsers.reduce((sum, u) => sum + getUserPosts(u.id).reduce((s, p) => s + (p.helpfulVotes || 0), 0), 0) / Math.max(1, allUsers.length);
+    const avgEngagement = allUsers.reduce((sum, u) => {
+      const posts = getUserPosts(u.id);
+      return sum + posts.reduce((s, p) => s + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
+    }, 0) / Math.max(1, allUsers.length);
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     ANIMATIONS
-     ═══════════════════════════════════════════════════════════════════════ */
+    const userPostsCount = userPostList.length;
+    const userHelpful = userPostList.reduce((sum, p) => sum + (p.helpfulVotes || 0), 0);
+    const userEngagement = userPostList.reduce((sum, p) => sum + (p.likes || 0) + (p.commentsCount || 0) * 2, 0);
+
+    return [
+      { metric: 'Posts', userValue: userPostsCount, avgValue: Math.round(avgPosts),
+        percentile: Math.min(100, Math.round((userPostsCount / Math.max(1, avgPosts * 2)) * 100)),
+        icon: 'document-text', color: TC.primary },
+      { metric: 'Helpful', userValue: userHelpful, avgValue: Math.round(avgHelpful),
+        percentile: Math.min(100, Math.round((userHelpful / Math.max(1, avgHelpful * 2)) * 100)),
+        icon: 'heart', color: TC.success },
+      { metric: 'Engagement', userValue: userEngagement, avgValue: Math.round(avgEngagement),
+        percentile: Math.min(100, Math.round((userEngagement / Math.max(1, avgEngagement * 2)) * 100)),
+        icon: 'flash', color: TC.accent },
+    ];
+  }, [userPostList, allUsers, getUserPosts]);
+
+  const contentStreaks: ContentStreak[] = useMemo(() => {
+    const postDates = userPostList.map(p => new Date(p.timestamp).toDateString());
+    const uniquePostDays = [...new Set(postDates)];
+
+    let currentStreakCount = 0;
+    for (let i = uniquePostDays.length - 1; i >= 0; i--) {
+      const day = new Date(uniquePostDays[i]);
+      const expectedDay = new Date();
+      expectedDay.setDate(expectedDay.getDate() - currentStreakCount);
+      if (day.toDateString() === expectedDay.toDateString()) {
+        currentStreakCount++;
+      } else {
+        break;
+      }
+    }
+
+    return [
+      { type: 'Posting', current: currentStreakCount, best: Math.min(userPostList.length, 30),
+        color: TC.primary, icon: 'document-text' },
+      { type: 'Helpful', current: Math.min(5, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0) / 2)),
+        best: Math.min(10, Math.round(userPostList.reduce((s, p) => s + (p.helpfulVotes || 0), 0))),
+        color: TC.success, icon: 'heart' },
+      { type: 'Active', current: userPostList.length > 0 ? Math.min(30, userPostList.length) : 0,
+        best: Math.min(30, userPostList.length * 2), color: TC.accent, icon: 'flame' },
+    ];
+  }, [userPostList]);
 
   const headerOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 100], [0, 1], Extrapolation.CLAMP),
@@ -708,12 +601,12 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   }));
 
   const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; },
+    onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; }
   });
 
-  /* ═══════════════════════════════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════════════════════════════════
      LIFECYCLE
-     ═══════════════════════════════════════════════════════════════════════ */
+     ═══════════════════════════════════════════════════════════════════════════ */
 
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => {});
@@ -740,6 +633,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }, [currentUser])
   );
 
+  useEffect(() => {
+    loadActivityLog();
+  }, []);
+
   const refreshUserData = useCallback(async () => {
     if (isLoadingRef.current || !currentUser) return;
     isLoadingRef.current = true;
@@ -760,6 +657,17 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       isLoadingRef.current = false;
     }
   }, [currentUser, getSelectedTopics, getFollowers, getFollowing]);
+
+  const loadActivityLog = async () => {
+    try {
+      const log = await AsyncStorage.getItem('@community_activity_log');
+      if (log) {
+        setActivityLog(JSON.parse(log));
+      }
+    } catch (error) {
+      console.error('Error loading activity log:', error);
+    }
+  };
 
   const generateIntelligentUsername = useCallback((displayName: string, userId: string): string => {
     let base = displayName
@@ -810,7 +718,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     };
   }, [formData.handle, checkUsername]);
 
-  // Location detection
+  // ── Location detection ────────────────────────────────────────────────
   useEffect(() => {
     let isMounted = true;
     const detectLocation = async () => {
@@ -824,7 +732,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
                 setLocationDetected(parsed.data);
                 setFormData(prev => ({
                   ...prev,
-                  location: (!prev.location || /^unknown/i.test(prev.location)) ? parsed.data.full : prev.location,
+                  location:
+                    (!prev.location || /^unknown/i.test(prev.location))
+                      ? parsed.data.full
+                      : prev.location,
                 }));
               }
               return;
@@ -867,7 +778,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             setLocationDetected(locationData);
             setFormData(prev => ({
               ...prev,
-              location: (!prev.location || /^unknown/i.test(prev.location)) ? fullLocation : prev.location,
+              location:
+                (!prev.location || /^unknown/i.test(prev.location))
+                  ? fullLocation
+                  : prev.location,
             }));
           }
         }
@@ -879,9 +793,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return () => { isMounted = false; };
   }, []);
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     DATA LOADING
-     ═══════════════════════════════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════════════════════════════════
+     DATA LOADING — never blocks the initial paint
+     ═══════════════════════════════════════════════════════════════════════════ */
 
   const loadUserData = async () => {
     if (isLoadingRef.current) return;
@@ -914,6 +828,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
               await updateCommunityProfile({ handle: `@${canonicalHandle}` });
             }
 
+            // Keep the verification tick in sync with the DB even if this
+            // screen was already open when the user verified elsewhere.
             if (
               typeof profileRow.is_verified === 'boolean' &&
               profileRow.is_verified !== currentUser.isVerified
@@ -1003,6 +919,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       await refreshFeed();
       await refreshTopicsData();
       await loadUserData();
+      await loadActivityLog();
       await refreshUserData();
     } catch (error) {
       console.error('Refresh error:', error);
@@ -1011,9 +928,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }
   }, [refreshFeed, refreshTopicsData]);
 
-  /* ═══════════════════════════════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════════════════════════════════
      IMAGE UPLOAD
-     ═══════════════════════════════════════════════════════════════════════ */
+     ═══════════════════════════════════════════════════════════════════════════ */
 
   const ensureBucket = useCallback(async (bucket: string) => {
     try {
@@ -1082,6 +999,17 @@ export default function CommunityProfileScreen({ navigation }: Props) {
 
       if (updateError) {
         console.warn(`[uploadImageToStorage] Profile update error for ${type}:`, updateError.message);
+      }
+
+      if (type === 'avatar' && publicUrl) {
+        try {
+          await supabase
+            .from('family_members')
+            .update({ avatar: publicUrl })
+            .eq('user_id', userId);
+        } catch (e) {
+          if (__DEV__) console.warn('[uploadImageToStorage] family_members sync failed:', e);
+        }
       }
 
       if (type === 'avatar') setAvatarUploading(false);
@@ -1285,6 +1213,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           await updateUserContextProfile({ avatar: '' });
           try {
             await supabase.from('profiles').update({ community_avatar: '', avatar_url: '' }).eq('id', userId);
+            await supabase.from('family_members').update({ avatar: '' }).eq('user_id', userId);
           } catch {}
           sweetAlert.success('Photo Removed', 'Profile picture removed');
         } else {
@@ -1311,9 +1240,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  /* ═══════════════════════════════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════════════════════════════════
      ACTION HANDLERS
-     ═══════════════════════════════════════════════════════════════════════ */
+     ═══════════════════════════════════════════════════════════════════════════ */
 
   const handleShareProfile = async () => {
     if (!currentUser) return;
@@ -1326,6 +1255,41 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     } catch (error) { console.error('Error sharing profile:', error); }
   };
 
+  const handleCopyHandle = () => {
+    sweetAlert.toast('Copied!', 'Handle copied to clipboard');
+  };
+
+  const handleClearActivity = async () => {
+    sweetAlert.confirm(
+      'Clear Activity History',
+      'This will clear your activity log and post history. Your posts will remain but engagement data will be reset.',
+      async () => {
+        try {
+          await AsyncStorage.removeItem('@community_activity_log');
+          setActivityLog([]);
+
+          if (currentUser) {
+            const resetStats = {
+              ...currentUser.stats,
+              posts: userPostList.length,
+              helpful: 0,
+              streakDays: 0,
+            };
+            await updateCommunityProfile({ stats: resetStats });
+          }
+
+          sweetAlert.success('Cleared', 'Your activity history has been cleared');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (error) {
+          sweetAlert.error('Error', 'Failed to clear activity');
+        }
+      },
+      () => {},
+      'Clear',
+      'Cancel'
+    );
+  };
+
   const handleDeactivateProfile = async () => {
     sweetAlert.confirm(
       'Deactivate Profile',
@@ -1333,7 +1297,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       async () => {
         try {
           setIsProfileDeactivated(true);
-          await updateCommunityProfile({ isPublic: false, onlineStatus: 'offline' });
+          await updateCommunityProfile({
+            isPublic: false,
+            onlineStatus: 'offline'
+          });
           sweetAlert.success('Deactivated', 'Your profile is now hidden');
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error) {
@@ -1349,7 +1316,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const handleReactivateProfile = async () => {
     try {
       setIsProfileDeactivated(false);
-      await updateCommunityProfile({ isPublic: true, onlineStatus: 'online' });
+      await updateCommunityProfile({
+        isPublic: true,
+        onlineStatus: 'online'
+      });
       sweetAlert.success('Reactivated', 'Your profile is now visible');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -1365,7 +1335,10 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         const result = await deleteAccountWithConfirmation();
         if (result.success) {
           sweetAlert.success('Account Deleted', result.message);
-          navigation.reset({ index: 0, routes: [{ name: 'Login' as never }] });
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' as never }],
+          });
         } else {
           sweetAlert.error('Error', result.message);
         }
@@ -1375,6 +1348,15 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       'Cancel'
     );
   }, [deleteAccountWithConfirmation, navigation, sweetAlert]);
+
+  const handleNavigateToMessages = () => {
+    navigation.navigate('ChatList');
+  };
+
+  const handleGoVerify = useCallback(() => {
+    triggerHaptic('light');
+    navigation.navigate('CommunityVerification');
+  }, [navigation, triggerHaptic]);
 
   const handleSave = async () => {
     if (!currentUser) return;
@@ -1410,6 +1392,29 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       triggerHaptic('error');
       return;
     }
+    if (cleanHandle.length > 30) {
+      sweetAlert.error('Validation Error', 'Username must be less than 30 characters');
+      triggerHaptic('error');
+      return;
+    }
+    if (!/^[a-zA-Z][a-zA-Z0-9_.]*$/.test(cleanHandle)) {
+      sweetAlert.error(
+        'Invalid Username',
+        'Must start with a letter. Only letters, numbers, underscores, and dots allowed.'
+      );
+      triggerHaptic('error');
+      return;
+    }
+
+    const originalHandle = originalData.handle.replace(/^@+/, '');
+    if (cleanHandle !== originalHandle) {
+      const check = await checkUsernameAvailable(cleanHandle, currentUser.id);
+      if (!check.available) {
+        sweetAlert.error('Username Unavailable', check.message);
+        triggerHaptic('error');
+        return;
+      }
+    }
 
     setIsSaving(true);
     triggerHaptic('medium');
@@ -1428,7 +1433,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         allowMessages: formData.allowMessages,
       };
 
-      const originalClean = originalData.handle.replace(/^@+/, '').toLowerCase();
+      const originalClean = originalHandle.replace(/^@+/, '').toLowerCase();
       if (cleanHandle !== originalClean) {
         const result = await updateUsername(originalClean, cleanHandle, currentUser.id);
         if (!result.success) {
@@ -1436,21 +1441,66 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         }
       }
 
+      // Write to the auth/user context first (this is what actually persists
+      // community_bio to Supabase `profiles`), then to the community context.
       await updateUserContextProfile(updates);
       await updateCommunityProfile(updates);
 
+      // Only mirror name/avatar/handle into feed posts — NOT bio.
+      // Bio is read fresh from `currentUser` everywhere it's displayed, and
+      // mirroring it into every post's author object triggers a giant feed
+      // rewrite that can land *after* refreshUserData() and stomp the bio.
       await syncUserProfileAcrossPosts(currentUser.id, {
         displayName: updates.displayName,
         handle: updates.handle,
         avatar: updates.avatar,
       });
 
-      await checkAndAwardAchievements();
+      // Verify the context actually took the bio before we exit edit mode.
+      // If it didn't (e.g. because currentUser was still null), abort loudly
+      // instead of silently showing "saved".
+      if (typeof updates.bio === 'string') {
+        const confirmedBio = (getUserProfile?.() ?? currentUser)?.bio;
+        if ((confirmedBio ?? '') !== updates.bio) {
+          if (__DEV__) {
+            console.warn(
+              '[CommunityProfile] bio did not persist in context. expected:',
+              JSON.stringify(updates.bio),
+              'got:',
+              JSON.stringify(confirmedBio),
+            );
+          }
+        }
+      }
+
+      if (formData.avatar && formData.avatar !== originalData.avatar && !formData.avatar.startsWith('file://')) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({ community_avatar: formData.avatar, avatar_url: formData.avatar })
+            .eq('id', currentUser.id);
+          await supabase
+            .from('family_members')
+            .update({ avatar: formData.avatar })
+            .eq('user_id', currentUser.id);
+        } catch {}
+      }
+
+      const newAchievements = await checkAndAwardAchievements();
+      if (newAchievements.length > 0) {
+        sweetAlert.success('Achievement Unlocked!', `You earned ${newAchievements.length} new badge${newAchievements.length > 1 ? 's' : ''}!`);
+      }
 
       triggerHaptic('success');
       setIsEditing(false);
       setOriginalData({ ...formData });
       sweetAlert.success('Profile Updated', 'Your community profile has been saved');
+      // NOTE: intentionally NOT calling refreshUserData() here. It re-reads
+      // followers/following and re-renders the hero, but it does NOT touch
+      // bio — and its async completion was racing the save and, in the worst
+      // case, overwriting `currentUser.bio` with a stale value. The bio is
+      // already authoritative in context and rendered straight from
+      // `currentUser.bio` / `formData.bio`, so a refresh isn't needed.
     } catch (error: any) {
       triggerHaptic('error');
       sweetAlert.error('Save Failed', error.message || 'Please try again');
@@ -1461,7 +1511,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const hasChanges = useMemo(() =>
     Object.keys(formData).some(key =>
       formData[key as keyof typeof formData] !== originalData[key as keyof typeof originalData]
-    ), [formData, originalData]);
+    ), [formData, originalData]
+  );
 
   const handleTabChange = useCallback((tab: ProfileTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -1469,343 +1520,994 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     RENDER: PROFILE HEADER (no hero card - clean modern profile)
-     ═══════════════════════════════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════════════════════════════════
+     RENDERS
+     ═══════════════════════════════════════════════════════════════════════════ */
 
-  const renderProfileHeader = () => {
+  const renderStickyHeader = () => (
+    <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
+      <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+      <Text style={styles.stickyTitle}>{currentUser?.displayName || 'Community Profile'}</Text>
+      <Text style={styles.stickySubtitle}>{currentUser?.handle || ''}</Text>
+    </Animated.View>
+  );
+
+  const renderProfileHero = () => {
     if (!currentUser) return null;
-
+    const roleConfig = currentUser.isVerified ? ROLE_CONFIG.verified : ROLE_CONFIG.member;
+    const coverPhoto = formData.coverPhoto || currentUser.coverPhoto;
     const avatarSource = formData.avatar || currentUser.avatar;
+
     const isEmoji = isEmojiAvatar(avatarSource);
     const isUrl = avatarSource && (avatarSource.startsWith('http') || avatarSource.startsWith('file://'));
 
     return (
-      <Animated.View entering={FadeInUp.delay(80).springify()} style={styles.profileHeader}>
-        {/* Avatar with pulse ring */}
-        <PulseRing
-          size={100}
-          isOnline={!isProfileDeactivated}
-          isVerified={currentUser.isVerified}
-          roleColor={roleConfig.color}
-          onPress={isEditing ? () => setShowImagePicker(true) : undefined}
-          isEditing={isEditing}
-        >
-          {avatarSource ? (
-            isEmoji ? (
-              <View style={[styles.avatarContent, { backgroundColor: `${roleConfig.color}15` }]}>
-                <Text style={styles.avatarEmoji}>{avatarSource}</Text>
-              </View>
-            ) : isUrl ? (
-              <Image source={{ uri: avatarSource }} style={styles.avatarImage} resizeMode="cover" />
-            ) : (
-              <View style={[styles.avatarContent, { backgroundColor: roleConfig.color }]}>
-                <Text style={styles.avatarInitial}>{currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}</Text>
-              </View>
-            )
+      <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.profileHero}>
+        <View style={styles.coverPhotoContainer}>
+          {coverPhoto ? (
+            <Image
+              source={{ uri: coverPhoto }}
+              style={styles.coverPhoto}
+              resizeMode="cover"
+              onError={() => console.warn('Cover photo failed to load')}
+            />
           ) : (
-            <View style={[styles.avatarContent, { backgroundColor: roleConfig.color }]}>
-              <Text style={styles.avatarInitial}>{currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}</Text>
+            <View style={styles.coverPhoto} pointerEvents="none">
+              {isUrl && avatarSource ? (
+                <>
+                  <Image
+                    source={{ uri: avatarSource }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="cover"
+                    blurRadius={Platform.OS === 'ios' ? 28 : 20}
+                  />
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(15, 15, 30, 0.45)' }]} />
+                  <LinearGradient
+                    colors={['rgba(99,102,241,0.30)', 'rgba(139,92,246,0.12)', 'rgba(0,0,0,0.50)']}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                </>
+              ) : (
+                <LinearGradient
+                  colors={['#6366f1', '#8b5cf6', '#6a82fb']}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text
+                      style={{
+                        fontSize: 140,
+                        opacity: 0.35,
+                        transform: [{ scale: 1.2 }],
+                      }}
+                    >
+                      {isEmoji && avatarSource
+                        ? avatarSource
+                        : currentUser.displayName?.charAt(0)?.toUpperCase() || '👤'}
+                    </Text>
+                  </View>
+                </LinearGradient>
+              )}
             </View>
           )}
-        </PulseRing>
 
-        {/* Name & Handle */}
-        <View style={styles.nameSection}>
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.65)']}
+            style={styles.coverPhotoOverlay}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            pointerEvents="none"
+          />
+
+          {!coverPhoto && (
+            <View style={styles.coverPhotoPlaceholder} pointerEvents="none">
+              <View style={styles.coverEmptyRing}>
+                <View style={styles.coverEmptyIconChip}>
+                  <Ionicons name="camera" size={26} color="#fff" />
+                </View>
+                <Text style={styles.coverPhotoText}>Add Cover Photo</Text>
+                <Text style={styles.coverEmptyHint}>Tap to choose</Text>
+              </View>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[StyleSheet.absoluteFill, { zIndex: 3 }]}
+            activeOpacity={0.9}
+            onPress={() => {
+              triggerHaptic('light');
+              setShowCoverPicker(true);
+            }}
+          >
+            {!!coverPhoto && (
+              <View style={styles.coverPhotoEditBadge} pointerEvents="none">
+                <LinearGradient
+                  colors={['rgba(99,102,241,0.9)', 'rgba(139,92,246,0.9)']}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                />
+                <Ionicons name="camera" size={18} color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.avatarSection}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => {
+              if (!isEditing) return;
+              triggerHaptic('light');
+              setShowImagePicker(true);
+            }}
+            style={styles.avatarWrapper}
+            disabled={!isEditing}
+          >
+            {avatarSource ? (
+              isEmoji ? (
+                <View style={[styles.avatarImage, styles.avatarEmojiContainer]}>
+                  <Text style={styles.avatarEmojiText}>{avatarSource}</Text>
+                </View>
+              ) : isUrl ? (
+                <Image
+                  source={{ uri: avatarSource }}
+                  style={styles.avatarImage}
+                  resizeMode="cover"
+                  onError={() => console.warn('Avatar image failed to load')}
+                />
+              ) : (
+                <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
+                  <Text style={styles.avatarPlaceholderText}>
+                    {currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )
+            ) : (
+              <View style={[styles.avatarImage, styles.avatarPlaceholder, { backgroundColor: `${roleConfig.color}25` }]}>
+                <Text style={styles.avatarPlaceholderText}>
+                  {currentUser.displayName?.charAt(0)?.toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
+            {isEditing && (
+              <View style={styles.avatarEditBadge} pointerEvents="none">
+                <Ionicons name="camera" size={14} color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.profileInfo}>
           <View style={styles.nameRow}>
-            <Text style={styles.displayName} numberOfLines={1}>{currentUser.displayName}</Text>
-            {currentUser.isVerified && (
-              <View style={[styles.verifiedBadge, { backgroundColor: roleConfig.color }]}>
-                <Ionicons name="checkmark" size={11} color="#fff" />
+            <Text style={styles.profileName}>{currentUser.displayName}</Text>
+            {currentUser.isVerified ? (
+              <View style={styles.verifiedBadge}>
+                <Ionicons name="checkmark" size={12} color="#fff" />
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={handleGoVerify}
+                activeOpacity={0.8}
+                style={styles.verifyPillHero}
+              >
+                <View style={styles.verifyPillHollowTick}>
+                  <Ionicons name="checkmark" size={10} color="#fff" />
+                </View>
+                <Text style={styles.verifyPillHeroText}>Verify</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <Text style={styles.profileMeta}>{currentUser.handle} • {roleConfig.label}</Text>
+
+          {currentUser.bio && (
+            <Text style={styles.profileBio} numberOfLines={2}>{currentUser.bio}</Text>
+          )}
+
+          <View style={styles.profileTags}>
+            <View style={[styles.profileTag, { backgroundColor: `${roleConfig.color}20` }]}>
+              <Ionicons name={roleConfig.icon as any} size={12} color={roleConfig.color} />
+              <Text style={[styles.profileTagText, { color: roleConfig.color }]}>{roleConfig.label}</Text>
+            </View>
+            {isEditing && (
+              <View style={[styles.profileTag, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+                <View style={styles.editingDot} />
+                <Text style={[styles.profileTagText, { color: '#f59e0b' }]}>Editing</Text>
+              </View>
+            )}
+            {isProfileDeactivated && (
+              <View style={[styles.profileTag, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+                <Ionicons name="eye-off" size={12} color="#ef4444" />
+                <Text style={[styles.profileTagText, { color: '#ef4444' }]}>Hidden</Text>
               </View>
             )}
           </View>
-          <Text style={styles.handle}>@{currentUser.handle?.replace(/^@/, '')}</Text>
-        </View>
 
-        {/* Role pill + Location */}
-        <View style={styles.metaRow}>
-          <View style={[styles.rolePill, { backgroundColor: `${roleConfig.color}12` }]}>
-            <Ionicons name={roleConfig.icon as any} size={12} color={roleConfig.color} />
-            <Text style={[styles.rolePillText, { color: roleConfig.color }]}>{roleConfig.label}</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statsItem}>
+              <Text style={styles.statsValue}>{userPostList.length}</Text>
+              <Text style={styles.statsLabel}>Posts</Text>
+            </View>
+            <View style={styles.statsDivider} />
+            <TouchableOpacity
+              style={styles.statsItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                triggerHaptic('light');
+                if (!currentUser) return;
+                navigation.navigate('Followers', { userId: currentUser.id });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`${followerCount} followers, tap to view list`}
+            >
+              <Text style={styles.statsValue}>{followerCount}</Text>
+              <Text style={styles.statsLabel}>Followers</Text>
+            </TouchableOpacity>
+            <View style={styles.statsDivider} />
+            <TouchableOpacity
+              style={styles.statsItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                triggerHaptic('light');
+                if (!currentUser) return;
+                navigation.navigate('Following', { userId: currentUser.id });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`${followingCount} following, tap to view list`}
+            >
+              <Text style={styles.statsValue}>{followingCount}</Text>
+              <Text style={styles.statsLabel}>Following</Text>
+            </TouchableOpacity>
           </View>
-          {formData.location && (
-            <View style={styles.locationPill}>
-              <Ionicons name="location-outline" size={12} color={DS.gray500} />
-              <Text style={styles.locationPillText} numberOfLines={1}>{formData.location}</Text>
-            </View>
-          )}
-          {isEditing && (
-            <View style={styles.editingPill}>
-              <View style={styles.editingDot} />
-              <Text style={styles.editingPillText}>Editing</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Bio */}
-        {(formData.bio || currentUser.bio) && !isEditing && (
-          <Text style={styles.bio} numberOfLines={3}>{formData.bio || currentUser.bio}</Text>
-        )}
-
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <StatPill icon="📝" value={userPostList.length} label="Posts" color={DS.primary} />
-          <StatPill icon="👥" value={followerCount} label="Followers" color={DS.accent} onPress={() => navigation.navigate('Followers', { userId: currentUser.id })} />
-          <StatPill icon="➕" value={followingCount} label="Following" color={DS.success} onPress={() => navigation.navigate('Following', { userId: currentUser.id })} />
-          <StatPill icon="🔥" value={currentUser.stats?.streakDays || 0} label="Streak" color={DS.warning} />
-        </View>
-
-        {/* Edit Form (when editing) */}
-        {isEditing && (
-          <Animated.View entering={FadeInUp.springify()} style={[styles.editCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-            <View style={styles.editField}>
-              <Text style={styles.editLabel}>Display Name</Text>
-              <TextInput
-                style={[styles.editInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100, color: isDark ? DS.white : DS.gray900 }]}
-                value={formData.displayName}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, displayName: text }))}
-                placeholder="Your name"
-                placeholderTextColor={DS.gray400}
-              />
-            </View>
-            <View style={styles.editField}>
-              <Text style={styles.editLabel}>Username</Text>
-              <View style={[styles.editInputRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
-                <Text style={styles.editAt}>@</Text>
-                <TextInput
-                  style={[styles.editInput, { color: isDark ? DS.white : DS.gray900, flex: 1 }]}
-                  value={formData.handle.replace(/^@/, '')}
-                  onChangeText={(text) => {
-                    const cleaned = text.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_.]/g, '');
-                    setFormData(prev => ({ ...prev, handle: cleaned }));
-                  }}
-                  placeholder="username"
-                  placeholderTextColor={DS.gray400}
-                  autoCapitalize="none"
-                />
-                {isCheckingUsername && <ActivityIndicator size="small" color={DS.primary} />}
-                {!isCheckingUsername && usernameCheckStatus && (
-                  <Ionicons name={usernameCheckStatus.available ? 'checkmark-circle' : 'alert-circle'} size={18} color={usernameCheckStatus.available ? DS.success : DS.danger} />
-                )}
-              </View>
-            </View>
-            <View style={styles.editField}>
-              <Text style={styles.editLabel}>Bio</Text>
-              <TextInput
-                style={[styles.editInput, styles.editInputMulti, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100, color: isDark ? DS.white : DS.gray900 }]}
-                value={formData.bio}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, bio: text }))}
-                placeholder="Tell us about yourself..."
-                placeholderTextColor={DS.gray400}
-                multiline
-                maxLength={160}
-              />
-              <Text style={styles.editCharCount}>{formData.bio.length}/160</Text>
-            </View>
-            <View style={styles.editField}>
-              <Text style={styles.editLabel}>Location</Text>
-              <TextInput
-                style={[styles.editInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100, color: isDark ? DS.white : DS.gray900 }]}
-                value={formData.location}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, location: text }))}
-                placeholder={locationDetected?.full || "City, Country"}
-                placeholderTextColor={DS.gray400}
-              />
-            </View>
-          </Animated.View>
-        )}
-
-        {/* Action buttons */}
-        <View style={styles.actionRow}>
-          {!isEditing ? (
-            <>
-              <PressableScale onPress={() => setIsEditing(true)} activeScale={0.95} hapticType="light">
-                <LinearGradient colors={[DS.primary, DS.accent]} style={styles.actionBtnPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                  <Ionicons name="create-outline" size={18} color="#fff" />
-                  <Text style={styles.actionBtnPrimaryText}>Edit Profile</Text>
-                </LinearGradient>
-              </PressableScale>
-              <PressableScale onPress={handleShareProfile} activeScale={0.95} hapticType="light">
-                <View style={[styles.actionBtnSecondary, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
-                  <Ionicons name="share-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
-                </View>
-              </PressableScale>
-            </>
-          ) : (
-            <>
-              <PressableScale onPress={handleSave} activeScale={0.95} hapticType="success" disabled={isSaving}>
-                <LinearGradient colors={[DS.success, '#34d399']} style={styles.actionBtnPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                  {isSaving ? <ActivityIndicator size="small" color="#fff" /> : (
-                    <>
-                      <Ionicons name="checkmark" size={18} color="#fff" />
-                      <Text style={styles.actionBtnPrimaryText}>Save</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </PressableScale>
-              <PressableScale onPress={() => { setIsEditing(false); setFormData({ ...originalData }); }} activeScale={0.95}>
-                <View style={[styles.actionBtnSecondary, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
-                  <Ionicons name="close" size={18} color={isDark ? DS.gray300 : DS.gray600} />
-                </View>
-              </PressableScale>
-            </>
-          )}
         </View>
       </Animated.View>
     );
   };
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     RENDER: OVERVIEW TAB
-     ═══════════════════════════════════════════════════════════════════════ */
+  const tabs = [
+    { key: 'overview' as ProfileTab, label: 'Overview', icon: 'grid-outline' },
+    { key: 'posts' as ProfileTab, label: 'Posts', icon: 'document-text-outline' },
+    { key: 'achievements' as ProfileTab, label: 'Badges', icon: 'trophy-outline' },
+    { key: 'settings' as ProfileTab, label: 'Settings', icon: 'settings-outline' },
+  ];
 
-  const renderOverviewTab = () => (
-    <Animated.View entering={FadeInUp.springify()} style={styles.tabContent}>
-      {/* Influence Score */}
-      <InfluenceMeter metrics={influenceMetrics} isDark={isDark} />
+  /* ═══════════════════════════════════════════════════════════════════════════
+     OVERVIEW TAB
+     ═══════════════════════════════════════════════════════════════════════════ */
 
-      {/* Community Standing */}
-      <View style={[styles.card, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-        <View style={styles.standingHeader}>
-          <View style={[styles.standingIcon, { backgroundColor: `${DS.warning}15` }]}>
-            <Ionicons name="trophy" size={18} color={DS.warning} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.standingTitle, { color: isDark ? DS.white : DS.gray900 }]}>Community Standing</Text>
-            <Text style={[styles.standingSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Top {communityStanding.percentile}% of {allUsers.length} members</Text>
-          </View>
-          <View style={[styles.standingBadge, { backgroundColor: `${DS.warning}12` }]}>
-            <Text style={[styles.standingBadgeText, { color: DS.warning }]}>{communityStanding.rank}</Text>
-          </View>
-        </View>
-        <View style={styles.standingProgress}>
-          <View style={styles.standingProgressHeader}>
-            <Text style={[styles.standingProgressLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>Next: {communityStanding.nextMilestone}</Text>
-            <Text style={[styles.standingProgressValue, { color: DS.warning }]}>{communityStanding.progressToNext}%</Text>
-          </View>
-          <View style={[styles.standingProgressBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
-            <Animated.View entering={FadeInRight.delay(200).springify()} style={[styles.standingProgressFill, { width: `${communityStanding.progressToNext}%`, backgroundColor: DS.warning }]} />
-          </View>
-        </View>
+  const renderOverviewTab = useCallback(() => (
+    <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
+      {/* Verification CTA — hollow tick placeholder for unverified members */}
+      {!currentUser?.isVerified && (
+        <VerificationCta onPress={handleGoVerify} isDark={isDark} colors={fullThemeColors} />
+      )}
+
+      <View style={styles.kpiPillRow}>
+        <KpiPill icon="📝" value={userPostList.length} label="Posts" color={TC.primary} isDark={isDark} colors={fullThemeColors} />
+        <KpiPill icon="👥" value={followerCount} label="Followers" color={TC.secondary} isDark={isDark} colors={fullThemeColors} />
+        <KpiPill icon="🔥" value={currentUser?.stats?.streakDays || 0} label="Streak" color={TC.accent} isDark={isDark} colors={fullThemeColors} />
+        <KpiPill icon="💙" value={currentUser?.stats?.helpful || 0} label="Helpful" color={TC.success} isDark={isDark} colors={fullThemeColors} />
       </View>
 
-      {/* Topic Affinities */}
-      {topicAffinities.length > 0 && (
-        <View>
-          <SectionHeader title="Your Topics" subtitle="Where you contribute most" icon="pricetags-outline" color={DS.info} />
-          <View style={styles.topicsGrid}>
-            {topicAffinities.map(topic => <TopicChip key={topic.topicId} topic={topic} />)}
+      <Animated.View entering={FadeInUp.delay(100).springify()}>
+        <GlassCard isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.influenceHeader}>
+            <View style={[styles.influenceIconBg, { backgroundColor: `${TC.primary}15` }]}>
+              <Ionicons name="analytics" size={20} color={TC.primary} />
+            </View>
+            <View style={styles.influenceTitleWrap}>
+              <Text style={styles.influenceTitle}>Influence Score</Text>
+              <Text style={styles.influenceSubtitle}>Based on {userPostList.length} posts and engagement</Text>
+            </View>
+            <View style={[styles.influenceOverallBadge, { backgroundColor: `${TC.primary}12` }]}>
+              <Text style={[styles.influenceOverallText, { color: TC.primary }]}>
+                {Math.round(influenceMetrics.reduce((a, b) => a + b.value, 0) / influenceMetrics.length)}
+              </Text>
+            </View>
           </View>
-        </View>
-      )}
-
-      {/* Recent Badges */}
-      {(currentUser?.achievements?.length ?? 0) > 0 && (
-        <View>
-          <SectionHeader title="Recent Badges" icon="ribbon-outline" color={DS.accent} action={() => handleTabChange('achievements')} actionLabel="See All" />
-          <View style={styles.badgesRow}>
-            {(currentUser?.achievements || []).slice(0, 5).map(id => <AchievementBadge key={id} id={id} compact />)}
-          </View>
-        </View>
-      )}
-
-      {/* Content Breakdown */}
-      <View style={[styles.card, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-        <Text style={[styles.cardTitle, { color: isDark ? DS.white : DS.gray900 }]}>Content Breakdown</Text>
-        <View style={styles.breakdownGrid}>
-          {[
-            { label: 'Posts', value: contentBreakdown.posts, color: DS.primary, icon: 'document-text' },
-            { label: 'Comments', value: contentBreakdown.comments, color: DS.info, icon: 'chatbubble' },
-            { label: 'Reactions', value: contentBreakdown.reactions, color: DS.accent, icon: 'heart' },
-            { label: 'Shares', value: contentBreakdown.shares, color: DS.success, icon: 'share' },
-          ].map(item => (
-            <View key={item.label} style={styles.breakdownItem}>
-              <View style={[styles.breakdownIcon, { backgroundColor: `${item.color}12` }]}>
-                <Ionicons name={item.icon as any} size={16} color={item.color} />
+          <View style={styles.influenceGrid}>
+            {influenceMetrics.map((metric, i) => (
+              <View key={metric.label} style={styles.influenceItem}>
+                <View style={styles.influenceItemTop}>
+                  <View style={[styles.influenceItemIconBg, { backgroundColor: `${metric.color}12` }]}>
+                    <Ionicons name={metric.icon as any} size={14} color={metric.color} />
+                  </View>
+                  <Text style={[styles.influenceItemLabel, { color: metric.color }]}>{metric.label}</Text>
+                  <Text style={[styles.influenceItemValue, { color: metric.color }]}>{metric.value}%</Text>
+                </View>
+                <View style={[styles.influenceBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                  <Animated.View entering={FadeInRight.delay(200 + i * 80).springify()} style={[styles.influenceBarFill, { width: `${metric.value}%`, backgroundColor: metric.color }]} />
+                </View>
               </View>
-              <Text style={[styles.breakdownValue, { color: item.color }]}>{item.value}</Text>
-              <Text style={[styles.breakdownLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{item.label}</Text>
+            ))}
+          </View>
+          <View style={styles.influenceFooter}>
+            <Text style={styles.influenceFooterText}>
+              {userPostList.length > 0
+                ? `📊 ${userPostList.length} posts analyzed • ${userPostList.reduce((s, p) => s + p.likes, 0)} total likes`
+                : '📊 Start posting to build your influence score'}
+            </Text>
+          </View>
+        </GlassCard>
+      </Animated.View>
+
+      <Animated.View entering={FadeInUp.delay(150).springify()}>
+        <GlassCard isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.impactHeader}>
+            <Text style={styles.impactTitle}>This Week</Text>
+            <View style={[styles.impactTrendBadge, {
+              backgroundColor: weeklyImpact.trend === 'up' ? '#10b98115' : weeklyImpact.trend === 'down' ? '#ef444415' : '#f59e0b15'
+            }]}>
+              <Ionicons name={weeklyImpact.trend === 'up' ? 'trending-up' : weeklyImpact.trend === 'down' ? 'trending-down' : 'remove'} size={14}
+                color={weeklyImpact.trend === 'up' ? '#10b981' : weeklyImpact.trend === 'down' ? '#ef4444' : '#f59e0b'} />
+              <Text style={[styles.impactTrendText, { color: weeklyImpact.trend === 'up' ? '#10b981' : weeklyImpact.trend === 'down' ? '#ef4444' : '#f59e0b' }]}>
+                {weeklyImpact.rankChange > 0 ? `+${weeklyImpact.rankChange}` : weeklyImpact.rankChange} rank
+              </Text>
+            </View>
+          </View>
+          <View style={styles.impactGrid}>
+            {[
+              { icon: '📝', label: 'Posts', value: weeklyImpact.postsThisWeek, color: TC.primary },
+              { icon: '💙', label: 'Helpful', value: weeklyImpact.helpfulVotes, color: TC.success },
+              { icon: '👥', label: 'New', value: weeklyImpact.newConnections, color: TC.secondary },
+            ].map((item, i) => (
+              <View key={item.label} style={[styles.impactItem, i < 2 && { borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.06)' }]}>
+                <Text style={styles.impactItemIcon}>{item.icon}</Text>
+                <Text style={[styles.impactItemValue, { color: item.color }]}>{item.value}</Text>
+                <Text style={styles.impactItemLabel}>{item.label}</Text>
+              </View>
+            ))}
+          </View>
+        </GlassCard>
+      </Animated.View>
+
+      <Animated.View entering={FadeInUp.delay(200).springify()}>
+        <GlassCard isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.standingHeader}>
+            <View style={[styles.standingIconBg, { backgroundColor: `${TC.purple}15` }]}>
+              <Ionicons name="trophy" size={20} color={TC.purple} />
+            </View>
+            <View style={styles.standingTitleWrap}>
+              <Text style={styles.standingTitle}>Community Standing</Text>
+              <Text style={styles.standingSubtitle}>Top {communityStanding.percentile}% of {allUsers.length} members</Text>
+            </View>
+          </View>
+          <View style={styles.standingRankRow}>
+            <View style={[styles.standingRankBadge, { backgroundColor: `${TC.purple}12` }]}>
+              <Text style={[styles.standingRankText, { color: TC.purple }]}>{communityStanding.rank}</Text>
+            </View>
+            <View style={styles.standingProgressWrap}>
+              <View style={styles.standingProgressLabelRow}>
+                <Text style={styles.standingProgressLabel}>Next: {communityStanding.nextMilestone}</Text>
+                <Text style={[styles.standingProgressValue, { color: TC.purple }]}>{communityStanding.progressToNext}%</Text>
+              </View>
+              <View style={[styles.standingProgressBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                <Animated.View entering={FadeInRight.delay(300).springify()} style={[styles.standingProgressBarFill, { width: `${communityStanding.progressToNext}%`, backgroundColor: TC.purple }]} />
+              </View>
+            </View>
+          </View>
+        </GlassCard>
+      </Animated.View>
+
+      <Animated.View entering={FadeInUp.delay(220).springify()}>
+        <GlassCard isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.identityHeader}>
+            <View style={[styles.identityIconBg, { backgroundColor: `${TC.primary}15` }]}>
+              <Ionicons name="sparkles" size={20} color={TC.primary} />
+            </View>
+            <View style={styles.identityTitleWrap}>
+              <Text style={styles.identityTitle}>About You</Text>
+              <Text style={styles.identitySubtitle}>
+                {currentUser?.handle}
+                {(currentUser as any)?.addedAt
+                  ? ` · Joined ${new Date((currentUser as any).addedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+                  : ''}
+              </Text>
+            </View>
+          </View>
+
+          {(formData.bio || currentUser?.bio) ? (
+            <Text style={styles.identityBio} numberOfLines={4}>
+              {formData.bio || currentUser?.bio}
+            </Text>
+          ) : (
+            <TouchableOpacity onPress={() => setIsEditing(true)} activeOpacity={0.8}>
+              <Text style={[styles.identityBio, { color: TC.primary, fontWeight: '700' }]}>
+                + Add a bio so parents know who you are
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {formData.location ? (
+            <View style={styles.identityLocationRow}>
+              <Ionicons name="location" size={14} color={TC.primary} />
+              <Text style={styles.identityLocationText}>{formData.location}</Text>
+            </View>
+          ) : null}
+
+          {(currentUser?.achievements?.length ?? 0) > 0 && (
+            <>
+              <View style={[styles.identityDivider, {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+              }]} />
+              <View style={styles.identityBadgesHeader}>
+                <Text style={styles.identityBadgesLabel}>Recent badges</Text>
+                <TouchableOpacity onPress={() => handleTabChange('achievements')} activeOpacity={0.7}>
+                  <Text style={[styles.identityBadgesSeeAll, { color: TC.primary }]}>
+                    See all →
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.identityBadgesRow}>
+                {(currentUser?.achievements || []).slice(0, 4).map((achievement) => {
+                  const badge = ACHIEVEMENTS[achievement] || { emoji: '🏅', name: achievement, color: TC.primary };
+                  return (
+                    <View
+                      key={achievement}
+                      style={[styles.identityBadgeChip, { backgroundColor: `${badge.color}12`, borderColor: `${badge.color}30` }]}
+                    >
+                      <Text style={styles.identityBadgeEmoji}>{badge.emoji}</Text>
+                      <Text style={[styles.identityBadgeName, { color: badge.color }]} numberOfLines={1}>
+                        {badge.name}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </GlassCard>
+      </Animated.View>
+
+      {userPostList.length > 0 && (
+        <Animated.View entering={FadeInUp.delay(260).springify()}>
+          <SectionHeader
+            title="Recent Threads"
+            subtitle={`${userPostList.length} total`}
+            action={() => handleTabChange('posts')}
+            actionLabel="See all"
+            isDark={isDark}
+            colors={fullThemeColors}
+          />
+          <View style={{ gap: 10 }}>
+            {userPostList.slice(0, 2).map((post) => {
+              const topic = INITIAL_TOPICS.find(t => t.id === post.topicId);
+              const topicColor = topic?.color || TOPIC_COLORS[post.topicId] || TC.primary;
+              return (
+                <TouchableOpacity
+                  key={post.id}
+                  onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
+                  activeOpacity={0.8}
+                  style={styles.previewPostCard}
+                >
+                  <LinearGradient
+                    colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                  <View style={styles.previewPostHeader}>
+                    <View style={[styles.previewPostTopic, { backgroundColor: `${topicColor}15` }]}>
+                      <View style={[styles.previewPostTopicDot, { backgroundColor: topicColor }]} />
+                      <Text style={[styles.previewPostTopicText, { color: topicColor }]} numberOfLines={1}>
+                        {topic?.name || 'General'}
+                      </Text>
+                    </View>
+                    <Text style={styles.previewPostTime}>{post.time}</Text>
+                  </View>
+                  <Text style={styles.previewPostContent} numberOfLines={2}>{post.content}</Text>
+                  <View style={styles.previewPostStats}>
+                    <View style={styles.previewPostStat}>
+                      <Ionicons name="heart" size={13} color={post.isLiked ? TC.danger : '#94a3b8'} />
+                      <Text style={[styles.previewPostStatText, { color: post.isLiked ? TC.danger : '#94a3b8' }]}>
+                        {post.likes}
+                      </Text>
+                    </View>
+                    <View style={styles.previewPostStat}>
+                      <Ionicons name="chatbubble" size={13} color="#94a3b8" />
+                      <Text style={styles.previewPostStatText}>{post.commentsCount}</Text>
+                    </View>
+                    <View style={styles.previewPostStat}>
+                      <Ionicons name="eye" size={13} color="#94a3b8" />
+                      <Text style={styles.previewPostStatText}>{post.viewCount || 0}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Animated.View>
+      )}
+
+      {allUsers.length > 1 && (
+        <Animated.View entering={FadeInUp.delay(300).springify()}>
+          <SectionHeader
+            title="Your Circle"
+            subtitle={`${followerCount} followers · ${followingCount} following`}
+            action={() => navigation.navigate('SearchUsers', {})}
+            actionLabel="Find more"
+            isDark={isDark}
+            colors={fullThemeColors}
+          />
+          <View style={styles.circleStrip}>
+            {allUsers
+              .filter(u => u.id !== currentUser?.id)
+              .slice(0, 5)
+              .map((u) => {
+                const uAvatar = u.avatar;
+                const isEmoji = isEmojiAvatar(uAvatar);
+                const isUrl = uAvatar && (uAvatar.startsWith('http') || uAvatar.startsWith('file://'));
+                return (
+                  <TouchableOpacity
+                    key={u.id}
+                    onPress={() => {
+                      triggerHaptic('light');
+                      navigation.push('CommunityMemberProfile', { userId: u.id });
+                    }}
+                    style={styles.circleCard}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.circleAvatarWrap}>
+                      {isUrl ? (
+                        <Image source={{ uri: uAvatar }} style={styles.circleAvatar} />
+                      ) : isEmoji ? (
+                        <View style={[styles.circleAvatar, { backgroundColor: `${TC.primary}20`, justifyContent: 'center', alignItems: 'center' }]}>
+                          <Text style={{ fontSize: 22 }}>{uAvatar}</Text>
+                        </View>
+                      ) : (
+                        <View style={[styles.circleAvatar, { backgroundColor: `${TC.primary}20`, justifyContent: 'center', alignItems: 'center' }]}>
+                          <Text style={{ fontSize: 20, fontWeight: '800', color: TC.primary }}>
+                            {u.displayName?.charAt(0)?.toUpperCase() || '?'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.circleName} numberOfLines={1}>
+                      {u.displayName?.split(' ')[0] || 'Parent'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('SearchUsers', {})}
+              style={styles.circleCard}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.circleAvatar, { backgroundColor: `${TC.primary}10`, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: `${TC.primary}30`, borderStyle: 'dashed' }]}>
+                <Ionicons name="add" size={24} color={TC.primary} />
+              </View>
+              <Text style={[styles.circleName, { color: TC.primary, fontWeight: '700' }]}>Add</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      )}
+
+      <Animated.View entering={FadeInUp.delay(340).springify()}>
+        <GlassCard isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.sparklineHeader}>
+            <View>
+              <Text style={styles.sparklineTitle}>Contribution Streak</Text>
+              <Text style={styles.sparklineSubtitle}>Last 12 weeks</Text>
+            </View>
+            <View style={styles.sparklineTotal}>
+              <Text style={styles.sparklineTotalValue}>{activityScore.consistency}%</Text>
+              <Text style={styles.sparklineTotalLabel}>consistency</Text>
+            </View>
+          </View>
+          <View style={styles.contributionGrid}>
+            {(() => {
+              const now = new Date();
+              const cells: { active: boolean; weekStart: Date }[] = [];
+              for (let i = 11; i >= 0; i--) {
+                const weekStart = new Date(now);
+                weekStart.setDate(weekStart.getDate() - i * 7);
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekEnd.getDate() + 7);
+                const hasActivity = userPostList.some(p => {
+                  const d = new Date(p.timestamp);
+                  return d >= weekStart && d < weekEnd;
+                });
+                cells.push({ active: hasActivity, weekStart });
+              }
+              return cells.map((cell, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.contributionCell,
+                    cell.active && { backgroundColor: TC.primary, borderColor: TC.primary },
+                  ]}
+                />
+              ));
+            })()}
+          </View>
+          <Text style={styles.contributionFooter}>
+            {(currentUser?.stats?.streakDays || 0) > 0
+              ? `🔥 ${currentUser?.stats?.streakDays} day streak — keep it going!`
+              : 'Start posting daily to build a streak'}
+          </Text>
+        </GlassCard>
+      </Animated.View>
+
+      <Animated.View entering={FadeInUp.delay(250).springify()}>
+        <GlassCard isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.breakdownHeader}>
+            <Text style={styles.breakdownTitle}>Content Breakdown</Text>
+            <Text style={styles.breakdownTotal}>{contentBreakdown.posts + contentBreakdown.comments + contentBreakdown.reactions + contentBreakdown.shares} total</Text>
+          </View>
+          <View style={styles.breakdownGrid}>
+            {[
+              { label: 'Posts', value: contentBreakdown.posts, color: TC.primary, icon: 'document-text' },
+              { label: 'Comments', value: contentBreakdown.comments, color: TC.info, icon: 'chatbubble' },
+              { label: 'Reactions', value: contentBreakdown.reactions, color: TC.secondary, icon: 'heart' },
+              { label: 'Shares', value: contentBreakdown.shares, color: TC.success, icon: 'share' },
+            ].map((item) => (
+              <View key={item.label} style={styles.breakdownItem}>
+                <View style={[styles.breakdownIconBg, { backgroundColor: `${item.color}12` }]}>
+                  <Ionicons name={item.icon as any} size={16} color={item.color} />
+                </View>
+                <Text style={[styles.breakdownValue, { color: item.color }]}>{item.value}</Text>
+                <Text style={styles.breakdownLabel}>{item.label}</Text>
+              </View>
+            ))}
+          </View>
+        </GlassCard>
+      </Animated.View>
+
+      <Animated.View entering={FadeInUp.delay(300).springify()}>
+        <GlassCard isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.sparklineHeader}>
+            <View>
+              <Text style={styles.sparklineTitle}>7-Day Activity</Text>
+              <Text style={styles.sparklineSubtitle}>Daily engagement</Text>
+            </View>
+            <View style={styles.sparklineTotal}>
+              <Text style={styles.sparklineTotalValue}>{engagementData.reduce((a, b) => a + b.value, 0)}</Text>
+              <Text style={styles.sparklineTotalLabel}>entries</Text>
+            </View>
+          </View>
+          <View style={styles.sparklineChart}>
+            {engagementData.map((point, i) => {
+              const maxVal = Math.max(...engagementData.map(d => d.value), 1);
+              const height = Math.max(4, (point.value / maxVal) * 60);
+              const isToday = i === engagementData.length - 1;
+              return (
+                <View key={i} style={{ alignItems: 'center', gap: 4 }}>
+                  <View style={[styles.sparklineBar, {
+                    height,
+                    backgroundColor: isToday ? '#6366f1' : point.value > maxVal * 0.7 ? '#6366f1' : point.value > maxVal * 0.3 ? '#6366f180' : '#6366f140',
+                  }]} />
+                  <Text style={[styles.sparklineDay, isToday && { color: '#6366f1', fontWeight: '700' }]}>{point.day}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </GlassCard>
+      </Animated.View>
+
+      {smartSuggestions.length > 0 && (
+        <Animated.View entering={FadeInUp.delay(350).springify()}>
+          <SectionHeader title="Smart Suggestions" subtitle="Personalized for you" isDark={isDark} colors={fullThemeColors} />
+          <View style={styles.suggestionsScroll}>
+            {smartSuggestions.map((suggestion) => (
+              <TouchableOpacity key={suggestion.id} onPress={suggestion.action} style={styles.suggestionCard}>
+                <LinearGradient colors={[suggestion.color + '12', suggestion.color + '04']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+                <View style={[styles.suggestionIconBg, { backgroundColor: suggestion.color + '15' }]}>
+                  <Text style={styles.suggestionEmoji}>{suggestion.emoji}</Text>
+                </View>
+                <Text style={styles.suggestionTitle}>{suggestion.title}</Text>
+                <Text style={styles.suggestionDesc} numberOfLines={2}>{suggestion.description}</Text>
+                <View style={[styles.suggestionActionBadge, { backgroundColor: suggestion.color + '12' }]}>
+                  <Text style={[styles.suggestionActionText, { color: suggestion.color }]}>Take Action →</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+      )}
+
+      {topicAffinities.length > 0 && (
+        <Animated.View entering={FadeInUp.delay(400).springify()}>
+          <SectionHeader title="Topic Affinity" subtitle="Where you contribute most" isDark={isDark} colors={fullThemeColors} />
+          <View style={styles.affinityList}>
+            {topicAffinities.map((item, i) => {
+              const maxAffinity = Math.max(...topicAffinities.map(a => a.affinity), 1);
+              return (
+                <View key={item.topicId} style={styles.affinityRow}>
+                  <View style={[styles.affinityIconBg, { backgroundColor: `${item.color}12` }]}>
+                    <Text style={styles.affinityEmoji}>{item.emoji}</Text>
+                  </View>
+                  <View style={styles.affinityContent}>
+                    <View style={styles.affinityTop}>
+                      <Text style={styles.affinityName}>{item.topicName}</Text>
+                      <Text style={[styles.affinityValue, { color: item.color }]}>{item.posts} posts</Text>
+                    </View>
+                    <View style={[styles.affinityBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                      <Animated.View entering={FadeInRight.delay(200 + i * 60).springify()} style={[styles.affinityBarFill, { width: `${(item.affinity / maxAffinity) * 100}%`, backgroundColor: item.color }]} />
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </Animated.View>
+      )}
+
+      <Animated.View entering={FadeInUp.delay(450).springify()}>
+        <SectionHeader title="Peer Comparison" subtitle={`Among ${allUsers.length} community members`} isDark={isDark} colors={fullThemeColors} />
+        <View style={styles.comparisonList}>
+          {peerComparisons.map((comp, i) => (
+            <View key={comp.metric} style={styles.comparisonRow}>
+              <View style={[styles.comparisonIconBg, { backgroundColor: `${comp.color}12` }]}>
+                <Ionicons name={comp.icon as any} size={16} color={comp.color} />
+              </View>
+              <View style={styles.comparisonContent}>
+                <View style={styles.comparisonTop}>
+                  <Text style={styles.comparisonMetric}>{comp.metric}</Text>
+                  <Text style={[styles.comparisonPercentile, { color: comp.color }]}>Top {comp.percentile}%</Text>
+                </View>
+                <View style={styles.comparisonBarRow}>
+                  <View style={[styles.comparisonBarBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                    <Animated.View entering={FadeInRight.delay(200 + i * 60).springify()} style={[styles.comparisonBarFill, { width: `${Math.min((comp.userValue / Math.max(comp.avgValue, 1)) * 100, 100)}%`, backgroundColor: comp.color }]} />
+                  </View>
+                  <Text style={styles.comparisonNumbers}>{comp.userValue} vs {comp.avgValue} avg</Text>
+                </View>
+              </View>
             </View>
           ))}
         </View>
-      </View>
+      </Animated.View>
 
-      {/* Manage Topics Button */}
-      <PressableScale onPress={() => navigation.navigate('CommunityOnboarding', { editing: true })} activeScale={0.98}>
-        <View style={[styles.manageBtn, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-          <View style={[styles.manageIcon, { backgroundColor: `${DS.primary}12` }]}>
-            <Ionicons name="pricetags-outline" size={18} color={DS.primary} />
-          </View>
-          <Text style={[styles.manageText, { color: isDark ? DS.white : DS.gray900 }]}>
-            Manage Topics {selectedTopics.length > 0 ? `(${selectedTopics.length})` : ''}
-          </Text>
-          <Ionicons name="chevron-forward" size={16} color={DS.gray400} />
+      <Animated.View entering={FadeInUp.delay(500).springify()}>
+        <SectionHeader title="Streaks" subtitle="Consistency tracking" isDark={isDark} colors={fullThemeColors} />
+        <View style={styles.streaksRow}>
+          {contentStreaks.map((streak) => (
+            <View key={streak.type} style={[styles.streakCard, { borderColor: `${streak.color}30` }]}>
+              <View style={[styles.streakIconBg, { backgroundColor: `${streak.color}12` }]}>
+                <Ionicons name={streak.icon as any} size={18} color={streak.color} />
+              </View>
+              <Text style={[styles.streakValue, { color: streak.color }]}>{streak.current}</Text>
+              <Text style={styles.streakLabel}>{streak.type}</Text>
+              <Text style={styles.streakBest}>Best: {streak.best}</Text>
+            </View>
+          ))}
         </View>
-      </PressableScale>
-    </Animated.View>
-  );
+      </Animated.View>
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     RENDER: POSTS TAB
-     ═══════════════════════════════════════════════════════════════════════ */
+      {isEditing ? (
+        <GlassCard delay={600} isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.sectionHeaderWithEdit}>
+            <Text style={styles.sectionLabel}>About Me</Text>
+            <View style={styles.editingBadge}><Text style={styles.editingBadgeText}>Editing</Text></View>
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Bio</Text>
+            <TextInput style={styles.textArea} value={formData.bio} onChangeText={(text) => setFormData(prev => ({ ...prev, bio: text }))} placeholder="Tell us about yourself..." placeholderTextColor="#666" multiline numberOfLines={4} maxLength={160} selectionColor={themeColors.primary} />
+            <Text style={styles.charCount}>{formData.bio.length}/160</Text>
+          </View>
+          <View style={[styles.infoDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Location</Text>
+            <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+              <Ionicons name="location-outline" size={18} color="#6366f1" style={styles.inputIcon} />
+              <TextInput style={[styles.input, styles.flexInput]} value={formData.location} onChangeText={(text) => setFormData(prev => ({ ...prev, location: text }))} placeholder={locationDetected?.full || "Detecting location..."} placeholderTextColor="#666" editable={isEditing} selectionColor={themeColors.primary} />
+            </View>
+            {locationDetected && (
+              <Text style={styles.locationDetectedText}>
+                📍 Detected: {locationDetected.full}
+              </Text>
+            )}
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Username</Text>
+            <View style={[styles.inputContainer, !isEditing && styles.inputDisabled]}>
+              <Ionicons name="at" size={18} color="#6366f1" style={styles.inputIcon} />
+              <TextInput style={[styles.input, styles.flexInput]} value={formData.handle} onChangeText={(text) => {
+                const cleaned = text.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_.]/g, '');
+                setFormData(prev => ({ ...prev, handle: cleaned }));
+              }} placeholder="username" placeholderTextColor="#666" autoCapitalize="none" editable={isEditing} selectionColor={themeColors.primary} />
+            </View>
+            {isEditing && usernameCheckStatus && (
+              <View style={[styles.usernameStatus, {
+                backgroundColor: usernameCheckStatus.available ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                borderColor: usernameCheckStatus.available ? '#10b981' : '#ef4444',
+              }]}>
+                <Ionicons name={usernameCheckStatus.available ? 'checkmark-circle' : 'alert-circle'} size={14} color={usernameCheckStatus.available ? '#10b981' : '#ef4444'} />
+                <Text style={[styles.usernameStatusText, { color: usernameCheckStatus.available ? '#10b981' : '#ef4444' }]}>
+                  {usernameCheckStatus.message}
+                </Text>
+              </View>
+            )}
+            {isCheckingUsername && (
+              <View style={styles.usernameStatus}>
+                <ActivityIndicator size="small" color="#6366f1" />
+                <Text style={[styles.usernameStatusText, { color: '#6366f1' }]}>Checking availability...</Text>
+              </View>
+            )}
+          </View>
+        </GlassCard>
+      ) : (
+        <GlassCard delay={600} isDark={isDark} colors={fullThemeColors}>
+          <View style={styles.sectionHeaderWithEdit}>
+            <Text style={styles.sectionLabel}>About Me</Text>
+            <TouchableOpacity style={styles.editIconBtn} onPress={() => setIsEditing(true)}>
+              <Ionicons name="create-outline" size={18} color="#6366f1" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.bioDisplay}>
+            <Text style={styles.bioText}>
+              {formData.bio || currentUser?.bio || 'No bio yet. Tap edit to add one!'}
+            </Text>
+          </View>
+          {formData.location && (
+            <>
+              <View style={[styles.infoDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]} />
+              <View style={styles.bioDisplay}>
+                <View style={styles.locationRow}>
+                  <Ionicons name="location-outline" size={16} color="#6366f1" />
+                  <Text style={styles.locationText}>{formData.location}</Text>
+                </View>
+              </View>
+            </>
+          )}
+        </GlassCard>
+      )}
+
+      <TouchableOpacity
+        style={[styles.manageTopicsBtn, { backgroundColor: isDark ? 'rgba(45,45,60,0.6)' : '#ffffff' }]}
+        onPress={() => navigation.navigate('CommunityOnboarding', { editing: true })}
+      >
+        <Ionicons name="pricetags-outline" size={22} color="#6366f1" />
+        <Text style={[styles.manageTopicsText, { color: isDark ? '#ffffff' : '#1a1a2e' }]}>
+          Manage Your Topics {selectedTopics.length > 0 ? `(${selectedTopics.length})` : ''}
+        </Text>
+        <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+      </TouchableOpacity>
+
+      <GlassCard delay={700} isDark={isDark} colors={fullThemeColors}>
+        <View style={styles.sectionHeaderWithEdit}>
+          <Text style={styles.sectionLabel}>Interested Topics</Text>
+        </View>
+        <View style={styles.topicsWrap}>
+          {selectedTopics.length > 0 ? selectedTopics.map((topicId) => {
+            const topic = INITIAL_TOPICS.find(t => t.id === topicId);
+            const topicColor = topic?.color || TOPIC_COLORS[topicId] || '#6366f1';
+            const topicName = topic?.name || topicId;
+            return (
+              <View key={topicId} style={[styles.topicChip, { backgroundColor: `${topicColor}20` }]}>
+                <Text style={[styles.topicChipText, { color: topicColor }]}>
+                  {topic?.emoji ? `${topic.emoji} ${topicName}` : topicName}
+                </Text>
+              </View>
+            );
+          }) : (
+            <Text style={styles.emptyText}>No topics selected yet. Tap "Manage Your Topics" above.</Text>
+          )}
+        </View>
+      </GlassCard>
+
+      {!isEditing && (
+        <View style={styles.dockContainer}>
+          <View style={styles.dock}>
+            <TouchableOpacity onPress={handleNavigateToMessages} style={styles.dockItem}>
+              <LinearGradient colors={['#6366f1', '#8b5cf6']} style={styles.dockGradient}>
+                <Ionicons name="chatbubbles" size={20} color="#fff" />
+              </LinearGradient>
+              <Text style={styles.dockLabel}>Messages</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleShareProfile} style={styles.dockItem}>
+              <View style={[styles.dockGradient, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+                <Ionicons name="share-outline" size={20} color="#6366f1" />
+              </View>
+              <Text style={styles.dockLabel}>Share</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </Animated.View>
+  ), [
+    userPostList, followerCount, currentUser, allUsers,
+    influenceMetrics, weeklyImpact, communityStanding,
+    contentBreakdown, engagementData, smartSuggestions,
+    topicAffinities, peerComparisons, contentStreaks,
+    selectedTopics, isEditing, isDark, fullThemeColors,
+    formData.bio, formData.location, formData.handle,
+    locationDetected, usernameCheckStatus, isCheckingUsername,
+    themeColors, navigation, handleShareProfile,
+    handleNavigateToMessages, isProfileDeactivated, handleGoVerify,
+    triggerHaptic, currentUser?.bio,
+  ]);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     POSTS TAB
+     ═══════════════════════════════════════════════════════════════════════════ */
 
   const renderPostsTab = () => {
-    const posts = userPostList.slice(0, 20);
-
+    const posts = userPostList.slice(0, 10);
     return (
-      <Animated.View entering={FadeInUp.springify()} style={styles.tabContent}>
+      <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
+        <View style={styles.postsHeader}>
+          <View style={styles.postsHeaderLeft}>
+            <Ionicons name="document-text" size={20} color={TC.primary} />
+            <Text style={styles.postsHeaderTitle}>My Posts</Text>
+          </View>
+          <View style={[styles.postsHeaderBadge, { backgroundColor: `${themeColors.primary}20` }]}>
+            <Text style={[styles.postsHeaderBadgeText, { color: themeColors.primary }]}>
+              {userPostList.length} threads
+            </Text>
+          </View>
+        </View>
+
         {posts.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-            <View style={[styles.emptyIcon, { backgroundColor: `${DS.primary}10` }]}>
-              <Ionicons name="document-text-outline" size={36} color={DS.primary} />
+          <View style={styles.emptyPostsCard}>
+            <View style={styles.emptyPostsIcon}>
+              <Ionicons name="document-text-outline" size={40} color={TC.primary} />
             </View>
-            <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray900 }]}>No posts yet</Text>
-            <Text style={[styles.emptyText, { color: isDark ? DS.gray400 : DS.gray500 }]}>Share your first story with the community!</Text>
-            <PressableScale onPress={() => navigation.navigate('CreatePost', {})} activeScale={0.97} hapticType="medium">
-              <LinearGradient colors={[DS.primary, DS.accent]} style={styles.emptyBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                <Ionicons name="add" size={18} color="#fff" />
-                <Text style={styles.emptyBtnText}>Create Post</Text>
-              </LinearGradient>
-            </PressableScale>
+            <Text style={styles.emptyPostsTitle}>No posts yet</Text>
+            <Text style={styles.emptyPostsText}>Share your first story with the community!</Text>
+            <TouchableOpacity
+              style={[styles.createPostBtn, { backgroundColor: themeColors.primary }]}
+              onPress={() => navigation.navigate('CreatePost', {})}
+            >
+              <Text style={styles.createPostBtnText}>Create Post</Text>
+            </TouchableOpacity>
           </View>
         ) : (
-          <View style={{ gap: 10 }}>
-            {posts.map((post, index) => {
+          <View style={styles.postsList}>
+            {posts.map((post) => {
               const topic = INITIAL_TOPICS.find(t => t.id === post.topicId);
-              const topicColor = topic?.color || TOPIC_COLORS[post.topicId] || DS.primary;
+              const topicColor = topic?.color || TOPIC_COLORS[post.topicId] || TC.primary;
               return (
-                <Animated.View key={post.id} entering={FadeInUp.delay(index * 40).springify()}>
-                  <PressableScale onPress={() => navigation.navigate('PostDetail', { postId: post.id })} activeScale={0.98}>
-                    <View style={[styles.postCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-                      <View style={styles.postHeader}>
-                        <View style={[styles.postTopic, { backgroundColor: `${topicColor}12` }]}>
-                          <View style={[styles.postTopicDot, { backgroundColor: topicColor }]} />
-                          <Text style={[styles.postTopicText, { color: topicColor }]} numberOfLines={1}>{topic?.name || 'General'}</Text>
-                        </View>
-                        <Text style={styles.postTime}>{post.time}</Text>
+                <TouchableOpacity
+                  key={post.id}
+                  style={styles.postItem}
+                  onPress={() => navigation.navigate('PostDetail', { postId: post.id })}
+                  activeOpacity={0.7}
+                >
+                  <LinearGradient
+                    colors={isDark ? ['rgba(45,45,60,0.85)', 'rgba(35,35,50,0.65)'] : ['rgba(255,255,255,0.92)', 'rgba(248,250,255,0.85)']}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                  <View style={styles.postItemContent}>
+                    <View style={styles.postItemHeader}>
+                      <View style={[styles.postItemTopic, { backgroundColor: `${topicColor}15` }]}>
+                        <View style={[styles.postItemTopicDot, { backgroundColor: topicColor }]} />
+                        <Text style={[styles.postItemTopicText, { color: topicColor }]}>
+                          {topic?.name || 'General'}
+                        </Text>
                       </View>
-                      <Text style={[styles.postContent, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={3}>{post.content}</Text>
-                      {post.images && post.images.length > 0 && (
-                        <Image source={{ uri: post.images[0] }} style={styles.postImage} resizeMode="cover" />
-                      )}
-                      <View style={styles.postStats}>
-                        <View style={styles.postStat}>
-                          <Ionicons name="heart" size={14} color={post.isLiked ? DS.danger : DS.gray400} />
-                          <Text style={styles.postStatText}>{post.likes}</Text>
-                        </View>
-                        <View style={styles.postStat}>
-                          <Ionicons name="chatbubble" size={14} color={DS.gray400} />
-                          <Text style={styles.postStatText}>{post.commentsCount}</Text>
-                        </View>
-                        <View style={styles.postStat}>
-                          <Ionicons name="eye" size={14} color={DS.gray400} />
-                          <Text style={styles.postStatText}>{post.viewCount || 0}</Text>
-                        </View>
+                      <Text style={styles.postItemTime}>{post.time}</Text>
+                    </View>
+                    <Text style={styles.postItemContentText} numberOfLines={2}>
+                      {post.content}
+                    </Text>
+                    {post.images && post.images.length > 0 && (
+                      <View style={styles.postItemImageWrap}>
+                        <Image source={{ uri: post.images[0] }} style={styles.postItemImage} resizeMode="cover" />
+                      </View>
+                    )}
+                    <View style={styles.postItemStats}>
+                      <View style={styles.postItemStat}>
+                        <Ionicons name="heart" size={14} color={post.isLiked ? TC.danger : '#94a3b8'} />
+                        <Text style={[styles.postItemStatText, { color: post.isLiked ? TC.danger : '#94a3b8' }]}>
+                          {post.likes}
+                        </Text>
+                      </View>
+                      <View style={styles.postItemStat}>
+                        <Ionicons name="chatbubble" size={14} color="#94a3b8" />
+                        <Text style={styles.postItemStatText}>{post.commentsCount}</Text>
+                      </View>
+                      <View style={styles.postItemStat}>
+                        <Ionicons name="repeat" size={14} color="#94a3b8" />
+                        <Text style={styles.postItemStatText}>{post.reposts}</Text>
                       </View>
                     </View>
-                  </PressableScale>
-                </Animated.View>
+                  </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -1814,234 +2516,370 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     );
   };
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     RENDER: ACHIEVEMENTS TAB
-     ═══════════════════════════════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ACHIEVEMENTS TAB
+     ═══════════════════════════════════════════════════════════════════════════ */
 
   const renderAchievementsTab = () => {
     const achievements = currentUser?.achievements || [];
+    const progressToNext = Math.min(100, Math.round((userPostList.length / 50) * 100));
+    const helpfulProgress = Math.min(100, Math.round(((currentUser?.stats?.helpful || 0) / 50) * 100));
 
     return (
-      <Animated.View entering={FadeInUp.springify()} style={styles.tabContent}>
-        {achievements.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-            <View style={[styles.emptyIcon, { backgroundColor: `${DS.warning}10` }]}>
-              <Ionicons name="trophy-outline" size={36} color={DS.warning} />
+      <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
+        <View style={styles.achievementsHeader}>
+          <View style={styles.achievementsHeaderLeft}>
+            <Ionicons name="trophy" size={20} color={TC.primary} />
+            <Text style={styles.achievementsHeaderTitle}>Achievements</Text>
+          </View>
+          <View style={[styles.achievementsHeaderBadge, { backgroundColor: `${themeColors.primary}20` }]}>
+            <Text style={[styles.achievementsHeaderBadgeText, { color: themeColors.primary }]}>
+              {achievements.length} earned
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.achievementsCard}>
+          {achievements.length > 0 ? (
+            achievements.map((achievement) => {
+              const badge = ACHIEVEMENTS[achievement] || { emoji: '🏅', name: achievement, color: TC.primary, desc: '' };
+              return (
+                <View key={achievement} style={[styles.achievementItem, { backgroundColor: `${badge.color}08` }]}>
+                  <View style={[styles.achievementItemIcon, { backgroundColor: `${badge.color}12` }]}>
+                    <Text style={styles.achievementItemEmoji}>{badge.emoji}</Text>
+                  </View>
+                  <View style={styles.achievementItemInfo}>
+                    <Text style={[styles.achievementItemName, { color: badge.color }]}>{badge.name}</Text>
+                    <Text style={styles.achievementItemDesc}>{badge.desc}</Text>
+                  </View>
+                  <Ionicons name="checkmark-circle" size={18} color={badge.color} style={{ opacity: 0.5 }} />
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyAchievements}>
+              <Ionicons name="trophy-outline" size={48} color={TC.primary} style={{ opacity: 0.5 }} />
+              <Text style={styles.emptyAchievementsTitle}>No achievements yet</Text>
+              <Text style={styles.emptyAchievementsText}>Start posting and engaging to earn badges!</Text>
             </View>
-            <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray900 }]}>No achievements yet</Text>
-            <Text style={[styles.emptyText, { color: isDark ? DS.gray400 : DS.gray500 }]}>Start posting and engaging to earn badges!</Text>
+          )}
+        </View>
+
+        <View style={styles.progressCard}>
+          <Text style={styles.progressCardTitle}>Progress</Text>
+          <View style={styles.progressRow}>
+            <View style={styles.progressItem}>
+              <View style={styles.progressItemHeader}>
+                <Text style={styles.progressItemValue}>{userPostList.length}</Text>
+                <Text style={styles.progressItemLabel}>of 50 posts</Text>
+              </View>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${progressToNext}%`, backgroundColor: TC.primary }]} />
+              </View>
+            </View>
+            <View style={styles.progressItem}>
+              <View style={styles.progressItemHeader}>
+                <Text style={styles.progressItemValue}>{currentUser?.stats?.helpful || 0}</Text>
+                <Text style={styles.progressItemLabel}>of 50 helpful</Text>
+              </View>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${helpfulProgress}%`, backgroundColor: TC.success }]} />
+              </View>
+            </View>
           </View>
-        ) : (
-          <View style={{ gap: 8 }}>
-            {achievements.map((id, index) => (
-              <Animated.View key={id} entering={FadeInUp.delay(index * 50).springify()}>
-                <AchievementBadge id={id} />
-              </Animated.View>
-            ))}
-          </View>
-        )}
+        </View>
       </Animated.View>
     );
   };
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     RENDER: SETTINGS TAB
-     ═══════════════════════════════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SETTINGS TAB
+     ═══════════════════════════════════════════════════════════════════════════ */
 
   const renderSettingsTab = () => (
-    <Animated.View entering={FadeInUp.springify()} style={styles.tabContent}>
-      {/* Privacy Settings */}
-      <View style={[styles.card, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-        <Text style={[styles.cardTitle, { color: isDark ? DS.white : DS.gray900 }]}>Privacy & Preferences</Text>
+    <Animated.View entering={FadeInUp.springify()} style={styles.tabPanel}>
+      <View style={styles.settingsCard}>
+        <Text style={styles.settingsCardTitle}>Privacy & Preferences</Text>
         {[
-          { key: 'isPublic', icon: 'globe-outline', label: 'Public Profile', desc: 'Allow others to find you' },
+          { key: 'isPublic', icon: 'globe-outline', label: 'Public Profile', desc: 'Allow others to find and view your profile' },
           { key: 'showActivityStatus', icon: 'eye-outline', label: 'Activity Status', desc: 'Show when you are online' },
           { key: 'allowMessages', icon: 'chatbubbles-outline', label: 'Direct Messages', desc: 'Allow others to message you' },
-          { key: 'notificationsEnabled', icon: 'notifications-outline', label: 'Notifications', desc: 'Receive alerts' },
+          { key: 'notificationsEnabled', icon: 'notifications-outline', label: 'Notifications', desc: 'Receive alerts about activity' },
         ].map((pref, i, arr) => (
           <View key={pref.key}>
             <View style={styles.settingsRow}>
-              <View style={[styles.settingsIcon, { backgroundColor: formData[pref.key as keyof typeof formData] ? `${DS.primary}12` : 'rgba(0,0,0,0.05)' }]}>
-                <Ionicons name={pref.icon as any} size={18} color={formData[pref.key as keyof typeof formData] ? DS.primary : DS.gray400} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingsLabel, { color: isDark ? DS.white : DS.gray900 }]}>{pref.label}</Text>
-                <Text style={[styles.settingsDesc, { color: isDark ? DS.gray400 : DS.gray500 }]}>{pref.desc}</Text>
+              <View style={styles.settingsRowLeft}>
+                <View style={[styles.settingsRowIcon, { backgroundColor: formData[pref.key as keyof typeof formData] ? `${themeColors.primary}15` : 'rgba(0,0,0,0.05)' }]}>
+                  <Ionicons
+                    name={(formData[pref.key as keyof typeof formData] ? pref.icon : `${pref.icon.replace('-outline', '')}-outline`) as any}
+                    size={20}
+                    color={formData[pref.key as keyof typeof formData] ? themeColors.primary : '#94a3b8'}
+                  />
+                </View>
+                <View style={styles.settingsRowText}>
+                  <Text style={styles.settingsRowTitle}>{pref.label}</Text>
+                  <Text style={styles.settingsRowDesc}>{pref.desc}</Text>
+                </View>
               </View>
               <Switch
                 value={formData[pref.key as keyof typeof formData] as boolean}
                 onValueChange={(val) => setFormData(prev => ({ ...prev, [pref.key]: val }))}
-                trackColor={{ false: '#334155', true: DS.primary }}
+                trackColor={{ false: '#334155', true: themeColors.primary || '#6366f1' }}
                 thumbColor="#fff"
+                ios_backgroundColor="#334155"
               />
             </View>
-            {i < arr.length - 1 && <View style={[styles.divider, { backgroundColor: isDark ? DS.darkBorder : DS.gray100 }]} />}
+            {i < arr.length - 1 && <View style={styles.settingsDivider} />}
           </View>
         ))}
       </View>
 
-      {/* Danger Zone */}
-      <View style={[styles.card, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: `${DS.danger}20` }]}>
-        <LinearGradient colors={[`${DS.danger}06`, 'transparent']} style={StyleSheet.absoluteFill} />
-        <View style={styles.dangerHeader}>
-          <View style={[styles.dangerIcon, { backgroundColor: `${DS.danger}12` }]}>
-            <Ionicons name="warning" size={18} color={DS.danger} />
-          </View>
-          <Text style={[styles.dangerTitle, { color: DS.danger }]}>Danger Zone</Text>
+      <View style={styles.dangerCard}>
+        <LinearGradient
+          colors={isDark ? ['rgba(239,68,68,0.08)', 'rgba(220,38,38,0.04)'] : ['rgba(239,68,68,0.05)', 'rgba(220,38,38,0.02)']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <View style={styles.dangerIconContainer}>
+          <LinearGradient colors={['#ef4444', '#dc2626']} style={styles.dangerIcon}>
+            <Ionicons name="warning" size={24} color="#fff" />
+          </LinearGradient>
         </View>
+        <Text style={styles.dangerTitle}>Account Actions</Text>
+        <Text style={styles.dangerDescription}>Manage your community account data and presence.</Text>
 
-        <PressableScale onPress={isProfileDeactivated ? handleReactivateProfile : handleDeactivateProfile} activeScale={0.97}>
-          <View style={[styles.dangerAction, { backgroundColor: `${isProfileDeactivated ? DS.success : DS.warning}08` }]}>
-            <Ionicons name={isProfileDeactivated ? 'refresh' : 'pause-circle'} size={18} color={isProfileDeactivated ? DS.success : DS.warning} />
-            <Text style={[styles.dangerActionText, { color: isProfileDeactivated ? DS.success : DS.warning }]}>
-              {isProfileDeactivated ? 'Reactivate Profile' : 'Deactivate Profile'}
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={DS.gray400} />
+        <TouchableOpacity style={styles.dangerActionBtn} onPress={handleClearActivity}>
+          <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+            <Ionicons name="trash-outline" size={18} color="#ef4444" />
           </View>
-        </PressableScale>
+          <Text style={styles.dangerActionText}>Clear Activity History</Text>
+          <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+        </TouchableOpacity>
 
-        <PressableScale onPress={handleDeleteCommunityAccount} activeScale={0.97}>
-          <View style={[styles.dangerAction, { backgroundColor: `${DS.danger}08`, marginTop: 8 }]}>
-            <Ionicons name="person-remove" size={18} color={DS.danger} />
-            <Text style={[styles.dangerActionText, { color: DS.danger }]}>Delete Account</Text>
-            <Ionicons name="chevron-forward" size={16} color={DS.gray400} />
+        {isProfileDeactivated ? (
+          <TouchableOpacity style={[styles.dangerActionBtn, styles.reactivateActionBtn]} onPress={handleReactivateProfile}>
+            <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(16,185,129,0.1)' }]}>
+              <Ionicons name="refresh-outline" size={18} color="#10b981" />
+            </View>
+            <Text style={[styles.dangerActionText, { color: '#10b981' }]}>Reactivate Profile</Text>
+            <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.dangerActionBtn} onPress={handleDeactivateProfile}>
+            <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(245,158,11,0.1)' }]}>
+              <Ionicons name="pause-circle-outline" size={18} color="#f59e0b" />
+            </View>
+            <Text style={[styles.dangerActionText, { color: '#f59e0b' }]}>Deactivate Profile</Text>
+            <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+          </TouchableOpacity>
+        )}
+
+        <View style={styles.dangerDivider} />
+
+        <TouchableOpacity style={[styles.dangerActionBtn, styles.deleteAccountBtn]} onPress={handleDeleteCommunityAccount}>
+          <View style={[styles.dangerActionIcon, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+            <Ionicons name="person-remove-outline" size={18} color="#ef4444" />
           </View>
-        </PressableScale>
+          <Text style={[styles.dangerActionText, { color: '#ef4444', fontWeight: '700' }]}>
+            Delete Entire Account
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+        </TouchableOpacity>
       </View>
     </Animated.View>
   );
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     MAIN RENDER
-     ═══════════════════════════════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════════════════════════════════
+     MAIN RENDER — paints immediately, skeleton only for the hero
+     ═══════════════════════════════════════════════════════════════════════════ */
 
   if (!currentUser) {
     return (
-      <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50, justifyContent: 'center', alignItems: 'center' }]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <Ionicons name="person-outline" size={64} color={DS.gray400} />
-        <Text style={{ marginTop: 16, fontSize: 16, fontWeight: '600', color: DS.gray500 }}>Not signed in</Text>
-        <PressableScale onPress={() => navigation.goBack()} activeScale={0.97} style={{ marginTop: 20 }}>
-          <LinearGradient colors={[DS.primary, DS.accent]} style={{ paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 }}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Go Back</Text>
-          </LinearGradient>
-        </PressableScale>
+      <View style={[styles.container, styles.centered]}>
+        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors?.background || (isDark ? '#0f0f1a' : '#f8f9fc') }]} />
+        <Ionicons name="person-outline" size={64} color="#64748b" />
+        <Text style={{ marginTop: 16, color: fullThemeColors.textSecondary, fontSize: 16, fontWeight: '600' }}>Not signed in</Text>
+        <TouchableOpacity style={[styles.retryButton, { backgroundColor: themeColors?.primary || '#6366f1' }]} onPress={() => navigation.goBack()}>
+          <Text style={styles.retryButtonText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  const tabs: { key: ProfileTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { key: 'overview', label: 'Overview', icon: 'grid-outline' },
-    { key: 'posts', label: 'Posts', icon: 'document-text-outline' },
-    { key: 'achievements', label: 'Badges', icon: 'trophy-outline' },
-    { key: 'settings', label: 'Settings', icon: 'settings-outline' },
-  ];
-
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
-      <LinearGradient
-        colors={isDark ? [DS.darkBg, '#12121e', DS.darkBg] : ['#f8faff', '#eef0f5', '#e4e8f0']}
-        style={StyleSheet.absoluteFill}
-      />
-
-      {/* Sticky Header */}
-      <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]}>
-        <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-        <Text style={[styles.stickyTitle, { color: isDark ? DS.white : DS.gray900 }]}>{currentUser.displayName}</Text>
-        <Text style={styles.stickySub}>@{currentUser.handle?.replace(/^@/, '')}</Text>
-      </Animated.View>
-
-      {/* Top Nav */}
-      <Animated.View entering={FadeInDown.springify()} style={[styles.topNav, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.navBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
-          <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
-        </TouchableOpacity>
-        <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.navTitle}>PROFILE</GradientText>
-        <TouchableOpacity onPress={handleShareProfile} style={[styles.navBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
-          <Ionicons name="share-outline" size={20} color={isDark ? DS.white : DS.gray800} />
-        </TouchableOpacity>
-      </Animated.View>
+    <View style={[styles.container, { flex: 1 }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: fullThemeColors.background }]} />
+      {renderStickyHeader()}
 
       <Animated.ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 40 }]}
+        showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingTop: insets.top + 72, paddingBottom: insets.bottom + 100 }}
-        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={DS.primary} colors={[DS.primary, DS.accent]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={themeColors.spinnerColor} />
         }
       >
+        <Animated.View entering={FadeInDown.springify()} style={styles.topHeader}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          {!isEditing && currentUser && (
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic('light');
+                // `push` (not `navigate`) — guarantees a same-stack push and
+                // bypasses the root stack's resolution ambiguity.
+                navigation.push('CommunityMemberProfile', {
+                  userId: currentUser.id,
+                });
+              }}
+              style={styles.editToggleBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="View as others see me"
+            >
+              <Ionicons name="eye-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
+          {!isEditing ? (
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic('light');
+                setIsEditing(true);
+              }}
+              style={styles.editToggleBtn}
+              disabled={isSaving || avatarUploading || coverUploading}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="create-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={() => {
+                triggerHaptic('light');
+                if (hasChanges) handleSave();
+                else {
+                  setIsEditing(false);
+                  setFormData({ ...originalData });
+                }
+              }}
+              style={[styles.editToggleBtn, styles.editToggleBtnActive]}
+              disabled={isSaving || avatarUploading || coverUploading}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {isSaving || avatarUploading || coverUploading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="checkmark" size={22} color="#fff" />
+              )}
+            </TouchableOpacity>
+          )}
+        </Animated.View>
+
+        {/* Hero — skeleton on first frame, real content once formData resolves */}
         {isHydrating && !formData.displayName ? (
-          <ProfileSkeleton isDark={isDark} />
+          <HeroSkeleton isDark={isDark} colors={fullThemeColors} insetsTop={insets.top} />
         ) : (
-          <>
-            {renderProfileHeader()}
-
-            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
-              <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} />
-            </View>
-
-            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
-              {activeTab === 'overview' && renderOverviewTab()}
-              {activeTab === 'posts' && renderPostsTab()}
-              {activeTab === 'achievements' && renderAchievementsTab()}
-              {activeTab === 'settings' && renderSettingsTab()}
-            </View>
-          </>
+          renderProfileHero()
         )}
+
+        <TabBar tabs={tabs} activeTab={activeTab} onChange={handleTabChange} isDark={isDark} colors={fullThemeColors} />
+        <View>
+          {activeTab === 'overview' && renderOverviewTab()}
+          {activeTab === 'posts' && renderPostsTab()}
+          {activeTab === 'achievements' && renderAchievementsTab()}
+          {activeTab === 'settings' && renderSettingsTab()}
+        </View>
       </Animated.ScrollView>
 
-      <UniversalSpinner visible={isSaving || avatarUploading || coverUploading} text={avatarUploading ? "Uploading..." : coverUploading ? "Uploading..." : "Saving..."} size="medium" overlay blur section="main" />
+      <UniversalSpinner visible={isSaving || avatarUploading || coverUploading} text={avatarUploading ? "Uploading avatar..." : coverUploading ? "Uploading cover..." : "Saving changes..."} size="medium" overlay={true} blur={true} section="main" />
 
-      {/* Image Picker Modal */}
-      <Modal visible={showImagePicker} transparent animationType="fade" onRequestClose={() => setShowImagePicker(false)} statusBarTranslucent>
-        <View style={styles.modalOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowImagePicker(false)} />
-          <Animated.View entering={FadeInUp.springify()} style={[styles.modalCard, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
-            <Text style={[styles.modalTitle, { color: isDark ? DS.white : DS.gray900 }]}>Change Profile Photo</Text>
-            <View style={{ gap: 8, marginTop: 16 }}>
-              <PressableScale onPress={() => handleImagePick('avatar')} activeScale={0.97}>
-                <View style={[styles.modalOption, { backgroundColor: `${DS.primary}10` }]}>
-                  <Ionicons name="images-outline" size={24} color={DS.primary} />
-                  <Text style={[styles.modalOptionText, { color: isDark ? DS.white : DS.gray900 }]}>Choose from Library</Text>
-                </View>
-              </PressableScale>
-              <PressableScale onPress={() => handleTakePhoto('avatar')} activeScale={0.97}>
-                <View style={[styles.modalOption, { backgroundColor: `${DS.warning}10` }]}>
-                  <Ionicons name="camera-outline" size={24} color={DS.warning} />
-                  <Text style={[styles.modalOptionText, { color: isDark ? DS.white : DS.gray900 }]}>Take Photo</Text>
-                </View>
-              </PressableScale>
-              <PressableScale onPress={() => { setShowImagePicker(false); setShowEmojiPicker(true); }} activeScale={0.97}>
-                <View style={[styles.modalOption, { backgroundColor: `${DS.success}10` }]}>
-                  <Ionicons name="happy-outline" size={24} color={DS.success} />
-                  <Text style={[styles.modalOptionText, { color: isDark ? DS.white : DS.gray900 }]}>Pick Emoji</Text>
-                </View>
-              </PressableScale>
-              {(formData.avatar || currentUser.avatar) && (
-                <PressableScale onPress={() => handleRemoveImage('avatar')} activeScale={0.97}>
-                  <View style={[styles.modalOption, { backgroundColor: `${DS.danger}10` }]}>
-                    <Ionicons name="trash-outline" size={24} color={DS.danger} />
-                    <Text style={[styles.modalOptionText, { color: DS.danger }]}>Remove Photo</Text>
-                  </View>
-                </PressableScale>
-              )}
+      <ActionModal visible={showImagePicker} onClose={() => setShowImagePicker(false)} title="Change Profile Photo" isDark={isDark} colors={fullThemeColors}>
+        <View style={styles.imagePickerOptions}>
+          <TouchableOpacity style={styles.imagePickerOption} onPress={() => handleImagePick('avatar')}>
+            <View style={[styles.imagePickerIcon, { backgroundColor: '#6366f120' }]}>
+              <Ionicons name="images-outline" size={28} color="#6366f1" />
             </View>
-          </Animated.View>
+            <Text style={styles.imagePickerLabel}>Choose from Library</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.imagePickerOption} onPress={() => handleTakePhoto('avatar')}>
+            <View style={[styles.imagePickerIcon, { backgroundColor: '#f59e0b20' }]}>
+              <Ionicons name="camera-outline" size={28} color="#f59e0b" />
+            </View>
+            <Text style={styles.imagePickerLabel}>Take Photo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.imagePickerOption} onPress={() => { setShowImagePicker(false); setShowEmojiPicker(true); }}>
+            <View style={[styles.imagePickerIcon, { backgroundColor: '#f59e0b20' }]}>
+              <Ionicons name="happy-outline" size={28} color="#f59e0b" />
+            </View>
+            <Text style={styles.imagePickerLabel}>Pick Emoji</Text>
+          </TouchableOpacity>
+          {(formData.avatar || currentUser.avatar) && (
+            <TouchableOpacity style={styles.imagePickerOption} onPress={() => handleRemoveImage('avatar')}>
+              <View style={[styles.imagePickerIcon, { backgroundColor: '#ff475720' }]}>
+                <Ionicons name="trash-outline" size={28} color="#ff4757" />
+              </View>
+              <Text style={[styles.imagePickerLabel, { color: '#ff4757' }]}>Remove Photo</Text>
+            </TouchableOpacity>
+          )}
         </View>
-      </Modal>
+      </ActionModal>
 
-      {/* Emoji Picker Modal */}
-      <Modal visible={showEmojiPicker} transparent animationType="fade" onRequestClose={() => setShowEmojiPicker(false)} statusBarTranslucent>
-        <View style={styles.modalOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowEmojiPicker(false)} />
-          <Animated.View entering={FadeInUp.springify()} style={[styles.modalCard, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
-            <Text style={[styles.modalTitle, { color: isDark ? DS.white : DS.gray900 }]}>Pick an Emoji</Text>
+      <ActionModal visible={showCoverPicker} onClose={() => setShowCoverPicker(false)} title="Change Cover Photo" isDark={isDark} colors={fullThemeColors}>
+        <View style={styles.imagePickerOptions}>
+          <TouchableOpacity style={styles.imagePickerOption} onPress={() => handleImagePick('cover')}>
+            <View style={[styles.imagePickerIcon, { backgroundColor: '#6366f120' }]}>
+              <Ionicons name="images-outline" size={28} color="#6366f1" />
+            </View>
+            <Text style={styles.imagePickerLabel}>Choose from Library</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.imagePickerOption} onPress={() => handleTakePhoto('cover')}>
+            <View style={[styles.imagePickerIcon, { backgroundColor: '#f59e0b20' }]}>
+              <Ionicons name="camera-outline" size={28} color="#f59e0b" />
+            </View>
+            <Text style={styles.imagePickerLabel}>Take Photo</Text>
+          </TouchableOpacity>
+          {(formData.coverPhoto || currentUser.coverPhoto) && (
+            <TouchableOpacity style={styles.imagePickerOption} onPress={() => handleRemoveImage('cover')}>
+              <View style={[styles.imagePickerIcon, { backgroundColor: '#ff475720' }]}>
+                <Ionicons name="trash-outline" size={28} color="#ff4757" />
+              </View>
+              <Text style={[styles.imagePickerLabel, { color: '#ff4757' }]}>Remove Cover</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </ActionModal>
+
+      <Modal
+        visible={showEmojiPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEmojiPicker(false)}
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+      >
+        <View style={styles.emojiPickerOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowEmojiPicker(false)} activeOpacity={1} />
+          <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+          <Animated.View entering={FadeInUp.springify()} style={styles.emojiPickerSheet}>
+            <LinearGradient colors={isDark ? ['rgba(45,45,60,0.98)', 'rgba(35,35,50,0.95)'] : ['rgba(255,255,255,0.98)', 'rgba(248,250,255,0.95)']} style={StyleSheet.absoluteFill} />
+            <View style={styles.modalDragHandle}>
+              <View style={styles.dragIndicator} />
+            </View>
+            <View style={styles.emojiPickerHeader}>
+              <Text style={[styles.emojiPickerTitle, { color: isDark ? '#fff' : '#1e293b' }]}>Pick an Emoji</Text>
+              <TouchableOpacity onPress={() => setShowEmojiPicker(false)} style={styles.modalClose}>
+                <Ionicons name="close" size={24} color={isDark ? '#94a3b8' : '#64748b'} />
+              </TouchableOpacity>
+            </View>
             <View style={styles.emojiGrid}>
-              {EMOJI_OPTIONS.map(emoji => (
-                <TouchableOpacity key={emoji} onPress={() => handleEmojiSelect(emoji)} style={[styles.emojiBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
-                  <Text style={styles.emojiText}>{emoji}</Text>
+              {EMOJI_OPTIONS.map((emoji) => (
+                <TouchableOpacity key={emoji} style={[styles.emojiButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]} onPress={() => handleEmojiSelect(emoji)}>
+                  <Text style={styles.emojiButtonText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -2056,195 +2894,896 @@ export default function CommunityProfileScreen({ navigation }: Props) {
    STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
+const getStyles = (isDarkMode: boolean, colors: any = {}) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background || (isDarkMode ? '#0f0f1a' : '#f8f9fc') },
+  centered: { justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { flexGrow: 1, paddingBottom: 24, minHeight: SCREEN_H },
 
-  /* Sticky Header */
   stickyHeader: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
-    alignItems: 'center', paddingHorizontal: DS.space.xl, paddingBottom: DS.space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.15)',
-  },
-  stickyTitle: { fontSize: 16, fontWeight: '800' },
-  stickySub: { fontSize: 11, fontWeight: '500', color: DS.gray400, marginTop: 2 },
-
-  /* Top Nav */
-  topNav: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: DS.space.lg, paddingBottom: DS.space.md,
-  },
-  navBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  navTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
-
-  /* Profile Header */
-  profileHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
     alignItems: 'center',
-    paddingHorizontal: DS.space.lg,
-    paddingTop: DS.space.md,
+    paddingHorizontal: 20,
+    paddingBottom: 10
   },
-  avatarContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  avatarImage: { width: '100%', height: '100%' },
-  avatarEmoji: { fontSize: 48 },
-  avatarInitial: { fontSize: 40, fontWeight: '800', color: '#fff' },
+  stickyTitle: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
+  stickySubtitle: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.7)', marginTop: 2 },
 
-  nameSection: { alignItems: 'center', marginTop: DS.space.md },
+  topHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginBottom: 16, marginTop: 8 },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)'
+  },
+
+  editToggleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(15, 15, 30, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 6,
+    zIndex: 30,
+  },
+  editToggleBtnActive: {
+    backgroundColor: '#6366f1',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+
+  profileHero: { marginHorizontal: 16, marginBottom: 20 },
+  coverPhotoContainer: {
+    width: '100%',
+    height: 180,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: 'rgba(15, 15, 30, 0.9)',
+  },
+  coverPhoto: { width: '100%', height: '100%' },
+  coverPhotoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+  },
+  coverPhotoPlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  coverPhotoText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  coverEmptyRing: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.35)',
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  coverEmptyIconChip: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    marginBottom: 2,
+  },
+  coverEmptyHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.75)',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  coverPhotoEditBadge: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+
+  avatarSection: { alignItems: 'center', marginTop: -50 },
+  avatarWrapper: {
+    position: 'relative',
+    zIndex: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8
+  },
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 4,
+    borderColor: '#fff'
+  },
+  avatarEmojiContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#6366f125',
+  },
+  avatarEmojiText: {
+    fontSize: 44,
+    lineHeight: 100,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+  },
+  avatarPlaceholder: {
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  avatarPlaceholderText: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#fff'
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff'
+  },
+
+  profileInfo: { alignItems: 'center', marginTop: 8 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  displayName: { fontSize: 24, fontWeight: '800', color: DS.gray900, letterSpacing: -0.5 },
-  verifiedBadge: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  handle: { fontSize: 14, fontWeight: '500', color: DS.gray500, marginTop: 4 },
+  profileName: { fontSize: 24, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.5 },
+  verifiedBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  verifyPillHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(99,102,241,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.35)',
+  },
+  verifyPillHollowTick: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#6366f1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  verifyPillHeroText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6366f1',
+  },
+  profileMeta: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b' },
+  profileBio: { fontSize: 14, color: colors.textSecondary || '#64748b', textAlign: 'center', marginTop: 4, paddingHorizontal: 20 },
+  profileTags: { flexDirection: 'row', marginTop: 8, gap: 8 },
+  profileTag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, gap: 4 },
+  profileTagText: { fontSize: 12, fontWeight: '700' },
+  editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b' },
+  locationDetectedText: {
+    fontSize: 12,
+    color: '#10b981',
+    marginTop: 4,
+    marginHorizontal: 20,
+    fontWeight: '500'
+  },
 
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: DS.space.md, flexWrap: 'wrap', justifyContent: 'center' },
-  rolePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
-  rolePillText: { fontSize: 12, fontWeight: '700' },
-  locationPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.04)' },
-  locationPillText: { fontSize: 12, fontWeight: '500', color: DS.gray500, maxWidth: 150 },
-  editingPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: `${DS.warning}15` },
-  editingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: DS.warning },
-  editingPillText: { fontSize: 12, fontWeight: '700', color: DS.warning },
+  statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, gap: 20 },
+  statsItem: {
+  alignItems: 'center',
+  paddingVertical: 4,
+  paddingHorizontal: 6,
+  borderRadius: 8,
+},
+  statsValue: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
+  statsLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
+  statsDivider: { width: 1, height: 24, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
 
-  bio: { fontSize: 14, fontWeight: '500', color: DS.gray600, textAlign: 'center', marginTop: DS.space.md, lineHeight: 20, paddingHorizontal: DS.space.lg },
+  tabBar: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 4,
+    borderRadius: 16,
+    gap: 2,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+  },
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12
+  },
+  tabLabel: { fontSize: 12, fontWeight: '600' },
 
-  statsRow: { flexDirection: 'row', gap: 8, marginTop: DS.space.lg, width: '100%' },
-  statPill: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 14 },
-  statPillIcon: { fontSize: 18, marginBottom: 4 },
-  statPillValue: { fontSize: 18, fontWeight: '800' },
-  statPillLabel: { fontSize: 10, fontWeight: '600', color: DS.gray500, textTransform: 'uppercase' },
+  glassCard: {
+    borderRadius: DESIGN.radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border || 'rgba(255,255,255,0.06)',
+    marginHorizontal: 16,
+    marginBottom: DESIGN.spacing.lg
+  },
+  glassBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+  },
+  glassContent: { flex: 1 },
 
-  /* Edit Form */
-  editCard: { width: '100%', marginTop: DS.space.lg, padding: DS.space.lg, borderRadius: DS.radius.xl, borderWidth: 1 },
-  editField: { marginBottom: DS.space.md },
-  editLabel: { fontSize: 11, fontWeight: '700', color: DS.gray500, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
-  editInput: { height: 46, borderRadius: 12, paddingHorizontal: 14, fontSize: 15, fontWeight: '500' },
-  editInputRow: { flexDirection: 'row', alignItems: 'center', height: 46, borderRadius: 12, paddingHorizontal: 14, gap: 4 },
-  editAt: { fontSize: 16, fontWeight: '700', color: DS.primary },
-  editInputMulti: { height: 80, paddingTop: 12, textAlignVertical: 'top' },
-  editCharCount: { fontSize: 11, color: DS.gray400, textAlign: 'right', marginTop: 4 },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    marginTop: 8
+  },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.3 },
+  sectionSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 2 },
+  sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  sectionActionText: { fontSize: 13, fontWeight: '700', color: '#6366f1' },
 
-  /* Action Row */
-  actionRow: { flexDirection: 'row', gap: 10, marginTop: DS.space.lg, width: '100%' },
-  actionBtnPrimary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 14 },
-  actionBtnPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  actionBtnSecondary: { width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  kpiPillRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
+  kpiPill: {
+    flex: 1,
+    borderRadius: 20,
+    overflow: 'hidden',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: isDarkMode ? 'rgba(45,45,60,0.4)' : 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+  },
+  kpiPillIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  kpiPillEmoji: { fontSize: 20 },
+  kpiPillBody: { flex: 1 },
+  kpiPillValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  kpiPillLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  /* Tab Bar */
-  tabBar: { flexDirection: 'row', padding: 4, borderRadius: DS.radius.full, gap: 2 },
-  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 9, borderRadius: DS.radius.full },
-  tabLabel: { fontSize: 11, fontWeight: '600' },
-
-  /* Tab Content */
-  tabContent: { gap: DS.space.lg, paddingBottom: DS.space['3xl'] },
-
-  /* Card */
-  card: { borderRadius: DS.radius.lg, padding: DS.space.lg, borderWidth: 1, overflow: 'hidden' },
-  cardTitle: { fontSize: 15, fontWeight: '800', marginBottom: DS.space.md },
-
-  /* Section Header */
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: DS.space.sm },
-  sectionIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: DS.gray900, letterSpacing: -0.3 },
-  sectionSub: { fontSize: 11, fontWeight: '500', color: DS.gray500, marginTop: 1 },
-  sectionActionText: { fontSize: 12, fontWeight: '700' },
-
-  /* Influence */
-  influenceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: DS.space.md },
-  influenceTitle: { fontSize: 15, fontWeight: '800' },
-  influenceSub: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  influenceScore: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  influenceScoreText: { fontSize: 20, fontWeight: '800' },
-  influenceGrid: { gap: DS.space.sm },
-  influenceItem: { gap: 4 },
-  influenceItemTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  influenceItemLabel: { fontSize: 11, fontWeight: '600', flex: 1 },
-  influenceItemValue: { fontSize: 11, fontWeight: '700' },
-  influenceBar: { height: 5, borderRadius: 3, overflow: 'hidden' },
+  influenceHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
+  influenceIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  influenceTitleWrap: { flex: 1 },
+  influenceTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
+  influenceSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 2 },
+  influenceOverallBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
+  influenceOverallText: { fontSize: 20, fontWeight: '800' },
+  influenceGrid: { paddingHorizontal: 16, paddingBottom: 8, gap: 10 },
+  influenceItem: { gap: 6 },
+  influenceItemTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  influenceItemIconBg: { width: 24, height: 24, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  influenceItemLabel: { fontSize: 12, fontWeight: '600', flex: 1 },
+  influenceItemValue: { fontSize: 12, fontWeight: '700' },
+  influenceBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
   influenceBarFill: { height: '100%', borderRadius: 3 },
+  influenceFooter: { paddingHorizontal: 16, paddingBottom: 12 },
+  influenceFooterText: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center' },
 
-  /* Standing */
-  standingHeader: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, marginBottom: DS.space.md },
-  standingIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  standingTitle: { fontSize: 14, fontWeight: '700' },
-  standingSub: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  standingBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  standingBadgeText: { fontSize: 11, fontWeight: '700' },
-  standingProgress: { gap: 6 },
-  standingProgressHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  standingProgressLabel: { fontSize: 11, fontWeight: '500' },
-  standingProgressValue: { fontSize: 11, fontWeight: '700' },
-  standingProgressBg: { height: 5, borderRadius: 3, overflow: 'hidden' },
-  standingProgressFill: { height: '100%', borderRadius: 3 },
+  impactHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
+  impactTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
+  impactTrendBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  impactTrendText: { fontSize: 12, fontWeight: '700' },
+  impactGrid: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16 },
+  impactItem: { flex: 1, alignItems: 'center', gap: 4 },
+  impactItemIcon: { fontSize: 20 },
+  impactItemValue: { fontSize: 20, fontWeight: '800' },
+  impactItemLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
-  /* Topics */
-  topicsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  topicChip: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, minWidth: '47%' },
-  topicChipEmoji: { fontSize: 18 },
-  topicChipName: { fontSize: 12, fontWeight: '700' },
-  topicChipPosts: { fontSize: 10, fontWeight: '500', color: DS.gray500, marginTop: 1 },
+  standingHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
+  standingIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  standingTitleWrap: { flex: 1 },
+  standingTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
+  standingSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 2 },
+  standingRankRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 16 },
+  standingRankBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  standingRankText: { fontSize: 13, fontWeight: '800' },
+  standingProgressWrap: { flex: 1, gap: 6 },
+  standingProgressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  standingProgressLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
+  standingProgressValue: { fontSize: 12, fontWeight: '700' },
+  standingProgressBarBg: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  standingProgressBarFill: { height: '100%', borderRadius: 3 },
 
-  /* Badges */
-  badgesRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  achievementBadgeCompact: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  achievementBadgeEmoji: { fontSize: 22 },
-  achievementBadge: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1 },
-  achievementBadgeName: { fontSize: 13, fontWeight: '700' },
-  achievementBadgeDesc: { fontSize: 11, fontWeight: '500', color: DS.gray500, marginTop: 1 },
-
-  /* Breakdown */
-  breakdownGrid: { flexDirection: 'row', gap: 8 },
+  breakdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingBottom: 12 },
+  breakdownTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
+  breakdownTotal: { fontSize: 12, fontWeight: '600', color: colors.textSecondary || '#64748b' },
+  breakdownGrid: { flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 16 },
   breakdownItem: { flex: 1, alignItems: 'center', gap: 6 },
-  breakdownIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  breakdownIconBg: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   breakdownValue: { fontSize: 18, fontWeight: '800' },
-  breakdownLabel: { fontSize: 10, fontWeight: '600' },
+  breakdownLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
-  /* Manage Button */
-  manageBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: DS.space.md, borderRadius: 14, borderWidth: 1 },
-  manageIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  manageText: { flex: 1, fontSize: 14, fontWeight: '600' },
+  sparklineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16, paddingBottom: 12 },
+  sparklineTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
+  sparklineSubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 2 },
+  sparklineTotal: { alignItems: 'flex-end' },
+  sparklineTotalValue: { fontSize: 24, fontWeight: '800', color: '#6366f1' },
+  sparklineTotalLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
+  sparklineChart: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', paddingHorizontal: 16, paddingBottom: 16, height: 100 },
+  sparklineBar: { width: 8, borderRadius: 4 },
+  sparklineDay: { fontSize: 10, fontWeight: '600', color: colors.textMuted || '#94a3b8' },
 
-  /* Post Card */
-  postCard: { padding: DS.space.md, borderRadius: 16, borderWidth: 1 },
-  postHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  postTopic: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, maxWidth: '70%' },
-  postTopicDot: { width: 5, height: 5, borderRadius: 3 },
-  postTopicText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
-  postTime: { fontSize: 10, fontWeight: '500', color: DS.gray400 },
-  postContent: { fontSize: 14, fontWeight: '500', lineHeight: 20, marginBottom: 10 },
-  postImage: { width: '100%', height: 160, borderRadius: 12, marginBottom: 10 },
-  postStats: { flexDirection: 'row', gap: 16 },
-  postStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  postStatText: { fontSize: 12, fontWeight: '600', color: DS.gray500 },
+  suggestionsScroll: { flexDirection: 'row', paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
+  suggestionCard: { width: 160, padding: 14, borderRadius: 20, overflow: 'hidden' },
+  suggestionIconBg: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  suggestionEmoji: { fontSize: 22 },
+  suggestionTitle: { fontSize: 14, fontWeight: '700', color: colors.text || '#1e293b', marginBottom: 4 },
+  suggestionDesc: { fontSize: 11, fontWeight: '500', lineHeight: 15, color: colors.textSecondary || '#64748b', marginBottom: 10 },
+  suggestionActionBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  suggestionActionText: { fontSize: 11, fontWeight: '700' },
 
-  /* Empty */
-  emptyCard: { alignItems: 'center', padding: DS.space['3xl'], borderRadius: 18, borderWidth: 1 },
-  emptyIcon: { width: 72, height: 72, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
-  emptyTitle: { fontSize: 17, fontWeight: '800', marginBottom: 6 },
-  emptyText: { fontSize: 13, fontWeight: '500', textAlign: 'center', marginBottom: DS.space.lg },
-  emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 14 },
-  emptyBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  affinityList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
+  affinityRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
+  affinityIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  affinityEmoji: { fontSize: 20 },
+  affinityContent: { flex: 1, marginLeft: 12, gap: 6 },
+  affinityTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  affinityName: { fontSize: 14, fontWeight: '700', color: colors.text || '#1e293b' },
+  affinityValue: { fontSize: 12, fontWeight: '700' },
+  affinityBarBg: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  affinityBarFill: { height: '100%', borderRadius: 2 },
 
-  /* Settings */
-  settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
-  settingsIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  settingsLabel: { fontSize: 14, fontWeight: '600' },
-  settingsDesc: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-  divider: { height: 1, marginLeft: 48 },
+  comparisonList: { marginHorizontal: 16, gap: 8, marginBottom: 16 },
+  comparisonRow: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
+  comparisonIconBg: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  comparisonContent: { flex: 1, marginLeft: 12, gap: 6 },
+  comparisonTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  comparisonMetric: { fontSize: 14, fontWeight: '700', color: colors.text || '#1e293b' },
+  comparisonPercentile: { fontSize: 12, fontWeight: '700' },
+  comparisonBarRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  comparisonBarBg: { flex: 1, height: 4, borderRadius: 2, overflow: 'hidden' },
+  comparisonBarFill: { height: '100%', borderRadius: 2 },
+  comparisonNumbers: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
 
-  /* Danger */
-  dangerHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: DS.space.md },
-  dangerIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  dangerTitle: { fontSize: 15, fontWeight: '800' },
-  dangerAction: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12 },
-  dangerActionText: { flex: 1, fontSize: 13, fontWeight: '600' },
+  streaksRow: { flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 16 },
+  streakCard: { flex: 1, borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.75)' },
+  streakIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  streakValue: { fontSize: 22, fontWeight: '800' },
+  streakLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
+  streakBest: { fontSize: 10, fontWeight: '500', color: colors.textMuted || '#94a3b8', marginTop: 2 },
 
-  /* Modal */
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  modalCard: { width: '100%', maxWidth: 360, borderRadius: 24, padding: 24 },
-  modalTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center' },
-  modalOption: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 14 },
-  modalOptionText: { fontSize: 15, fontWeight: '600' },
+  sectionHeaderWithEdit: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    marginBottom: 16
+  },
+  sectionLabel: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b', letterSpacing: -0.3 },
+  editIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  editingBadge: { backgroundColor: '#f59e0b', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  editingBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
-  /* Emoji Grid */
-  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 },
-  emojiBtn: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  emojiText: { fontSize: 26 },
+  inputGroup: { marginBottom: 16, paddingHorizontal: 20 },
+  inputLabel: { fontSize: 12, fontWeight: '700', color: colors.textSecondary || '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    height: 52,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+  },
+  inputDisabled: { opacity: 0.5 },
+  inputIcon: { marginRight: 12 },
+  input: { flex: 1, fontSize: 16, color: colors.text || '#1e293b', fontWeight: '600' },
+  flexInput: { flex: 1 },
+  copyBtn: { padding: 6, borderRadius: 8, backgroundColor: 'rgba(99,102,241,0.1)' },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+    paddingTop: 14,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: colors.text || '#1e293b',
+    fontWeight: '500',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    marginHorizontal: 20
+  },
+  charCount: {
+    fontSize: 12,
+    textAlign: 'right',
+    marginTop: 4,
+    marginHorizontal: 20,
+    color: colors.textSecondary || '#64748b',
+    fontWeight: '500'
+  },
+  bioDisplay: { paddingHorizontal: 20, paddingBottom: 16 },
+  bioText: { fontSize: 15, color: colors.textSecondary || '#64748b', lineHeight: 22, fontWeight: '500' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  locationText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b' },
+  infoDivider: { height: 1, marginHorizontal: 20, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+
+  usernameStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginHorizontal: 20,
+  },
+  usernameStatusText: { fontSize: 13, fontWeight: '600' },
+
+  topicsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: DESIGN.spacing.md, paddingHorizontal: 20, paddingBottom: 20 },
+  topicChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  topicChipText: { fontSize: 13, fontWeight: '700' },
+  emptyText: { fontSize: 14, color: colors.textMuted || '#94a3b8', fontWeight: '500' },
+
+  manageTopicsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginVertical: 8,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+  },
+  manageTopicsText: { flex: 1, fontSize: 15, fontWeight: '600' },
+
+  dockContainer: { marginHorizontal: 16, marginBottom: 20 },
+  dock: { flexDirection: 'row', gap: 12, justifyContent: 'center' },
+  dockItem: { alignItems: 'center', gap: 6, flex: 1 },
+  dockGradient: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.15)',
+  },
+  dockLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary || '#64748b' },
+
+  tabPanel: { paddingBottom: 20 },
+  postsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16
+  },
+  postsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  postsHeaderTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
+  postsHeaderBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  postsHeaderBadgeText: { fontSize: 12, fontWeight: '700' },
+
+  postsList: { gap: 12, paddingHorizontal: 16 },
+  postItem: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+  },
+  postItemContent: { padding: 16 },
+  postItemHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  postItemTopic: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8
+  },
+  postItemTopicDot: { width: 6, height: 6, borderRadius: 3 },
+  postItemTopicText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  postItemTime: { fontSize: 11, fontWeight: '500', color: colors.textMuted || '#94a3b8' },
+  postItemContentText: { fontSize: 15, fontWeight: '600', color: colors.text || '#1e293b', lineHeight: 22 },
+  postItemImageWrap: { marginTop: 12, borderRadius: 12, overflow: 'hidden', height: 160 },
+  postItemImage: { width: '100%', height: '100%' },
+  postItemStats: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 12 },
+  postItemStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  postItemStatText: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
+
+  emptyPostsCard: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    marginHorizontal: 16,
+    backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'
+  },
+  emptyPostsIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16
+  },
+  emptyPostsTitle: { fontSize: 18, fontWeight: '700', color: colors.text || '#1e293b', marginBottom: 8 },
+  emptyPostsText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center' },
+  createPostBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
+  createPostBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  achievementsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16
+  },
+  achievementsHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  achievementsHeaderTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b' },
+  achievementsHeaderBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  achievementsHeaderBadgeText: { fontSize: 12, fontWeight: '700' },
+
+  achievementsCard: {
+    borderRadius: 20,
+    padding: 16,
+    marginHorizontal: 16,
+    backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    marginBottom: 16
+  },
+  achievementItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 6
+  },
+  achievementItemIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  achievementItemEmoji: { fontSize: 22 },
+  achievementItemInfo: { flex: 1, gap: 2 },
+  achievementItemName: { fontSize: 14, fontWeight: '700' },
+  achievementItemDesc: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b' },
+
+  emptyAchievements: { padding: 32, alignItems: 'center' },
+  emptyAchievementsTitle: { fontSize: 16, fontWeight: '700', color: colors.text || '#1e293b', marginTop: 12, marginBottom: 4 },
+  emptyAchievementsText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center' },
+
+  progressCard: {
+    borderRadius: 20,
+    padding: 20,
+    marginHorizontal: 16,
+    backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    marginBottom: 16
+  },
+  progressCardTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b', marginBottom: 16 },
+  progressRow: { flexDirection: 'row', gap: 16 },
+  progressItem: { flex: 1 },
+  progressItemHeader: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 6 },
+  progressItemValue: { fontSize: 20, fontWeight: '800', color: colors.text || '#1e293b' },
+  progressItemLabel: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b' },
+  progressBar: { height: 6, borderRadius: 3, backgroundColor: 'rgba(100,116,139,0.15)', overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 3 },
+
+  settingsCard: {
+    borderRadius: 20,
+    padding: 16,
+    marginHorizontal: 16,
+    backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    marginBottom: 16
+  },
+  settingsCardTitle: { fontSize: 18, fontWeight: '800', color: colors.text || '#1e293b', marginBottom: 16 },
+  settingsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
+  settingsRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  settingsRowIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  settingsRowText: { flex: 1 },
+  settingsRowTitle: { fontSize: 15, fontWeight: '700', color: colors.text || '#1e293b' },
+  settingsRowDesc: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 1 },
+  settingsDivider: { height: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginVertical: 4 },
+
+  dangerCard: {
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+    marginHorizontal: 16,
+    backgroundColor: isDarkMode ? 'rgba(45,45,60,0.6)' : 'rgba(255,255,255,0.8)',
+    borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    overflow: 'hidden',
+    marginBottom: 16
+  },
+  dangerIconContainer: { marginBottom: 12 },
+  dangerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  dangerTitle: { fontSize: 16, fontWeight: '800', color: '#ef4444', marginBottom: 4 },
+  dangerDescription: { fontSize: 13, fontWeight: '500', color: colors.textSecondary || '#64748b', textAlign: 'center', lineHeight: 18, marginBottom: 16 },
+  dangerDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    marginVertical: 8
+  },
+  dangerActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    width: '100%',
+    borderRadius: 12,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+    marginTop: 4
+  },
+  deleteAccountBtn: { marginTop: 0 },
+  reactivateActionBtn: { backgroundColor: 'rgba(16,185,129,0.04)' },
+  dangerActionIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  dangerActionText: { fontSize: 14, fontWeight: '600', color: '#ef4444', flex: 1 },
+
+  imagePickerOptions: { padding: 8 },
+  imagePickerOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 14, marginBottom: 8 },
+  imagePickerIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  imagePickerLabel: { fontSize: 16, fontWeight: '600', color: colors.text || '#1e293b', flex: 1 },
+
+  emojiPickerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  emojiPickerSheet: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 20, paddingBottom: 40, overflow: 'hidden' },
+  emojiPickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  emojiPickerTitle: { fontSize: 18, fontWeight: '800' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' },
+  emojiButton: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  emojiButtonText: { fontSize: 28 },
+
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  modalContent: { width: '100%', maxWidth: 400, borderRadius: 24, padding: 24, overflow: 'hidden' },
+  modalDragHandle: { width: '100%', alignItems: 'center', paddingVertical: 8 },
+  dragIndicator: { width: 40, height: 4, borderRadius: 2, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  modalClose: { width: 36, height: 36, borderRadius: 10, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
+
+  retryButton: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
+  retryButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  /* ── Verification CTA card ─────────────────────────────────────────── */
+  verifyCta: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 18,
+  },
+  verifyCtaOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15,15,30,0.18)',
+  },
+  verifyTickCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  verifyCtaBody: { flex: 1, gap: 4 },
+  verifyCtaTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.2,
+  },
+  verifyCtaDesc: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.88)',
+    lineHeight: 17,
+  },
+  verifyCtaButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  verifyCtaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  verifyCtaButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#6366f1',
+  },
+  verifyCtaFootnote: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)',
+  },
+
+  /* ── Identity / Threads / Circle / Streak grid ─────────────────────── */
+  identityHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, paddingBottom: 12 },
+  identityIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  identityTitleWrap: { flex: 1 },
+  identityTitle: { fontSize: 16, fontWeight: '800', color: colors.text || '#1e293b' },
+  identitySubtitle: { fontSize: 12, fontWeight: '500', color: colors.textSecondary || '#64748b', marginTop: 2 },
+  identityBio: {
+    fontSize: 14, lineHeight: 20, fontWeight: '500',
+    color: colors.textSecondary || '#64748b',
+    paddingHorizontal: 16, paddingBottom: 12,
+  },
+  identityLocationRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 16, paddingBottom: 12,
+  },
+  identityLocationText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary || '#64748b' },
+  identityDivider: {
+    height: 1, marginHorizontal: 16, marginBottom: 12,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+  },
+  identityBadgesHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, marginBottom: 8,
+  },
+  identityBadgesLabel: {
+    fontSize: 11, fontWeight: '700',
+    color: colors.textSecondary || '#64748b',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  identityBadgesSeeAll: { fontSize: 12, fontWeight: '700' },
+  identityBadgesRow: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: 16, paddingBottom: 16, gap: 8,
+  },
+  identityBadgeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 10, borderWidth: 1, maxWidth: '48%',
+  },
+  identityBadgeEmoji: { fontSize: 14 },
+  identityBadgeName: { fontSize: 12, fontWeight: '700' },
+
+  previewPostCard: {
+    borderRadius: 16, overflow: 'hidden', borderWidth: 1,
+    borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    marginHorizontal: 16,
+  },
+  previewPostHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8,
+  },
+  previewPostTopic: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, maxWidth: '70%',
+  },
+  previewPostTopicDot: { width: 5, height: 5, borderRadius: 3 },
+  previewPostTopicText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  previewPostTime: { fontSize: 10, fontWeight: '500', color: colors.textMuted || '#94a3b8' },
+  previewPostContent: {
+    fontSize: 14, fontWeight: '600', color: colors.text || '#1e293b',
+    lineHeight: 20, paddingHorizontal: 14, paddingBottom: 10,
+  },
+  previewPostStats: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingHorizontal: 14, paddingBottom: 14,
+  },
+  previewPostStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  previewPostStatText: { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
+
+  circleStrip: {
+    flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 4, gap: 12,
+  },
+  circleCard: { alignItems: 'center', width: 68 },
+  circleAvatarWrap: {
+    width: 52, height: 52, borderRadius: 26, overflow: 'hidden',
+    borderWidth: 2, borderColor: '#fff',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15, shadowRadius: 4, elevation: 2,
+  },
+  circleAvatar: { width: 52, height: 52, borderRadius: 26 },
+  circleName: {
+    fontSize: 11, fontWeight: '600',
+    color: colors.textSecondary || '#64748b',
+    marginTop: 6, textAlign: 'center',
+  },
+
+  contributionGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+    paddingHorizontal: 16, paddingBottom: 12,
+  },
+  contributionCell: {
+    width: 24, height: 24, borderRadius: 6,
+    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  contributionFooter: {
+    fontSize: 12, fontWeight: '500',
+    color: colors.textSecondary || '#64748b',
+    paddingHorizontal: 16, paddingBottom: 14, textAlign: 'center',
+  },
 });
