@@ -4,6 +4,16 @@ const path = require('path');
 const config = getDefaultConfig(__dirname);
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   WATCHMAN (Windows EMFILE fix)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// Use Watchman instead of Metro's default Node watcher.
+// The Node watcher holds one file handle per directory and hits
+// `EMFILE: too many open files` on Windows. Watchman uses a single
+// recursive watch instead.
+config.resolver.useWatchman = true;
+
+/* ═══════════════════════════════════════════════════════════════════════════
    TRANSFORMER
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -69,6 +79,9 @@ config.resolver = {
   // Using a single RegExp (Metro requires RegExp, not array).
   blockList:
     /([\/\\](executorch-env|executorch|\.git|\.cache)[\/\\].*)|([\/\\]android[\/\\](\.cxx|build)[\/\\].*)|([\/\\]ios[\/\\](Pods|build)[\/\\].*)/,
+
+  // Re-apply Watchman flag after the spread above overwrites config.resolver.
+  useWatchman: true,
 };
 
 config.resolver.extraNodeModules = {
@@ -78,16 +91,16 @@ config.resolver.extraNodeModules = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PERFORMANCE / STABILITY (Windows EMFILE fix)
+   PERFORMANCE / STABILITY
    ═══════════════════════════════════════════════════════════════════════════ */
 
 // Cap parallel workers. On Windows the default (CPU count) frequently triggers
 // `EMFILE: too many open files`. 2 is a safe balance between speed and stability.
 config.maxWorkers = 2;
 
-// Only watch folders that actually contain source. Watching node_modules or
-// the whole project root causes Metro's file watcher to hold thousands of
-// handles at once.
+// With Watchman enabled, watchFolders is largely ignored (Watchman watches the
+// project root recursively via a single handle). Kept for the Node-watcher
+// fallback case.
 config.watchFolders = [
   path.resolve(__dirname, 'src'),
   path.resolve(__dirname, 'assets'),
