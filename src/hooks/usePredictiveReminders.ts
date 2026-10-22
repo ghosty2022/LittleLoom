@@ -1,14 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
 import { useCallback, useMemo, useRef } from 'react';
 import {
   differenceInHours,
@@ -21,27 +10,87 @@ import { useBaby } from '../context/BabyContext';
 import { useTracker } from './useTrackerContext';
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 
-
-
-
 type GrowthIndex = ReturnType<typeof useGrowthIntelligence>['growthIndex'];
 type AgeMonths = ReturnType<typeof useGrowthIntelligence>['ageInMonths'];
 
-let _giCache: { babyId: string; growthIndex: GrowthIndex; ageInMonths: AgeMonths; ts: number } | null = null;
+/**
+ * Lightweight, cacheable slice of GrowthIndex.
+ * Deliberately excludes callbacks + lastUpdated so we can cache across renders.
+ */
+type CachedGrowthSlice = {
+  compositeIndex: number;
+  restScore: number;
+  healthStability: number;
+  milestoneReadiness: GrowthIndex['milestoneReadiness'];
+};
+
+let _giCache: {
+  babyId: string;
+  slice: CachedGrowthSlice;
+  ageInMonths: AgeMonths;
+  ts: number;
+} | null = null;
 const GI_CACHE_MS = 5000;
 
-export function getCachedGrowthIntelligence(babyId: string | undefined, compute: () => { growthIndex: GrowthIndex; ageInMonths: AgeMonths }) {
-  if (!babyId) return compute();
-  const now = Date.now();
-  if (_giCache && _giCache.babyId === babyId && now - _giCache.ts < GI_CACHE_MS) {
-    return { growthIndex: _giCache.growthIndex, ageInMonths: _giCache.ageInMonths };
-  }
-  const fresh = compute();
-  _giCache = { babyId, growthIndex: fresh.growthIndex, ageInMonths: fresh.ageInMonths, ts: now };
-  return fresh;
+/** Call when the active baby switches so the cache doesn't serve stale data. */
+export function invalidateGrowthIntelligenceCache() {
+  _giCache = null;
 }
 
+function sliceOf(gi: GrowthIndex): CachedGrowthSlice {
+  return {
+    compositeIndex: gi?.compositeIndex ?? 0,
+    restScore: gi?.restScore?.value ?? 0,
+    healthStability: gi?.healthStability?.value ?? 0,
+    milestoneReadiness: gi?.milestoneReadiness ?? [],
+  };
+}
 
+/**
+ * Cache the *data* needed by predictive reminders, not the whole growth index.
+ * Callers that need fresh callbacks (generateReminders, etc.) read them from
+ * the live `useGrowthIntelligence()` result directly.
+ */
+export function getCachedGrowthIntelligence(
+  babyId: string | undefined,
+  compute: () => { growthIndex: GrowthIndex; ageInMonths: AgeMonths }
+): { growthIndex: GrowthIndex; ageInMonths: AgeMonths } {
+  const fresh = compute();
+  if (!babyId) return fresh;
+
+  const now = Date.now();
+  if (
+    _giCache &&
+    _giCache.babyId === babyId &&
+    now - _giCache.ts < GI_CACHE_MS
+  ) {
+    return {
+      // Splice cached data back into the live object so callbacks are current.
+      growthIndex: {
+        ...fresh.growthIndex,
+        compositeIndex: _giCache.slice.compositeIndex,
+        restScore: {
+          ...fresh.growthIndex.restScore,
+          value: _giCache.slice.restScore,
+        },
+        healthStability: {
+          ...fresh.growthIndex.healthStability,
+          value: _giCache.slice.healthStability,
+        },
+        milestoneReadiness: _giCache.slice.milestoneReadiness,
+      },
+      ageInMonths: _giCache.ageInMonths,
+    };
+  }
+
+  _giCache = {
+    babyId,
+    slice: sliceOf(fresh.growthIndex),
+    ageInMonths: fresh.ageInMonths,
+    ts: now,
+  };
+  return fresh;
+}
 
 export interface PredictiveReminder {
   id: string;
@@ -51,7 +100,7 @@ export interface PredictiveReminder {
   emoji: string;
   priority: 'high' | 'medium' | 'low';
   suggestedTime: Date;
-  confidence: number; 
+  confidence: number;
   basedOn: {
     trackerId: string;
     dataPoint: string;
@@ -66,15 +115,10 @@ export interface PredictiveReminder {
   actedUpon?: boolean;
 }
 
-
-
 export const usePredictiveReminders = () => {
   const { getEntries } = useTracker();
   const { currentBaby, growthData } = useBaby();
 
-  
-  
-  
   const getEntriesRef = useRef(getEntries);
   getEntriesRef.current = getEntries;
   const getEntriesStable = useCallback(
@@ -85,17 +129,19 @@ export const usePredictiveReminders = () => {
     []
   );
 
-  
-  
-  
   const giResult = useGrowthIntelligence();
-  
-  
+
+  // Fingerprint on *data*, not time. `lastUpdated` changes every render
+  // (new Date()), so keying on it defeats the cache.
   const giFingerprint = `${giResult.growthIndex?.compositeIndex ?? 0}:${
-    giResult.growthIndex?.lastUpdated ?? 0
+    giResult.growthIndex?.restScore?.value ?? 0
+  }:${giResult.growthIndex?.healthStability?.value ?? 0}:${
+    giResult.growthIndex?.milestoneReadiness?.length ?? 0
   }`;
+
   const { growthIndex, ageInMonths } = useMemo(
     () => getCachedGrowthIntelligence(currentBaby?.id, () => giResult),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [currentBaby?.id, giFingerprint]
   );
 
@@ -105,9 +151,7 @@ export const usePredictiveReminders = () => {
     const now = new Date();
     const suggestions: PredictiveReminder[] = [];
 
-    
-    
-    
+    // ── FEED PREDICTIVE ────────────────────────────────────
     const feedEntries = getEntriesStable('feed', 20);
     if (feedEntries.length >= 3) {
       const intervals: number[] = [];
@@ -138,7 +182,6 @@ export const usePredictiveReminders = () => {
             priority: hoursSinceLast > avgInterval * 1.2 ? 'high' : 'medium',
             suggestedTime: addHours(new Date(lastFeed.timestamp), avgInterval),
             confidence: Math.min(95, 60 + hoursSinceLast * 5),
-            
             basedOn: [
               {
                 trackerId: 'feed',
@@ -161,14 +204,12 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    
-    
-    
+    // ── SLEEP OPTIMIZATION ─────────────────────────────────
     const sleepEntries = getEntriesStable('sleep', 14);
     if (sleepEntries.length >= 5) {
       const bedtimes = sleepEntries
-        .filter(e => e.data?.sleepType === 'night')
-        .map(e => new Date(e.timestamp).getHours());
+        .filter((e) => e.data?.sleepType === 'night')
+        .map((e) => new Date(e.timestamp).getHours());
 
       if (bedtimes.length > 0) {
         const avgBedtime = Math.round(
@@ -178,7 +219,6 @@ export const usePredictiveReminders = () => {
         nextBedtime.setHours(avgBedtime, 0, 0, 0);
         if (nextBedtime < now) nextBedtime.setDate(nextBedtime.getDate() + 1);
 
-        
         const sleepScore = growthIndex?.restScore?.value ?? 50;
 
         if (sleepScore < 70) {
@@ -191,8 +231,6 @@ export const usePredictiveReminders = () => {
             priority: sleepScore < 50 ? 'high' : 'medium',
             suggestedTime: nextBedtime,
             confidence: Math.min(95, 70 + (70 - sleepScore)),
-            
-            
             basedOn: [
               {
                 trackerId: 'sleep',
@@ -218,36 +256,37 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    
-    
-    
-    
-    
-    
-    const fromTracker = (getEntriesStable('growth', 50) || []).map((e) => ({
-      date: new Date(e.timestamp).toISOString(),
-      timestamp: e.timestamp,
-      type: String((e.data as any)?.measurementType ?? '').toLowerCase(),
-      value: Number((e.data as any)?.value),
-    })).filter((g) => Number.isFinite(g.value));
+    // ── GROWTH REMINDER ────────────────────────────────────
+    const fromTracker = (getEntriesStable('growth', 50) || [])
+      .map((e) => ({
+        date: new Date(e.timestamp).toISOString(),
+        timestamp: e.timestamp,
+        type: String((e.data as any)?.measurementType ?? '').toLowerCase(),
+        value: Number((e.data as any)?.value),
+      }))
+      .filter((g) => Number.isFinite(g.value));
 
-    const safeGrowthData = fromTracker.length > 0
-      ? fromTracker
-      : (Array.isArray(growthData) ? growthData : []);
+    const safeGrowthData =
+      fromTracker.length > 0
+        ? fromTracker
+        : Array.isArray(growthData)
+        ? growthData
+        : [];
 
     const lastGrowth = [...safeGrowthData].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     )[0];
 
-    if (lastGrowth?.date) {  
+    if (lastGrowth?.date) {
       const daysSince = differenceInDays(now, new Date(lastGrowth.date));
-      const recommendedInterval = ageInMonths < 6 ? 14 : ageInMonths < 12 ? 30 : 60;
+      const recommendedInterval =
+        ageInMonths < 6 ? 14 : ageInMonths < 12 ? 30 : 60;
 
       if (daysSince > recommendedInterval * 0.8) {
-        const growthEntriesForType = (getEntriesStable('growth', 50) || []);
+        const growthEntriesForType = getEntriesStable('growth', 50) || [];
         const measurementTypes = new Set(
           growthEntriesForType
-            .map(e => String(e.data?.measurementType ?? '').toLowerCase())
+            .map((e) => String(e.data?.measurementType ?? '').toLowerCase())
             .filter(Boolean)
         );
         suggestions.push({
@@ -268,7 +307,9 @@ export const usePredictiveReminders = () => {
             {
               trackerId: 'growth',
               dataPoint: 'measurements_on_file',
-              value: `${growthEntriesForType.length} entries (${Array.from(measurementTypes).join(', ') || 'none'})`,
+              value: `${growthEntriesForType.length} entries (${
+                Array.from(measurementTypes).join(', ') || 'none'
+              })`,
             },
           ],
           action: {
@@ -280,10 +321,11 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    
-    
-    
-    (Array.isArray(growthIndex?.milestoneReadiness) ? growthIndex.milestoneReadiness : []).forEach((readiness, idx) => {
+    // ── MILESTONE READINESS ────────────────────────────────
+    (Array.isArray(growthIndex?.milestoneReadiness)
+      ? growthIndex.milestoneReadiness
+      : []
+    ).forEach((readiness, idx) => {
       if (readiness.readinessPercent > 60) {
         suggestions.push({
           id: `milestone_ready_${readiness.category}_${idx}`,
@@ -318,9 +360,7 @@ export const usePredictiveReminders = () => {
       }
     });
 
-    
-    
-    
+    // ── HEALTH ALERT ───────────────────────────────────────
     const healthScore = growthIndex?.healthStability?.value ?? 100;
     if (healthScore < 60) {
       const tempEntries = getEntriesStable('temperature', 7);
@@ -342,12 +382,20 @@ export const usePredictiveReminders = () => {
             {
               trackerId: 'temperature',
               dataPoint: 'temp_entries_7d',
-              value: `${tempEntries.length}${lastTempEntry ? ` (last: ${new Date(lastTempEntry.timestamp).toLocaleString()})` : ''}`,
+              value: `${tempEntries.length}${
+                lastTempEntry
+                  ? ` (last: ${new Date(lastTempEntry.timestamp).toLocaleString()})`
+                  : ''
+              }`,
             },
             {
               trackerId: 'symptom',
               dataPoint: 'symptom_entries_7d',
-              value: `${symptomEntries.length}${lastSymptom ? ` (last: ${String((lastSymptom.data as any)?.symptoms ?? 'n/a')})` : ''}`,
+              value: `${symptomEntries.length}${
+                lastSymptom
+                  ? ` (last: ${String((lastSymptom.data as any)?.symptoms ?? 'n/a')})`
+                  : ''
+              }`,
             },
             {
               trackerId: 'health',
@@ -364,12 +412,10 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    
-    
-    
+    // ── POTTY READINESS ────────────────────────────────────
     const pottyEntries = getEntriesStable('potty', 30);
     if (pottyEntries.length >= 10) {
-      const successful = pottyEntries.filter(e => e.data?.successful).length;
+      const successful = pottyEntries.filter((e) => e.data?.successful).length;
       const successRate = (successful / pottyEntries.length) * 100;
 
       if (successRate > 70 && ageInMonths >= 18) {
@@ -377,7 +423,9 @@ export const usePredictiveReminders = () => {
           id: 'potty_training',
           type: 'potty',
           title: 'Potty Training Ready?',
-          description: `Success rate: ${Math.round(successRate)}%. Age: ${ageInMonths}m. Consider starting!`,
+          description: `Success rate: ${Math.round(
+            successRate
+          )}%. Age: ${ageInMonths}m. Consider starting!`,
           emoji: '🚽',
           priority: 'medium',
           suggestedTime: addDays(now, 1),
@@ -398,7 +446,6 @@ export const usePredictiveReminders = () => {
       }
     }
 
-    
     const priorityWeight = { high: 3, medium: 2, low: 1 };
     return suggestions.sort(
       (a, b) =>
@@ -409,9 +456,10 @@ export const usePredictiveReminders = () => {
     getEntriesStable,
     currentBaby,
     growthData,
-    
-    
-    growthIndex?.lastUpdated,
+    growthIndex?.compositeIndex,
+    growthIndex?.restScore?.value,
+    growthIndex?.healthStability?.value,
+    growthIndex?.milestoneReadiness,
     ageInMonths,
   ]);
 

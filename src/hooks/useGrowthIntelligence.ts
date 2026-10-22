@@ -756,11 +756,10 @@ export const useGrowthIntelligence = () => {
   }, [nutritionScore, restScore, physicalScore, cognitiveScore, healthStability]);
 
   const predictedNextCheckup = useMemo(() => {
-    const safeGrowthData = mergedGrowthData;
-    const lastGrowth = safeGrowthData.sort((a, b) =>
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    )[0];
-
+  const safeGrowthData = mergedGrowthData;
+  const lastGrowth = [...safeGrowthData].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  )[0];
     if (!lastGrowth) return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const daysSince = differenceInDays(new Date(), new Date(lastGrowth.date));

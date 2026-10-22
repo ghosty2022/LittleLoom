@@ -284,9 +284,11 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   useEffect(() => {
     const load = async () => {
       try {
+        const userId = currentUser?.id;
+        const scopedKey = userId ? `${SELECTED_TOPICS_KEY}_${userId}` : SELECTED_TOPICS_KEY;
         const [onboardingData, selectedData] = await Promise.all([
           AsyncStorage.getItem(ONBOARDING_KEY),
-          AsyncStorage.getItem(SELECTED_TOPICS_KEY),
+          AsyncStorage.getItem(scopedKey),
         ]);
 
         let topics: string[] = [];
@@ -318,6 +320,11 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
           const categories = groupByCategory(INITIAL_TOPICS);
           if (categories.length > 0) expanded.add(categories[0].id);
         }
+        // If we found nothing (empty topic list), expand every category so the
+        // user isn't presented with a fully-collapsed list on first run.
+        if (expanded.size === 0) {
+          groupByCategory(INITIAL_TOPICS).forEach((c) => expanded.add(c.id));
+        }
         setExpandedCategories(expanded);
       } catch (err) {
         console.error('[CommunityOnboarding] load error:', err);
@@ -326,7 +333,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       }
     };
     load();
-  }, []);
+  }, [currentUser?.id]);
 
   /* ── Group topics into categories (stable) ───────────────── */
   const groupByCategory = useCallback((topics: Topic[]): CategoryWithTopics[] => {
@@ -358,6 +365,17 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
     () => groupByCategory(allTopics),
     [allTopics, groupByCategory],
   );
+
+  // Fallback expander: if the category list ever becomes non-empty while
+  // nothing is expanded (e.g. because topics arrived after the initial
+  // load effect ran), auto-expand the first category so the user sees
+  // tappable topic cards immediately.
+  useEffect(() => {
+    if (isLoading) return;
+    if (expandedCategories.size > 0) return;
+    if (categoriesWithTopics.length === 0) return;
+    setExpandedCategories(new Set([categoriesWithTopics[0].id]));
+  }, [categoriesWithTopics, expandedCategories.size, isLoading]);
 
   /* ── Animate progress ─────────────────────────────────────── */
   useEffect(() => {
@@ -393,20 +411,26 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   /* ── Persist ─────────────────────────────────────────────── */
   const persist = useCallback(
     async (topicsToSave: string[], extra: Record<string, any> = {}) => {
+      const userId = currentUser?.id;
+      if (!userId) {
+        throw new Error('No authenticated user — cannot persist topic selection');
+      }
+
+      const scopedKey = `${SELECTED_TOPICS_KEY}_${userId}`;
       const payload = {
         completed: true,
         selectedTopics: topicsToSave,
         timestamp: new Date().toISOString(),
         ...extra,
       };
-      await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(payload));
-      await AsyncStorage.setItem(SELECTED_TOPICS_KEY, JSON.stringify(topicsToSave));
-      if (currentUser?.id) {
-        await AsyncStorage.setItem(
-          `${SELECTED_TOPICS_KEY}_${currentUser.id}`,
-          JSON.stringify(topicsToSave),
-        );
-      }
+
+      // Write every key the rest of the app reads, atomically-ish.
+      await Promise.all([
+        AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(payload)),
+        AsyncStorage.setItem(SELECTED_TOPICS_KEY, JSON.stringify(topicsToSave)),
+        AsyncStorage.setItem(scopedKey, JSON.stringify(topicsToSave)),
+      ]);
+
       try {
         await updateUserTopics(topicsToSave);
       } catch (err) {
@@ -428,6 +452,10 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   );
 
   const handleComplete = useCallback(async () => {
+    if (!currentUser?.id) {
+      sweetAlert.alert('Not Signed In', 'Please sign in to save your topics.', 'warning');
+      return;
+    }
     if (selectedTopics.length < MIN_TOPICS) {
       sweetAlert.alert(
         'Select More Topics',
@@ -446,7 +474,13 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         if (navigation?.canGoBack?.()) navigation.goBack();
         return;
       }
-      if (typeof onComplete === 'function') onComplete();
+      const done = onComplete ?? route?.params?.onComplete;
+      if (typeof done === 'function') {
+        await done(selectedTopics);
+      } else {
+        console.warn('[CommunityOnboarding] No onComplete handler — falling back to navigator reset');
+        navigation?.reset?.({ index: 0, routes: [{ name: 'CommunityMain' as never }] });
+      }
     } catch (err) {
       console.error('[CommunityOnboarding] complete error:', err);
       sweetAlert.alert('Error', 'Failed to save your preferences. Please try again.', 'warning');
@@ -457,6 +491,10 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
 
   const handleSkip = useCallback(() => {
     if (isEditing) return;
+    if (!currentUser?.id) {
+      sweetAlert.alert('Not Signed In', 'Please sign in to save your topics.', 'warning');
+      return;
+    }
 
     // Auto-pick 2 topics from the first categories, then top up.
     const prefilled = categoriesWithTopics
@@ -481,7 +519,13 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
           await persist(topicsToSave, { autoSelected: true });
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           sweetAlert.toast('Topics Selected', `${topicsToSave.length} topics auto-selected.`);
-          if (typeof onComplete === 'function') onComplete();
+
+          const done = onComplete ?? route?.params?.onComplete;
+          if (typeof done === 'function') {
+            await done(topicsToSave);
+          } else {
+            navigation?.reset?.({ index: 0, routes: [{ name: 'CommunityMain' as never }] });
+          }
         } catch (err) {
           console.error('[CommunityOnboarding] skip error:', err);
           sweetAlert.alert('Error', 'Failed to complete onboarding. Please try again.', 'warning');

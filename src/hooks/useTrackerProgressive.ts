@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { useMemo, useCallback, useEffect, useState, useRef } from 'react';
 import {
   subDays,
@@ -12,10 +6,14 @@ import {
   isSameDay,
 } from 'date-fns';
 
-
 import { useTracker } from './useTrackerContext';
 import { useBaby } from '../context/BabyContext';
-import { TrackerEntry, TrackerStreak, TrackerInsight, UnifiedTrackerConfig, ReminderRule, FieldConfig } from '../types/trackers';
+import {
+  TrackerEntry,
+  TrackerStreak,
+  TrackerInsight,
+  ReminderRule,
+} from '../types/trackers';
 
 import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
@@ -26,13 +24,19 @@ import { getCachedCorrelations } from '../services/ai/CorrelationEngine';
    TYPES
    ═══════════════════════════════════════════════════════════════ */
 
-export type SuggestionSource = 'yesterday' | 'pattern' | 'partner' | 'template' | 'correlation' | 'time_based';
+export type SuggestionSource =
+  | 'yesterday'
+  | 'pattern'
+  | 'partner'
+  | 'template'
+  | 'correlation'
+  | 'time_based';
 
 export interface ProgressiveSuggestion {
   fieldId: string;
   value: unknown;
   source: SuggestionSource;
-  confidence: number; 
+  confidence: number;
   label: string;
   emoji: string;
 }
@@ -110,27 +114,20 @@ export interface TrackerProgressiveState {
   isLoading: boolean;
   lastUpdated: number;
 
-  
-  /** Number of entries logged for this tracker */
   entryCount: number;
-  /** True when we have enough data (≥5 entries) for meaningful suggestions */
   hasRealData: boolean;
 
-  
   todayEntries: TrackerEntry[];
   yesterdayEntries: TrackerEntry[];
   recentEntries: TrackerEntry[];
 
-  
   getAllYesterday: () => Record<string, unknown>;
   dismissInsight: (insightId: string) => void;
   refresh: () => void;
 
-  
   generateReminders: (entries: TrackerEntry[], trackers: any[], score: any) => any[];
   checkNewAchievements: (entries: TrackerEntry[], score: any, unlocked: string[]) => any[];
 
-  
   relatedTrackerSuggestions: Array<{
     id: string;
     trackerId: string;
@@ -139,7 +136,6 @@ export interface TrackerProgressiveState {
     reason: string;
   }>;
 
-  
   routineScore: {
     score: number;
     label: string;
@@ -161,7 +157,9 @@ const getTimeOfDay = (hour: number): ProgressiveTimeContext['timeOfDay'] => {
 
 const FIXED_HOLIDAYS = new Set(['01-01', '07-04', '12-24', '12-25', '12-31']);
 const isFixedHoliday = (d: Date): boolean =>
-  FIXED_HOLIDAYS.has(`${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+  FIXED_HOLIDAYS.has(
+    `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  );
 
 const formatTime = (hour: number): string => {
   const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -194,46 +192,60 @@ const computeTrend = (
   };
 };
 
-/**
- * Validate a suggestion before it reaches the UI.
- * Returns null if the suggestion is not actionable/real.
- */
 const validateSuggestion = (
   fieldId: string,
   value: unknown,
   confidence: number
 ): ProgressiveSuggestion | null => {
-  // Require HIGH confidence — 70% minimum for actionable suggestions
   if (confidence < 70) return null;
-
-  
   if (value === undefined || value === null || value === '') return null;
-
-  
   if (typeof value === 'number' && !Number.isFinite(value)) return null;
   if (typeof value === 'string' && value.trim() === '') return null;
-
-  
   if (typeof value === 'number' && value === 0) return null;
-
-  
   if (typeof value === 'number' && value < 0) return null;
 
-  
-  if (fieldId.toLowerCase().includes('duration') && typeof value === 'number' && value > 86400) {
+  if (
+    fieldId.toLowerCase().includes('duration') &&
+    typeof value === 'number' &&
+    value > 86400
+  ) {
     return null;
   }
 
-  
   if (
-    (fieldId.toLowerCase().includes('amount') || fieldId.toLowerCase().includes('quantity')) &&
+    (fieldId.toLowerCase().includes('amount') ||
+      fieldId.toLowerCase().includes('quantity')) &&
     typeof value === 'number' &&
     value > 2000
   ) {
     return null;
   }
 
-  return { fieldId, value, source: 'pattern', confidence, label: '', emoji: '' } as ProgressiveSuggestion;
+  return {
+    fieldId,
+    value,
+    source: 'pattern',
+    confidence,
+    label: '',
+    emoji: '',
+  } as ProgressiveSuggestion;
+};
+
+/**
+ * Cheap fingerprint derived from entry metadata.
+ * Avoids calling into the tracker's derived getters, which are expensive.
+ */
+const entryFingerprint = (entries: TrackerEntry[] | undefined): string => {
+  if (!entries || entries.length === 0) return '0';
+  let latest = 0;
+  for (const e of entries) {
+    const ts =
+      typeof e.timestamp === 'number'
+        ? e.timestamp
+        : new Date(e.timestamp as any).getTime();
+    if (Number.isFinite(ts) && ts > latest) latest = ts;
+  }
+  return `${entries.length}:${latest}`;
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -244,11 +256,6 @@ export const useTrackerProgressive = (trackerId: string) => {
   const tracker = useTracker();
   const baby = useBaby();
 
-  
-
-  
-  
-  
   const [debouncedEntryCount, setDebouncedEntryCount] = useState(
     tracker.entries?.length ?? 0
   );
@@ -271,40 +278,31 @@ export const useTrackerProgressive = (trackerId: string) => {
   const tc = useTimelineCorrelations();
   const timelineCorrelations = tc?.correlations ?? [];
 
-  
-  
-  
   const aiFingerprint = `${growthIndex?.compositeIndex ?? 0}:${
     growthIndex?.lastUpdated ?? 0
   }:${debouncedEntryCount}`;
 
-  
-  
-  
-  const trackerFingerprint = `${
-    tracker.entries?.length ?? 0
-  }:${tracker.getInsights?.()?.length ?? 0}:${
-    tracker.getPendingReminders?.()?.length ?? 0
-  }`;
+  // Cheap global entry fingerprint. Do NOT call tracker.getInsights() here —
+  // that method iterates all entries and generates insights synchronously.
+  // Computed every render — cheap (≤ a few hundred entries) and correct
+  // even when an entry is edited without changing the total count.
+  const globalEntryFingerprint = entryFingerprint(tracker.entries);
 
-  
   const [aiCorrelations, setAiCorrelations] = useState<any[]>([]);
   useEffect(() => {
     const babyId = baby?.currentBaby?.id;
     if (!babyId) return;
     let cancelled = false;
-    getCachedCorrelations(babyId).then(list => {
-      if (!cancelled) setAiCorrelations(list);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [
-    baby?.currentBaby?.id,
-    
-    
-    tracker.entries?.length,
-  ]);
+    getCachedCorrelations(babyId)
+      .then((list) => {
+        if (!cancelled) setAiCorrelations(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [baby?.currentBaby?.id, debouncedEntryCount]);
 
-  
   const safeGetEntries = useCallback(
     (id: string, limit?: number) => {
       if (typeof tracker?.getEntries !== 'function') return [] as TrackerEntry[];
@@ -324,15 +322,15 @@ export const useTrackerProgressive = (trackerId: string) => {
   const nowRef = useRef(now);
   nowRef.current = now;
 
-  const [userSavedTemplates, setUserSavedTemplates] = useState<ProgressiveTemplate[]>([]);
+  const [userSavedTemplates, setUserSavedTemplates] = useState<
+    ProgressiveTemplate[]
+  >([]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(interval);
   }, []);
 
-  
-  
   const getTemplatesFn = tracker.getTemplates;
   useEffect(() => {
     if (trackerId && typeof getTemplatesFn === 'function') {
@@ -367,8 +365,12 @@ export const useTrackerProgressive = (trackerId: string) => {
 
   /* ── All entries for this tracker ── */
   const trackerEntries = useMemo(
-    () => (trackerId && typeof tracker.getEntries === 'function' ? tracker.getEntries(trackerId) || [] : []),
-    [trackerFingerprint, trackerId, refreshToken]
+    () =>
+      trackerId && typeof tracker.getEntries === 'function'
+        ? tracker.getEntries(trackerId) || []
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [globalEntryFingerprint, trackerId, refreshToken]
   );
 
   /* ── Today's entries ── */
@@ -411,8 +413,6 @@ export const useTrackerProgressive = (trackerId: string) => {
       hourCounts[h] = (hourCounts[h] || 0) + 1;
     });
 
-    
-    
     const totalEntries = recentEntries.length;
     const minCount = Math.max(3, Math.ceil(totalEntries * 0.15));
 
@@ -449,7 +449,10 @@ export const useTrackerProgressive = (trackerId: string) => {
      ═══════════════════════════════════════════════════════════ */
 
   const streakData = useMemo(() => {
-    const s = typeof tracker.getStreak === 'function' ? tracker.getStreak(trackerId) : null;
+    const s =
+      typeof tracker.getStreak === 'function'
+        ? tracker.getStreak(trackerId)
+        : null;
     if (!s) return null;
 
     const hoursUntilBreak = s.isAtRisk ? Math.max(0, 24 - now.getHours()) : 0;
@@ -457,8 +460,10 @@ export const useTrackerProgressive = (trackerId: string) => {
     let streakMessage = '';
     if (s.currentStreak === 0) streakMessage = 'Start your first streak!';
     else if (s.isAtRisk) streakMessage = `Log in ${hoursUntilBreak}h to keep your 🔥`;
-    else if (s.currentStreak >= 7) streakMessage = `${s.currentStreak} days! You're on fire! 🔥`;
-    else if (s.currentStreak >= 3) streakMessage = `${s.currentStreak} day streak — great consistency!`;
+    else if (s.currentStreak >= 7)
+      streakMessage = `${s.currentStreak} days! You're on fire! 🔥`;
+    else if (s.currentStreak >= 3)
+      streakMessage = `${s.currentStreak} day streak — great consistency!`;
     else streakMessage = `${s.currentStreak} day streak — keep it up!`;
 
     return {
@@ -466,59 +471,57 @@ export const useTrackerProgressive = (trackerId: string) => {
       hoursUntilBreak,
       streakMessage,
     };
-  }, [trackerFingerprint, trackerId, now, refreshToken]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalEntryFingerprint, trackerId, now, refreshToken]);
 
-    /* ═══════════════════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════════════════
      ROUTINE CONSISTENCY SCORE
-     Measures how predictable the parent's logging has been
-     over the last 7 days. High = routine established.
      ═══════════════════════════════════════════════════════════ */
 
   const routineScore = useMemo(() => {
     const weekAgo = subDays(now, 7).getTime();
-    const weekEntries = trackerEntries.filter(e => e.timestamp > weekAgo);
+    const weekEntries = trackerEntries.filter((e) => e.timestamp > weekAgo);
 
     if (weekEntries.length < 5) {
-      return { score: 0, label: 'Building routine', sessions: weekEntries.length };
+      return {
+        score: 0,
+        label: 'Building routine',
+        sessions: weekEntries.length,
+      };
     }
 
-    
     const hourBuckets: Record<number, number> = {};
-    weekEntries.forEach(e => {
+    weekEntries.forEach((e) => {
       const hour = new Date(e.timestamp).getHours();
       hourBuckets[hour] = (hourBuckets[hour] || 0) + 1;
     });
 
-    
     const distinctHours = Object.keys(hourBuckets).length;
-    const concentration = 1 - (distinctHours / Math.min(24, weekEntries.length));
+    const concentration = 1 - distinctHours / Math.min(24, weekEntries.length);
 
-    
     const distinctDays = new Set(
-      weekEntries.map(e => new Date(e.timestamp).toDateString())
+      weekEntries.map((e) => new Date(e.timestamp).toDateString())
     ).size;
     const dayCoverage = distinctDays / 7;
 
-    const score = Math.round(
-      (concentration * 0.6 + dayCoverage * 0.4) * 100
-    );
+    const score = Math.round((concentration * 0.6 + dayCoverage * 0.4) * 100);
 
     return {
       score,
-      label: score >= 80 ? 'Routine locked in'
-        : score >= 60 ? 'Consistent routine'
-        : score >= 40 ? 'Developing routine'
-        : 'Building routine',
+      label:
+        score >= 80
+          ? 'Routine locked in'
+          : score >= 60
+          ? 'Consistent routine'
+          : score >= 40
+          ? 'Developing routine'
+          : 'Building routine',
       sessions: weekEntries.length,
     };
   }, [trackerEntries, now]);
 
   /* ═══════════════════════════════════════════════════════════
      RELATED TRACKER SUGGESTIONS
-     After logging one tracker, prompt the parent about a
-     naturally-related one. Only suggests if:
-       - the related tracker hasn't been logged in the last hour
-       - we've seen this pair logged together before
      ═══════════════════════════════════════════════════════════ */
 
   const relatedTrackerSuggestions = useMemo(() => {
@@ -530,7 +533,6 @@ export const useTrackerProgressive = (trackerId: string) => {
       reason: string;
     }> = [];
 
-    
     const PAIRS: Record<string, Array<{ id: string; emoji: string; label: string }>> = {
       feed: [
         { id: 'diaper', emoji: '👶', label: 'Log diaper' },
@@ -548,12 +550,8 @@ export const useTrackerProgressive = (trackerId: string) => {
         { id: 'temperature', emoji: '🌡️', label: 'Log temperature' },
         { id: 'symptom', emoji: '😷', label: 'Log symptoms' },
       ],
-      growth: [
-        { id: 'milestone', emoji: '🏆', label: 'Log milestone' },
-      ],
-      tummy_time: [
-        { id: 'milestone', emoji: '🏆', label: 'Log milestone' },
-      ],
+      growth: [{ id: 'milestone', emoji: '🏆', label: 'Log milestone' }],
+      tummy_time: [{ id: 'milestone', emoji: '🏆', label: 'Log milestone' }],
     };
 
     const related = PAIRS[trackerId];
@@ -563,15 +561,14 @@ export const useTrackerProgressive = (trackerId: string) => {
     const seenTrackerIds = new Set<string>();
 
     related.forEach(({ id, emoji, label }) => {
-      
       if (seenTrackerIds.has(id)) return;
-      
-      
-      const recentForRelated = safeGetEntries(id, 5)
-        .filter((e: TrackerEntry) => {
-          const ts = typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime();
-          return Number.isFinite(ts) && ts > oneHourAgo;
-        });
+      const recentForRelated = safeGetEntries(id, 5).filter((e: TrackerEntry) => {
+        const ts =
+          typeof e.timestamp === 'number'
+            ? e.timestamp
+            : new Date(e.timestamp).getTime();
+        return Number.isFinite(ts) && ts > oneHourAgo;
+      });
       if (recentForRelated.length > 0) return;
 
       seenTrackerIds.add(id);
@@ -585,7 +582,8 @@ export const useTrackerProgressive = (trackerId: string) => {
     });
 
     return suggestions;
-  }, [trackerId, trackerFingerprint, trackerEntries.length, safeGetEntries]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackerId, globalEntryFingerprint, safeGetEntries]);
 
   /* ═══════════════════════════════════════════════════════════
      PREFILL DATA & SUGGESTIONS
@@ -595,10 +593,6 @@ export const useTrackerProgressive = (trackerId: string) => {
     const prefill: Record<string, unknown> = {};
     const suggMap = new Map<string, ProgressiveSuggestion>();
 
-    
-    
-    
-    
     const NEVER_PREFILL = new Set([
       'startTime', 'endTime', 'dateGiven', 'startedAt', 'departure',
       'return', 'dropoff', 'pickup', 'followUpDate', 'nextDue',
@@ -617,17 +611,13 @@ export const useTrackerProgressive = (trackerId: string) => {
       );
     };
 
-    
     const yesterday = tracker.getYesterdayData(trackerId);
     if (yesterday && Object.keys(yesterday).length > 0) {
       Object.entries(yesterday).forEach(([fieldId, value]) => {
-        
         if (isNeverPrefill(fieldId)) return;
-        
-        
         if (
-          fieldId === 'status' || 
-          fieldId === 'completed' || 
+          fieldId === 'status' ||
+          fieldId === 'completed' ||
           fieldId === 'ongoing' ||
           fieldId === 'duration' ||
           fieldId === 'startTime' ||
@@ -648,13 +638,11 @@ export const useTrackerProgressive = (trackerId: string) => {
       });
     }
 
-    
-    
     const entryCount = trackerEntries.length;
-    const patternSuggestions = entryCount >= 5 ? (tracker.getSmartSuggestions(trackerId) || {}) : {};
+    const patternSuggestions =
+      entryCount >= 5 ? tracker.getSmartSuggestions(trackerId) || {} : {};
     Object.entries(patternSuggestions).forEach(([fieldId, value]) => {
       if (prefill[fieldId] === undefined && value !== undefined) {
-        
         const validated = validateSuggestion(fieldId, value, 80);
         if (validated) {
           prefill[fieldId] = value;
@@ -668,23 +656,16 @@ export const useTrackerProgressive = (trackerId: string) => {
       }
     });
 
-    
-    
     if (trackerConfig?.fields) {
       trackerConfig.fields.forEach((field) => {
         if (prefill[field.id] !== undefined) return;
 
         if (field.type === 'time' || field.type === 'datetime') {
-          
           const fieldIdLower = field.id.toLowerCase();
-          const isEndField = fieldIdLower.includes('end') || fieldIdLower === 'endtime';
-          
-          if (isEndField) {
-            
-            return;
-          }
+          const isEndField =
+            fieldIdLower.includes('end') || fieldIdLower === 'endtime';
+          if (isEndField) return;
 
-          
           if (field.type === 'datetime') {
             const isoNow = now.toISOString();
             prefill[field.id] = isoNow;
@@ -712,13 +693,9 @@ export const useTrackerProgressive = (trackerId: string) => {
       });
     }
 
-    
-    
-    
     const partnerEntry = trackerEntries.find(
       (e) =>
-        e.loggedByRole === 'parent2' &&
-        e.timestamp > subHours(now, 6).getTime()
+        e.loggedByRole === 'parent2' && e.timestamp > subHours(now, 6).getTime()
     );
     if (partnerEntry) {
       const partnerTimeAgo = Math.round(
@@ -730,7 +707,6 @@ export const useTrackerProgressive = (trackerId: string) => {
           : `${Math.round(partnerTimeAgo / 60)}h ago`;
 
       Object.entries(partnerEntry.data || {}).forEach(([fieldId, value]) => {
-        
         if (isNeverPrefill(fieldId)) return;
         if (fieldId === 'status' || fieldId === 'duration') return;
 
@@ -741,7 +717,6 @@ export const useTrackerProgressive = (trackerId: string) => {
           value !== '' &&
           value !== null
         ) {
-          
           const validated = validateSuggestion(fieldId, value, 75);
           if (validated) {
             suggMap.set(fieldId, {
@@ -755,12 +730,6 @@ export const useTrackerProgressive = (trackerId: string) => {
       });
     }
 
-    
-    
-    
-    
-    
-    
     const safeCorrelations = timelineCorrelations || [];
     safeCorrelations
       .filter((c) => {
@@ -769,14 +738,13 @@ export const useTrackerProgressive = (trackerId: string) => {
         return relatedId === trackerId || primaryId === trackerId;
       })
       .forEach((c) => {
-        
         if (trackerId === 'medication' && c.type === 'health_alert') {
           if (!suggMap.has('reason')) {
             suggMap.set('reason', {
               fieldId: 'reason',
               value: 'Fever',
               source: 'correlation',
-              confidence: 70, 
+              confidence: 70,
               label: c.insight || 'Recent health alert detected',
               emoji: '🔗',
             });
@@ -797,8 +765,6 @@ export const useTrackerProgressive = (trackerId: string) => {
         }
       });
 
-    
-    
     const sourceRank: Record<string, number> = {
       yesterday: 5,
       pattern: 4,
@@ -808,7 +774,6 @@ export const useTrackerProgressive = (trackerId: string) => {
       time_based: 1,
     };
 
-    
     const byField = new Map<string, ProgressiveSuggestion>();
     for (const sugg of suggMap.values()) {
       const existing = byField.get(sugg.fieldId);
@@ -826,7 +791,6 @@ export const useTrackerProgressive = (trackerId: string) => {
       }
     }
 
-    
     const MAX_SUGGESTIONS = 6;
     const suggestions = Array.from(byField.values())
       .sort((a, b) => b.confidence - a.confidence)
@@ -834,10 +798,9 @@ export const useTrackerProgressive = (trackerId: string) => {
 
     return { prefillData: prefill, suggestions };
   }, [
-    trackerFingerprint,
+    trackerId,
     trackerEntries,
     timelineCorrelations,
-    trackerId,
     timeContext,
     trackerConfig,
     now,
@@ -856,12 +819,12 @@ export const useTrackerProgressive = (trackerId: string) => {
       'solidAmount', 'waterAmount',
     ]);
 
-    
     if (todayEntries.length > 0 && yesterdayEntries.length > 0) {
-      
-      const collectNumeric = (entries: TrackerEntry[]): Record<string, number[]> => {
+      const collectNumeric = (
+        entries: TrackerEntry[]
+      ): Record<string, number[]> => {
         const acc: Record<string, number[]> = {};
-        entries.forEach(e => {
+        entries.forEach((e) => {
           const data = e.data || {};
           Object.entries(data).forEach(([key, val]) => {
             if (!TRENDABLE_FIELDS.has(key)) return;
@@ -878,21 +841,21 @@ export const useTrackerProgressive = (trackerId: string) => {
       const todayNumeric = collectNumeric(todayEntries);
       const yesterdayNumeric = collectNumeric(yesterdayEntries);
 
-      Object.keys({ ...todayNumeric, ...yesterdayNumeric }).forEach((fieldId) => {
-        const tList = todayNumeric[fieldId] || [];
-        const yList = yesterdayNumeric[fieldId] || [];
-        if (tList.length === 0 || yList.length === 0) return;
-        
-        const avgToday = tList.reduce((a, b) => a + b, 0) / tList.length;
-        const avgYesterday = yList.reduce((a, b) => a + b, 0) / yList.length;
-        
-        if (Number.isFinite(avgToday) && Number.isFinite(avgYesterday)) {
-          result[fieldId] = computeTrend(avgToday, avgYesterday);
+      Object.keys({ ...todayNumeric, ...yesterdayNumeric }).forEach(
+        (fieldId) => {
+          const tList = todayNumeric[fieldId] || [];
+          const yList = yesterdayNumeric[fieldId] || [];
+          if (tList.length === 0 || yList.length === 0) return;
+          const avgToday = tList.reduce((a, b) => a + b, 0) / tList.length;
+          const avgYesterday =
+            yList.reduce((a, b) => a + b, 0) / yList.length;
+          if (Number.isFinite(avgToday) && Number.isFinite(avgYesterday)) {
+            result[fieldId] = computeTrend(avgToday, avgYesterday);
+          }
         }
-      });
+      );
     }
 
-    
     const yesterday = tracker.getYesterdayData(trackerId);
     if (yesterday) {
       Object.entries(yesterday).forEach(([fieldId, yestVal]) => {
@@ -901,8 +864,10 @@ export const useTrackerProgressive = (trackerId: string) => {
         const current = Number(prefillData[fieldId]);
         const previous = Number(yestVal);
         if (
-          Number.isFinite(current) && current > 0 &&
-          Number.isFinite(previous) && previous > 0
+          Number.isFinite(current) &&
+          current > 0 &&
+          Number.isFinite(previous) &&
+          previous > 0
         ) {
           result[fieldId] = computeTrend(current, previous);
         }
@@ -910,33 +875,31 @@ export const useTrackerProgressive = (trackerId: string) => {
     }
 
     return result;
-  }, [todayEntries, yesterdayEntries, prefillData, trackerFingerprint, trackerId]);
+  }, [todayEntries, yesterdayEntries, prefillData, trackerId]);
 
   /* ═══════════════════════════════════════════════════════════
      INSIGHTS
      ═══════════════════════════════════════════════════════════ */
 
-  
-  
-  const [contextTick, setContextTick] = useState(0);
-
-  useEffect(() => {
-    setContextTick(t => t + 1);
-  }, [tracker.insights, tracker.entries]);
-
   const insights = useMemo(() => {
-    const allInsights = (typeof tracker.getInsights === 'function' ? tracker.getInsights() : []) || [];
-    const filtered = allInsights.filter(
+    const allInsights =
+      (typeof tracker.getInsights === 'function' ? tracker.getInsights() : []) ||
+      [];
+    return allInsights.filter(
       (i) =>
         i.trackerId === trackerId ||
         i.action?.trackerId === trackerId ||
-        (i.type === 'correlation' && i.description?.toLowerCase().includes(trackerId))
+        (i.type === 'correlation' &&
+          i.description?.toLowerCase().includes(trackerId))
     );
-    return filtered;
-  }, [trackerFingerprint, trackerId, refreshToken, contextTick, aiFingerprint]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalEntryFingerprint, trackerId, refreshToken, aiFingerprint]);
 
   const hasNewInsights = useMemo(
-    () => insights.some((i) => !i.dismissedAt && i.generatedAt > Date.now() - 24 * 60 * 60 * 1000),
+    () =>
+      insights.some(
+        (i) => !i.dismissedAt && i.generatedAt > Date.now() - 24 * 60 * 60 * 1000
+      ),
     [insights]
   );
 
@@ -947,7 +910,6 @@ export const useTrackerProgressive = (trackerId: string) => {
   const correlations = useMemo((): ProgressiveCorrelation[] => {
     const safeTimelineCorrelations = timelineCorrelations || [];
 
-    
     const aiAsTimeline: any[] = (aiCorrelations || [])
       .filter((c: any) => c.metricA === trackerId || c.metricB === trackerId)
       .map((c: any) => {
@@ -956,7 +918,11 @@ export const useTrackerProgressive = (trackerId: string) => {
           id: `ai_${c.id}`,
           type: 'ai_discovered' as any,
           primaryEntry: { trackerId, title: '', timestamp: Date.now() },
-          relatedEntry: { trackerId: otherTrackerId, title: '', timestamp: Date.now() },
+          relatedEntry: {
+            trackerId: otherTrackerId,
+            title: '',
+            timestamp: Date.now(),
+          },
           insight: c.headline || c.description,
           confidence: Math.round((c.effectSize || 0.5) * 100),
           color: c.direction === 'positive' ? '#10b981' : '#f59e0b',
@@ -984,12 +950,16 @@ export const useTrackerProgressive = (trackerId: string) => {
 
         if (trackerId === 'medication' && c.type === 'health_alert') {
           action = 'prefill';
-          const lastMed = ((typeof tracker.getEntries === 'function' ? tracker.getEntries('medication', 10) : []) || [])[0];
-          prefillData = lastMed
+          const lastMed =
+            (typeof tracker.getEntries === 'function'
+              ? tracker.getEntries('medication', 10)
+              : []) || [];
+          const last = lastMed[0];
+          prefillData = last
             ? {
                 reason: 'Fever',
-                ...(lastMed.data?.name ? { name: lastMed.data.name } : {}),
-                ...(lastMed.data?.dosage ? { dosage: lastMed.data.dosage } : {}),
+                ...(last.data?.name ? { name: last.data.name } : {}),
+                ...(last.data?.dosage ? { dosage: last.data.dosage } : {}),
               }
             : { reason: 'Fever' };
         } else if (trackerId === 'sleep' && c.type === 'feed_sleep_pattern') {
@@ -1018,14 +988,25 @@ export const useTrackerProgressive = (trackerId: string) => {
           confidence: Number.isFinite(c.confidence) ? c.confidence : 50,
         };
       });
-  }, [timelineCorrelations, aiCorrelations, trackerId, safeTrackers, trackerFingerprint, refreshToken, aiFingerprint]);
+  }, [
+    timelineCorrelations,
+    aiCorrelations,
+    trackerId,
+    safeTrackers,
+    globalEntryFingerprint,
+    refreshToken,
+    aiFingerprint,
+  ]);
 
   /* ═══════════════════════════════════════════════════════════
      REMINDERS
      ═══════════════════════════════════════════════════════════ */
 
   const activeReminders = useMemo((): ProgressiveReminder[] => {
-    const pending = (typeof tracker.getPendingReminders === 'function' ? tracker.getPendingReminders() : []) || [];
+    const pending =
+      (typeof tracker.getPendingReminders === 'function'
+        ? tracker.getPendingReminders()
+        : []) || [];
 
     const safePredictiveReminders = predictiveReminders || [];
     const predictive = safePredictiveReminders
@@ -1071,10 +1052,13 @@ export const useTrackerProgressive = (trackerId: string) => {
     ];
 
     return all;
-  }, [trackerFingerprint, predictiveReminders, trackerId, refreshToken]);
+  }, [predictiveReminders, trackerId, refreshToken, globalEntryFingerprint]);
 
   const hasUrgentReminders = useMemo(
-    () => activeReminders.some((r) => r.priority === 'high' || r.priority === 'urgent'),
+    () =>
+      activeReminders.some(
+        (r) => r.priority === 'high' || r.priority === 'urgent'
+      ),
     [activeReminders]
   );
 
@@ -1083,7 +1067,9 @@ export const useTrackerProgressive = (trackerId: string) => {
      ═══════════════════════════════════════════════════════════ */
 
   const templates = useMemo((): ProgressiveTemplate[] => {
-    const builtIn: ProgressiveTemplate[] = (trackerConfig?.templates || []).map((t: any) => ({
+    const builtIn: ProgressiveTemplate[] = (
+      trackerConfig?.templates || []
+    ).map((t: any) => ({
       ...t,
       source: 'builtin' as const,
     }));
@@ -1094,8 +1080,10 @@ export const useTrackerProgressive = (trackerId: string) => {
       trackerId === 'medication' &&
       correlations.some((c) => c.message.toLowerCase().includes('fever'))
     ) {
-      const lastFeverMed = (tracker.getEntries('medication', 20) || []).find(
-        (e) => String(e.data?.reason || '').toLowerCase().includes('fever')
+      const lastFeverMed = (
+        tracker.getEntries('medication', 20) || []
+      ).find((e) =>
+        String(e.data?.reason || '').toLowerCase().includes('fever')
       );
       if (lastFeverMed) {
         autoGenerated.push({
@@ -1103,8 +1091,12 @@ export const useTrackerProgressive = (trackerId: string) => {
           name: String(lastFeverMed.data?.name || 'Fever medication'),
           emoji: '🌡️',
           data: {
-            ...(lastFeverMed.data?.name ? { name: lastFeverMed.data.name } : {}),
-            ...(lastFeverMed.data?.dosage ? { dosage: lastFeverMed.data.dosage } : {}),
+            ...(lastFeverMed.data?.name
+              ? { name: lastFeverMed.data.name }
+              : {}),
+            ...(lastFeverMed.data?.dosage
+              ? { dosage: lastFeverMed.data.dosage }
+              : {}),
             ...(lastFeverMed.data?.type ? { type: lastFeverMed.data.type } : {}),
             reason: 'Fever',
           },
@@ -1121,13 +1113,17 @@ export const useTrackerProgressive = (trackerId: string) => {
           c.message.toLowerCase().includes('sleep')
       )
     ) {
-      const recentNaps = (tracker.getEntries('sleep', 30) || []).filter((e) => e.data?.sleepType === 'nap');
+      const recentNaps = (tracker.getEntries('sleep', 30) || []).filter(
+        (e) => e.data?.sleepType === 'nap'
+      );
       const locationCounts: Record<string, number> = {};
       recentNaps.forEach((e) => {
         const loc = String(e.data?.location || '');
         if (loc) locationCounts[loc] = (locationCounts[loc] || 0) + 1;
       });
-      const modalLocation = Object.entries(locationCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+      const modalLocation = Object.entries(locationCounts).sort(
+        (a, b) => b[1] - a[1]
+      )[0]?.[0];
       autoGenerated.push({
         id: 'auto_nap',
         name: 'Post-Feed Nap',
@@ -1141,7 +1137,14 @@ export const useTrackerProgressive = (trackerId: string) => {
     }
 
     return [...builtIn, ...userSavedTemplates, ...autoGenerated];
-  }, [trackerConfig, userSavedTemplates, trackerId, correlations, trackerFingerprint, refreshToken]);
+  }, [
+    trackerConfig,
+    userSavedTemplates,
+    trackerId,
+    correlations,
+    globalEntryFingerprint,
+    refreshToken,
+  ]);
 
   /* ═══════════════════════════════════════════════════════════
      COMPOSED STATE
@@ -1174,7 +1177,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       trends,
       timeContext,
       isLoading,
-      lastUpdated: Date.now(),
+      lastUpdated: now.getTime(),
       entryCount: trackerEntries.length,
       hasRealData: trackerEntries.length >= 5,
       relatedTrackerSuggestions,
@@ -1193,6 +1196,7 @@ export const useTrackerProgressive = (trackerId: string) => {
       trends,
       timeContext,
       isLoading,
+      now,
       trackerId,
       trackerEntries.length,
       relatedTrackerSuggestions,
@@ -1207,14 +1211,16 @@ export const useTrackerProgressive = (trackerId: string) => {
   const getAllYesterday = useCallback(() => {
     const yesterday = tracker.getYesterdayData(trackerId);
     return yesterday || {};
-  }, [trackerFingerprint, trackerId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackerId, globalEntryFingerprint]);
 
   const dismissInsightById = useCallback(
     (insightId: string) => {
       tracker.dismissInsight(insightId);
       setRefreshToken((t) => t + 1);
     },
-    [trackerFingerprint]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [globalEntryFingerprint]
   );
 
   const refresh = useCallback(() => {

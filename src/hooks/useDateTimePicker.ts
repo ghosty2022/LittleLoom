@@ -1,37 +1,5 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import DateTimePickerAndroid from '@react-native-community/datetimepicker';
-
-
-
 
 type Mode = 'date' | 'time' | 'datetime';
 
@@ -83,17 +51,12 @@ export function useDateTimePicker(): DateTimePickerHook {
     (opts: OpenOptions, onResult: (date: Date | null) => void) => {
       const safeValue = isSafeDate(opts.value) ? opts.value : new Date();
 
-      
       if (Platform.OS === 'android') {
-        
-        
         if (androidBusyRef.current) return;
         androidBusyRef.current = true;
 
-        
         let AndroidAPI: any = null;
         try {
-          
           AndroidAPI = require('@react-native-community/datetimepicker')
             .DateTimePickerAndroid;
         } catch {
@@ -108,14 +71,11 @@ export function useDateTimePicker(): DateTimePickerHook {
 
         const finish = (result: Date | null) => {
           androidBusyRef.current = false;
-          
           setTimeout(() => onResult(result), 0);
         };
 
-        
-        
-        
         if (opts.mode === 'datetime') {
+          let opened = false;
           try {
             AndroidAPI.open({
               value: safeValue,
@@ -132,9 +92,8 @@ export function useDateTimePicker(): DateTimePickerHook {
                 withDate.setMonth(dateSelected.getMonth());
                 withDate.setDate(dateSelected.getDate());
 
-                
-                
-                
+                // Delay so the date picker fully dismisses on Android
+                // before the time picker opens — otherwise both overlay.
                 setTimeout(() => {
                   try {
                     AndroidAPI.open({
@@ -162,13 +121,20 @@ export function useDateTimePicker(): DateTimePickerHook {
                 }, 250);
               },
             });
+            opened = true;
           } catch {
             finish(null);
+          } finally {
+            // If the date picker threw before registering its onChange,
+            // release the busy flag so the next call isn't blocked.
+            if (!opened) {
+              androidBusyRef.current = false;
+            }
           }
           return;
         }
 
-        
+        let opened = false;
         try {
           AndroidAPI.open({
             value: safeValue,
@@ -193,14 +159,19 @@ export function useDateTimePicker(): DateTimePickerHook {
               }
               finish(merged);
             },
-          });
+          } as any);
+          opened = true;
         } catch {
           finish(null);
+        } finally {
+          if (!opened) {
+            androidBusyRef.current = false;
+          }
         }
         return;
       }
 
-      
+      // iOS
       iosCallbackRef.current = onResult;
       setIosPicker({
         visible: true,

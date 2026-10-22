@@ -41,7 +41,7 @@ export { useMedia } from './useMedia';
 export { useSafety } from './useSafety';
 export { useSecurity } from './useSecurity';
 export { useSupabase } from './useSupabase';
-export { useSweetAlert } from './useSweetAlert';
+export { useSweetAlert } from '../components/SweetAlert';
 export { useUser } from './useUser';
 
 

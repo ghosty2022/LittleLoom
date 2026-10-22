@@ -5,7 +5,10 @@
 
 import { useCallback } from 'react';
 import { supabase } from '@/utils/supabase';
-import { observeValue, MetricKey } from '@/services/ai/BayesianEngine';
+
+// Type-only import — erased at build time, so it can't crash the module
+// if the BayesianEngine has a transitive runtime failure.
+import type { MetricKey } from '@/services/ai/BayesianEngine';
 
 export type AnomalyAction =
   | 'confirmed_anomaly'
@@ -38,11 +41,9 @@ export function useAnomalyFeedback() {
 
       
       
-      if (action === 'dismissed_normal') {
+          if (action === 'dismissed_normal') {
         try {
-          
-          
-          
+          const { observeValue } = await import('@/services/ai/BayesianEngine');
           await observeValue(babyId, metric, value, {
             rejectOutliers: false,
           });

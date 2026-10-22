@@ -39,6 +39,10 @@ export function getAgeInMonths(birthDate: string): number {
   const birth = new Date(birthDate);
   const now = new Date();
   if (isNaN(birth.getTime())) return 0;
-  const months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+  // Match date-fns differenceInMonths behavior used by useGrowthIntelligence
+  // so percentiles are identical across all screens.
+  let months = (now.getFullYear() - birth.getFullYear()) * 12
+             + (now.getMonth() - birth.getMonth());
+  if (now.getDate() < birth.getDate()) months -= 1;
   return Math.max(0, months);
 }

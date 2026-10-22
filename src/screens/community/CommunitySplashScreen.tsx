@@ -29,6 +29,7 @@ const SPLASH_COLORS_DARK = ['#0c0a09', '#1c1917', '#292524'];
 
 interface CommunitySplashScreenProps {
   onAnimationComplete: () => void;
+  onSkip?: () => void;
   userName?: string;
 }
 
@@ -49,6 +50,7 @@ const formatNumber = (n: number): string => {
 
 export default function CommunitySplashScreen({
   onAnimationComplete,
+  onSkip,
   userName = 'Parent',
 }: CommunitySplashScreenProps) {
   useRouteBasedNavVisibility();
@@ -184,6 +186,19 @@ export default function CommunitySplashScreen({
       } catch (err) {
         if (__DEV__) console.warn('[CommunitySplash] content gen failed:', err);
         if (!mountedRef.current) return;
+
+        // Fallback content so the user is never trapped on the loading view.
+        setSplashContent({
+          emoji: '👋',
+          title: `Welcome, ${userName}!`,
+          subtitle: 'Your parent community is ready.',
+          stats: [
+            { label: 'Topics', value: formatNumber(liveStats.topicCount) },
+            { label: 'Parents', value: formatNumber(liveStats.userCount) },
+            { label: 'Posts', value: formatNumber(liveStats.postCount) },
+          ],
+          tip: '💡 Select topics to personalize your feed',
+        });
         setIsReady(true);
       }
     };
@@ -267,21 +282,31 @@ export default function CommunitySplashScreen({
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 0, duration: prefersReducedMotion ? 150 : 380, useNativeDriver: true }),
         Animated.timing(scaleAnim, { toValue: 1.06, duration: prefersReducedMotion ? 150 : 380, useNativeDriver: true }),
-      ]).start(async () => {
+      ]).start(() => {
+        if (!mountedRef.current || completedRef.current) return;
+        completedRef.current = true;
+
+        // Fire the callback FIRST so the navigation phase advances even
+        // if persistence below throws or hangs.
         try {
-          const existing = await getSectionState('community');
-          await updateSectionState('community', {
-            ...(existing || {}),
-            firstTime: false,
-            lastSeenAt: new Date().toISOString(),
-          });
-        } catch (err) {
-          if (__DEV__) console.warn('[CommunitySplash] persist failed:', err);
-        }
-        if (mountedRef.current && !completedRef.current) {
-          completedRef.current = true;
           onAnimationComplete();
+        } catch (err) {
+          if (__DEV__) console.warn('[CommunitySplash] onAnimationComplete threw:', err);
         }
+
+        // Persist the "seen" flag asynchronously — never blocks navigation.
+        (async () => {
+          try {
+            const existing = await getSectionState('community');
+            await updateSectionState('community', {
+              ...(existing || {}),
+              firstTime: false,
+              lastSeenAt: new Date().toISOString(),
+            });
+          } catch (err) {
+            if (__DEV__) console.warn('[CommunitySplash] persist failed:', err);
+          }
+        })();
       });
     }, prefersReducedMotion ? 1400 : 2800);
 

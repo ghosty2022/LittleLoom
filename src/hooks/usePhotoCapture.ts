@@ -13,6 +13,7 @@ export interface CapturedPhoto {
   type?: string;
   fileName?: string;
   fileSize?: number;
+  aiTags?: string[]; 
 }
 
 export interface UsePhotoCaptureOptions {
@@ -118,7 +119,7 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
       }
 
       const asset = result.assets[0];
-      const photo: CapturedPhoto = {
+      let photo: CapturedPhoto = {
         uri: asset.uri,
         width: asset.width || 0,
         height: asset.height || 0,
@@ -128,9 +129,8 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
       };
 
       triggerHaptic('success');
-      setPhotos(prev => [...prev, photo]);
 
-      
+      // Classify BEFORE adding to state so consumers get a fully-populated photo.
       try {
         const { classifyImage } = await import('../services/ai/PhotoClassifier');
         const result = await classifyImage(asset.uri, 3);
@@ -139,12 +139,12 @@ export function usePhotoCapture(options: UsePhotoCaptureOptions = {}) {
             `[PhotoCapture] Tagged: ${result.topLabel} (${Math.round(result.topConfidence * 100)}%)`
           );
         }
-        
-        (photo as any).aiTags = result.labels.map((l) => l.label);
+        photo = { ...photo, aiTags: result.labels.map((l) => l.label) } as CapturedPhoto;
       } catch (e) {
         if (__DEV__) console.warn('[PhotoCapture] classification failed:', e);
       }
 
+      setPhotos(prev => [...prev, photo]);
       return photo;
     } catch (error) {
       console.error('Camera error:', error);

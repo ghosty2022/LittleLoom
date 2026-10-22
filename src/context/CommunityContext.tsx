@@ -3315,6 +3315,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             .eq('user_id', userId);
           if (!error && userTopics && userTopics.length > 0) {
             rawTopics = userTopics.map(t => t.topic_id);
+            // Persist back to the scoped key so the next launch is instant.
+            await AsyncStorage.setItem(
+              `${STORAGE_KEYS.SELECTED_TOPICS}_${userId}`,
+              JSON.stringify(rawTopics),
+            ).catch(() => {});
           }
         } catch {}
       }
@@ -3328,7 +3333,10 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const validTopics = validateTopicIds(rawTopics);
       const hasTopics = validTopics.length > 0;
-      const isTrulyComplete = completed && hasTopics;
+      // Trust topic presence as the strongest signal: if the user has valid
+      // topics stored, onboarding is functionally complete even if the
+      // boolean flag wasn't written (Auto-select path, interrupted save, etc.).
+      const isTrulyComplete = hasTopics;
 
       if (completed && !hasTopics) {
         console.warn('[checkOnboardingStatus] Completed but no topics — resetting');
@@ -3354,20 +3362,72 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 const updateSelectedTopics = useCallback(async (topics: string[]) => {
   const validTopics = validateTopicIds(topics);
-  
   const currentUser = stateRef.current.currentUser;
 
-  
-  if (currentUser) {
-    try {
-      const { data: existingTopics, error: fetchError } = await supabase
-        .from('user_topics')
-        .select('topic_id')
-        .eq('user_id', currentUser.id);
+  // ── 1) LOCAL WRITE FIRST (fast, synchronous-ish) ──────────────────
+  // Persist to every key the app reads BEFORE we hit the network, so
+  // the UI never sits on a spinner waiting for Supabase.
+  const writes: Promise<void>[] = [];
+  if (currentUser?.id) {
+    writes.push(
+      AsyncStorage.setItem(
+        `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`,
+        JSON.stringify(validTopics),
+      ),
+    );
+    writes.push(
+      AsyncStorage.setItem(
+        `@community_selected_topics_v2_${currentUser.id}`,
+        JSON.stringify(validTopics),
+      ),
+    );
+  }
+  writes.push(
+    AsyncStorage.setItem(
+      STORAGE_KEYS.SELECTED_TOPICS,
+      JSON.stringify(validTopics),
+    ),
+  );
+  await Promise.all(writes).catch(() => {});
 
-      if (!fetchError) {
+  // ── 2) UPDATE IN-MEMORY STATE ─────────────────────────────────────
+  if (currentUser) {
+    setState(prev => {
+      const updatedTopics = prev.topics.map(topic => {
+        if (validTopics.includes(topic.id) && !topic.joinedBy.includes(currentUser.id)) {
+          return {
+            ...topic,
+            isJoined: true,
+            members: topic.members + 1,
+            joinedBy: [...topic.joinedBy, currentUser.id],
+          };
+        }
+        return topic;
+      });
+      AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(() => {});
+      return { ...prev, topics: updatedTopics };
+    });
+    setState(prev => ({
+      ...prev,
+      selectedTopics: validTopics,
+      currentUser: prev.currentUser
+        ? { ...prev.currentUser, selectedTopics: validTopics }
+        : null,
+    }));
+  }
+
+  // ── 3) SUPABASE SYNC (fire and forget) ────────────────────────────
+  if (currentUser?.id) {
+    (async () => {
+      try {
+        const { data: existingTopics, error: fetchError } = await supabase
+          .from('user_topics')
+          .select('topic_id')
+          .eq('user_id', currentUser.id);
+
+        if (fetchError) return;
+
         const existingTopicIds = (existingTopics || []).map(t => t.topic_id);
-        
         const topicsToAdd = validTopics.filter(id => !existingTopicIds.includes(id));
         const topicsToRemove = existingTopicIds.filter(id => !validTopics.includes(id));
 
@@ -3387,12 +3447,12 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
             .eq('user_id', currentUser.id)
             .in('topic_id', topicsToRemove);
         }
-
-        console.log(`[updateSelectedTopics] Synced to Supabase: +${topicsToAdd.length}, -${topicsToRemove.length}`);
+      } catch (supabaseError) {
+        if (__DEV__) {
+          console.warn('[updateSelectedTopics] Supabase sync deferred:', supabaseError);
+        }
       }
-    } catch (supabaseError) {
-      console.warn('Supabase sync error (will retry later):', supabaseError);
-    }
+    })();
   }
 
   
@@ -3414,54 +3474,20 @@ const updateSelectedTopics = useCallback(async (topics: string[]) => {
     });
   }
 
-  
-  // ── Write ALL keys atomically (parallel) so any concurrent read is consistent ──
-  // DO NOT write the global `@community_selected_topics_v2` key — it is
-  // shared across every account on this device and would leak this
-  // user's topic selections to the next account that signs in.
-  const writes: Promise<void>[] = [];
-
-  if (currentUser?.id) {
-    writes.push(
-      AsyncStorage.setItem(
-        `${STORAGE_KEYS.SELECTED_TOPICS}_${currentUser.id}`,
-        JSON.stringify(validTopics)
-      )
+  // ── 4) ONBOARDING FLAG (write without read-then-write race) ──────
+  try {
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.ONBOARDING,
+      JSON.stringify({
+        completed: true,
+        selectedTopics: validTopics,
+        timestamp: new Date().toISOString(),
+      }),
     );
-    writes.push(
-      AsyncStorage.setItem(
-        `@community_selected_topics_v2_${currentUser.id}`,
-        JSON.stringify(validTopics)
-      )
-    );
-  }
+  } catch {}
 
-  await Promise.all(writes);
-
-  // Merge the onboarding flag without a read-then-write race.
-  const onboardingData = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING);
-  let parsed: any = null;
-  if (onboardingData) {
-    try { parsed = JSON.parse(onboardingData); } catch { parsed = null; }
-  }
-  await AsyncStorage.setItem(
-    STORAGE_KEYS.ONBOARDING,
-    JSON.stringify({
-      ...(parsed || {}),
-      completed: true,
-      selectedTopics: validTopics,
-      timestamp: new Date().toISOString(),
-    })
-  );
-
-  setState(prev => ({
-    ...prev,
-    selectedTopics: validTopics,
-    currentUser: prev.currentUser ? { ...prev.currentUser, selectedTopics: validTopics } : null,
-  }));
-
-  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  console.log('[updateSelectedTopics] Updated to:', validTopics.length, 'topics');
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  if (__DEV__) console.log('[updateSelectedTopics] Updated to', validTopics.length, 'topics');
 }, []);
 
   

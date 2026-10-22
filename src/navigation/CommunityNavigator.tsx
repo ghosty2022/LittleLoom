@@ -392,6 +392,18 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
 
   const [phase, setPhase] = useState<CommunityPhase>('loading');
   const initDone = useRef(false);
+  const lastAuthRef = useRef<string | null>(null);
+
+  // Re-run the onboarding decision whenever the signed-in user changes,
+  // otherwise a sign-out → sign-in as a different account inherits the
+  // previous account's "onboarding done" phase.
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (lastAuthRef.current === currentUser.id) return;
+    lastAuthRef.current = currentUser.id;
+    initDone.current = false;
+    setPhase('loading');
+  }, [currentUser?.id]);
 
   const isReady = !isLoading && isInitialized && splashReady;
 
@@ -428,25 +440,26 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
     }
     
     const onboardingStatus = await checkOnboardingStatus();
-    
+
     if (!mounted) return;
 
+    // Single source of truth: the context's checkOnboardingStatus().
+    // (It already reads scoped key → Supabase → global → in-memory.)
+    const needsOnboarding = !onboardingStatus.completed || !onboardingStatus.hasTopics;
+
     if (__DEV__) {
-      console.log('[CommunityNavigator] Init - completed:', onboardingStatus.completed, 'hasTopics:', onboardingStatus.hasTopics);
+      console.log('[CommunityNavigator] Init — completed:', onboardingStatus.completed,
+        '| hasTopics:', onboardingStatus.hasTopics, '| needsOnboarding:', needsOnboarding);
     }
 
-    
-    const selectedTopics = await AsyncStorage.getItem('@community_selected_topics_v2');
-    const hasStoredTopics = selectedTopics ? JSON.parse(selectedTopics).length > 0 : false;
-    
-    const needsOnboarding = !onboardingStatus.completed || !onboardingStatus.hasTopics || !hasStoredTopics;
-    
     if (needsOnboarding) {
-      console.log('[CommunityNavigator] Showing onboarding - needs topics');
+      console.log('[CommunityNavigator] → onboarding (needs topics)');
       setPhase('onboarding');
     } else if (shouldShowSplash) {
+      console.log('[CommunityNavigator] → splash (topics OK, first visit this session)');
       setPhase('splash');
     } else {
+      console.log('[CommunityNavigator] → main');
       setPhase('main');
     }
   } catch (error) {
@@ -460,9 +473,25 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
   }, [isReady, checkOnboardingStatus, getSelectedTopics, shouldShowSplash, isDetectingCountry, isAuthValid]);
 
   const handleSplashComplete = useCallback(async () => {
-    await markSplashShown();
+    try {
+      await markSplashShown();
+    } catch (e) {
+      console.warn('[CommunityNavigator] markSplashShown failed:', e);
+    }
     setPhase('main');
   }, [markSplashShown]);
+
+  // Safety net: if we enter splash phase but `onAnimationComplete` never
+  // fires (Reanimated issue, JS thread stall, etc.), force-transition
+  // after 6 s so the user is never trapped on the splash.
+  useEffect(() => {
+    if (phase !== 'splash') return;
+    const watchdog = setTimeout(() => {
+      console.warn('[CommunityNavigator] Splash watchdog fired — force-transitioning to main');
+      handleSplashComplete();
+    }, 6000);
+    return () => clearTimeout(watchdog);
+  }, [phase, handleSplashComplete]);
 
   
   
@@ -560,47 +589,79 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
     };
   }, [phase]);
 
-  const handleOnboardingComplete = useCallback(async () => {
+  const handleOnboardingComplete = useCallback(async (topicsFromScreen?: string[]) => {
     try {
-      // Read whatever the onboarding screen just wrote, and make sure the
-      // onboarding flag is a JSON object (NOT the string 'true'), because
-      // checkOnboardingStatus parses it as JSON.
-      const [rawOnboarding, rawTopics] = await Promise.all([
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
+      const scopedTopicsKey = userId
+        ? `${COMMUNITY_TOPICS_KEY}_${userId}`
+        : COMMUNITY_TOPICS_KEY;
+
+      const [rawOnboarding, rawTopics, rawScopedTopics] = await Promise.all([
         AsyncStorage.getItem(COMMUNITY_ONBOARDING_KEY),
         AsyncStorage.getItem(COMMUNITY_TOPICS_KEY),
+        AsyncStorage.getItem(scopedTopicsKey),
       ]);
 
-      const parsedTopics: string[] = rawTopics ? JSON.parse(rawTopics) : [];
-
-      let parsedOnboarding: any = null;
-      if (rawOnboarding) {
+      const parse = (raw: string | null): string[] => {
+        if (!raw) return [];
         try {
-          parsedOnboarding = JSON.parse(rawOnboarding);
+          const v = JSON.parse(raw);
+          return Array.isArray(v) ? v : [];
         } catch {
-          parsedOnboarding = null;
+          return [];
         }
+      };
+
+      // Priority: explicit screen argument > scoped key > global key > onboarding blob
+      let finalTopics: string[] = [];
+      if (Array.isArray(topicsFromScreen) && topicsFromScreen.length > 0) {
+        finalTopics = topicsFromScreen;
+      } else {
+        const scoped = parse(rawScopedTopics);
+        if (scoped.length > 0) finalTopics = scoped;
+        else {
+          const global = parse(rawTopics);
+          if (global.length > 0) finalTopics = global;
+          else {
+            try {
+              const blob = rawOnboarding ? JSON.parse(rawOnboarding) : null;
+              if (Array.isArray(blob?.selectedTopics) && blob.selectedTopics.length > 0) {
+                finalTopics = blob.selectedTopics;
+              }
+            } catch { /* ignore */ }
+          }
+        }
+      }
+
+      if (finalTopics.length === 0) {
+        console.warn('[CommunityNavigator] Onboarding complete but 0 topics — treating as not done');
+        setPhase('onboarding');
+        return;
       }
 
       const finalOnboarding = {
         completed: true,
-        selectedTopics:
-          parsedOnboarding?.selectedTopics?.length > 0
-            ? parsedOnboarding.selectedTopics
-            : parsedTopics,
+        selectedTopics: finalTopics,
         timestamp: new Date().toISOString(),
       };
 
-      await AsyncStorage.setItem(
-        COMMUNITY_ONBOARDING_KEY,
-        JSON.stringify(finalOnboarding)
-      );
+      // Write every key the rest of the system reads, atomically-ish
+      await Promise.all([
+        AsyncStorage.setItem(COMMUNITY_ONBOARDING_KEY, JSON.stringify(finalOnboarding)),
+        AsyncStorage.setItem(COMMUNITY_TOPICS_KEY, JSON.stringify(finalTopics)),
+        AsyncStorage.setItem(scopedTopicsKey, JSON.stringify(finalTopics)),
+      ]);
 
       await checkOnboardingStatus();
-      setPhase('main');
       await markSplashShown();
+      setPhase('main');
     } catch (error) {
       console.error('[CommunityNavigator] Onboarding complete error:', error);
-      setPhase('main');
+      // Don't silently fall to 'main' if the write failed — leave the user
+      // in onboarding so they can retry.
+      setPhase('onboarding');
     }
   }, [markSplashShown, checkOnboardingStatus]);
 
@@ -623,11 +684,14 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         initialRouteName="CommunityOnboarding"
         screenOptions={ONBOARDING_SCREEN_OPTIONS}
       >
-        <Stack.Screen 
-          name="CommunityOnboarding"
-          component={CommunityOnboardingScreen}
-          initialParams={{ onComplete: handleOnboardingComplete }}
-        />
+        <Stack.Screen name="CommunityOnboarding">
+          {(props) => (
+            <CommunityOnboardingScreen
+              {...props}
+              onComplete={handleOnboardingComplete}
+            />
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
     );
   }
@@ -636,6 +700,7 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
   if (phase === 'splash') {
     return (
       <Stack.Navigator
+        key="community-splash-navigator"
         initialRouteName="CommunitySplash"
         screenOptions={SPLASH_SCREEN_OPTIONS}
       >
@@ -644,6 +709,7 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
             <CommunitySplashScreen
               {...props}
               onAnimationComplete={handleSplashComplete}
+              onSkip={handleSplashComplete}
             />
           )}
         </Stack.Screen>
@@ -688,9 +754,19 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         />
         <Stack.Screen
           name="CommunityOnboarding"
-          component={CommunityOnboardingScreen}
           options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
-        />
+        >
+          {(props) => (
+            <CommunityOnboardingScreen
+              {...props}
+              onComplete={async (topics?: string[]) => {
+                // Edit-mode: just refresh context so feed re-filters.
+                await handleOnboardingComplete(topics);
+                if (props.navigation.canGoBack()) props.navigation.goBack();
+              }}
+            />
+          )}
+        </Stack.Screen>
         <Stack.Screen name="TopicMembers" component={TopicMembersScreen} />
         <Stack.Screen name="Followers" component={FollowersScreen} />
         <Stack.Screen name="Following" component={FollowingScreen} />

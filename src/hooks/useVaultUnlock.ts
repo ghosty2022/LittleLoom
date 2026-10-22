@@ -85,6 +85,15 @@ export const useVaultUnlock = (): VaultUnlockState => {
   /* ─── Initial refresh ─────────────────────────────────────────────── */
   useEffect(() => {
     refreshSecurityStatus();
+
+    // Re-read status whenever the app comes back to the foreground —
+    // e.g. after the user sets a PIN in Settings and returns to the vault.
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active') {
+        refreshSecurityStatus();
+      }
+    });
+    return () => sub.remove();
   }, [refreshSecurityStatus]);
 
   /* ─── Auto-relock timer ───────────────────────────────────────────── */
