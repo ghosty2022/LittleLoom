@@ -265,26 +265,66 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
   const prevEntriesRef = useRef<any[]>([]);
   const prevGrowthDataRef = useRef<any[]>([]);
   const prevBabyIdRef = useRef<string | null>(null);
+  const prevUserIdRef = useRef<string | null>(userProfile?.id ?? null);
   const processingRef = useRef(false);
 
-  /* ── Load persisted achievements from Supabase ── */
+  // ── Account-change guard ─────────────────────────────────────────
+  // If the signed-in user changes, wipe the in-memory growth score,
+  // reminders, achievements, and correlations so a new account never
+  // inherits the previous account's derived data.
   useEffect(() => {
+    const nextUserId = userProfile?.id ?? null;
+    if (prevUserIdRef.current === nextUserId) return;
+    prevUserIdRef.current = nextUserId;
+
+    prevEntriesRef.current = [];
+    prevGrowthDataRef.current = [];
+    prevBabyIdRef.current = null;
+
+    if (isMounted.current) {
+      setState({
+        isLoading: true,
+        growthScore: null,
+        smartReminders: [],
+        pendingAchievements: [],
+        unlockedAchievements: [],
+        lastGrowthUpdate: 0,
+        streakData: { currentStreak: 0, longestStreak: 0, atRisk: false, hoursLeft: 0 },
+        correlations: [],
+        predictiveAchievements: [],
+      });
+    }
+  }, [userProfile?.id]);
+
+  /* ── Load persisted achievements from Supabase ──
+   * MUST be scoped to the signed-in user. On sign-out → sign-in with a
+   * different account, the global AsyncStorage key still holds the old
+   * account's achievements; without this guard they get inherited. */
+  useEffect(() => {
+    if (!userProfile?.id) {
+      setState(prev => ({ ...prev, unlockedAchievements: [] }));
+      return;
+    }
     const load = async () => {
       try {
         const dbVal = await getAppSetting(ACHIEVEMENT_STORAGE_KEY);
         if (dbVal) {
           setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(dbVal) }));
-        } else {
-          const saved = await AsyncStorage.getItem(ACHIEVEMENT_STORAGE_KEY);
-          if (saved) {
-            setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(saved) }));
-            await setAppSetting(ACHIEVEMENT_STORAGE_KEY, saved);
-          }
+          return;
+        }
+        // Do NOT fall back to AsyncStorage here — it is global and would
+        // leak achievements across accounts. Instead, migrate any existing
+        // AsyncStorage value only if it was written by THIS user (we
+        // record the user id alongside it).
+        const scopedRaw = await AsyncStorage.getItem(`${ACHIEVEMENT_STORAGE_KEY}_${userProfile.id}`);
+        if (scopedRaw) {
+          setState(prev => ({ ...prev, unlockedAchievements: JSON.parse(scopedRaw) }));
+          await setAppSetting(ACHIEVEMENT_STORAGE_KEY, scopedRaw);
         }
       } catch (e) { console.warn('Failed to load achievements:', e); }
     };
     load();
-  }, []);
+  }, [userProfile?.id]);
 
   /* ── Calculate everything whenever entries or growth data change ── */
   

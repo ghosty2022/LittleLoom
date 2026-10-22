@@ -794,9 +794,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // SIGN UP
   // ═══════════════════════════════════════════════════════════════════════
 
-  const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<{ success: boolean; message?: string }> => {
-    if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
-    try {
+const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<{ success: boolean; message?: string }> => {
+  if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
+  // Extend lock: signUp + resend + SecureStore writes can exceed 10s on slow networks,
+  // which allows a double-tap to create the account twice.
+  if (signInLockTimer.current) clearTimeout(signInLockTimer.current);
+  signInLockTimer.current = setTimeout(() => { signInLock.current = false; }, 30000);
       if (__DEV__) console.log('[Auth] SignUp attempt for:', email);
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
@@ -822,18 +825,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const token = signUpData.session?.access_token || '';
       const userId = signUpData.user.id;
 
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await refreshSession();
-
-      try {
-        const { error: resendError } = await supabase.auth.resend({
-          type: 'signup',
+      // ── Email-confirmation required path ────────────────────────────
+      // If Supabase requires email confirmation, signUpData.session is
+      // null. We must NOT mark the user as authenticated, MUST NOT write
+      // an empty token to SecureStore, and MUST NOT send a second
+      // confirmation email (signUp already sent one). Return a distinct
+      // "pending" result so the UI can show "Check your email".
+      if (!signUpData.session) {
+        const userProfile: UserProfile = {
+          id: userId,
+          fullName,
           email: email.trim(),
-        });
-        if (!resendError && __DEV__) console.log('[Auth] Confirmation email sent');
-      } catch (resendErr) {
-        if (__DEV__) console.warn('[Auth] Could not send confirmation:', resendErr);
+          avatar: '👤',
+          role: 'parent1',
+          createdAt: new Date().toISOString(),
+          preferences: { notifications: true, darkMode: false, language: 'en' },
+          communityUsername: fullName,
+          communityHandle: `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`,
+          communityBio: '',
+          communityAvatar: '👤',
+          communityDisplayName: fullName,
+          communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+          communitySelectedTopics: [],
+        };
+        // Cache the profile for after-confirmation sign-in, but leave
+        // isAuthenticated=false and token=null.
+        try {
+          await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile));
+        } catch {}
+        return {
+          success: false,
+          message:
+            'Account created! Please check your email to confirm your address, then sign in.',
+        };
       }
+
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
 
@@ -854,14 +881,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         communitySelectedTopics: [],
       };
 
+      // ── Auth-critical writes are sequential and MUST succeed ──────
+      const tokenStored = await secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token);
+      const profileStored = await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile));
+      if (!tokenStored || !profileStored) {
+        // Account exists in Supabase but we can't persist locally.
+        // Tell the user to sign in (which retries the SecureStore write).
+        return {
+          success: false,
+          message:
+            'Your account was created, but we could not save your session on this device. Please sign in.',
+        };
+      }
+
+      // Non-critical community cache — best effort.
       await Promise.all([
-        secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token),
-        secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile)),
         AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
         AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_HANDLE, handle),
         AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_DISPLAY_NAME, fullName),
-      ]);
+      ]).catch(() => {});
 
       await AsyncStorage.multiRemove([
         ASYNC_KEYS.SETUP_COMPLETE,
@@ -887,8 +926,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       return { success: true };
-    } catch (error) {
+    } catch (error: any) {
       if (__DEV__) console.error('[Auth] Sign up error:', error);
+      // If Supabase Auth actually succeeded but a later step threw, the
+      // user *does* exist. Tell them to sign in rather than retrying signUp
+      // (which would return "already registered").
+      const msg = String(error?.message || '').toLowerCase();
+      if (msg.includes('already registered') || msg.includes('already exists')) {
+        return {
+          success: false,
+          message: 'An account with this email already exists. Please sign in.',
+        };
+      }
       return { success: false, message: 'Failed to create account. Please try again.' };
     } finally { releaseSignInLock(); }
   }, [acquireSignInLock, releaseSignInLock, performSignInInternal, refreshSession]);

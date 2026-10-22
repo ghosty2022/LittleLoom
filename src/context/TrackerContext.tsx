@@ -635,17 +635,79 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const isRefreshingRef = useRef(false);
   const subscriptionRef = useRef<(() => void) | null>(null);
 
-  
+  // ── Account isolation ────────────────────────────────────────────
+  // Tracks which authenticated user the in-memory entries belong to.
+  // If the signed-in user changes (sign-out → sign-in, or account
+  // switch on the same device), we wipe entries BEFORE the new
+  // user's fetch runs, so the UI never renders another account's data.
+  const loadedForUserIdRef = useRef<string | null>(null);
+  const currentUserIdRef = useRef<string | null>(userProfile?.id ?? null);
+  useEffect(() => {
+    currentUserIdRef.current = userProfile?.id ?? null;
+  }, [userProfile?.id]);
+
+    const loadedForBabyIdRef = useRef<string | null>(null);
   
   
   const [currentBabyIdState, setCurrentBabyIdState] = useState<string | null>(
     () => getBabyIdFromContext()
   );
 
+  // Initialize the baby marker lazily so the guard from B3
+  // doesn't wipe a legitimately-initialized empty array on first mount.
+  useEffect(() => {
+    if (loadedForBabyIdRef.current === null && currentBabyIdState) {
+      loadedForBabyIdRef.current = currentBabyIdState;
+    }
+  }, [currentBabyIdState]);
+
   
   useEffect(() => {
     currentBabyIdRef.current = currentBabyIdState;
   }, [currentBabyIdState]);
+
+  // ── Account-change guard ─────────────────────────────────────────
+  // Sign-out / sign-in on the same device: `userProfile.id` changes.
+  // Immediately purge every piece of per-account state so the new
+  // account's first render can't leak the old account's entries.
+  useEffect(() => {
+    const nextUserId = userProfile?.id ?? null;
+    const prevUserId = loadedForUserIdRef.current;
+
+    if (nextUserId === prevUserId) return;
+
+    if (__DEV__) {
+      console.log('[TrackerContext] Account changed:', prevUserId, '→', nextUserId);
+    }
+
+    loadedForUserIdRef.current = nextUserId;
+
+    // Hard reset of in-memory state.
+    initRef.current = false;
+    dismissedInsightIdsRef.current = new Set();
+    isRefreshingRef.current = false;
+
+    setState(prev => ({
+      ...prev,
+      entries: [],
+      entriesByTracker: {},
+      progressive: {
+        ...prev.progressive,
+        todayEntries: [],
+        yesterdayEntries: [],
+        streaks: [],
+        insights: [],
+      },
+    }));
+
+    // Re-run initialization for the new user.
+    if (nextUserId) {
+      // Defer so the state wipe commits first.
+      setTimeout(() => {
+        try { initTracker(); } catch {}
+      }, 0);
+    }
+  }, [userProfile?.id]);
 
   
   
@@ -714,6 +776,41 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }));
       return;
     }
+
+    // ── ISOLATION GUARD ──
+    // Using a ref (not a property on the function object) so the
+    // previous-baby marker survives callback recreation across renders.
+    // Without this, the first fetch after a baby switch or account
+    // switch rendered the previous baby's entries until the network
+    // round-trip completed (and permanently if it errored).
+    if (
+      loadedForBabyIdRef.current !== null &&
+      loadedForBabyIdRef.current !== babyId
+    ) {
+      if (__DEV__) {
+        console.log(
+          '[TrackerContext] Baby changed:',
+          loadedForBabyIdRef.current,
+          '→',
+          babyId,
+          '— wiping entries',
+        );
+      }
+      setState(prev => ({
+        ...prev,
+        entries: [],
+        entriesByTracker: {},
+        progressive: {
+          ...prev.progressive,
+          todayEntries: [],
+          yesterdayEntries: [],
+          streaks: [],
+          insights: [],
+        },
+      }));
+    }
+    loadedForBabyIdRef.current = babyId;
+    // ── END GUARD ──
 
     if (isRefreshingRef.current) {
       console.log('[TrackerContext] Refresh already in progress, skipping');
@@ -971,7 +1068,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 
   /* ─── Initialize ──────────────────────────────────────────────────── */
 
-  useEffect(() => {
+  const initTracker = useCallback(async () => {
     if (initRef.current) return;
     initRef.current = true;
 
