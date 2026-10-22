@@ -878,12 +878,14 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
 
   useEffect(() => { initializeChat(); }, [initialChatId, memberId]);
 
-  useEffect(() => {
-    if (!chatId) return;
-    markChatRead(chatId);
-    const interval = setInterval(() => { refreshMessages(); }, 2000);
-    return () => clearInterval(interval);
-  }, [chatId]);
+const liveMessages = useFamilyChat().messages[chatId] || [];
+useEffect(() => {
+  if (!chatId) return;
+  markChatRead(chatId);
+  setMessages(liveMessages);
+  const t = setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+  return () => clearTimeout(t);
+}, [chatId, liveMessages.length]);
 
   const initializeChat = async () => {
     setIsLoading(true);

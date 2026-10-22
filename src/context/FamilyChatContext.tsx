@@ -1803,10 +1803,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   /* ─── Getters ───────────────────────────────────────────────── */
 
-  const getChatMessages = useCallback(
-    (chatId: string) => messagesRef.current[chatId] ?? [],
-    [],
-  );
+const getChatMessages = useCallback(
+  (chatId: string) => messagesRef.current[chatId] ?? [],
+  [state.messages],
+);
 
   const getMessageById = useCallback(
     (chatId: string, messageId: string) =>
