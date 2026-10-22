@@ -38,7 +38,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '@/utils/supabase';
-import { useSweetAlert } from '../../hooks/useSweetAlert';
+import { useSweetAlert } from '../../components/SweetAlert';
 import { useBaby } from '../../context/BabyContext';
 import { setAppSetting, getAllBabiesFromDb } from '../../database/dbHelpers';
 import { useCustomization } from '../../hooks/useCustomization';

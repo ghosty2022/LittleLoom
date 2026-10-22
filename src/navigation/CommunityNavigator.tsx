@@ -656,7 +656,13 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
 
       await checkOnboardingStatus();
       await markSplashShown();
-      setPhase('main');
+      // Only advance to 'main' if this was a first-run completion. If the
+      // user opened onboarding in *editing* mode (from a profile / header /
+      // prompt), stay on the current navigator — the caller's
+      // `navigation.goBack()` handles dismissal.
+      if (phase !== 'main') {
+        setPhase('main');
+      }
     } catch (error) {
       console.error('[CommunityNavigator] Onboarding complete error:', error);
       // Don't silently fall to 'main' if the write failed — leave the user
@@ -698,6 +704,12 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
 
   
   if (phase === 'splash') {
+    // BUG FIX: previously this navigator only registered `CommunitySplash`.
+    // Any `navigate('CommunityOnboarding', { editing: true })` from a prompt
+    // or auto-trigger while the splash was still mounted therefore threw:
+    //   "The action 'NAVIGATE' with payload ... was not handled by any navigator."
+    // We now register the FULL stack here, but start on `CommunitySplash`.
+    // On completion the navigator transitions out of this branch cleanly.
     return (
       <Stack.Navigator
         key="community-splash-navigator"
@@ -713,6 +725,60 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
             />
           )}
         </Stack.Screen>
+        {/* The screens below are the same set registered in the main phase.
+            They are unreachable by default (initialRouteName is still the
+            splash) — they exist only so that a stray `navigate(...)` during
+            the splash phase lands on a registered screen instead of throwing. */}
+        <Stack.Screen
+          name="CommunityMain"
+          component={CommunityScreen}
+          options={{ animation: 'fade' }}
+        />
+        <Stack.Screen name="Topic" component={TopicScreen} />
+        <Stack.Screen
+          name="CreatePost"
+          component={CreatePostScreen}
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
+        <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+        <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
+        <Stack.Screen name="ChatList" component={ChatListScreen} />
+        <Stack.Screen name="Chat" component={ChatScreen} />
+        <Stack.Screen name="Notifications" component={NotificationsScreen} />
+        <Stack.Screen
+          name="CommunityProfile"
+          component={CommunityProfileScreen}
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="CommunityVerification"
+          component={CommunityVerificationScreen}
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="CommunityOnboarding"
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        >
+          {(props) => (
+            <CommunityOnboardingScreen
+              {...props}
+              onComplete={async (topics?: string[]) => {
+                await handleOnboardingComplete(topics);
+                if (props.navigation.canGoBack()) props.navigation.goBack();
+              }}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="TopicMembers" component={TopicMembersScreen} />
+        <Stack.Screen name="Followers" component={FollowersScreen} />
+        <Stack.Screen name="Following" component={FollowingScreen} />
+        <Stack.Screen name="SearchUsers" component={SearchUsersScreen} />
+        <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
+        <Stack.Screen
+          name="Report"
+          component={ReportScreen}
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
       </Stack.Navigator>
     );
   }
