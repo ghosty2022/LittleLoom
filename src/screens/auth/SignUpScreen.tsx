@@ -324,7 +324,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     setIsProcessing(true);
     try {
       if (typeof signInWithSocial === 'function') {
-        const success = await signInWithSocial({
+        const socialResult = await signInWithSocial({
           id: `${provider}_${Date.now()}`,
           email,
           fullName: name,
@@ -332,7 +332,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
           provider,
         });
 
-        if (success && isMounted.current) {
+        if (socialResult.success && isMounted.current) {
           showSuccess('Welcome!', `Signed in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
           navigation.replace('BabyOptional');
           return;
@@ -631,9 +631,9 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     triggerHaptic('medium');
 
     try {
-      const success = await signUp(fullName.trim(), email.trim(), password);
+      const result = await signUp(fullName.trim(), email.trim(), password);
 
-      if (success && isMounted.current) {
+      if (result.success && isMounted.current) {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
         navigation.replace('BabyOptional');
       } else {

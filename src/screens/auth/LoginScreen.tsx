@@ -434,7 +434,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     setIsProcessing(true);
     try {
-      const success = await signInWithSocial({
+      const socialResult = await signInWithSocial({
         id: `${provider}_${Date.now()}`,
         email,
         fullName: name,
@@ -442,7 +442,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         provider,
       });
 
-      if (success && isMounted.current) {
+      if (socialResult.success && isMounted.current) {
         showSuccess('Welcome!', `Signed in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
         forceUnlock().catch(() => {});
       }
@@ -797,9 +797,9 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         }
       }
 
-      const success = await signIn(userIdentifier, password);
+      const result = await signIn(userIdentifier, password);
 
-      if (success && isMounted.current) {
+      if (result.success && isMounted.current) {
         await persistRememberMe(rememberMe, userIdentifier);
 
         showSuccess(
@@ -1001,9 +1001,9 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     triggerHaptic('medium');
 
     try {
-      const success = await loginWithBiometric();
+      const result = await loginWithBiometric();
 
-      if (success && isMounted.current) {
+      if (result.success && isMounted.current) {
         showSuccess(`Welcome${userName !== 'there' ? `, ${userName}` : ''}!`, 'Biometric login successful');
         forceUnlock().catch(() => {});
         return true;

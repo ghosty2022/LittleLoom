@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as Contacts from 'expo-contacts';
+import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
 import React, {
   useCallback,
   useContext,
@@ -789,7 +790,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       
       
       
-      const { status } = await Contact.requestPermissionsAsync();
+      const { status } = await Contacts.requestPermissionsAsync();
       if (status !== 'granted') {
         sweetAlert.alert(
           'Permission Required',
@@ -798,14 +799,14 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return;
       }
 
-      const hasContacts = await Contact.hasAny();
+      const hasContacts = await Contacts.hasAny();
       if (!hasContacts) {
         sweetAlert.alert('No Contacts', 'No contacts found on your device.');
         return;
       }
 
       
-      const contacts = await Contact.getAllDetails([
+      const contacts = await Contacts.getAllDetails([
         'fullName',
         'givenName',
         'familyName',

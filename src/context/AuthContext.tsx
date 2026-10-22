@@ -137,7 +137,6 @@ interface AuthContextType extends AuthState {
   ) => Promise<{ success: boolean; message: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message: string }>;
   resetPasswordForUser: (email: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
-  /** NEW: reset password using the PIN stored by SecurityContext as proof of identity. */
   resetPasswordWithPin: (
     email: string,
     pin: string,
@@ -200,11 +199,6 @@ const getBiometricIcon = (types: LocalAuthentication.AuthenticationType[]): stri
   return 'finger-print';
 };
 
-/**
- * Hash a PIN exactly the same way SecurityContext.hashPin does.
- * Keeping the algorithm in sync is CRITICAL — the PIN is written by
- * SecurityContext and verified here during password recovery.
- */
 const hashPinForRecovery = async (pin: string): Promise<string> => {
   const Crypto = require('expo-crypto');
   return await Crypto.digestStringAsync(
@@ -301,12 +295,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ═══════════════════════════════════════════════════════════════════════
   // IDENTIFIER RESOLUTION
-  //
-  // These MUST be declared BEFORE any useCallback that lists them in its
-  // dependency array. React evaluates dep arrays eagerly during render;
-  // referencing them earlier throws "Cannot access X before initialization"
-  // (TDZ). That error unwinds through every consumer of AuthContext,
-  // which is exactly what was crashing LoginScreen on mount.
   // ═══════════════════════════════════════════════════════════════════════
 
   const findUserByEmail = useCallback(async (email: string): Promise<UserLookupResult | null> => {
@@ -532,7 +520,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (__DEV__) console.error('[Auth] Force logout error:', error);
       return false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [validateCurrentSession]);
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -645,9 +632,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const baseName = liveFullName || liveEmail.split('@')[0];
       const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
 
-      // ── Auto-seed community_handle for accounts that don't have one. ───
-      // This makes login-by-username work for everyone the first time
-      // they sign in, even if they never opened Community.
       try {
         const { data: handleRow } = await supabase
           .from('profiles')
@@ -660,7 +644,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           !!(handleRow?.community_username || '').toString().trim();
 
         if (!hasHandle) {
-          // Ensure uniqueness: append a short numeric suffix if needed.
           let candidate = baseHandle.replace(/^@+/, '');
           let handleTaken = false;
           for (let i = 0; i < 5; i++) {
@@ -739,6 +722,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem(ASYNC_KEYS.ONBOARDING_COMPLETE, 'true');
       }
 
+      const [bioEnabled, bioLoginEnabled] = await Promise.all([
+        AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED),
+        secureStorage.getItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
+      ]);
+
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -751,6 +739,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setupComplete: isSetupComplete,
           hasParent2: p2Done,
           hasBaby: babyDone,
+          isBiometricEnabled: bioEnabled === 'true',
+          isBiometricLoginEnabled: bioLoginEnabled === 'true',
         }));
       }
       return { success: true, user };
@@ -769,7 +759,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const raw = (identifier || '').trim();
 
-      // Resolve identifier → canonical email BEFORE hitting Supabase.
       let email = raw;
       const looksLikeEmail = raw.includes('@') && raw.includes('.');
 
@@ -791,15 +780,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [acquireSignInLock, releaseSignInLock, performSignInInternal, findUserByEmailOrUsernameOrPhone]);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // SIGN UP
+  // SIGN UP — FIXED: proper try/catch/finally structure
   // ═══════════════════════════════════════════════════════════════════════
 
-const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<{ success: boolean; message?: string }> => {
-  if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
-  // Extend lock: signUp + resend + SecureStore writes can exceed 10s on slow networks,
-  // which allows a double-tap to create the account twice.
-  if (signInLockTimer.current) clearTimeout(signInLockTimer.current);
-  signInLockTimer.current = setTimeout(() => { signInLock.current = false; }, 30000);
+  const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<{ success: boolean; message?: string }> => {
+    if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
+    if (signInLockTimer.current) clearTimeout(signInLockTimer.current);
+    signInLockTimer.current = setTimeout(() => { signInLock.current = false; }, 30000);
+
+    try {
       if (__DEV__) console.log('[Auth] SignUp attempt for:', email);
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
@@ -825,12 +814,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
       const token = signUpData.session?.access_token || '';
       const userId = signUpData.user.id;
 
-      // ── Email-confirmation required path ────────────────────────────
-      // If Supabase requires email confirmation, signUpData.session is
-      // null. We must NOT mark the user as authenticated, MUST NOT write
-      // an empty token to SecureStore, and MUST NOT send a second
-      // confirmation email (signUp already sent one). Return a distinct
-      // "pending" result so the UI can show "Check your email".
       if (!signUpData.session) {
         const userProfile: UserProfile = {
           id: userId,
@@ -848,8 +831,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
           communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
           communitySelectedTopics: [],
         };
-        // Cache the profile for after-confirmation sign-in, but leave
-        // isAuthenticated=false and token=null.
         try {
           await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile));
         } catch {}
@@ -881,12 +862,9 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         communitySelectedTopics: [],
       };
 
-      // ── Auth-critical writes are sequential and MUST succeed ──────
       const tokenStored = await secureStorage.setItem(SECURE_KEYS.AUTH_TOKEN, token);
       const profileStored = await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(userProfile));
       if (!tokenStored || !profileStored) {
-        // Account exists in Supabase but we can't persist locally.
-        // Tell the user to sign in (which retries the SecureStore write).
         return {
           success: false,
           message:
@@ -894,7 +872,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         };
       }
 
-      // Non-critical community cache — best effort.
       await Promise.all([
         AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
         AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_USERNAME, fullName),
@@ -928,9 +905,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
       return { success: true };
     } catch (error: any) {
       if (__DEV__) console.error('[Auth] Sign up error:', error);
-      // If Supabase Auth actually succeeded but a later step threw, the
-      // user *does* exist. Tell them to sign in rather than retrying signUp
-      // (which would return "already registered").
       const msg = String(error?.message || '').toLowerCase();
       if (msg.includes('already registered') || msg.includes('already exists')) {
         return {
@@ -939,8 +913,10 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         };
       }
       return { success: false, message: 'Failed to create account. Please try again.' };
-    } finally { releaseSignInLock(); }
-  }, [acquireSignInLock, releaseSignInLock, performSignInInternal, refreshSession]);
+    } finally {
+      releaseSignInLock();
+    }
+  }, [acquireSignInLock, releaseSignInLock, performSignInInternal]);
 
   const signInWithSocial = useCallback(async (socialUser: SocialUser): Promise<{ success: boolean; message?: string }> => {
     if (!acquireSignInLock()) return { success: false, message: 'Another sign in operation in progress' };
@@ -1013,12 +989,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
     try {
       if (__DEV__) console.log('[Auth] Starting sign out process...');
 
-      // ── CRITICAL: capture the user id BEFORE signOut() ──────────
-      // `supabase.auth.signOut()` synchronously fires the auth-state
-      // listener that sets `userProfile = null`. If we read the id
-      // after that, it's always null → the per-user purge below
-      // would silently be skipped, leaving the previous account's
-      // posts / achievements / community state on disk.
       const signedOutUserId = stateRef.current.userProfile?.id;
 
       await AsyncStorage.setItem('littleloom_security_lock', 'false');
@@ -1032,8 +1002,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
       ]);
-
-      // `signedOutUserId` was captured before signOut() above.
 
       await AsyncStorage.multiRemove([
         ASYNC_KEYS.ONBOARDING_COMPLETE,
@@ -1051,12 +1019,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         '@littleloom_bayes_backfilled_v1',
       ]);
 
-      // ── Per-user purge ─────────────────────────────────────────
-      // Wipes every user-scoped key for the account that's signing
-      // out, so a subsequent sign-in (same or different account) on
-      // this device starts clean. Without this, a new account
-      // inherited the previous account's posts, achievements,
-      // community selections, and chat state.
       if (signedOutUserId) {
         const keysToRemove = [
           '@community_posts_v2',
@@ -1099,7 +1061,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
           'littleloom_profile_sync_queue',
         ];
 
-        // Scoped variants (suffixed with `_${userId}`).
         await AsyncStorage.multiRemove(
           keysToRemove.flatMap((k) => [k, `${k}_${signedOutUserId}`]),
         );
@@ -1485,28 +1446,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
     }
   }, []);
 
-  const updateCommunityUsername = useCallback(async (newUsername: string): Promise<{ success: boolean; message: string }> => {
-    const trimmed = newUsername.trim().toLowerCase().replace(/^@/, '');
-
-    if (trimmed.length < 3) return { success: false, message: 'Username must be at least 3 characters' };
-    if (trimmed.length > 30) return { success: false, message: 'Username must be less than 30 characters' };
-
-    const validPattern = /^[a-zA-Z][a-zA-Z0-9_.]*$/;
-    if (!validPattern.test(trimmed)) {
-      return { success: false, message: 'Must start with a letter. Only letters, numbers, underscores, and dots allowed.' };
-    }
-
-    const availability = await isUsernameAvailable(trimmed);
-    if (!availability.available) return { success: false, message: availability.message };
-
-    const success = await updateCommunityProfile({ username: trimmed, handle: `@${trimmed}` });
-    return { success, message: success ? 'Username updated successfully' : 'Failed to update username' };
-  }, [updateCommunityProfile]);
-
-  const updateCommunityAvatar = useCallback(async (avatarUri: string): Promise<boolean> => {
-    return await updateCommunityProfile({ avatar: avatarUri });
-  }, [updateCommunityProfile]);
-
   const isUsernameAvailable = useCallback(async (username: string): Promise<{ available: boolean; message: string }> => {
     try {
       const trimmed = username.trim().toLowerCase().replace(/^@/, '');
@@ -1537,6 +1476,28 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
       return { available: false, message: 'Failed to check username availability' };
     }
   }, []);
+
+  const updateCommunityUsername = useCallback(async (newUsername: string): Promise<{ success: boolean; message: string }> => {
+    const trimmed = newUsername.trim().toLowerCase().replace(/^@/, '');
+
+    if (trimmed.length < 3) return { success: false, message: 'Username must be at least 3 characters' };
+    if (trimmed.length > 30) return { success: false, message: 'Username must be less than 30 characters' };
+
+    const validPattern = /^[a-zA-Z][a-zA-Z0-9_.]*$/;
+    if (!validPattern.test(trimmed)) {
+      return { success: false, message: 'Must start with a letter. Only letters, numbers, underscores, and dots allowed.' };
+    }
+
+    const availability = await isUsernameAvailable(trimmed);
+    if (!availability.available) return { success: false, message: availability.message };
+
+    const success = await updateCommunityProfile({ username: trimmed, handle: `@${trimmed}` });
+    return { success, message: success ? 'Username updated successfully' : 'Failed to update username' };
+  }, [updateCommunityProfile]);
+
+  const updateCommunityAvatar = useCallback(async (avatarUri: string): Promise<boolean> => {
+    return await updateCommunityProfile({ avatar: avatarUri });
+  }, [updateCommunityProfile]);
 
   const registerCommunityUsername = useCallback(async (username: string): Promise<boolean> => {
     const trimmed = username.trim().toLowerCase().replace(/^@/, '');
@@ -1671,9 +1632,8 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
 
   const shouldShowBiometricPrompt = useCallback(async (): Promise<boolean> => {
     try {
-      const [biometricEnabled, hasCredentials] = await Promise.all([
+      const [biometricEnabled] = await Promise.all([
         AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED),
-        hasBiometricLoginCredentials(),
       ]);
 
       if (stateRef.current.isBiometricAvailable && biometricEnabled !== 'true') {
@@ -1683,7 +1643,7 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
     } catch {
       return false;
     }
-  }, [hasBiometricLoginCredentials]);
+  }, []);
 
   const isAppActive = useCallback((): boolean => {
     return appStateRef.current === 'active';
@@ -1704,7 +1664,7 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
   }, [releaseSignInLock, releaseBiometricLock]);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // PASSWORD RESET — including the new PIN-based recovery path
+  // PASSWORD RESET
   // ═══════════════════════════════════════════════════════════════════════
 
   const forgotPassword = useCallback(async (email: string): Promise<{ success: boolean; message: string }> => {
@@ -1714,12 +1674,8 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         return { success: false, message: 'Please enter a valid email address' };
       }
 
-      // Verify the account actually exists so we can give a useful message.
       const user = await findUserByEmail(trimmed);
       if (!user) {
-        // For security we return the same "sent" message even if the user
-        // doesn't exist, so we don't leak account existence. But we still
-        // short-circuit to avoid an SMTP round-trip for a bad address.
         return { success: true, message: 'If an account exists, a reset link was sent.' };
       }
 
@@ -1741,7 +1697,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
       if (!newPassword || newPassword.length < 8) {
         return { success: false, message: 'Password must be at least 8 characters' };
       }
-      // Requires the user to already be in a recovery session (link from email).
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) {
         return { success: false, message: error.message };
@@ -1752,31 +1707,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
     }
   }, []);
 
-  /**
-   * Recover a forgotten password using the locally-stored PIN as proof of
-   * identity. This complements the email link path for offline recovery.
-   *
-   * Steps:
-   *   1. Resolve email → profile
-   *   2. Compare provided PIN against the hash in SecureStore
-   *      (written by SecurityContext.setupPin, so the salt MUST match)
-   *   3. On match, ask Supabase to update this user's password
-   *
-   * SECURITY: Supabase's updateUser only works on the *currently signed-in*
-   * session. If the user is signed out (the common "I forgot my password"
-   * scenario), we instead issue a one-time re-auth by signing in with the
-   * recovered credential path — but we cannot change the password without a
-   * session. To keep this safe we therefore do NOT flip the account's
-   * password here; instead we sign the user in using a temporary token
-   * exchange via `supabase.auth.admin` is not available client-side, so
-   * the safe pattern is: verify PIN locally, then let the caller navigate
-   * to a screen that requires an active session (or tell the user to use
-   * the email link for actual reset).
-   *
-   * Practical implementation: verify the PIN, then trigger the email reset.
-   * If you have a server-side edge function that accepts `{ email, pinHash }`
-   * and rotates the password, wire it in at the marked spot below.
-   */
   const resetPasswordWithPin = useCallback(async (
     email: string,
     pin: string,
@@ -1794,13 +1724,11 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         return { success: false, message: 'New password must be at least 8 characters' };
       }
 
-      // 1) Verify the account exists.
       const user = await findUserByEmail(trimmed);
       if (!user) {
         return { success: false, message: 'No account found for this email address' };
       }
 
-      // 2) Verify the PIN matches the locally-stored hash.
       const storedHash = await secureStorage.getItem(SECURE_KEYS.PIN_HASH);
       if (!storedHash) {
         return {
@@ -1815,12 +1743,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         return { success: false, message: 'Incorrect PIN. Please try again.' };
       }
 
-      // 3) Correct PIN → rotate the password server-side.
-      //
-      // The client SDK cannot rotate a signed-out user's password, so we
-      // delegate to the reset-password-with-pin edge function. It re-verifies
-      // the PIN against public.user_pin_recovery using service_role and
-      // calls auth.admin.updateUserById.
       try {
         const { data, error } = await supabase.functions.invoke(
           'reset-password-with-pin',
@@ -1834,7 +1756,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         );
 
         if (error) {
-          // Network / 5xx — do not reveal internal details.
           if (__DEV__) console.warn('[Auth] resetPasswordWithPin function error:', error);
           return {
             success: false,
@@ -2320,8 +2241,6 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
           });
         }
       } else if (event === 'PASSWORD_RECOVERY') {
-        // Supabase fires this when the user opens the password-reset link.
-        // Kept here so downstream screens can react via state.session.
         if (isMounted.current) {
           setState(prev => ({ ...prev, session }));
         }

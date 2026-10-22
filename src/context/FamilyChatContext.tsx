@@ -1,7 +1,3 @@
-
-
-
-
 import React, {
   createContext,
   useCallback,
@@ -235,6 +231,24 @@ const parseFileMeta = (raw: unknown): FileMetadata | undefined => {
   return undefined;
 };
 
+/**
+ * Convert a base64 string into a Uint8Array.
+ *
+ * The previous code called `decode(...)` here, but `decode` is a DOM/
+ * browser global that does NOT exist in React Native — it throws
+ * `ReferenceError: decode is not defined` on every image/file upload.
+ * Supabase's RN SDK accepts a Uint8Array, so we decode base64 manually.
+ */
+const base64ToUint8Array = (base64: string): Uint8Array => {
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
 /* ═══════════════════════════════════════════════════════════════════
    PROVIDER
    ═══════════════════════════════════════════════════════════════════ */
@@ -269,46 +283,31 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const currentChatIdRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
 
-  
   const chatsRef = useRef<FamilyChat[]>([]);
   const messagesRef = useRef<Record<string, FamilyMessage[]>>({});
   const familyCodeRef = useRef<string | null>(null);
   const userProfileRef = useRef(userProfile);
 
-  // ── Account-change guard ─────────────────────────────────────────
+  // ── Ref used by `sendMessage` instead of `state.blockedUsers` ──
+  // Reading `state.blockedUsers` directly inside `sendMessage` forces
+  // `sendMessage` to be re-created on every blocked-user toggle, which
+  // cascades to `pickAndSendImage`, `pickAndSendFile`, and the whole
+  // `value` memo. Reading from a ref keeps the callback stable.
+  const blockedUsersRef = useRef<string[]>([]);
+  useEffect(() => { blockedUsersRef.current = state.blockedUsers; }, [state.blockedUsers]);
+
+  // ── Account-change guard ─────────────────────────────────────
   // A new account on the same device must not see the previous
   // account's family chats, messages, or family code.
+  //
+  // NOTE (Bug 11): this effect depends on `loadFamilyCode`, which is
+  // declared further down. Because `loadFamilyCode` appears in the
+  // dependency array, it was being referenced *during render* before
+  // its `const` initializer ran, throwing a TDZ ReferenceError.
+  // The effect body itself has therefore been moved BELOW the
+  // `loadFamilyCode` useCallback (see further down in this file).
+  // Only the ref is declared here.
   const loadedForUserIdRef = useRef<string | null>(userProfile?.id ?? null);
-  useEffect(() => {
-    const nextId = userProfile?.id ?? null;
-    if (loadedForUserIdRef.current === nextId) return;
-
-    loadedForUserIdRef.current = nextId;
-
-    // Reset in-memory state.
-    isInitializedRef.current = false;
-    chatsRef.current = [];
-    messagesRef.current = {};
-    familyCodeRef.current = null;
-
-    if (isMountedRef.current) {
-      setState(prev => ({
-        ...prev,
-        chats: [],
-        messages: {},
-        typingUsers: {},
-        familyCode: null,
-        currentChatId: null,
-        isSynced: false,
-        isLoading: !!nextId,
-      }));
-    }
-
-    // Re-load for the new user (if signed in).
-    if (nextId) {
-      loadFamilyCode().catch(() => {});
-    }
-  }, [userProfile?.id, loadFamilyCode]);
 
   /* ─── Keep refs synchronised with state ─────────────────────── */
   useEffect(() => { chatsRef.current = state.chats; }, [state.chats]);
@@ -376,6 +375,41 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.warn('[FamilyChat] Load family code error:', error);
     }
   }, [babyContext]);
+
+  /* ─── Account-change guard (moved below `loadFamilyCode`) ───── */
+  // Bug 11 fix: this effect lives here — AFTER `loadFamilyCode` is
+  // defined — so the dependency array no longer hits the TDZ.
+  useEffect(() => {
+    const nextId = userProfile?.id ?? null;
+    if (loadedForUserIdRef.current === nextId) return;
+
+    loadedForUserIdRef.current = nextId;
+
+    // Reset in-memory state so the new account doesn't inherit the
+    // previous account's chats / messages / family code.
+    isInitializedRef.current = false;
+    chatsRef.current = [];
+    messagesRef.current = {};
+    familyCodeRef.current = null;
+
+    if (isMountedRef.current) {
+      setState(prev => ({
+        ...prev,
+        chats: [],
+        messages: {},
+        typingUsers: {},
+        familyCode: null,
+        currentChatId: null,
+        isSynced: false,
+        isLoading: !!nextId,
+      }));
+    }
+
+    // Re-load for the new user (if signed in).
+    if (nextId) {
+      loadFamilyCode().catch(() => {});
+    }
+  }, [userProfile?.id, loadFamilyCode]);
 
   /* ─── Initial Device ID + Notification Service ──────────────── */
   useEffect(() => {
@@ -466,7 +500,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             deliveryStatus: 'sent',
           };
 
-          
           const chat = chatsRef.current.find(c => c.id === message.chatId);
           const isChatMuted = chat?.isMuted ?? false;
 
@@ -492,7 +525,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             return { ...prev, messages: updatedMessages, chats: updatedChats };
           });
 
-          
           const activeChatId = currentChatIdRef.current;
           if (
             !isFromThisDevice &&
@@ -589,7 +621,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     /* ─── Presence ───────────────────────────────────────────── */
     channel.on('presence', { event: 'sync' }, () => {
-      
+      // Intentionally empty — presence not used for UI yet.
     });
 
     /* ─── Subscribe ──────────────────────────────────────────── */
@@ -622,7 +654,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     realtimeChannelRef.current = channel;
-    
   }, []);
 
   /* ─── Perform Initial Sync ──────────────────────────────────── */
@@ -707,7 +738,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
 
-      
       chatsRef.current = chats;
       messagesRef.current = messages;
 
@@ -727,9 +757,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [setupRealtimeListeners]);
 
   /* ─── Kick off sync once family code is known ───────────────── */
-  
-  
-  
   useEffect(() => {
     if (!deviceIdRef.current) return;
     if (!state.familyCode) return;
@@ -992,7 +1019,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (chat.type === 'direct') {
         const otherId = chat.participants.find(p => p !== me.id);
-        if (otherId && state.blockedUsers.includes(otherId)) {
+        // BUG FIX: read from ref instead of `state.blockedUsers` so this
+        // callback doesn't need to re-create whenever blocked users change.
+        if (otherId && blockedUsersRef.current.includes(otherId)) {
           sweetAlert.alert('Blocked', 'You have blocked this user.', 'warning');
           return;
         }
@@ -1035,7 +1064,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         deliveryStatus: 'sending',
       };
 
-      
       setState(prev => {
         const updatedChats = prev.chats.map(c =>
           c.id === chatId ? { ...c, lastMessage: newMessage, updatedAt: now } : c,
@@ -1115,7 +1143,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         sweetAlert.alert('Error', 'Failed to send message. Please try again.', 'error');
       }
     },
-    [state.blockedUsers, sweetAlert],
+    [sweetAlert],
   );
 
   /* ─── Resend / Edit / Delete / Clear ─────────────────────────── */
@@ -1212,7 +1240,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return;
       }
 
-      
       const ids = unread.map(m => m.id);
       const { error } = await supabase
         .from('family_messages')
@@ -1335,13 +1362,16 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const ext = uri.split('.').pop() || 'jpg';
         const storagePath = `chat_images/${familyCode}/${Date.now()}.${ext}`;
 
+        // BUG FIX: `decode(...)` is a DOM-only global that doesn't exist
+        // in React Native. Read base64 and convert to Uint8Array instead.
         const fileData = await FileSystem.readAsStringAsync(uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
+        const binary = base64ToUint8Array(fileData);
 
         const { error: uploadError } = await supabase.storage
           .from('chat_media')
-          .upload(storagePath, decode(fileData), { contentType: `image/${ext}` });
+          .upload(storagePath, binary, { contentType: `image/${ext}` });
 
         if (uploadError) {
           sweetAlert.alert('Error', 'Failed to upload image', 'error');
@@ -1376,13 +1406,17 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const size = info.exists && 'size' in info ? info.size : 0;
 
         const storagePath = `chat_files/${familyCode}/${Date.now()}_${asset.name}`;
+
+        // BUG FIX: `decode(...)` is a DOM-only global that doesn't exist
+        // in React Native. Read base64 and convert to Uint8Array instead.
         const fileData = await FileSystem.readAsStringAsync(asset.uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
+        const binary = base64ToUint8Array(fileData);
 
         const { error: uploadError } = await supabase.storage
           .from('chat_files')
-          .upload(storagePath, decode(fileData), {
+          .upload(storagePath, binary, {
             contentType: asset.mimeType || 'application/octet-stream',
           });
 

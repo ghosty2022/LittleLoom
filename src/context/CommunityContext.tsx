@@ -1,6 +1,3 @@
-
-
-
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -1373,8 +1370,24 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         );
       }
 
-      await updateOnlineStatus('online');
-      await checkStreak();
+      // FIX (Bug 2/3): run the async side-effects off the critical path.
+      // `updateOnlineStatus` / `checkStreak` are declared later in the
+      // component body, and running them in a `setTimeout` avoids any
+      // bundler TDZ concerns and prevents failures from blocking the
+      // outer sync. Each call is independently guarded so one failure
+      // doesn't abort the other.
+      setTimeout(() => {
+        try {
+          updateOnlineStatus('online').catch(() => {});
+        } catch (e) {
+          if (__DEV__) console.warn('[Community] online status update failed:', e);
+        }
+        try {
+          checkStreak().catch(() => {});
+        } catch (e) {
+          if (__DEV__) console.warn('[Community] streak check failed:', e);
+        }
+      }, 0);
     } catch (error) {
       console.error('Error syncing with auth user:', error);
     }
@@ -1436,10 +1449,10 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         promises.push(AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(currentState.topics)));
       }
       if (keysToPersist.includes('notifications')) {
-        promises.push(AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(currentState.notifications)));
+        promises.push(AsyncStorage.setItem(scoped(STORAGE_KEYS.NOTIFICATIONS), JSON.stringify(currentState.notifications)));
       }
       if (keysToPersist.includes('chats')) {
-        promises.push(AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify((currentState as any).chats || [])));
+        promises.push(AsyncStorage.setItem(scoped(STORAGE_KEYS.MESSAGES), JSON.stringify((currentState as any).chats || [])));
       }
       if (keysToPersist.includes('blockedUsers')) {
         promises.push(AsyncStorage.setItem(STORAGE_KEYS.BLOCKED_USERS, JSON.stringify(currentState.blockedUsers)));
@@ -1779,6 +1792,10 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   
 
+  // BUG FIX: previously this referenced `currentUser.id` inside `setState`
+  // without ever declaring `currentUser` in this function's scope, which
+  // threw a ReferenceError. We now read the id from the `userId` param and
+  // from `prev.currentUser` inside the updater.
   const syncUserProfileAcrossPosts = useCallback(async (userId: string, profileUpdates: Partial<CommunityUser>) => {
     setState(prev => {
       const updatedPosts = prev.posts.map(post => {
@@ -1807,9 +1824,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         ? { ...prev.currentUser, ...profileUpdates }
         : prev.currentUser;
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      // Persist under the per-user posts key so the update survives restarts
+      // and is scoped to the account whose profile actually changed.
+      AsyncStorage.setItem(
+        `${STORAGE_KEYS.POSTS}_${userId}`,
+        JSON.stringify(updatedPosts)
+      ).catch(console.error);
 
       return {
         ...prev,
@@ -1889,9 +1909,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         posts: currentUser.stats.posts + 1,
       };
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(console.error);
       AsyncStorage.setItem(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedStats)).catch(console.error);
 
@@ -1953,9 +1971,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return post;
       });
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       queuePersist('popularPosts');
 
       return { ...prev, posts: updatedPosts };
@@ -2026,14 +2042,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         : prev.notifications;
 
       const allLikedPosts = updatedPosts.filter(p => p.isLiked).map(p => p.id);
-      AsyncStorage.setItem(STORAGE_KEYS.LIKES, JSON.stringify(allLikedPosts)).catch(console.error);
+      AsyncStorage.setItem(`${STORAGE_KEYS.LIKES}_${currentUser.id}`, JSON.stringify(allLikedPosts)).catch(console.error);
       
       if (newNotification) {
-        AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
+        AsyncStorage.setItem(`${STORAGE_KEYS.NOTIFICATIONS}_${currentUser.id}`, JSON.stringify(updatedNotifications)).catch(console.error);
       }
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       queuePersist('popularPosts');
 
       return { ...prev, posts: updatedPosts, notifications: updatedNotifications };
@@ -2062,10 +2076,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
 
       const allLikedPosts = updatedPosts.filter(p => p.isLiked).map(p => p.id);
-      AsyncStorage.setItem(STORAGE_KEYS.LIKES, JSON.stringify(allLikedPosts)).catch(console.error);
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.LIKES}_${currentUser.id}`, JSON.stringify(allLikedPosts)).catch(console.error);
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       queuePersist('popularPosts');
 
       return { ...prev, posts: updatedPosts };
@@ -2121,14 +2133,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         : prev.notifications;
 
       const allRepostedPosts = updatedPosts.filter(p => p.isReposted).map(p => p.id);
-      AsyncStorage.setItem(STORAGE_KEYS.REPOSTS, JSON.stringify(allRepostedPosts)).catch(console.error);
+      AsyncStorage.setItem(`${STORAGE_KEYS.REPOSTS}_${currentUser.id}`, JSON.stringify(allRepostedPosts)).catch(console.error);
       
       if (newNotification) {
-        AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
+        AsyncStorage.setItem(`${STORAGE_KEYS.NOTIFICATIONS}_${currentUser.id}`, JSON.stringify(updatedNotifications)).catch(console.error);
       }
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       queuePersist('popularPosts');
 
       const repostedPost = updatedPosts.find(p => p.id === postId);
@@ -2162,10 +2172,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
 
       const allRepostedPosts = updatedPosts.filter(p => p.isReposted).map(p => p.id);
-      AsyncStorage.setItem(STORAGE_KEYS.REPOSTS, JSON.stringify(allRepostedPosts)).catch(console.error);
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.REPOSTS}_${currentUser.id}`, JSON.stringify(allRepostedPosts)).catch(console.error);
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       queuePersist('popularPosts');
 
       return { ...prev, posts: updatedPosts };
@@ -2200,10 +2208,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
 
       const allBookmarkedPosts = updatedPosts.filter(p => p.isBookmarked).map(p => p.id);
-      AsyncStorage.setItem(STORAGE_KEYS.BOOKMARKS, JSON.stringify(allBookmarkedPosts)).catch(console.error);
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.BOOKMARKS}_${currentUser.id}`, JSON.stringify(allBookmarkedPosts)).catch(console.error);
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
 
       return { ...prev, posts: updatedPosts };
     });
@@ -2224,8 +2230,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
         return post;
       });
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
+      // BUG FIX: guard against `currentUser` being null before dereferencing.
+      if (currentUser?.id) {
+        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       }
       return { ...prev, posts: updatedPosts };
     });
@@ -2268,9 +2275,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             posts: Math.max(0, currentUser.stats.posts - 1),
           };
 
-          if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+          AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
           AsyncStorage.setItem(STORAGE_KEYS.TOPICS, JSON.stringify(updatedTopics)).catch(console.error);
           AsyncStorage.setItem(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedStats)).catch(console.error);
 
@@ -2319,9 +2324,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return post;
       });
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       queuePersist('popularPosts');
 
       const totalHelpful = updatedPosts
@@ -2394,11 +2397,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         ? [newNotification, ...prev.notifications] 
         : prev.notifications;
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       if (newNotification) {
-        AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
+        AsyncStorage.setItem(`${STORAGE_KEYS.NOTIFICATIONS}_${currentUser.id}`, JSON.stringify(updatedNotifications)).catch(console.error);
       }
       queuePersist('popularPosts');
 
@@ -2438,9 +2439,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return post;
       });
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       return { ...prev, posts: updatedPosts };
     });
   }, []);
@@ -2471,9 +2470,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return post;
       });
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       return { ...prev, posts: updatedPosts };
     });
   }, []);
@@ -2519,9 +2516,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return post;
       });
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       return { ...prev, posts: updatedPosts };
     });
   }, []);
@@ -2685,10 +2680,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const updatedNotifications = [notification, ...prev.notifications];
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
-      AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
+      AsyncStorage.setItem(`${STORAGE_KEYS.NOTIFICATIONS}_${currentUser.id}`, JSON.stringify(updatedNotifications)).catch(console.error);
       AsyncStorage.setItem(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedCurrentUser.stats)).catch(console.error);
 
       return {
@@ -2760,9 +2753,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         following: (currentUser.following || []).filter(id => id !== userId),
       };
 
-      if (userId) {
-        AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${userId}`, JSON.stringify(updatedPosts)).catch(console.error);
-      }
+      AsyncStorage.setItem(`${STORAGE_KEYS.POSTS}_${currentUser.id}`, JSON.stringify(updatedPosts)).catch(console.error);
       AsyncStorage.setItem(`${STORAGE_KEYS.USER_STATS}_${currentUser.id}`, JSON.stringify(updatedCurrentUser.stats)).catch(console.error);
 
       return {
@@ -2908,11 +2899,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
 
   const markNotificationRead = useCallback(async (notificationId: string) => {
+    const uid = stateRef.current.currentUser?.id;
     setState(prev => {
       const updatedNotifications = prev.notifications.map(notif => 
         notif.id === notificationId ? { ...notif, read: true } : notif
       );
-      AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
+      // BUG FIX: persist under the per-user notifications key, not the global one.
+      if (uid) {
+        AsyncStorage.setItem(`${STORAGE_KEYS.NOTIFICATIONS}_${uid}`, JSON.stringify(updatedNotifications)).catch(console.error);
+      }
       return { ...prev, notifications: updatedNotifications };
     });
   }, []);
@@ -2920,9 +2915,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
 
   const markAllNotificationsRead = useCallback(async () => {
+    const uid = stateRef.current.currentUser?.id;
     setState(prev => {
       const updatedNotifications = prev.notifications.map(notif => ({ ...notif, read: true }));
-      AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
+      // BUG FIX: persist under the per-user notifications key, not the global one.
+      if (uid) {
+        AsyncStorage.setItem(`${STORAGE_KEYS.NOTIFICATIONS}_${uid}`, JSON.stringify(updatedNotifications)).catch(console.error);
+      }
       return { ...prev, notifications: updatedNotifications };
     });
   }, []);
@@ -3011,8 +3010,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const updatedNotifications = [notification, ...prev.notifications];
 
-      AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
-      AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifications)).catch(console.error);
+      // BUG FIX: scope both writes to the current user.
+      AsyncStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${currentUser.id}`, JSON.stringify(updatedChats)).catch(console.error);
+      AsyncStorage.setItem(`${STORAGE_KEYS.NOTIFICATIONS}_${currentUser.id}`, JSON.stringify(updatedNotifications)).catch(console.error);
 
       return { ...prev, chats: updatedChats, notifications: updatedNotifications } as any;
     });
@@ -3023,6 +3023,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
 
   const editMessage = useCallback(async (userId: string, messageId: string, newContent: string) => {
+    const uid = stateRef.current.currentUser?.id;
     setState(prev => {
       const chats = (prev as any).chats || [];
       const updatedChats = chats.map((chat: Chat) =>
@@ -3038,7 +3039,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
           : chat
       );
-      AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
+      if (uid) {
+        AsyncStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${uid}`, JSON.stringify(updatedChats)).catch(console.error);
+      }
       return { ...prev, chats: updatedChats } as any;
     });
   }, []);
@@ -3046,6 +3049,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
 
   const resendMessage = useCallback(async (userId: string, messageId: string) => {
+    const uid = stateRef.current.currentUser?.id;
     setState(prev => {
       const chats = (prev as any).chats || [];
       const updatedChats = chats.map((chat: Chat) =>
@@ -3058,7 +3062,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
           : chat
       );
-      AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
+      if (uid) {
+        AsyncStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${uid}`, JSON.stringify(updatedChats)).catch(console.error);
+      }
       return { ...prev, chats: updatedChats } as any;
     });
   }, []);
@@ -3066,6 +3072,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
 
   const deleteMessage = useCallback(async (userId: string, messageId: string) => {
+    const uid = stateRef.current.currentUser?.id;
     setState(prev => {
       const chats = (prev as any).chats || [];
       const updatedChats = chats.map((chat: Chat) =>
@@ -3073,7 +3080,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           ? { ...chat, messages: chat.messages.filter((m: Message) => m.id !== messageId) }
           : chat
       );
-      AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
+      if (uid) {
+        AsyncStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${uid}`, JSON.stringify(updatedChats)).catch(console.error);
+      }
       return { ...prev, chats: updatedChats } as any;
     });
   }, []);
@@ -3089,12 +3098,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
 
   const markChatRead = useCallback(async (userId: string) => {
+    const uid = stateRef.current.currentUser?.id;
     setState(prev => {
       const chats = (prev as any).chats || [];
       const updatedChats = chats.map((chat: Chat) => 
         chat.participantId === userId ? { ...chat, unreadCount: 0 } : chat
       );
-      AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
+      if (uid) {
+        AsyncStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${uid}`, JSON.stringify(updatedChats)).catch(console.error);
+      }
       return { ...prev, chats: updatedChats } as any;
     });
   }, []);
@@ -3149,10 +3161,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
 
   const deleteChat = useCallback(async (userId: string) => {
+    const uid = stateRef.current.currentUser?.id;
     setState(prev => {
       const chats = (prev as any).chats || [];
       const updatedChats = chats.filter((chat: Chat) => chat.participantId !== userId);
-      AsyncStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(updatedChats)).catch(console.error);
+      if (uid) {
+        AsyncStorage.setItem(`${STORAGE_KEYS.MESSAGES}_${uid}`, JSON.stringify(updatedChats)).catch(console.error);
+      }
       return { ...prev, chats: updatedChats } as any;
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -3336,6 +3351,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   
+
 const updateSelectedTopics = useCallback(async (topics: string[]) => {
   const validTopics = validateTopicIds(topics);
   

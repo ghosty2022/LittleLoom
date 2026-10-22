@@ -832,7 +832,21 @@ const PureChart = memo(({ data, mode, width, height }: any) => {
         const x2 = getX(i), y2 = getY(d.value);
         const len = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
         const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
-        return <View key={`l-${i}`} style={{ position: 'absolute', left: x1, top: y1, width: len, height: 2.5, backgroundColor: theme.primary, transform: [{ translateY: -1.25 }, { rotate: `${angle}deg` }], transformOrigin: '0% 50%', borderRadius: 1.5 }} />;
+        return (
+          <View
+            key={`l-${i}`}
+            style={{
+              position: 'absolute',
+              left: (x1 + x2) / 2 - len / 2,
+              top: (y1 + y2) / 2 - 1.25,
+              width: len,
+              height: 2.5,
+              backgroundColor: theme.primary,
+              transform: [{ rotate: `${angle}deg` }],
+              borderRadius: 1.5,
+            }}
+          />
+        );
       })}
       {data.map((d: any, i: number) => (
         <View key={`p-${i}`} style={{ position: 'absolute', left: getX(i) - 4, top: getY(d.value) - 4, width: 8, height: 8, borderRadius: 4, backgroundColor: theme.primary, borderWidth: 2, borderColor: theme.isDark ? DS.darkCard : DS.white }} />
@@ -1027,9 +1041,14 @@ export default function GrowthDashboardScreen({ navigation }: any) {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await new Promise(r => setTimeout(r, 400));
-    setRefreshing(false);
-  }, []);
+    try {
+      if (typeof loadBabies === 'function') await loadBabies();
+    } catch (e) {
+      if (__DEV__) console.warn('[GrowthDashboard] refresh failed:', e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadBabies]);
 
   const handleAddMeasurement = useCallback(async (data: Partial<GrowthMeasurement>) => {
     if (!currentBaby) return;

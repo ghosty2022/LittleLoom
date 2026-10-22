@@ -639,7 +639,7 @@ const SubActionSheet = React.memo(({
   };
 
   return (
-    <View style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', padding: 12, zIndex: 200 }]}>
+    <View style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', padding: 12, zIndex: 200, elevation: 200 }]}>
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={onClose} />
       <Animated.View style={[
         styles.sheetContent,

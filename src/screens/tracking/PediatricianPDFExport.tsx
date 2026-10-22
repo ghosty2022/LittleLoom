@@ -24,6 +24,7 @@ import { File, Directory, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import { useNavigation } from '@react-navigation/native';
 import { useCustomization } from '@/hooks/useCustomization';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { Ionicons } from '@expo/vector-icons';
@@ -824,6 +825,7 @@ const TemplateFieldComponent = ({
    MAIN SCREEN
    ═══════════════════════════════════════════════════════════════════════ */
 export const PediatricianPDFExport: React.FC = () => {
+  const navigation = useNavigation();
   const theme = useReportTheme();
   const insets = useSafeAreaInsets();
   const { currentBaby } = useBaby();
@@ -1695,12 +1697,7 @@ export const PediatricianPDFExport: React.FC = () => {
         <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <View style={styles.headerInner}>
           <TouchableOpacity
-            onPress={() => {
-              try {
-                const { navigation } = require('@react-navigation/native');
-                // Use window nav fallback if navigation not provided as prop
-              } catch {}
-            }}
+            onPress={() => navigation.goBack()}
             style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
           >
             <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />

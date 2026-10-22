@@ -139,8 +139,8 @@ const uploadImageToSupabase = async (localUri: string, babyId: string): Promise<
     const fileExt = localUri.split('.').pop()?.toLowerCase() || 'jpg';
     const fileName = `${babyId}_${Date.now()}.${fileExt}`;
     const filePath = `baby_avatars/${fileName}`;
-    const arrayBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-    const { error } = await supabase.storage.from('baby_avatars').upload(filePath, arrayBuffer, { contentType: `image/${fileExt}`, cacheControl: '3600', upsert: false });
+    const { decode } = require('base64-arraybuffer');
+    const { error } = await supabase.storage.from('baby_avatars').upload(filePath, decode(base64), { contentType: `image/${fileExt}`, cacheControl: '3600', upsert: false });
     if (error) return null;
     const { data: urlData } = supabase.storage.from('baby_avatars').getPublicUrl(filePath);
     return urlData.publicUrl;

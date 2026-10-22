@@ -1,6 +1,3 @@
-
-
-
 import React, {
   createContext,
   useCallback,
@@ -36,14 +33,6 @@ import { useBaby } from './BabyContext';
 
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { EntryService, mapRowToEntry } from '@/services/EntryService';
-
-
-
-
-
-
-
-
 
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
@@ -315,9 +304,6 @@ const getTrackerType = (trackerId: string): string => {
 };
 
 
-
-
-
 async function learnFromEntry(
   babyId: string,
   trackerId: string,
@@ -554,8 +540,6 @@ const generateInsights = (
 
 
 
-
-
 function useFamilyMembersSafe(): any[] {
   const [members, setMembers] = React.useState<any[]>([]);
 
@@ -565,11 +549,6 @@ function useFamilyMembersSafe(): any[] {
       try {
         const mod = await import('@/context/FamilyContext');
         if (cancelled) return;
-        
-        
-        
-        
-        
         const anyMod = mod as any;
         if (anyMod?.__getFamilySnapshot) {
           setMembers(anyMod.__getFamilySnapshot().members || []);
@@ -588,13 +567,9 @@ function useFamilyMembersSafe(): any[] {
 
 export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile } = useAuth();
-  
-  
-  
   useFamilyMembersSafe();
   const { triggerHaptic } = useCustomization();
   const { success, toast, alert: sweetAlert } = useSweetAlert();
-  
   
   const {
     getCurrentBabyId: getBabyIdFromContext,
@@ -602,7 +577,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     hasPermissionForBaby,
   } = useBaby();
 
-  
   const { enqueue: enqueueOffline } = useOfflineSync({
     onPermanentFailure: (op) => {
       if (__DEV__) {
@@ -636,13 +610,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const subscriptionRef = useRef<(() => void) | null>(null);
 
   // ── Account isolation ────────────────────────────────────────────
-  // Tracks which authenticated user the in-memory entries belong to.
-  // If the signed-in user changes (sign-out → sign-in, or account
-  // switch on the same device), we wipe entries BEFORE the new
-  // user's fetch runs, so the UI never renders another account's data.
-  //
-  // Starts as `null` so the FIRST render only *records* the user id
-  // without firing the wipe. The wipe fires only on a real change.
   const loadedForUserIdRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(userProfile?.id ?? null);
   useEffect(() => {
@@ -651,39 +618,15 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const loadedForBabyIdRef = useRef<string | null>(null);
   
-  
   const [currentBabyIdState, setCurrentBabyIdState] = useState<string | null>(
     () => getBabyIdFromContext()
   );
 
-  // NOTE: no lazy-init effect here. `refreshEntriesInternal` is the
-  // only place that writes `loadedForBabyIdRef`, and it treats
-  // `null` as "no previous baby" — so the first fetch after any
-  // transition safely skips the wipe. Adding a separate effect
-  // that pre-populates the ref would cause the wipe to fire on
-  // every baby switch even when it shouldn't.
-
-  
   useEffect(() => {
     currentBabyIdRef.current = currentBabyIdState;
   }, [currentBabyIdState]);
 
   // ── Account-change guard ─────────────────────────────────────────
-  // Sign-out / sign-in on the same device: `userProfile.id` changes.
-  // Immediately purge every piece of per-account state so the new
-  // account's first render can't leak the old account's entries.
-  //
-  // Two important details:
-  //   1. `loadedForUserIdRef` starts as `null`. The first hydration
-  //      just records the id — it does NOT wipe, because there's
-  //      nothing to wipe yet (state is already empty) and wiping
-  //      would race with the init effect that populates state.
-  //   2. We do NOT call `initTracker()` from here. `initTracker`
-  //      is declared later in this file and would be `undefined`
-  //      at this point in the closure, silently swallowed by the
-  //      try/catch. Instead, the init effect below (which already
-  //      listens to `userProfile?.id`) re-runs automatically when
-  //      the account changes — set `initRef = false` so it does.
   useEffect(() => {
     const nextUserId = userProfile?.id ?? null;
 
@@ -720,11 +663,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
   }, [userProfile?.id]);
 
-  
-  
-  
-
-  
+  // ── Baby subscription ────────────────────────────────────────────
   useEffect(() => {
     if (subscriptionRef.current) {
       subscriptionRef.current();
@@ -768,15 +707,10 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, []);
 
-  
-  
-  
-  
   const getCurrentBabyId = useCallback((): string | null => {
     return currentBabyIdRef.current;
   }, []);
 
-  
   const refreshEntriesInternal = useCallback(async () => {
     const babyId = currentBabyIdRef.current;
     if (!babyId) {
@@ -789,11 +723,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     // ── ISOLATION GUARD ──
-    // Using a ref (not a property on the function object) so the
-    // previous-baby marker survives callback recreation across renders.
-    // Without this, the first fetch after a baby switch or account
-    // switch rendered the previous baby's entries until the network
-    // round-trip completed (and permanently if it errored).
     if (
       loadedForBabyIdRef.current !== null &&
       loadedForBabyIdRef.current !== babyId
@@ -850,9 +779,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   /* ─── Permission helpers ──────────────────────────────────────────── */
 
-  
-  
-  
   const myRole = useMemo(() => {
     if (!userProfile) return null;
     const role = (userProfile as any)?.role;
@@ -860,14 +786,8 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         role === 'guardian' || role === 'viewer') {
       return role;
     }
-    
     return 'parent1';
   }, [userProfile]);
-
-  
-  
-  
-  
 
   const currentBabyPermissions = useMemo(() => {
     if (!currentBabyIdState) return null;
@@ -902,50 +822,48 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return tracker.permissions?.allowGuardiansCreate ?? false;
   }, [state.trackers, myRole, currentBabyPermissions]);
 
-const canEditEntry = useCallback((entry: TrackerEntry): boolean => {
-  if (!userProfile || !myRole) return false;
+  const canEditEntry = useCallback((entry: TrackerEntry): boolean => {
+    if (!userProfile || !myRole) return false;
 
-  const isOwn = entry.loggedBy === userProfile.id;
-
-  
-  if (currentBabyPermissions) {
-    if (isOwn && !currentBabyPermissions.canEditEntry) return false;
-    if (!isOwn && !currentBabyPermissions.canEditOthersEntries) return false;
-  } else {
-    if (!['parent1', 'parent2'].includes(myRole) && !isOwn) return false;
-  }
-
-  
-  if (['parent1', 'parent2'].includes(myRole)) return true;
-
-  
-  if (isOwn) {
-    const tracker = state.trackers.find(t => t.id === entry.trackerId);
-    const trackerAllows = tracker?.permissions?.allowGuardiansEditOwn ?? false;
-    if (!trackerAllows) return false;
-  }
-
-  return true;
-}, [userProfile, myRole, state.trackers, currentBabyPermissions]);
-
-const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
-  if (!userProfile || !myRole) return false;
-
-  if (currentBabyPermissions && !currentBabyPermissions.canDeleteEntry) return false;
-
-  if (['parent1', 'parent2'].includes(myRole)) return true;
-
-  if (myRole === 'guardian') {
     const isOwn = entry.loggedBy === userProfile.id;
-    return (
-      isOwn &&
-      state.trackers.find(t => t.id === entry.trackerId)?.permissions
-        .allowGuardiansDeleteOwn === true
-    );
-  }
 
-  return false;
-}, [userProfile, myRole, state.trackers, currentBabyPermissions]);
+    if (currentBabyPermissions) {
+      if (isOwn && !currentBabyPermissions.canEditEntry) return false;
+      if (!isOwn && !currentBabyPermissions.canEditOthersEntries) return false;
+    } else {
+      if (!['parent1', 'parent2'].includes(myRole) && !isOwn) return false;
+    }
+
+    if (['parent1', 'parent2'].includes(myRole)) return true;
+
+    if (isOwn) {
+      const tracker = state.trackers.find(t => t.id === entry.trackerId);
+      const trackerAllows = tracker?.permissions?.allowGuardiansEditOwn ?? false;
+      if (!trackerAllows) return false;
+    }
+
+    return true;
+  }, [userProfile, myRole, state.trackers, currentBabyPermissions]);
+
+  const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
+    if (!userProfile || !myRole) return false;
+
+    if (currentBabyPermissions && !currentBabyPermissions.canDeleteEntry) return false;
+
+    if (['parent1', 'parent2'].includes(myRole)) return true;
+
+    if (myRole === 'guardian') {
+      const isOwn = entry.loggedBy === userProfile.id;
+      return (
+        isOwn &&
+        state.trackers.find(t => t.id === entry.trackerId)?.permissions
+          .allowGuardiansDeleteOwn === true
+      );
+    }
+
+    return false;
+  }, [userProfile, myRole, state.trackers, currentBabyPermissions]);
+
   /* ─── Load helpers ───────────────────────────────────────────────── */
 
   const loadCustomTrackers = useCallback(async (): Promise<UnifiedTrackerConfig[]> => {
@@ -961,7 +879,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     try {
       const entries = await EntryService.getEntries({ babyId });
 
-      
       if (entries.length > 0) {
         EntryService.warmCache(babyId, entries).catch(() => {});
       }
@@ -969,9 +886,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       return entries;
     } catch (error) {
       console.warn('[Tracker] loadEntries failed, trying cache:', error);
-      
-      
-      
       try {
         const cached = await EntryService.getCachedEntries?.(babyId);
         return Array.isArray(cached) ? cached : [];
@@ -990,23 +904,13 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     }
   }, []);
 
-  
-
   /* ─── REAL-TIME SYNC ─────────────────────────────────────────────── */
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
 
-  
-  
-  
-  
-  
-  
-  
   useEffect(() => {
     const babyId = currentBabyIdState;
     if (!babyId) return;
 
-    
     if (realtimeChannelRef.current) {
       supabase.removeChannel(realtimeChannelRef.current);
       realtimeChannelRef.current = null;
@@ -1032,7 +936,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
             if (payload.eventType === 'INSERT') {
               const row = payload.new as any;
               const mapped = mapRowToEntry(row);
-              
               if (current.some(e => e.id === mapped.id)) return prev;
               updated = [mapped, ...current];
             } else if (payload.eventType === 'UPDATE') {
@@ -1046,7 +949,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
               return prev;
             }
 
-            
             const byTracker: Record<string, TrackerEntry[]> = {};
             updated.filter(e => !e.isDeleted).forEach(e => {
               if (!byTracker[e.trackerId]) byTracker[e.trackerId] = [];
@@ -1069,13 +971,9 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     };
   }, [currentBabyIdState]);
 
-  
-
   /* ─── Initialize ──────────────────────────────────────────────────── */
 
   const initTracker = useCallback(async () => {
-    // `initRef` is set to `false` by the account-change guard above,
-    // so this re-runs for the new account. Otherwise it's a no-op.
     if (initRef.current) return;
     initRef.current = true;
 
@@ -1084,7 +982,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 
       try {
         const babyId = getCurrentBabyId();
-      
 
         const [customTrackers, entries, lastTracker, reminders, dismissedRaw] = await Promise.all([
           loadCustomTrackers(),
@@ -1162,9 +1059,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
   }, [loadCustomTrackers, loadEntries, loadReminders, getCurrentBabyId]);
 
   // ─── Drive initialization ───────────────────────────────────────
-  // Runs on mount and again whenever the account or current baby
-  // changes. The account-change guard above sets `initRef = false`
-  // so the second run actually re-reads.
   useEffect(() => {
     initTracker();
   }, [initTracker, userProfile?.id, currentBabyIdState]);
@@ -1359,20 +1253,14 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 
   /* ─── ENTRY HELPERS ───────────────────────────────────────────────── */
 
-  /**
-   * Strip anything jsonb/PostgREST can't serialize (undefined, functions, NaN).
-   */
   const sanitizeForJsonb = useCallback((value: unknown): unknown => {
     if (value === undefined || value === null) return value;
     try {
       const seen = new WeakSet();
       return JSON.parse(
         JSON.stringify(value, (_key, v) => {
-          // Handle NaN/Infinity
           if (typeof v === 'number' && !isFinite(v)) return null;
-          // Handle undefined
           if (v === undefined) return null;
-          // Handle circular references
           if (typeof v === 'object' && v !== null) {
             if (seen.has(v)) return null;
             seen.add(v);
@@ -1385,9 +1273,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     }
   }, []);
 
-  /**
-   * Guarantee a clean string[] of URIs — never null, never undefined entries.
-   */
   const sanitizePhotoUris = useCallback((uris?: string[]): string[] => {
     if (!Array.isArray(uris)) return [];
     return uris.filter((u): u is string => typeof u === 'string' && u.length > 0);
@@ -1432,17 +1317,19 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       return null;
     }
 
+    // ── OUTER TRY: every code path inside here either returns or falls
+    //    into the catch below. This is the block the bundler complained
+    //    was missing a catch — the explicit catch is retained here.
     try {
       const newId = generateId();
       const now = new Date().toISOString();
       const timestamp = Date.now();
 
-      // ── CRASH FIX: sanitize everything before it touches Supabase ──
       const cleanPhotoUris = sanitizePhotoUris(options?.photoUris);
       const cleanTags = Array.isArray(options?.tags)
         ? options.tags.filter((t): t is string => typeof t === 'string' && t.length > 0)
         : [];
-              const cleanAiTags = Array.isArray(options?.aiTags)
+      const cleanAiTags = Array.isArray(options?.aiTags)
         ? options.aiTags.filter((t): t is string => typeof t === 'string' && t.length > 0)
         : [];
       const cleanData = sanitizeForJsonb(data) as Record<string, unknown>;
@@ -1531,28 +1418,9 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       }
 
       // ─── Use functional update to avoid clobbering concurrent adds ──
-      // Reading `state.entries` here would race with any other in-flight
-      // insert. The functional form always sees the latest committed state.
-      // We capture the latest entries into a local so the streak calculation
-      // below can use them without needing `state.entries` in deps.
-            const entriesSnapshot: TrackerEntry[] = [newEntry, ...(Array.isArray(state.entries) ? state.entries : [])];
+      const entriesSnapshot: TrackerEntry[] = [newEntry, ...(Array.isArray(state.entries) ? state.entries : [])];
       setState(prev => {
         const updatedEntries = [newEntry, ...prev.entries];
-        const updatedEntriesByTracker = { ...prev.entriesByTracker };
-        if (!updatedEntriesByTracker[trackerId]) {
-          updatedEntriesByTracker[trackerId] = [];
-        }
-        updatedEntriesByTracker[trackerId] = [
-          newEntry,
-          ...updatedEntriesByTracker[trackerId],
-        ];
-        return {
-          ...prev,
-          entries: updatedEntries,
-          entriesByTracker: updatedEntriesByTracker,
-          lastTrackerId: trackerId,
-        };
-      });
         const updatedEntriesByTracker = { ...prev.entriesByTracker };
         if (!updatedEntriesByTracker[trackerId]) {
           updatedEntriesByTracker[trackerId] = [];
@@ -1571,9 +1439,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 
       await AsyncStorage.setItem(TRACKER_STORAGE_KEYS.LAST_TRACKER, trackerId);
 
-      // ─── AI learning: fire-and-forget, but track failures ────────
-      //     Uses observeEntry() from bootstrap.ts (canonical metric map).
-      //     We don't await — the UI shouldn't block on ML.
+      // ─── AI learning: fire-and-forget ──────────────────────────────
       const learningPromise = Promise.allSettled([
         (async () => {
           const { observeEntry } = await import('@/services/ai/bootstrap');
@@ -1590,7 +1456,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
             failures.map(f => (f as PromiseRejectedResult).reason)
           );
         }
-      });
+      }).catch(() => {});
 
       // ─── Correlation cache invalidation (async, non-blocking) ──────
       (async () => {
@@ -1599,14 +1465,11 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
             '@/services/ai/CorrelationEngine'
           );
           await invalidateCorrelationCacheIfStale(babyId);
-        } catch {}
+        } catch {
+          // swallow — cache invalidation is best-effort
+        }
       })();
 
-      // ─── Cohort publishing is handled by bootstrapAI on next launch ───
-      //     (throttled to once per 12h by CohortPriors; no need to publish
-      //     on every single entry — that's wasteful and can race.)
-
-      
       const streak = calculateStreak(trackerId, entriesSnapshot, babyId);
       if (streak.currentStreak > 0 && streak.currentStreak % 7 === 0) {
         triggerHaptic('success');
@@ -1623,7 +1486,19 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       sweetAlert('Error', 'Failed to save entry', 'warning');
       return null;
     }
-  }, [canCreateEntry, getTracker, getCurrentBabyId, userProfile, myRole, triggerHaptic, success, sweetAlert, sanitizeForJsonb, sanitizePhotoUris]);
+  }, [
+    canCreateEntry,
+    getTracker,
+    getCurrentBabyId,
+    userProfile,
+    myRole,
+    triggerHaptic,
+    success,
+    sweetAlert,
+    sanitizeForJsonb,
+    sanitizePhotoUris,
+    enqueueOffline,
+  ]);
 
   const handleUpdateEntry = useCallback(async (
     entryId: string,
@@ -1639,6 +1514,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     }
 
     try {
+      // ─── Edit history (best-effort, never blocks the edit) ───────
       try {
         const rawHistory = await AsyncStorage.getItem(EDIT_HISTORY_KEY);
         const historyStore: Record<string, unknown[]> = rawHistory ? JSON.parse(rawHistory) : {};
@@ -1656,7 +1532,9 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         });
         historyStore[entryId] = versionList.slice(-20);
         await AsyncStorage.setItem(EDIT_HISTORY_KEY, JSON.stringify(historyStore));
-      } catch {}
+      } catch {
+        // swallow — history is non-critical
+      }
 
       const result = await EntryService.updateEntry({
         id: entryId,
@@ -1677,7 +1555,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         return false;
       }
 
-      
       setState(prev => {
         const updatedEntries = prev.entries.map(e =>
           e.id === entryId ? {
@@ -1685,7 +1562,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
             ...updates,
             editedBy: userProfile?.id,
             editedAt: Date.now(),
-            
             photoUris: updates.photoUris !== undefined
               ? sanitizePhotoUris(updates.photoUris)
               : e.photoUris,
@@ -1717,7 +1593,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         };
       });
 
-      
       if (updates.data && babyId) {
         const merged = { ...entry.data, ...updates.data } as Record<string, unknown>;
         learnFromEntry(babyId, entry.trackerId, merged, entry.timestamp).catch(() => {});
@@ -1749,7 +1624,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         return false;
       }
 
-      
       setState(prev => {
         const updatedEntries = prev.entries.map(e =>
           e.id === entryId ? { ...e, isDeleted: true } : e
@@ -2172,6 +2046,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     getCurrentBabyId,
   }), [
     state,
+    currentBabyIdState,
     getTracker,
     getTrackersByCategory,
     searchTrackers,
@@ -2218,15 +2093,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
     </TrackerContext.Provider>
   );
 };
-
-// ⚠️ Do NOT export useTracker here. The canonical hook lives in
-
-
-
-
-
-
-
 
 export { TrackerContext };
 export default TrackerProvider;
