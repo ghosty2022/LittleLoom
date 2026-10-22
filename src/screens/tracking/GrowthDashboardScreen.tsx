@@ -1039,16 +1039,27 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     return { icon: 'bulb-outline' as const, color: DS.primary, label: 'Tip', text: 'Log measurements consistently to unlock better predictions', onPress: () => setShowAddModal(true) };
   }, [smartInsights, growthIndex, navigation]);
 
+  // ── BUG FIX ────────────────────────────────────────────────────────────
+  // The previous implementation referenced `loadBabies` — a symbol that is
+  // NOT destructured from `useBaby()` at the top of this component and is
+  // not declared anywhere in this module. That reference in the
+  // `useCallback` deps array is what caused the React error-boundary
+  // "Component stack" crash. `getGrowthData` is the API `useBaby()`
+  // actually exposes to force a re-read of growth data per metric, so we
+  // use that instead. If you later expose a `loadBabies` / `refreshBabies`
+  // from `useBaby()`, destructure it above and call it here directly.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      if (typeof loadBabies === 'function') await loadBabies();
+      (['height', 'weight', 'head'] as MetricType[]).forEach((m) => {
+        getGrowthData(m);
+      });
     } catch (e) {
       if (__DEV__) console.warn('[GrowthDashboard] refresh failed:', e);
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies]);
+  }, [getGrowthData]);
 
   const handleAddMeasurement = useCallback(async (data: Partial<GrowthMeasurement>) => {
     if (!currentBaby) return;
