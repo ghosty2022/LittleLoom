@@ -57,6 +57,17 @@ const DS = {
   },
 };
 
+/* ── Unified motion constants (identical feel across toast/modal/sheet) ── */
+const MOTION = {
+  spring: { damping: 18, stiffness: 220, mass: 0.9 },
+  enterDuration: 260,
+  exitDuration: 200,
+  overlayIn: 200,
+  overlayOut: 180,
+  easingIn: Easing.out(Easing.cubic),
+  easingOut: Easing.in(Easing.cubic),
+};
+
 /* ═══════════════════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -121,7 +132,7 @@ const ALERT_CONFIG: Record<AlertType, {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GLOBAL EVENT BUS
+   GLOBAL EVENT BUS — single owner, atomic queue drain
    ═══════════════════════════════════════════════════════════════════════════ */
 type AlertListener = (config: SweetAlertConfig) => void;
 type HideListener = () => void;
@@ -130,23 +141,27 @@ const alertListeners: Set<AlertListener> = new Set();
 const hideListeners: Set<HideListener> = new Set();
 const pendingQueue: SweetAlertConfig[] = [];
 const MAX_QUEUE_SIZE = 50;
-let isProviderMounted = false;
+let providerMountCount = 0;
 
 const flushQueue = () => {
-  if (!isProviderMounted || pendingQueue.length === 0) return;
-  const queue = [...pendingQueue];
-  pendingQueue.length = 0;
-  queue.forEach((config) => {
-    alertListeners.forEach((listener) => listener(config));
-  });
+  // Only the LAST-registered listener (the active provider) receives replayed items.
+  // Guard: if multiple providers ever exist, only the most recent owns the bus.
+  if (providerMountCount <= 0 || pendingQueue.length === 0) return;
+  const queue = pendingQueue.splice(0); // atomic drain — no re-replay possible
+  const listeners = Array.from(alertListeners);
+  const owner = listeners[listeners.length - 1];
+  if (!owner) return;
+  queue.forEach((config) => owner(config));
 };
 
 const emitShow = (config: SweetAlertConfig) => {
-  if (!isProviderMounted) {
+  if (providerMountCount <= 0) {
     if (pendingQueue.length < MAX_QUEUE_SIZE) pendingQueue.push(config);
     return;
   }
-  alertListeners.forEach((listener) => listener(config));
+  const listeners = Array.from(alertListeners);
+  const owner = listeners[listeners.length - 1];
+  if (owner) owner(config);
 };
 
 const emitHide = () => {
@@ -158,7 +173,7 @@ export const showSweetAlert = (config: SweetAlertConfig) => emitShow(config);
 export const hideSweetAlert = () => emitHide();
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PULSING DOT (aura)
+   PULSING DOT
    ═══════════════════════════════════════════════════════════════════════════ */
 const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
   const pulse = useSharedValue(1);
@@ -223,7 +238,7 @@ const ProgressBar: React.FC<{ progress: number; color: string }> = React.memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TOAST
+   TOAST — single instance per id, self-dismissing, uses unified MOTION
    ═══════════════════════════════════════════════════════════════════════════ */
 const SweetAlertToast: React.FC<{ config: SweetAlertConfig; isDark: boolean; onDismiss: () => void }> = React.memo(({ config, isDark, onDismiss }) => {
   const type = config.type || 'info';
@@ -234,7 +249,7 @@ const SweetAlertToast: React.FC<{ config: SweetAlertConfig; isDark: boolean; onD
 
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(position === 'top' ? -80 : position === 'bottom' ? 80 : 30);
-  const scale = useSharedValue(0.9);
+  const scale = useSharedValue(0.92);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissCalledRef = useRef(false);
 
@@ -244,19 +259,19 @@ const SweetAlertToast: React.FC<{ config: SweetAlertConfig; isDark: boolean; onD
     if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = null; }
 
     if (reduceMotion) { runOnJS(onDismiss)(); return; }
-    opacity.value = withTiming(0, { duration: 220 });
-    translateY.value = withTiming(position === 'top' ? -60 : position === 'bottom' ? 60 : 20, { duration: 220 });
-    scale.value = withTiming(0.9, { duration: 220 });
-    dismissTimerRef.current = setTimeout(() => runOnJS(onDismiss)(), 220);
+    opacity.value = withTiming(0, { duration: MOTION.exitDuration, easing: MOTION.easingOut });
+    translateY.value = withTiming(position === 'top' ? -60 : position === 'bottom' ? 60 : 20, { duration: MOTION.exitDuration, easing: MOTION.easingOut });
+    scale.value = withTiming(0.92, { duration: MOTION.exitDuration, easing: MOTION.easingOut });
+    dismissTimerRef.current = setTimeout(() => runOnJS(onDismiss)(), MOTION.exitDuration);
   }, [reduceMotion, position, onDismiss, opacity, translateY, scale]);
 
   useEffect(() => {
     if (reduceMotion) {
       opacity.value = 1; translateY.value = 0; scale.value = 1;
     } else {
-      opacity.value = withTiming(1, { duration: 300 });
-      translateY.value = withSpring(0, { damping: 15, stiffness: 200 });
-      scale.value = withSpring(1, { damping: 12 });
+      opacity.value = withTiming(1, { duration: MOTION.enterDuration, easing: MOTION.easingIn });
+      translateY.value = withSpring(0, MOTION.spring);
+      scale.value = withSpring(1, MOTION.spring);
     }
     if (config.autoDismiss !== false) {
       dismissTimerRef.current = setTimeout(dismissToast, duration);
@@ -313,22 +328,22 @@ const SweetAlertPrompt: React.FC<{ config: SweetAlertConfig; isDark: boolean; th
   const inputBgColor = isDark ? 'rgba(255,255,255,0.06)' : DS.gray100;
 
   const overlayOpacity = useSharedValue(0);
-  const modalScale = useSharedValue(0.88);
+  const modalScale = useSharedValue(0.92);
   const modalTranslateY = useSharedValue(20);
 
   useEffect(() => {
-    overlayOpacity.value = withTiming(1, { duration: 200 });
-    modalScale.value = withSpring(1, { damping: 15, stiffness: 220 });
-    modalTranslateY.value = withSpring(0, { damping: 15 });
+    overlayOpacity.value = withTiming(1, { duration: MOTION.overlayIn, easing: MOTION.easingIn });
+    modalScale.value = withSpring(1, MOTION.spring);
+    modalTranslateY.value = withSpring(0, MOTION.spring);
     const t = setTimeout(() => inputRef.current?.focus(), 300);
     return () => clearTimeout(t);
   }, []);
 
   const animateOut = useCallback((callback?: () => void) => {
-    overlayOpacity.value = withTiming(0, { duration: 180 });
-    modalScale.value = withTiming(0.9, { duration: 180 });
-    modalTranslateY.value = withTiming(20, { duration: 180 });
-    setTimeout(() => callback?.(), 180);
+    overlayOpacity.value = withTiming(0, { duration: MOTION.overlayOut, easing: MOTION.easingOut });
+    modalScale.value = withTiming(0.92, { duration: MOTION.exitDuration, easing: MOTION.easingOut });
+    modalTranslateY.value = withTiming(20, { duration: MOTION.exitDuration, easing: MOTION.easingOut });
+    setTimeout(() => callback?.(), MOTION.exitDuration);
   }, []);
 
   const handleConfirm = useCallback(() => {
@@ -429,20 +444,20 @@ const SweetAlertModal: React.FC<{ config: SweetAlertConfig; isDark: boolean; the
   const borderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
 
   const overlayOpacity = useSharedValue(0);
-  const modalScale = useSharedValue(0.88);
+  const modalScale = useSharedValue(0.92);
   const modalTranslateY = useSharedValue(20);
 
   useEffect(() => {
-    overlayOpacity.value = withTiming(1, { duration: 200 });
-    modalScale.value = withSpring(1, { damping: 15, stiffness: 220 });
-    modalTranslateY.value = withSpring(0, { damping: 15 });
+    overlayOpacity.value = withTiming(1, { duration: MOTION.overlayIn, easing: MOTION.easingIn });
+    modalScale.value = withSpring(1, MOTION.spring);
+    modalTranslateY.value = withSpring(0, MOTION.spring);
   }, []);
 
   const animateOut = useCallback((callback?: () => void) => {
-    overlayOpacity.value = withTiming(0, { duration: 180 });
-    modalScale.value = withTiming(0.9, { duration: 180 });
-    modalTranslateY.value = withTiming(20, { duration: 180 });
-    setTimeout(() => callback?.(), 180);
+    overlayOpacity.value = withTiming(0, { duration: MOTION.overlayOut, easing: MOTION.easingOut });
+    modalScale.value = withTiming(0.92, { duration: MOTION.exitDuration, easing: MOTION.easingOut });
+    modalTranslateY.value = withTiming(20, { duration: MOTION.exitDuration, easing: MOTION.easingOut });
+    setTimeout(() => callback?.(), MOTION.exitDuration);
   }, []);
 
   const handleConfirm = useCallback(() => {
@@ -547,16 +562,16 @@ const SweetAlertBottomSheet: React.FC<{ config: SweetAlertConfig; isDark: boolea
   const dismissCalledRef = useRef(false);
 
   useEffect(() => {
-    opacity.value = withTiming(1, { duration: 200 });
-    translateY.value = withSpring(0, { damping: 20, stiffness: 250 });
+    opacity.value = withTiming(1, { duration: MOTION.overlayIn, easing: MOTION.easingIn });
+    translateY.value = withSpring(0, MOTION.spring);
   }, []);
 
   const dismiss = useCallback(() => {
     if (dismissCalledRef.current) return;
     dismissCalledRef.current = true;
-    opacity.value = withTiming(0, { duration: 200 });
-    translateY.value = withTiming(SCREEN_H * 0.5, { duration: 250 });
-    setTimeout(onDismiss, 250);
+    opacity.value = withTiming(0, { duration: MOTION.overlayOut, easing: MOTION.easingOut });
+    translateY.value = withTiming(SCREEN_H * 0.5, { duration: MOTION.exitDuration, easing: MOTION.easingOut });
+    setTimeout(onDismiss, MOTION.exitDuration);
   }, [onDismiss]);
 
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
@@ -602,7 +617,8 @@ const SweetAlertBottomSheet: React.FC<{ config: SweetAlertConfig; isDark: boolea
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PROVIDER
+   PROVIDER — single-owner bus, atomic queue, toast cleared on modal open,
+   dedup guard against identical configs fired in the same tick
    ═══════════════════════════════════════════════════════════════════════════ */
 interface AlertQueueItem { id: string; config: SweetAlertConfig; }
 
@@ -619,28 +635,51 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({ children
   const [sheetQueue, setSheetQueue] = useState<AlertQueueItem[]>([]);
   const [promptQueue, setPromptQueue] = useState<AlertQueueItem[]>([]);
   const idCounter = useRef(0);
+  const lastFiredRef = useRef<{ signature: string; at: number } | null>(null);
+
+  // Keep reduceMotion in a ref so `sweetAlert` stays identity-stable forever.
+  const reduceMotionRef = useRef(reduceMotion);
+  useEffect(() => { reduceMotionRef.current = reduceMotion; }, [reduceMotion]);
 
   const sweetAlert = useCallback((config: SweetAlertConfig) => {
-    const id = `alert_${++idCounter.current}_${Date.now()}`;
-    const fullConfig = { ...config, reduceMotion: config.reduceMotion ?? reduceMotion };
+    // Dedup guard: identical title+message+style fired within 500ms → ignore.
+    const signature = `${config.style || 'toast'}|${config.type || 'info'}|${config.title}|${config.message || ''}`;
+    const now = Date.now();
+    if (lastFiredRef.current && lastFiredRef.current.signature === signature && now - lastFiredRef.current.at < 500) {
+      return;
+    }
+    lastFiredRef.current = { signature, at: now };
+
+    const id = `alert_${++idCounter.current}_${now}`;
+    const fullConfig = { ...config, reduceMotion: config.reduceMotion ?? reduceMotionRef.current };
 
     if (config.isPrompt) {
+      // Prompts are exclusive overlays — clear toasts so nothing stacks behind.
+      setToastQueue([]);
       setPromptQueue((prev) => [...prev, { id, config: fullConfig }]);
     } else {
       const style = fullConfig.style || 'toast';
-      if (style === 'modal') setModalQueue((prev) => [...prev, { id, config: fullConfig }]);
-      else if (style === 'bottom-sheet') setSheetQueue((prev) => [...prev, { id, config: fullConfig }]);
-      else setToastQueue((prev) => [...prev, { id, config: fullConfig }]);
+      if (style === 'modal') {
+        setToastQueue([]);          // ← critical: no toast behind a modal
+        setModalQueue((prev) => [...prev, { id, config: fullConfig }]);
+      } else if (style === 'bottom-sheet') {
+        setToastQueue([]);          // ← same for sheets
+        setSheetQueue((prev) => [...prev, { id, config: fullConfig }]);
+      } else {
+        setToastQueue((prev) => [...prev, { id, config: fullConfig }]);
+      }
     }
 
     if (fullConfig.haptic !== false && fullConfig.type !== 'loading') {
       const t = fullConfig.type || 'info';
       Haptics.notificationAsync(ALERT_CONFIG[t].hapticType).catch(() => {});
     }
-  }, [reduceMotion]);
+  }, []);
 
   useEffect(() => {
-    isProviderMounted = true;
+    // Register as the active provider. If a stale provider is unmounting
+    // concurrently, the most-recently-added listener wins (see emitShow).
+    providerMountCount += 1;
     const handleShow: AlertListener = (config) => sweetAlert(config);
     const handleHide: HideListener = () => {
       setModalQueue([]);
@@ -650,9 +689,13 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({ children
     };
     alertListeners.add(handleShow);
     hideListeners.add(handleHide);
-    flushQueue();
+
+    // Give the previous provider's cleanup a tick to unregister, then flush.
+    const t = setTimeout(flushQueue, 0);
+
     return () => {
-      isProviderMounted = false;
+      clearTimeout(t);
+      providerMountCount = Math.max(0, providerMountCount - 1);
       alertListeners.delete(handleShow);
       hideListeners.delete(handleHide);
     };
