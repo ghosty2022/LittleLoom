@@ -1164,7 +1164,35 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (__DEV__) console.log('[BabyContext] Auth state changed:', event);
 
         if (event === 'SIGNED_IN' && session?.user) {
-          currentUserIdRef.current = session.user.id;
+          const previousUserId = currentUserIdRef.current;
+          const nextUserId = session.user.id;
+
+          // Account switch on the same device: wipe everything before
+          // loading the new user's babies. Otherwise the previous
+          // user's baby list flashes (and is used as the fallback
+          // currentBaby) until the new fetch completes.
+          if (previousUserId && previousUserId !== nextUserId) {
+            try {
+              await AsyncStorage.multiRemove([
+                STORAGE_KEYS.BABIES_CACHE_KEY,
+                STORAGE_KEYS.CURRENT_BABY_ID,
+                STORAGE_KEYS.LAST_SYNC_KEY,
+              ]);
+            } catch {}
+            if (isMounted.current) {
+              setState(prev => ({
+                ...prev,
+                babies: [],
+                currentBabyId: null,
+                currentBaby: null,
+                isInitialized: false,
+                userRoles: {},
+                userPermissions: {},
+              }));
+            }
+          }
+
+          currentUserIdRef.current = nextUserId;
           initRef.current = false;
           backfillRanRef.current = false;
           setTimeout(() => {
@@ -1177,6 +1205,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           initRef.current = false;
           backfillRanRef.current = false;
           lastBroadcastedBabyIdRef.current = null;
+
+          // Purge the on-disk babies cache so a different account
+          // signing in on this device doesn't inherit the previous
+          // account's baby list as an offline fallback.
+          try {
+            await AsyncStorage.multiRemove([
+              STORAGE_KEYS.BABIES_CACHE_KEY,
+              STORAGE_KEYS.CURRENT_BABY_ID,
+              STORAGE_KEYS.LAST_SYNC_KEY,
+            ]);
+          } catch {}
 
           if (isMounted.current) {
             setState(prev => ({
@@ -1719,7 +1758,8 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           photos: 0,
           createdAt: now.toISOString(),
           lastUpdated: now.toISOString(),
-          age: calculateAge(data.birthDate),
+          birthDate: normalized.birthDate,
+          age: calculateAge(normalized.birthDate),
           role: 'parent1',
         };
 
@@ -2486,12 +2526,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }));
         }
 
-        // Fire-and-forget DB counter bump — best effort
+        // Fire-and-forget DB counter bump — best effort, race-safe
         try {
+          const { data: currentRow } = await supabase
+            .from('babies')
+            .select('milestones_count')
+            .eq('id', milestone.babyId)
+            .maybeSingle();
+          const nextCount = (currentRow?.milestones_count || 0) + 1;
           await supabase
             .from('babies')
             .update({
-              milestones_count: (state.babies.find(b => b.id === milestone.babyId)?.milestones || 0) + 1,
+              milestones_count: nextCount,
               updated_at: new Date().toISOString(),
             })
             .eq('id', milestone.babyId);

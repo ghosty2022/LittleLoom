@@ -275,6 +275,41 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const familyCodeRef = useRef<string | null>(null);
   const userProfileRef = useRef(userProfile);
 
+  // ── Account-change guard ─────────────────────────────────────────
+  // A new account on the same device must not see the previous
+  // account's family chats, messages, or family code.
+  const loadedForUserIdRef = useRef<string | null>(userProfile?.id ?? null);
+  useEffect(() => {
+    const nextId = userProfile?.id ?? null;
+    if (loadedForUserIdRef.current === nextId) return;
+
+    loadedForUserIdRef.current = nextId;
+
+    // Reset in-memory state.
+    isInitializedRef.current = false;
+    chatsRef.current = [];
+    messagesRef.current = {};
+    familyCodeRef.current = null;
+
+    if (isMountedRef.current) {
+      setState(prev => ({
+        ...prev,
+        chats: [],
+        messages: {},
+        typingUsers: {},
+        familyCode: null,
+        currentChatId: null,
+        isSynced: false,
+        isLoading: !!nextId,
+      }));
+    }
+
+    // Re-load for the new user (if signed in).
+    if (nextId) {
+      loadFamilyCode().catch(() => {});
+    }
+  }, [userProfile?.id, loadFamilyCode]);
+
   /* ─── Keep refs synchronised with state ─────────────────────── */
   useEffect(() => { chatsRef.current = state.chats; }, [state.chats]);
   useEffect(() => { messagesRef.current = state.messages; }, [state.messages]);
@@ -1005,13 +1040,17 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const updatedChats = prev.chats.map(c =>
           c.id === chatId ? { ...c, lastMessage: newMessage, updatedAt: now } : c,
         );
+        const updatedMessages = {
+          ...prev.messages,
+          [chatId]: [...(prev.messages[chatId] ?? []), newMessage],
+        };
+        // Sync refs immediately so subsequent reads (markChatRead, resendMessage, etc.) see fresh data.
+        chatsRef.current = updatedChats;
+        messagesRef.current = updatedMessages;
         return {
           ...prev,
           chats: updatedChats,
-          messages: {
-            ...prev.messages,
-            [chatId]: [...(prev.messages[chatId] ?? []), newMessage],
-          },
+          messages: updatedMessages,
         };
       });
 

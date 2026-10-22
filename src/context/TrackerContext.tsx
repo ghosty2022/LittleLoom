@@ -640,26 +640,28 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // If the signed-in user changes (sign-out → sign-in, or account
   // switch on the same device), we wipe entries BEFORE the new
   // user's fetch runs, so the UI never renders another account's data.
+  //
+  // Starts as `null` so the FIRST render only *records* the user id
+  // without firing the wipe. The wipe fires only on a real change.
   const loadedForUserIdRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(userProfile?.id ?? null);
   useEffect(() => {
     currentUserIdRef.current = userProfile?.id ?? null;
   }, [userProfile?.id]);
 
-    const loadedForBabyIdRef = useRef<string | null>(null);
+  const loadedForBabyIdRef = useRef<string | null>(null);
   
   
   const [currentBabyIdState, setCurrentBabyIdState] = useState<string | null>(
     () => getBabyIdFromContext()
   );
 
-  // Initialize the baby marker lazily so the guard from B3
-  // doesn't wipe a legitimately-initialized empty array on first mount.
-  useEffect(() => {
-    if (loadedForBabyIdRef.current === null && currentBabyIdState) {
-      loadedForBabyIdRef.current = currentBabyIdState;
-    }
-  }, [currentBabyIdState]);
+  // NOTE: no lazy-init effect here. `refreshEntriesInternal` is the
+  // only place that writes `loadedForBabyIdRef`, and it treats
+  // `null` as "no previous baby" — so the first fetch after any
+  // transition safely skips the wipe. Adding a separate effect
+  // that pre-populates the ref would cause the wipe to fire on
+  // every baby switch even when it shouldn't.
 
   
   useEffect(() => {
@@ -670,14 +672,30 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Sign-out / sign-in on the same device: `userProfile.id` changes.
   // Immediately purge every piece of per-account state so the new
   // account's first render can't leak the old account's entries.
+  //
+  // Two important details:
+  //   1. `loadedForUserIdRef` starts as `null`. The first hydration
+  //      just records the id — it does NOT wipe, because there's
+  //      nothing to wipe yet (state is already empty) and wiping
+  //      would race with the init effect that populates state.
+  //   2. We do NOT call `initTracker()` from here. `initTracker`
+  //      is declared later in this file and would be `undefined`
+  //      at this point in the closure, silently swallowed by the
+  //      try/catch. Instead, the init effect below (which already
+  //      listens to `userProfile?.id`) re-runs automatically when
+  //      the account changes — set `initRef = false` so it does.
   useEffect(() => {
     const nextUserId = userProfile?.id ?? null;
-    const prevUserId = loadedForUserIdRef.current;
 
-    if (nextUserId === prevUserId) return;
+    if (loadedForUserIdRef.current === null) {
+      loadedForUserIdRef.current = nextUserId;
+      return;
+    }
+
+    if (loadedForUserIdRef.current === nextUserId) return;
 
     if (__DEV__) {
-      console.log('[TrackerContext] Account changed:', prevUserId, '→', nextUserId);
+      console.log('[TrackerContext] Account changed:', loadedForUserIdRef.current, '→', nextUserId);
     }
 
     loadedForUserIdRef.current = nextUserId;
@@ -686,6 +704,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     initRef.current = false;
     dismissedInsightIdsRef.current = new Set();
     isRefreshingRef.current = false;
+    loadedForBabyIdRef.current = null;
 
     setState(prev => ({
       ...prev,
@@ -699,14 +718,6 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         insights: [],
       },
     }));
-
-    // Re-run initialization for the new user.
-    if (nextUserId) {
-      // Defer so the state wipe commits first.
-      setTimeout(() => {
-        try { initTracker(); } catch {}
-      }, 0);
-    }
   }, [userProfile?.id]);
 
   
@@ -1056,12 +1067,6 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
         realtimeChannelRef.current = null;
       }
     };
-    return () => {
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-    };
   }, [currentBabyIdState]);
 
   
@@ -1069,6 +1074,8 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
   /* ─── Initialize ──────────────────────────────────────────────────── */
 
   const initTracker = useCallback(async () => {
+    // `initRef` is set to `false` by the account-change guard above,
+    // so this re-runs for the new account. Otherwise it's a no-op.
     if (initRef.current) return;
     initRef.current = true;
 
@@ -1077,6 +1084,7 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 
       try {
         const babyId = getCurrentBabyId();
+      
 
         const [customTrackers, entries, lastTracker, reminders, dismissedRaw] = await Promise.all([
           loadCustomTrackers(),
@@ -1152,6 +1160,14 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
 
     init();
   }, [loadCustomTrackers, loadEntries, loadReminders, getCurrentBabyId]);
+
+  // ─── Drive initialization ───────────────────────────────────────
+  // Runs on mount and again whenever the account or current baby
+  // changes. The account-change guard above sets `initRef = false`
+  // so the second run actually re-reads.
+  useEffect(() => {
+    initTracker();
+  }, [initTracker, userProfile?.id, currentBabyIdState]);
 
   /* ─── Update progressive state ───────────────────────────────────── */
 
@@ -1519,10 +1535,24 @@ const canDeleteEntry = useCallback((entry: TrackerEntry): boolean => {
       // insert. The functional form always sees the latest committed state.
       // We capture the latest entries into a local so the streak calculation
       // below can use them without needing `state.entries` in deps.
-      let entriesSnapshot: TrackerEntry[] = state.entries;
+            const entriesSnapshot: TrackerEntry[] = [newEntry, ...(Array.isArray(state.entries) ? state.entries : [])];
       setState(prev => {
-        entriesSnapshot = [newEntry, ...prev.entries];
         const updatedEntries = [newEntry, ...prev.entries];
+        const updatedEntriesByTracker = { ...prev.entriesByTracker };
+        if (!updatedEntriesByTracker[trackerId]) {
+          updatedEntriesByTracker[trackerId] = [];
+        }
+        updatedEntriesByTracker[trackerId] = [
+          newEntry,
+          ...updatedEntriesByTracker[trackerId],
+        ];
+        return {
+          ...prev,
+          entries: updatedEntries,
+          entriesByTracker: updatedEntriesByTracker,
+          lastTrackerId: trackerId,
+        };
+      });
         const updatedEntriesByTracker = { ...prev.entriesByTracker };
         if (!updatedEntriesByTracker[trackerId]) {
           updatedEntriesByTracker[trackerId] = [];

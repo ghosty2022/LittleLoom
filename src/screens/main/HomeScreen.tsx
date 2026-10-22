@@ -2711,7 +2711,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    pointerEvents: 'box-none',
   },
   headerTitle: {
     fontSize: 20,

@@ -894,7 +894,7 @@ export default function RemindersScreen({ navigation, route }: Props) {
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEYS.REMINDERS);
       const all: Reminder[] = saved ? JSON.parse(saved) : [];
-      const other = all.filter(r => r.babyId && r.babyId !== baby?.id);
+      const other = baby?.id ? all.filter(r => r.babyId && r.babyId !== baby.id) : all;
       await AsyncStorage.setItem(STORAGE_KEYS.REMINDERS, JSON.stringify([...other, ...newReminders]));
     } catch { showToast('error', 'Save Failed', 'Could not save'); }
   };

@@ -133,7 +133,7 @@ const getCacheSize = async (): Promise<number> => {
   try {
     const info = await FileSystem.getInfoAsync(CACHE_DIR);
     if (!info.exists) return 0;
-    
+    if ('size' in info && typeof info.size === 'number') return info.size;
     return 0;
   } catch {
     return 0;

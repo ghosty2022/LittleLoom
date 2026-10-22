@@ -255,25 +255,47 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     streakData: { currentStreak: 0, longestStreak: 0, atRisk: false, hoursLeft: 0 },
     correlations: [],
     predictiveAchievements: [],
-  });
+    });
 
-    
+  // ── Mounted guard ────────────────────────────────────────────────
+  // Several async effects below read this before calling setState.
+  // Without it, the account-change guard below throws a
+  // ReferenceError on the first sign-in of every session and
+  // crashes the whole provider subtree.
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
-
-  
   const prevEntriesRef = useRef<any[]>([]);
   const prevGrowthDataRef = useRef<any[]>([]);
   const prevBabyIdRef = useRef<string | null>(null);
-  const prevUserIdRef = useRef<string | null>(userProfile?.id ?? null);
+  const prevUserIdRef = useRef<string | null>(null);
   const processingRef = useRef(false);
 
   // ── Account-change guard ─────────────────────────────────────────
   // If the signed-in user changes, wipe the in-memory growth score,
   // reminders, achievements, and correlations so a new account never
   // inherits the previous account's derived data.
+  //
+  // IMPORTANT: `prevUserIdRef` starts as `null` so the FIRST render
+  // (when userProfile is not yet hydrated) records the real id without
+  // firing the wipe. The wipe only runs when we transition from a
+  // known previous user to a different one.
   useEffect(() => {
     const nextUserId = userProfile?.id ?? null;
+
+    // First hydration — just record and bail.
+    if (prevUserIdRef.current === null) {
+      prevUserIdRef.current = nextUserId;
+      return;
+    }
+
     if (prevUserIdRef.current === nextUserId) return;
     prevUserIdRef.current = nextUserId;
 

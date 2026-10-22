@@ -266,7 +266,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (authProfile?.id) {
       loadBabyData();
     }
-  }, [authProfile?.id, babyFromContext?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authProfile?.id, babyFromContext?.id, babyIdFromContext]);
 
   const isOwner = useMemo(() => {
     const effectiveProfile = authProfile;

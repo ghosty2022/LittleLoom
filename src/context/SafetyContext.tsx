@@ -4,7 +4,7 @@
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
-import { Contact } from 'expo-contacts';
+import * as Contacts from 'expo-contacts';
 import React, {
   useCallback,
   useContext,
@@ -981,7 +981,7 @@ export const SafetyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         `Are you sure you want to call ${number}?`,
         async () => {
           try {
-            await Linking.openURL(`tel:${number.replace(/\\D/g, '')}`);
+            await Linking.openURL(`tel:${number.replace(/\D/g, '')}`);
 
             const newLog: EmergencyLog = {
               id: Date.now().toString(),

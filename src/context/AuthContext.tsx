@@ -1013,6 +1013,14 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
     try {
       if (__DEV__) console.log('[Auth] Starting sign out process...');
 
+      // ── CRITICAL: capture the user id BEFORE signOut() ──────────
+      // `supabase.auth.signOut()` synchronously fires the auth-state
+      // listener that sets `userProfile = null`. If we read the id
+      // after that, it's always null → the per-user purge below
+      // would silently be skipped, leaving the previous account's
+      // posts / achievements / community state on disk.
+      const signedOutUserId = stateRef.current.userProfile?.id;
+
       await AsyncStorage.setItem('littleloom_security_lock', 'false');
       await supabase.auth.signOut({ scope: 'local' });
 
@@ -1024,6 +1032,8 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
       ]);
+
+      // `signedOutUserId` was captured before signOut() above.
 
       await AsyncStorage.multiRemove([
         ASYNC_KEYS.ONBOARDING_COMPLETE,
@@ -1040,6 +1050,60 @@ const signUp = useCallback(async (fullName: string, email: string, password: str
         '@littleloom_smart_notifications',
         '@littleloom_bayes_backfilled_v1',
       ]);
+
+      // ── Per-user purge ─────────────────────────────────────────
+      // Wipes every user-scoped key for the account that's signing
+      // out, so a subsequent sign-in (same or different account) on
+      // this device starts clean. Without this, a new account
+      // inherited the previous account's posts, achievements,
+      // community selections, and chat state.
+      if (signedOutUserId) {
+        const keysToRemove = [
+          '@community_posts_v2',
+          '@community_likes_v2',
+          '@community_bookmarks_v2',
+          '@community_reposts_v2',
+          '@community_notifications_v2',
+          '@community_messages_v2',
+          '@community_blocked_users_v2',
+          '@community_user_stats_v2',
+          '@community_selected_topics_v2',
+          '@community_popular_posts_v2',
+          '@community_trending_topics_v2',
+          '@community_user_followers_v2',
+          '@community_user_following_v2',
+          '@community_user_profiles_v2',
+          '@community_last_sync_v2',
+          '@littleloom_achievements_unlocked_v2',
+          '@littleloom_achievements_unlocked_at',
+          '@littleloom_dismissed_reminders',
+          '@littleloom_tracker_correlations',
+          '@littleloom_has_skipped_baby',
+          '@littleloom_current_baby_id',
+          '@littleloom_babies_cache',
+          '@littleloom_last_baby_sync',
+          '@littleloom_baby_sync_version',
+          '@littleloom_current_family_code',
+          '@littleloom_typing_status',
+          '@littleloom_favorites_',
+          '@littleloom_imported_tracks',
+          '@littleloom_sleep_timer',
+          '@littleloom_dismissed_tracker_insights',
+          '@littleloom_edit_history_v1',
+          'littleloom_safety_data_v2',
+          'littleloom_emergency_logs_v2',
+          'littleloom_safety_streak_v2',
+          'littleloom_doctor_reports_v2',
+          'littleloom_community_profile',
+          'littleloom_username_registry',
+          'littleloom_profile_sync_queue',
+        ];
+
+        // Scoped variants (suffixed with `_${userId}`).
+        await AsyncStorage.multiRemove(
+          keysToRemove.flatMap((k) => [k, `${k}_${signedOutUserId}`]),
+        );
+      }
 
       clearUserIdCache();
 
