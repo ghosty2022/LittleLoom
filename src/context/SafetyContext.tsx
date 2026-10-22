@@ -1,6 +1,3 @@
-
-
-
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
@@ -20,7 +17,10 @@ import { Linking, Vibration, Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import { useSweetAlert } from '../components/SweetAlert';
-import { getAppSetting, setAppSetting, deleteAppSetting } from '@/database/dbHelpers';
+// NOTE: The duplicate `import { getAppSetting, setAppSetting, deleteAppSetting }`
+// that used to be here has been removed. Babel rejects duplicate bindings
+// in the same module scope with `Identifier 'getAppSetting' has already been
+// declared.` There is exactly one import of these helpers, at the top.
 
 /* ═══════════════════════════════════════════════════════════════
    CONSTANTS
