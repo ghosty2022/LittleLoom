@@ -9,7 +9,7 @@ import { useAuth } from './AuthContext';
 import { useSweetAlert } from '../components/SweetAlert';
 import { decode } from 'base64-arraybuffer';
 
-// ─── Types (public API — unchanged) ────────────────────────────────
+// ─── Types (kept identical to your current public API) ─────────────
 export type OnlineStatus = 'online' | 'offline' | 'away';
 export type MessageType = 'text' | 'image';
 export type PostMood = 'celebrating' | 'support' | 'advice' | 'milestone' | 'venting';
@@ -65,7 +65,7 @@ export interface Chat { id: string; participantId: string; participant: Communit
 export interface UserActivity { userId: string; lastActive: string; status: OnlineStatus; }
 export interface PopularPost { postId: string; score: number; timestamp: string; }
 
-// ─── Static topic catalogue (unchanged) ───────────────────────────
+// ─── Static topic data (unchanged) ─────────────────────────────────
 export const INITIAL_TOPICS: Topic[] = [
   { id:'topic_health_fever', name:'Fever', emoji:'🌡️', color:'#EE5A24', members:12500, posts:3200, trending:true, description:'Track fever symptoms and temperature', isJoined:false, joinedBy:[], engagementScore:85, weeklyGrowth:12, category:'health', subcategory:'symptoms' },
   { id:'topic_health_allergy', name:'Allergies', emoji:'🤧', color:'#FF6B6B', members:8200, posts:2100, trending:false, description:'Managing allergies and reactions', isJoined:false, joinedBy:[], engagementScore:72, weeklyGrowth:8, category:'health', subcategory:'conditions' },
@@ -114,17 +114,6 @@ export const TOPIC_CATEGORIES = [
   { id:'community', name:'Community', emoji:'👥', description:'Connect with other parents', subcategories:[{id:'stories',name:'Stories',emoji:'📖'},{id:'advice',name:'Advice',emoji:'💡'},{id:'support',name:'Support',emoji:'💙'}] },
 ];
 
-// ─── Realtime channel registry type (fixes the build error) ───────
-type RealtimeChannels = {
-  posts?: any;
-  comments?: any;
-  likes?: any;
-  follows?: any;
-  notifications?: any;
-  messages?: any;
-  topics?: any;
-};
-
 // ─── Helpers ───────────────────────────────────────────────────────
 const LITTLELOOM_TEAM: CommunityUser = {
   id: 'littleloom_team', displayName: 'LittleLoom Team', handle: '@littleloom', avatar: '🧸',
@@ -165,11 +154,8 @@ const validateTopicIds = (topicIds: string[]): string[] => {
   return (topicIds || []).filter(id => valid.has(id));
 };
 
-const mapPostRow = (
-  row: any, author: CommunityUser,
-  likes: string[], bookmarks: string[], reposts: string[], helpful: string[],
-  votedOptionId?: string,
-): Post => {
+// ─── Map DB row → app Post (with author hydration) ─────────────────
+const mapPostRow = (row: any, author: CommunityUser, likes: string[], bookmarks: string[], reposts: string[], helpful: string[], votedOptionId?: string): Post => {
   const likedBy = Array.isArray(row.liked_by) ? row.liked_by : likes;
   const bookmarkedBy = Array.isArray(row.bookmarked_by) ? row.bookmarked_by : bookmarks;
   const repostedBy = Array.isArray(row.reposted_by) ? row.reposted_by : reposts;
@@ -184,26 +170,16 @@ const mapPostRow = (
   } : undefined;
 
   return {
-    id: row.id, authorId: row.author_id, author,
-    topic: row.topic_name || (INITIAL_TOPICS.find(t => t.id === row.topic_id)?.name || 'General'),
-    topicId: row.topic_id, content: row.content || '',
-    images: Array.isArray(row.images) ? row.images : [],
-    likes: Number(row.likes_count) || 0, likedBy,
-    comments: [], commentsCount: Number(row.comments_count) || 0,
-    reposts: Number(row.reposts_count) || 0, repostedBy,
-    shares: Number(row.shares_count) || 0, sharedBy: [],
-    isLiked: likes.includes(author.id) || false,
-    isReposted: reposts.includes(author.id) || false,
-    isBookmarked: bookmarks.includes(author.id) || false,
-    bookmarks: Number(row.bookmarks_count) || 0, bookmarkedBy,
-    time: formatTimeAgo(row.created_at), timestamp: row.created_at,
-    isAnonymous: !!row.is_anonymous,
+    id: row.id, authorId: row.author_id, author, topic: row.topic_name || (INITIAL_TOPICS.find(t => t.id === row.topic_id)?.name || 'General'),
+    topicId: row.topic_id, content: row.content || '', images: Array.isArray(row.images) ? row.images : [],
+    likes: Number(row.likes_count) || 0, likedBy, comments: [], commentsCount: Number(row.comments_count) || 0,
+    reposts: Number(row.reposts_count) || 0, repostedBy, shares: Number(row.shares_count) || 0, sharedBy: [],
+    isLiked: likes.includes(author.id) || false, isReposted: reposts.includes(author.id) || false,
+    isBookmarked: bookmarks.includes(author.id) || false, bookmarks: Number(row.bookmarks_count) || 0, bookmarkedBy,
+    time: formatTimeAgo(row.created_at), timestamp: row.created_at, isAnonymous: !!row.is_anonymous,
     helpfulVotes: Number(row.helpful_votes) || 0, votedHelpfulBy,
-    popularityScore: Number(row.popularity_score) || 0,
-    viewCount: Number(row.view_count) || 0,
-    engagementRate: 0,
-    lastEngagedAt: row.updated_at || row.created_at,
-    isTrending: !!row.is_trending,
+    popularityScore: Number(row.popularity_score) || 0, viewCount: Number(row.view_count) || 0,
+    engagementRate: 0, lastEngagedAt: row.updated_at || row.created_at, isTrending: !!row.is_trending,
     mood: row.mood, poll,
   };
 };
@@ -319,17 +295,27 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => { stateRef.current = state; }, [state]);
 
   const currentUserIdRef = useRef<string | null>(null);
-  useEffect(() => { currentUserIdRef.current = userProfile?.id ?? null; }, [userProfile?.id]);
+  useEffect(() => {
+    currentUserIdRef.current = userProfile?.id ?? null;
+  }, [userProfile?.id]);
 
   const authorsCache = useRef<Map<string, CommunityUser>>(new Map());
   const typingTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const channelsRef = useRef<RealtimeChannels>({});
+  type RealtimeChannels = {
+  posts?: any;
+  comments?: any;
+  likes?: any;
+  follows?: any;
+  notifications?: any;
+  messages?: any;
+  topics?: any;
+};
+const channelsRef = useRef<RealtimeChannels>({});
   const refreshFeedRef = useRef<(() => Promise<void>) | null>(null);
-  const loadTopicsRef = useRef<(() => Promise<void>) | null>(null);
-  const loadNotificationsRef = useRef<(() => Promise<void>) | null>(null);
-  const loadFollowsRef = useRef<(() => Promise<void>) | null>(null);
 
-  // ─── Author hydration ────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // AUTHOR LOADING — hydrate a CommunityUser from profiles table
+  // ───────────────────────────────────────────────────────────
   const hydrateAuthor = useCallback(async (userId: string): Promise<CommunityUser> => {
     if (userId === 'littleloom_team') return LITTLELOOM_TEAM;
     const cached = authorsCache.current.get(userId);
@@ -374,12 +360,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return author;
   }, []);
 
-  // ─── Load feed ───────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // LOAD FEED — fetch all posts + comments + user's likes state
+  // ───────────────────────────────────────────────────────────
   const loadFeed = useCallback(async () => {
     const uid = currentUserIdRef.current;
     if (!uid) return;
 
     try {
+      // 1) Fetch recent posts
       const { data: postRows, error: postErr } = await supabase
         .from('community_posts')
         .select('*')
@@ -391,7 +380,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const rows = postRows || [];
       const postIds = rows.map((r: any) => r.id);
 
-      const commentsByPost: Record<string, Comment[]> = {};
+      // 2) Fetch comments for those posts
+      const commentsByPost: Record<string, any[]> = {};
       if (postIds.length > 0) {
         const { data: commentRows } = await supabase
           .from('community_comments')
@@ -401,6 +391,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           .order('created_at', { ascending: true });
 
         const commentIds = (commentRows || []).map((c: any) => c.id);
+        // 3) Fetch comment likes + helpful (scoped to current user's vote flags)
         const [commentLikes, commentHelpful] = await Promise.all([
           commentIds.length > 0 ? supabase.from('comment_likes').select('comment_id, user_id').in('comment_id', commentIds) : Promise.resolve({ data: [] }),
           commentIds.length > 0 ? supabase.from('comment_helpful_votes').select('comment_id, user_id').in('comment_id', commentIds) : Promise.resolve({ data: [] }),
@@ -415,27 +406,30 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (!commentsByPost[c.post_id]) commentsByPost[c.post_id] = [];
           const author = await hydrateAuthor(c.author_id);
           commentsByPost[c.post_id].push(mapCommentRow(c, author,
-            likedComments.has(c.id) ? [uid] : [],
-            helpfulComments.has(c.id) ? [uid] : [],
+            likedComments.has(c.id) ? [uid] : [], helpfulComments.has(c.id) ? [uid] : []
           ));
         }
       }
 
-      const [likesRes, repostsRes, bookmarksRes, helpfulRes] = await Promise.all([
+      // 4) Fetch user's like/repost/bookmark/helpful for each post
+      const [likesRes, repostsRes, bookmarksRes, helpfulRes, viewsRes] = await Promise.all([
         supabase.from('post_likes').select('post_id, user_id').in('post_id', postIds),
         supabase.from('post_reposts').select('post_id, user_id').in('post_id', postIds),
         supabase.from('post_bookmarks').select('post_id, user_id').in('post_id', postIds),
         supabase.from('post_helpful_votes').select('post_id, user_id').in('post_id', postIds),
+        supabase.from('post_views').select('post_id, user_id').in('post_id', postIds),
       ]);
       const likedPosts = new Set<string>((likesRes.data || []).filter((r: any) => r.user_id === uid).map((r: any) => r.post_id));
       const repostedPosts = new Set<string>((repostsRes.data || []).filter((r: any) => r.user_id === uid).map((r: any) => r.post_id));
       const bookmarkedPosts = new Set<string>((bookmarksRes.data || []).filter((r: any) => r.user_id === uid).map((r: any) => r.post_id));
       const helpfulPosts = new Set<string>((helpfulRes.data || []).filter((r: any) => r.user_id === uid).map((r: any) => r.post_id));
 
+      // 5) Fetch user's poll votes
       const { data: pollVotes } = await supabase.from('poll_votes').select('post_id, option_id').eq('user_id', uid);
       const pollMap: Record<string, string> = {};
       (pollVotes || []).forEach((v: any) => { pollMap[v.post_id] = v.option_id; });
 
+      // 6) Build Post objects
       const posts: Post[] = [];
       for (const row of rows) {
         const author = await hydrateAuthor(row.author_id);
@@ -453,25 +447,36 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         posts.push(post);
       }
 
+      // 7) Update state
+      setState(prev => ({
+        ...prev,
+        posts,
+        isLoading: false,
+        isInitialized: true,
+      }));
+
+      // 8) Recompute trending
       const topicScores = new Map<string, number>();
       posts.forEach(p => {
         const score = calculatePopularityScore(p);
         topicScores.set(p.topicId, (topicScores.get(p.topicId) || 0) + score);
       });
-      const trendingTopics = Array.from(topicScores.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
+      const trendingTopics = Array.from(topicScores.entries()).sort((a,b) => b[1]-a[1]).slice(0,5).map(([id]) => id);
       const popularPosts = posts.map(p => ({ postId: p.id, score: calculatePopularityScore(p), timestamp: p.timestamp }))
-        .sort((a, b) => b.score - a.score).slice(0, 20);
-
-      setState(prev => ({ ...prev, posts, trendingTopics, popularPosts, isLoading: false, isInitialized: true }));
+        .sort((a,b) => b.score - a.score).slice(0, 20);
+      setState(prev => ({ ...prev, trendingTopics, popularPosts }));
     } catch (err) {
       if (__DEV__) console.error('[Community] loadFeed error:', err);
       setState(prev => ({ ...prev, isLoading: false, isInitialized: true }));
     }
   }, [hydrateAuthor]);
 
-  useEffect(() => { refreshFeedRef.current = loadFeed; }, [loadFeed]);
+  const refreshFeedRefStable = useCallback(async () => { await loadFeed(); }, [loadFeed]);
+  useEffect(() => { refreshFeedRef.current = refreshFeedRefStable; }, [refreshFeedRefStable]);
 
-  // ─── Load topics ─────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // LOAD TOPICS + NOTIFICATIONS + FOLLOWS + BLOCKS
+  // ───────────────────────────────────────────────────────────
   const loadTopics = useCallback(async () => {
     try {
       const { data } = await supabase.from('community_topics').select('*');
@@ -481,26 +486,23 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const db = topicMap.get(t.id);
         return {
           ...t,
-          posts: db?.posts ?? t.posts,
-          members: db?.total_likes ?? t.members,
+          posts: db?.posts || t.posts,
+          members: db?.total_likes || 0 || t.members,
           category: db?.category || t.category,
           subcategory: db?.subcategory || t.subcategory,
         };
       });
       const uid = currentUserIdRef.current;
-      const joinedIds = new Set<string>();
+      let joinedIds = new Set<string>();
       if (uid) {
         const { data: joined } = await supabase.from('user_topics').select('topic_id').eq('user_id', uid);
         (joined || []).forEach((j: any) => joinedIds.add(j.topic_id));
       }
-      const withJoined = topics.map(t => ({ ...t, isJoined: joinedIds.has(t.id), joinedBy: joinedIds.has(t.id) && uid ? [uid] : [] }));
+      const withJoined = topics.map(t => ({ ...t, isJoined: joinedIds.has(t.id), joinedBy: joinedIds.has(t.id) ? [uid!] : [] }));
       setState(prev => ({ ...prev, topics: withJoined, selectedTopics: Array.from(joinedIds) }));
     } catch (e) { if (__DEV__) console.warn('[Community] loadTopics:', e); }
   }, []);
 
-  useEffect(() => { loadTopicsRef.current = loadTopics; }, [loadTopics]);
-
-  // ─── Load notifications ──────────────────────────────────────────
   const loadNotifications = useCallback(async () => {
     const uid = currentUserIdRef.current;
     if (!uid) return;
@@ -524,9 +526,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (e) { if (__DEV__) console.warn('[Community] loadNotifications:', e); }
   }, [hydrateAuthor]);
 
-  useEffect(() => { loadNotificationsRef.current = loadNotifications; }, [loadNotifications]);
-
-  // ─── Load follows + blocks ───────────────────────────────────────
   const loadFollowsAndBlocks = useCallback(async () => {
     const uid = currentUserIdRef.current;
     if (!uid) return;
@@ -552,24 +551,31 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } catch (e) { if (__DEV__) console.warn('[Community] loadFollowsAndBlocks:', e); }
   }, []);
 
-  useEffect(() => { loadFollowsRef.current = loadFollowsAndBlocks; }, [loadFollowsAndBlocks]);
-
-  // ─── Sync current user ───────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // BUILD CURRENT USER from profiles row
+  // ───────────────────────────────────────────────────────────
   const syncWithAuthUser = useCallback(async (authProfile: any) => {
     try {
+      let persistedIsVerified = false;
+      let persistedCover: string | undefined;
+      let persistedBio = authProfile.communityBio || '';
+
       const { data: verificationRow } = await supabase
         .from('profiles')
         .select('is_verified, community_cover, community_bio, community_selected_topics, community_stats')
         .eq('id', authProfile.id)
         .maybeSingle();
+      if (verificationRow) {
+        persistedIsVerified = verificationRow.is_verified === true;
+        persistedCover = verificationRow.community_cover || undefined;
+        if (verificationRow.community_bio) persistedBio = verificationRow.community_bio;
+      }
 
-      const persistedIsVerified = verificationRow?.is_verified === true;
-      const persistedCover = verificationRow?.community_cover || undefined;
-      const persistedBio = verificationRow?.community_bio || authProfile.communityBio || '';
-
+      // Selected topics
       const { data: userTopics } = await supabase.from('user_topics').select('topic_id').eq('user_id', authProfile.id);
       const validTopics = validateTopicIds((userTopics || []).map((t: any) => t.topic_id));
 
+      // Followers & following
       const [followersRes, followingRes, blocksRes] = await Promise.all([
         supabase.from('user_follows').select('follower_id').eq('following_id', authProfile.id),
         supabase.from('user_follows').select('following_id').eq('follower_id', authProfile.id),
@@ -579,13 +585,14 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const followingIds = (followingRes.data || []).map((r: any) => r.following_id);
       const blockedIds = (blocksRes.data || []).map((r: any) => r.blocked_id);
 
+      // Persistent stats from profiles.community_stats
       const statsFromDb = verificationRow?.community_stats || {};
       const stats = {
-        posts: statsFromDb.posts ?? stateRef.current.posts.filter(p => p.authorId === authProfile.id).length,
+        posts: statsFromDb.posts || stateRef.current.posts.filter(p => p.authorId === authProfile.id).length,
         followers: followerIds.length,
         following: followingIds.length,
-        helpful: statsFromDb.helpful ?? 0,
-        streakDays: statsFromDb.streakDays ?? 0,
+        helpful: statsFromDb.helpful || 0,
+        streakDays: statsFromDb.streakDays || 0,
         lastStreakDate: statsFromDb.lastStreakDate || new Date().toISOString(),
       };
 
@@ -609,50 +616,60 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       };
 
       authorsCache.current.set(authProfile.id, communityUser);
-      setState(prev => ({ ...prev, currentUser: communityUser, selectedTopics: validTopics, blockedUsers: blockedIds }));
 
+      setState(prev => ({
+        ...prev,
+        currentUser: communityUser,
+        selectedTopics: validTopics,
+        blockedUsers: blockedIds,
+      }));
+
+      // Fire-and-forget presence + streak
       supabase.from('user_activity').upsert({
-        user_id: authProfile.id, status: 'online',
-        last_active: new Date().toISOString(), updated_at: new Date().toISOString(),
+        user_id: authProfile.id, status: 'online', last_active: new Date().toISOString(), updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' }).catch(() => {});
     } catch (err) {
       if (__DEV__) console.error('[Community] syncWithAuthUser:', err);
     }
   }, []);
 
-  // ─── Realtime subscriptions ──────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // REALTIME SUBSCRIPTIONS — everyone sees everyone else's data
+  // ───────────────────────────────────────────────────────────
   const subscribeRealtime = useCallback(() => {
+    // Teardown
     Object.values(channelsRef.current).forEach((c: any) => { try { c?.unsubscribe?.(); } catch {} });
     channelsRef.current = {};
 
-    // 1) POSTS
+    // 1) POSTS — INSERT/UPDATE/DELETE
     const postsChannel = supabase.channel('community_posts_rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_posts' }, async (payload: any) => {
         if (payload.eventType === 'INSERT') {
           if (payload.new?.is_deleted) return;
           const author = await hydrateAuthor(payload.new.author_id);
+          const uid = currentUserIdRef.current;
           const newPost = mapPostRow(payload.new, author, [], [], [], [], undefined);
           setState(prev => {
             if (prev.posts.some(p => p.id === payload.new.id)) return prev;
             return { ...prev, posts: [newPost, ...prev.posts] };
           });
         } else if (payload.eventType === 'UPDATE') {
-          if (payload.new?.is_deleted) {
-            setState(prev => ({ ...prev, posts: prev.posts.filter(p => p.id !== payload.new.id) }));
-            return;
-          }
           setState(prev => ({
             ...prev,
-            posts: prev.posts.map(p => p.id === payload.new.id ? {
-              ...p,
-              likes: Number(payload.new.likes_count) ?? p.likes,
-              reposts: Number(payload.new.reposts_count) ?? p.reposts,
-              commentsCount: Number(payload.new.comments_count) ?? p.commentsCount,
-              bookmarks: Number(payload.new.bookmarks_count) ?? p.bookmarks,
-              helpfulVotes: Number(payload.new.helpful_votes) ?? p.helpfulVotes,
-              viewCount: Number(payload.new.view_count) ?? p.viewCount,
-              content: payload.new.content ?? p.content,
-            } : p),
+            posts: prev.posts.map(p => {
+              if (p.id !== payload.new.id) return p;
+              return {
+                ...p,
+                likes: Number(payload.new.likes_count) || p.likes,
+                reposts: Number(payload.new.reposts_count) || p.reposts,
+                commentsCount: Number(payload.new.comments_count) || p.commentsCount,
+                bookmarks: Number(payload.new.bookmarks_count) || p.bookmarks,
+                helpfulVotes: Number(payload.new.helpful_votes) || p.helpfulVotes,
+                viewCount: Number(payload.new.view_count) || p.viewCount,
+                content: payload.new.content ?? p.content,
+                is_deleted: payload.new.is_deleted,
+              };
+            }).filter(p => !(p as any).is_deleted),
           }));
         } else if (payload.eventType === 'DELETE') {
           setState(prev => ({ ...prev, posts: prev.posts.filter(p => p.id !== payload.old.id) }));
@@ -660,7 +677,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }).subscribe();
     channelsRef.current.posts = postsChannel;
 
-    // 2) LIKES / REPOSTS / BOOKMARKS / HELPFUL
+    // 2) LIKES / REPOSTS / BOOKMARKS / HELPFUL — reflect live count + my state
     const likesChannel = supabase.channel('post_interactions_rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, (payload: any) => {
         const uid = currentUserIdRef.current;
@@ -712,7 +729,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       .subscribe();
     channelsRef.current.likes = likesChannel;
 
-    // 3) COMMENTS
+    // 3) COMMENTS — full reload of that post's comment list
     const commentsChannel = supabase.channel('comments_rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_comments' }, async (payload: any) => {
         const postId = payload.new?.post_id || payload.old?.post_id;
@@ -721,8 +738,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           .from('community_comments').select('*').eq('post_id', postId).eq('is_deleted', false).order('created_at', { ascending: true });
         const uid = currentUserIdRef.current;
         const commentIds = (commentRows || []).map((c: any) => c.id);
-        const likedSet = new Set<string>();
-        const helpfulSet = new Set<string>();
+        let likedSet = new Set<string>();
+        let helpfulSet = new Set<string>();
         if (commentIds.length > 0 && uid) {
           const [l, h] = await Promise.all([
             supabase.from('comment_likes').select('comment_id').in('comment_id', commentIds).eq('user_id', uid),
@@ -734,30 +751,38 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const mapped: Comment[] = [];
         for (const row of commentRows || []) {
           const author = await hydrateAuthor(row.author_id);
-          mapped.push(mapCommentRow(row, author, likedSet.has(row.id) && uid ? [uid] : [], helpfulSet.has(row.id) && uid ? [uid] : []));
+          mapped.push(mapCommentRow(row, author, likedSet.has(row.id) ? [uid!] : [], helpfulSet.has(row.id) ? [uid!] : []));
         }
-        setState(prev => ({ ...prev, posts: prev.posts.map(p => p.id === postId ? { ...p, comments: mapped, commentsCount: mapped.length } : p) }));
-      }).subscribe();
+        setState(prev => ({
+          ...prev,
+          posts: prev.posts.map(p => p.id === postId ? { ...p, comments: mapped, commentsCount: mapped.length } : p),
+        }));
+      })
+      .subscribe();
     channelsRef.current.comments = commentsChannel;
 
-    // 4) FOLLOWS
+    // 4) FOLLOWS — update isFollowing
     const followsChannel = supabase.channel('follows_rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_follows' }, (payload: any) => {
         const uid = currentUserIdRef.current;
         if (!uid) return;
-        const { follower_id, following_id } = payload.new || payload.old || {};
+        const { follower_id, following_id } = payload.new || payload.old;
         if (follower_id === uid || following_id === uid) {
-          loadFollowsRef.current?.().then(() => {
+          // Full reload to keep counts accurate
+          loadFollowsAndBlocks().then(() => {
+            // Update follow flags on all post authors
             setState(prev => {
               const followingSet = new Set(prev.currentUser?.following || []);
+              const followersSet = new Set(prev.currentUser?.followers || []);
               return {
                 ...prev,
                 posts: prev.posts.map(p => ({ ...p, author: { ...p.author, isFollowing: followingSet.has(p.authorId) } })),
               };
             });
-          }).catch(() => {});
+          });
         }
-      }).subscribe();
+      })
+      .subscribe();
     channelsRef.current.follows = followsChannel;
 
     // 5) NOTIFICATIONS
@@ -765,7 +790,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       .on('postgres_changes', { event: '*', schema: 'public', table: 'community_notifications' }, async (payload: any) => {
         const uid = currentUserIdRef.current;
         if (!uid) return;
-        const row: any = payload.new || payload.old;
+        const row = payload.new || payload.old;
         if (row?.user_id !== uid) return;
         if (payload.eventType === 'INSERT') {
           const actor = await hydrateAuthor(payload.new.actor_id);
@@ -778,18 +803,21 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         } else if (payload.eventType === 'UPDATE') {
           setState(prev => ({ ...prev, notifications: prev.notifications.map(n => n.id === payload.new.id ? { ...n, read: !!payload.new.is_read } : n) }));
         }
-      }).subscribe();
+      })
+      .subscribe();
     channelsRef.current.notifications = notifChannel;
 
-    // 6) TOPICS
+    // 6) TOPICS / USER_TOPICS
     const topicsChannel = supabase.channel('topics_rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_topics' }, () => { loadTopicsRef.current?.().catch(() => {}); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_topics' }, () => { loadTopicsRef.current?.().catch(() => {}); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_topics' }, () => { loadTopics().catch(() => {}); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_topics' }, () => { loadTopics().catch(() => {}); })
       .subscribe();
     channelsRef.current.topics = topicsChannel;
-  }, [hydrateAuthor]);
+  }, [hydrateAuthor, loadFollowsAndBlocks, loadTopics]);
 
-  // ─── Bootstrap + AppState refresh ────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // BOOTSTRAP
+  // ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated || !userProfile) {
@@ -803,17 +831,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     })();
   }, [isAuthenticated, userProfile?.id, authLoading]);
 
-  // Refresh when app resumes
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next === 'active' && currentUserIdRef.current) {
-        refreshFeedRef.current?.().catch(() => {});
-        loadNotificationsRef.current?.().catch(() => {});
-      }
-    });
-    return () => sub.remove();
-  }, []);
-
   // Cleanup
   useEffect(() => {
     return () => {
@@ -822,13 +839,16 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, []);
 
-  // ─── Public actions ─────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // PUBLIC ACTIONS — all go through Supabase
+  // ───────────────────────────────────────────────────────────
   const createPost = useCallback(async (content: string, topicId: string, images?: string[], isAnonymous?: boolean, mood?: PostMood, poll?: Poll) => {
     const uid = currentUserIdRef.current;
     if (!uid) { sweetAlert.alert('Sign In Required', 'Please sign in to create posts', 'warning'); return; }
     const topic = stateRef.current.topics.find(t => t.id === topicId);
     if (!topic) { sweetAlert.alert('Error', 'Topic not found', 'warning'); return; }
 
+    // Upload images to storage
     const uploadedImages: string[] = [];
     for (const imgUri of images || []) {
       try {
@@ -866,6 +886,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    // Realtime will push the new post to us and others
   }, [sweetAlert]);
 
   const likePost = useCallback(async (postId: string) => {
@@ -907,17 +928,14 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const sharePost = useCallback(async (postId: string) => {
     const uid = currentUserIdRef.current;
     if (!uid) return;
+    // No dedicated shares table; increment shares_count via rpc if you have one, otherwise skip
     try { await supabase.rpc('increment_share_count', { p_post_id: postId }); } catch {}
   }, []);
 
   const deletePost = useCallback(async (postId: string) => {
     const uid = currentUserIdRef.current;
     if (!uid) return;
-    const { error } = await supabase
-      .from('community_posts')
-      .update({ is_deleted: true, updated_at: new Date().toISOString() })
-      .eq('id', postId)
-      .eq('author_id', uid);
+    const { error } = await supabase.from('community_posts').update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', postId).eq('author_id', uid);
     if (error) sweetAlert.alert('Error', 'Failed to delete post', 'warning');
   }, [sweetAlert]);
 
@@ -932,14 +950,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!uid) { sweetAlert.alert('Sign In Required', 'Please sign in to comment', 'warning'); return; }
     const commentId = `comment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const { error } = await supabase.from('community_comments').insert({
-      id: commentId, post_id: postId, author_id: uid, content,
-      created_at: new Date().toISOString(), is_deleted: false,
+      id: commentId, post_id: postId, author_id: uid, content, created_at: new Date().toISOString(), is_deleted: false,
     });
     if (error) sweetAlert.alert('Error', 'Failed to comment', 'warning');
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [sweetAlert]);
 
-  const likeComment = useCallback(async (_postId: string, commentId: string) => {
+  const likeComment = useCallback(async (postId: string, commentId: string) => {
     const uid = currentUserIdRef.current;
     if (!uid) return;
     const { data: existing } = await supabase.from('comment_likes').select('comment_id').eq('comment_id', commentId).eq('user_id', uid).maybeSingle();
@@ -947,7 +964,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     else await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: uid });
   }, []);
 
-  const voteCommentHelpful = useCallback(async (_postId: string, commentId: string) => {
+  const voteCommentHelpful = useCallback(async (postId: string, commentId: string) => {
     const uid = currentUserIdRef.current;
     if (!uid) return;
     await supabase.from('comment_helpful_votes').insert({ comment_id: commentId, user_id: uid }).then(() => {});
@@ -958,8 +975,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!uid) return;
     const replyId = `reply_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     await supabase.from('community_comments').insert({
-      id: replyId, post_id: postId, author_id: uid, parent_comment_id: commentId,
-      content, created_at: new Date().toISOString(), is_deleted: false,
+      id: replyId, post_id: postId, author_id: uid, parent_comment_id: commentId, content, created_at: new Date().toISOString(), is_deleted: false,
     });
   }, []);
 
@@ -1001,9 +1017,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const updateOnlineStatus = useCallback(async (status: OnlineStatus) => {
     const uid = currentUserIdRef.current;
     if (!uid) return;
-    await supabase.from('user_activity').upsert({
-      user_id: uid, status, last_active: new Date().toISOString(), updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' }).catch(() => {});
+    await supabase.from('user_activity').upsert({ user_id: uid, status, last_active: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'user_id' }).catch(() => {});
   }, []);
 
   const markNotificationRead = useCallback(async (notificationId: string) => {
@@ -1020,6 +1034,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const uid = currentUserIdRef.current;
     if (!uid) return;
     const valid = validateTopicIds(topics);
+    // Wipe + reinsert
     await supabase.from('user_topics').delete().eq('user_id', uid);
     if (valid.length > 0) {
       await supabase.from('user_topics').insert(valid.map(t => ({ user_id: uid, topic_id: t })));
@@ -1049,14 +1064,18 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (updates.isVerified !== undefined) dbUpdates.is_verified = updates.isVerified;
     if (updates.coverPhoto !== undefined) dbUpdates.community_cover = updates.coverPhoto;
     await supabase.from('profiles').update(dbUpdates).eq('id', uid);
+    setState(prev => ({ ...prev, currentUser: prev.currentUser ? { ...prev.currentUser, ...updates } : prev.currentUser }));
+    // Propagate to all cached posts authored by me
     setState(prev => ({
       ...prev,
-      currentUser: prev.currentUser ? { ...prev.currentUser, ...updates } : prev.currentUser,
-      posts: prev.posts.map(p => p.authorId === uid ? { ...p, author: { ...p.author, ...updates } } : p),
+      posts: prev.posts.map(p => p.authorId === uid
+        ? { ...p, author: { ...p.author, ...updates } }
+        : p),
     }));
-    authorsCache.current.set(uid, { ...(authorsCache.current.get(uid) || ({} as CommunityUser)), ...updates } as CommunityUser);
   }, []);
 
+  const updateUserBio = updateCommunityProfile.bind(null, {} as any) as any;
+  // (Wrappers)
   const realUpdateBio = useCallback((bio: string) => updateCommunityProfile({ bio }), [updateCommunityProfile]);
   const realUpdateLocation = useCallback((country: string) => updateCommunityProfile({ country }), [updateCommunityProfile]);
   const realUpdateDisplayName = useCallback((newName: string) => updateCommunityProfile({ displayName: newName }), [updateCommunityProfile]);
@@ -1075,8 +1094,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return { success: true, message: 'Username updated' };
   }, [updateCommunityProfile]);
 
-  // ─── DM stubs (real-time chat lives in FamilyChatContext) ────────
-  const sendMessage = useCallback(async () => {
+  // ───────────────────────────────────────────────────────────
+  // DMs (kept local for now — use FamilyChat for real-time chat)
+  // ───────────────────────────────────────────────────────────
+  const sendMessage = useCallback(async (userId: string, content: string, type: MessageType = 'text', imageUrl?: string, fileMeta?: FileMetadata, replyToId?: string) => {
+    // Community DMs use family_messages table — see FamilyChatContext for real-time path
     if (__DEV__) console.warn('[Community] sendMessage — use FamilyChatContext for real-time chat');
   }, []);
   const editMessage = useCallback(async () => {}, []);
@@ -1089,7 +1111,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const getTypingStatus = useCallback(() => false, []);
   const deleteChat = useCallback(async () => {}, []);
 
-  // ─── Getters ─────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // GETTERS
+  // ───────────────────────────────────────────────────────────
   const getPostById = useCallback((postId: string) => stateRef.current.posts.find(p => p.id === postId), []);
   const getTopicById = useCallback((topicId: string) => stateRef.current.topics.find(t => t.id === topicId), []);
   const getPostsByTopic = useCallback((topicId: string) => stateRef.current.posts.filter(p => p.topicId === topicId), []);
@@ -1101,7 +1125,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return stateRef.current.posts.find(p => p.authorId === userId)?.author;
   }, []);
   const getUserPosts = useCallback((userId: string) => stateRef.current.posts.filter(p => p.authorId === userId), []);
-  const isFollowing = useCallback((userId: string) => stateRef.current.currentUser?.following?.includes(userId) || false, []);
+  const isFollowing = useCallback((userId: string) => {
+    return stateRef.current.currentUser?.following?.includes(userId) || false;
+  }, []);
   const getUserStats = useCallback((userId: string) => getUserById(userId)?.stats, [getUserById]);
   const getUnreadCount = useCallback(() => stateRef.current.notifications.filter(n => !n.read).length, []);
   const isUserBlocked = useCallback((userId: string) => stateRef.current.blockedUsers.includes(userId), []);
@@ -1132,13 +1158,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       posts: prev.posts.map(p => p.authorId === userId ? { ...p, author: { ...p.author, ...updates } } : p),
       currentUser: prev.currentUser?.id === userId ? { ...prev.currentUser, ...updates } : prev.currentUser,
     }));
-    const cur = authorsCache.current.get(userId) || ({} as CommunityUser);
-    authorsCache.current.set(userId, { ...cur, ...updates } as CommunityUser);
+    authorsCache.current.set(userId, { ...(authorsCache.current.get(userId) || {} as CommunityUser), ...updates });
   }, []);
 
   const getFeedPosts = useCallback(() => {
     const cu = stateRef.current.currentUser;
-    const all = [...stateRef.current.posts].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const all = [...stateRef.current.posts].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     if (!cu) return all;
     const topics = cu.selectedTopics || [];
     if (topics.length === 0) return all.filter(p => !stateRef.current.blockedUsers.includes(p.authorId));
@@ -1149,11 +1174,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  const getPopularPosts = useCallback((limit = 10) =>
-    [...stateRef.current.posts].sort((a, b) => b.popularityScore - a.popularityScore).slice(0, limit), []);
+  const getPopularPosts = useCallback((limit = 10) => {
+    return [...stateRef.current.posts].sort((a,b) => b.popularityScore - a.popularityScore).slice(0, limit);
+  }, []);
 
-  const getTrendingTopics = useCallback(() =>
-    stateRef.current.topics.filter(t => t.trending).sort((a, b) => b.engagementScore - a.engagementScore), []);
+  const getTrendingTopics = useCallback(() => {
+    return stateRef.current.topics.filter(t => t.trending).sort((a,b) => b.engagementScore - a.engagementScore);
+  }, []);
 
   const incrementViewCount = useCallback(async (postId: string) => {
     const uid = currentUserIdRef.current;
@@ -1162,7 +1189,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const getPostRank = useCallback((postId: string) => {
-    const sorted = [...stateRef.current.posts].sort((a, b) => b.popularityScore - a.popularityScore);
+    const sorted = [...stateRef.current.posts].sort((a,b) => b.popularityScore - a.popularityScore);
     return sorted.findIndex(p => p.id === postId) + 1;
   }, []);
 
@@ -1171,6 +1198,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!uid) return;
     const { error } = await supabase.from('poll_votes').insert({ post_id: postId, user_id: uid, option_id: optionId });
     if (error && !error.message.includes('duplicate')) return;
+    // Re-fetch post row to get updated poll_data (backend should update via trigger; else client recompute)
     const { data: row } = await supabase.from('community_posts').select('poll_data').eq('id', postId).maybeSingle();
     if (row?.poll_data) {
       const updatedPoll = {
@@ -1189,13 +1217,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const refreshTopics = useCallback(async () => { await loadTopics(); return stateRef.current.topics; }, [loadTopics]);
   const checkAndAwardAchievements = useCallback(async () => [] as string[], []);
 
-  // ─── Value ───────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // MEMOIZED VALUE
+  // ───────────────────────────────────────────────────────────
   const value = useMemo<CommunityContextType>(() => ({
     ...state,
     createPost, likePost, unlikePost, repostPost, unrepostPost, bookmarkPost, sharePost, deletePost, getPostById,
     voteHelpful, addComment, likeComment, voteCommentHelpful, replyToComment,
-    joinTopic, leaveTopic, getTopicById, getPostsByTopic, followUser, unfollowUser,
-    getUserById, getUserPosts, isFollowing,
+    joinTopic, leaveTopic, getTopicById, getPostsByTopic,
+    followUser, unfollowUser, getUserById, getUserPosts, isFollowing,
     updateUserBio: realUpdateBio, updateUserLocation: realUpdateLocation, updateOnlineStatus, getUserStats,
     markNotificationRead, markAllNotificationsRead, getUnreadCount,
     sendMessage, editMessage, resendMessage, deleteMessage, getChatMessages, markChatRead,
@@ -1210,18 +1240,14 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }), [
     state, createPost, likePost, unlikePost, repostPost, unrepostPost, bookmarkPost, sharePost, deletePost, getPostById,
     voteHelpful, addComment, likeComment, voteCommentHelpful, replyToComment,
-    joinTopic, leaveTopic, getTopicById, getPostsByTopic, followUser, unfollowUser,
-    getUserById, getUserPosts, isFollowing,
-    realUpdateBio, realUpdateLocation, updateOnlineStatus, getUserStats,
-    markNotificationRead, markAllNotificationsRead, getUnreadCount,
-    sendMessage, editMessage, resendMessage, deleteMessage, getChatMessages, markChatRead,
-    getOrCreateChat, setTypingStatus, getTypingStatus, deleteChat, blockUser, isUserBlocked,
-    refreshFeed, loadMorePosts, updateCommunityProfile, getCurrentUserProfile,
-    checkAndAwardAchievements, getUserAchievements, checkOnboardingStatus,
-    updateSelectedTopics, getSelectedTopics, getFollowers, getFollowing, getAllUsers,
-    syncUserProfileAcrossPosts, getFeedPosts, getPopularPosts, getTrendingTopics,
-    incrementViewCount, getPostRank, updateUsername,
-    realUpdateDisplayName, realUpdateAvatar, isAuthenticatedCheck, votePoll, refreshTopics,
+    joinTopic, leaveTopic, getTopicById, getPostsByTopic, followUser, unfollowUser, getUserById, getUserPosts, isFollowing,
+    realUpdateBio, realUpdateLocation, updateOnlineStatus, getUserStats, markNotificationRead, markAllNotificationsRead, getUnreadCount,
+    sendMessage, editMessage, resendMessage, deleteMessage, getChatMessages, markChatRead, getOrCreateChat,
+    setTypingStatus, getTypingStatus, deleteChat, blockUser, isUserBlocked, refreshFeed, loadMorePosts,
+    updateCommunityProfile, getCurrentUserProfile, checkAndAwardAchievements, getUserAchievements,
+    checkOnboardingStatus, updateSelectedTopics, getSelectedTopics, getFollowers, getFollowing, getAllUsers,
+    syncUserProfileAcrossPosts, getFeedPosts, getPopularPosts, getTrendingTopics, incrementViewCount,
+    getPostRank, updateUsername, realUpdateDisplayName, realUpdateAvatar, isAuthenticatedCheck, votePoll, refreshTopics,
   ]);
 
   return <CommunityContext.Provider value={value}>{children}</CommunityContext.Provider>;
