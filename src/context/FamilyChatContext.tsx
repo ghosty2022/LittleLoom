@@ -364,7 +364,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // The effect body itself has therefore been moved BELOW the
   // `loadFamilyCode` useCallback (see further down in this file).
   // Only the ref is declared here.
-  const loadedForUserIdRef = useRef<string | null>(userProfile?.id ?? null);
+  // Initialise to `undefined` (NOT the current user's id) so the effect
+  // below fires on the first render with a real user id — otherwise the
+  // account-change guard sees prev===next and never runs the reset.
+  const loadedForUserIdRef = useRef<string | null | undefined>(undefined);
 
   /* ─── Keep refs synchronised with state ─────────────────────── */
   useEffect(() => { chatsRef.current = state.chats; }, [state.chats]);

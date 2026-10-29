@@ -590,6 +590,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
+      // Invalidate any stale/null cached user ID before we proceed.
+      clearUserIdCache();
+
       const token = authData.session?.access_token || '';
       const user = authData.user;
 
@@ -1060,6 +1063,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'littleloom_username_registry',
           'littleloom_profile_sync_queue',
           '@community_selected_topics_v2',
+          '@community_selected_topics',       // UserContext's scoped key (no _v2)
           '@littleloom_community_onboarding_v3',
           '@user_location_cache',
         ];
@@ -2238,6 +2242,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (__DEV__) console.log('[Auth] Auth state change:', event);
 
       if (event === 'SIGNED_IN' && session) {
+        // Clear any cached user ID (from a previous session or a
+        // `null` cached during the sign-out window) so subsequent
+        // dbHelpers.getCurrentUserId() calls resolve against the
+        // *new* session immediately.
+        clearUserIdCache();
         const user = session.user;
         const userMeta = user.user_metadata || {};
 

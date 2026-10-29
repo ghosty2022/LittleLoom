@@ -180,16 +180,21 @@ export async function getCurrentUserId(): Promise<string | null> {
       cachedUserIdTimestamp = now;
       return user.id;
     }
-  } catch {
+
+      } catch {
     
   }
 
-  
-  cachedUserId = null;
-  cachedUserIdTimestamp = now;
+  // IMPORTANT: do NOT cache a `null` result. Supabase session hydration is
+  // async on cold start — a `null` here is usually a transient "not yet
+  // loaded", not "signed out". Caching it for 30 s means every DB helper
+  // that calls getCurrentUserId() during that window runs against a
+  // global (user_id = NULL) scope, which reads/writes the wrong rows.
+  //
+  // Instead: leave the cache untouched. The next call re-tries the session
+  // lookup. This is cheap (one in-memory Supabase call) and correct.
   return null;
 }
-
 
 
 export async function getCurrentSession() {
@@ -484,16 +489,27 @@ export async function findUserByEmailOrUsernameOrPhone(identifier: string): Prom
    ═══════════════════════════════════════════════════════════════════════════ */
 
 let appSettingsTableExists: boolean | null = null;
+let appSettingsLastCheck = 0;
+const APP_SETTINGS_CHECK_TTL = 60_000; // re-verify table existence every 60 s
+
+async function ensureAppSettingsTableExists(): Promise<boolean> {
+  const now = Date.now();
+  if (
+    appSettingsTableExists !== null &&
+    now - appSettingsLastCheck < APP_SETTINGS_CHECK_TTL
+  ) {
+    return appSettingsTableExists;
+  }
+  appSettingsTableExists = await tableExists('app_settings');
+  appSettingsLastCheck = now;
+  return appSettingsTableExists;
+}
 
 export async function getAppSetting(key: string): Promise<string | null> {
   try {
     const userId = await getCurrentUserId();
     
-    if (appSettingsTableExists === null) {
-      appSettingsTableExists = await tableExists('app_settings');
-    }
-    
-    if (!appSettingsTableExists) {
+    if (!(await ensureAppSettingsTableExists())) {
       try {
         const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
         return await AsyncStorage.getItem(storageKey);
@@ -541,51 +557,54 @@ export async function getAppSetting(key: string): Promise<string | null> {
 export async function setAppSetting(key: string, value: string): Promise<void> {
   try {
     const userId = await getCurrentUserId();
-    
-    if (appSettingsTableExists === null) {
-      appSettingsTableExists = await tableExists('app_settings');
+
+    // `app_settings.user_id` is `uuid NOT NULL`. If auth hasn't hydrated
+    // yet, writing `user_id = null` throws a NOT NULL violation — and the
+    // AsyncStorage fallback row then becomes invisible once auth resolves
+    // (because reads filter by the real user_id). So: while the user is
+    // unknown, write ONLY to AsyncStorage. The next successful
+    // setAppSetting with a real userId will persist the value to the DB.
+    if (!userId) {
+      try {
+        await AsyncStorage.setItem(`app_setting_${key}`, value);
+      } catch {}
+      return;
     }
-    
-    if (!appSettingsTableExists) {
-      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+
+    if (!(await ensureAppSettingsTableExists())) {
+      const storageKey = `app_setting_${userId}_${key}`;
       await AsyncStorage.setItem(storageKey, value);
       return;
     }
 
     const now = new Date().toISOString();
-    
-    
-    let query = supabase
+
+    // NOTE: the old code used `.update({...}).eq(...)` and checked
+    // `count === 0` to decide whether to INSERT. That's broken:
+    //   • `.update()` does NOT return a `count` unless you pass
+    //     `{ count: 'exact' }` to the builder, so `count` was always
+    //     `undefined` → the code ALWAYS fell through to INSERT.
+    //   • The INSERT then hit a primary-key conflict on `(key, user_id)`
+    //     which the `.insert()` error handler silently logged.
+    //   Net effect: `setAppSetting` never actually persisted an update.
+    //
+    // `.upsert(..., { onConflict: 'key, user_id' })` is the correct
+    // primitive here.
+    const insertData: { key: string; value: string; user_id: string; updated_at: string } = {
+      key,
+      value,
+      user_id: userId,       // NOT NULL — guaranteed by the guard above
+      updated_at: now,
+    };
+
+    const { error: upsertError } = await supabase
       .from('app_settings')
-      .update({ value, updated_at: now })
-      .eq('key', key);
+      .upsert(insertData, { onConflict: 'key, user_id' });
 
-    if (userId) {
-      query = query.eq('user_id', userId);
-    } else {
-      query = query.is('user_id', null);
-    }
-
-    const { error: updateError, count } = await query;
-
-    if (updateError || count === 0) {
-      const insertData: any = { key, value, updated_at: now };
-      
-      if (userId) {
-        insertData.user_id = userId;
-      } else {
-        insertData.user_id = null;
-      }
-
-      const { error: insertError } = await supabase
-        .from('app_settings')
-        .insert(insertData);
-
-      if (insertError) {
-        console.warn(`[DB] setAppSetting insert error for ${key}:`, insertError.message);
-        const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
-        await AsyncStorage.setItem(storageKey, value);
-      }
+    if (upsertError) {
+      console.warn(`[DB] setAppSetting upsert error for ${key}:`, upsertError.message);
+      const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
+      await AsyncStorage.setItem(storageKey, value);
     }
   } catch (error) {
     console.error(`[DB] setAppSetting error for ${key}:`, error);
@@ -603,11 +622,7 @@ export async function deleteAppSetting(key: string): Promise<void> {
   try {
     const userId = await getCurrentUserId();
     
-    if (appSettingsTableExists === null) {
-      appSettingsTableExists = await tableExists('app_settings');
-    }
-    
-    if (!appSettingsTableExists) {
+    if (!(await ensureAppSettingsTableExists())) {
       const storageKey = userId ? `app_setting_${userId}_${key}` : `app_setting_${key}`;
       await AsyncStorage.removeItem(storageKey);
       return;
@@ -647,11 +662,7 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
   try {
     const userId = await getCurrentUserId();
     
-    if (appSettingsTableExists === null) {
-      appSettingsTableExists = await tableExists('app_settings');
-    }
-    
-    if (!appSettingsTableExists) {
+    if (!(await ensureAppSettingsTableExists())) {
       const result: Record<string, string | null> = {};
       for (const key of keys) {
         try {
@@ -679,6 +690,11 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
 
     if (error) {
       console.warn('[DB] getMultipleAppSettings error:', error.message);
+      // Prefer the AsyncStorage fallback BUT — unlike `getAppSetting` —
+      // do NOT skip the DB on the next call. This function is a pure
+      // read, so a transient error just means "we couldn't confirm the
+      // latest values". Per-key fallback is fine; callers should treat
+      // this as best-effort.
       const result: Record<string, string | null> = {};
       for (const key of keys) {
         try {
@@ -710,6 +726,16 @@ export async function getAllBabiesFromDb(forceSync: boolean = false) {
     const userId = await getCurrentUserId();
     if (!userId) {
       return [];
+    }
+
+    if (forceSync) {
+      // Caller explicitly wants a cache bypass. Skip any local reads so
+      // the result reflects the DB — the AsyncStorage write at the end
+      // of this function still refreshes the cache for future non-forced
+      // reads.
+      try {
+        await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
+      } catch {}
     }
 
     
@@ -938,17 +964,25 @@ export async function updateBabyInDb(id: string, updates: Partial<{
     if (updates.parent2Id !== undefined) remoteUpdates.parent2_id = updates.parent2Id;
     if (updates.isActive !== undefined) remoteUpdates.is_active = updates.isActive;
 
-    const { data: result, error } = await supabase
+    // Use `.select()` (array) instead of `.single()` so a no-op update
+    // (row already matches, RLS-filtered, or row was deleted) does not
+    // throw PGRST116. We then treat "no row returned" as a soft success
+    // — the DB state is what we wanted.
+    const { data: resultRows, error } = await supabase
       .from('babies')
       .update(remoteUpdates)
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error(`[DB] updateBabyInDb error for ${id}:`, error.message);
       throw error;
     }
+
+    const result =
+      Array.isArray(resultRows) && resultRows.length > 0
+        ? resultRows[0]
+        : null;
 
     
     if (userId) {
@@ -966,20 +1000,24 @@ export async function deleteBabyFromDb(id: string) {
   try {
     const userId = await getCurrentUserId();
     
-    const { data: result, error } = await supabase
+    const { data: resultRows, error } = await supabase
       .from('babies')
       .update({
         is_active: false,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error(`[DB] deleteBabyFromDb error for ${id}:`, error.message);
       throw error;
     }
+
+    const result =
+      Array.isArray(resultRows) && resultRows.length > 0
+        ? resultRows[0]
+        : null;
 
     if (userId) {
       await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
@@ -1152,10 +1190,12 @@ export async function createEntryInDb(data: {
 }) {
   try {
     const now = new Date().toISOString();
+    // IMPORTANT: do NOT inject loggedBy / loggedByName / loggedByRole
+    // into the tracker-specific `data` jsonb. They already live in
+    // dedicated columns; duplicating them bloats the row, confuses
+    // AI feature extractors that iterate `data`, and can clobber
+    // legitimate user-supplied fields of the same name.
     const payload: Record<string, unknown> = { ...data.data };
-    if (data.loggedBy !== undefined) payload.loggedBy = data.loggedBy;
-    if (data.loggedByName !== undefined) payload.loggedByName = data.loggedByName;
-    if (data.loggedByRole !== undefined) payload.loggedByRole = data.loggedByRole;
 
     const { data: result, error } = await supabase
       .from('tracker_entries')
@@ -1273,20 +1313,28 @@ export async function updateEntryInDb(id: string, updates: Partial<{
 
 export async function softDeleteEntryInDb(id: string) {
   try {
-    const { data: result, error } = await supabase
+    // FIX: use `.select()` (array) instead of `.single()` so a missing
+    // row (already deleted, RLS-hidden, or wrong ID) returns `[]`
+    // instead of throwing PGRST116. The caller (TrackerContext) then
+    // gets a graceful "already gone" instead of "Failed to delete".
+    const { data: resultRows, error } = await supabase
       .from('tracker_entries')
       .update({
         is_deleted: true,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error(`[DB] softDeleteEntryInDb error for ${id}:`, error.message);
       throw error;
     }
+
+    const result =
+      Array.isArray(resultRows) && resultRows.length > 0
+        ? resultRows[0]
+        : null;
 
     if (result?.baby_id) {
       await AsyncStorage.removeItem(`@littleloom_entries_${result.baby_id}`);
@@ -1476,21 +1524,25 @@ export async function updateFamilyMemberInDb(id: string, updates: Partial<{
 
 export async function softDeleteFamilyMemberInDb(id: string) {
   try {
-    const { data: result, error } = await supabase
+    // Same PGRST116 fix as softDeleteEntryInDb — use `.select()` array.
+    const { data: resultRows, error } = await supabase
       .from('family_members')
       .update({
         is_deleted: true,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error(`[DB] softDeleteFamilyMemberInDb error for ${id}:`, error.message);
       throw error;
     }
 
+    const result =
+      Array.isArray(resultRows) && resultRows.length > 0
+        ? resultRows[0]
+        : null;
     return result;
   } catch (error) {
     console.error(`[DB] softDeleteFamilyMemberInDb error for ${id}:`, error);
@@ -1561,7 +1613,15 @@ export async function hardDeleteAllUserData(userId: string): Promise<boolean> {
 
     await supabase.from('family_members').delete().eq('user_id', userId);
     await supabase.from('app_settings').delete().eq('user_id', userId);
-    await AsyncStorage.removeItem(`@littleloom_babies_${userId}`);
+    // Clear BOTH the dbHelpers cache (`@littleloom_babies_${userId}`) AND
+    // the BabyContext cache (`@littleloom_babies_cache_${userId}`) — they
+    // use different prefixes, and leaving one behind means the new account
+    // on the same device hydrates the previous user's baby list.
+    await Promise.all([
+      AsyncStorage.removeItem(`@littleloom_babies_${userId}`),
+      AsyncStorage.removeItem(`@littleloom_babies_cache_${userId}`),
+      AsyncStorage.removeItem(`@littleloom_last_baby_sync_${userId}`),
+    ]).catch(() => {});
 
     console.log(`[DB] Hard deleted all data for user: ${userId}`);
     return true;

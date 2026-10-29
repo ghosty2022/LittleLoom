@@ -431,12 +431,24 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const row = payload?.new;
       if (!row?.id || !row.parent1_id) return;
       const uid = currentUserIdRef.current;
+      // Parents (1 & 2) can short-circuit. Everyone else (guardian /
+      // viewer) must still be checked against family_members, so DON'T
+      // bail for them — a guardian invited to a brand-new baby has to
+      // see it via the family_members realtime event below. The reload
+      // is a cheap idempotent refresh, so we simply always trigger it
+      // for non-parents instead of trying to filter here.
       if (
         uid &&
         row.parent1_id !== uid &&
         row.parent2_id !== uid
       ) {
-        return;
+        // Non-parent — still reload so family_members additions for this
+        // baby are picked up. loadBabies() re-derives roles from
+        // family_members, so a user with no membership will simply end
+        // up with an unchanged list.
+        if (__DEV__) {
+          console.log('[BabyContext] Realtime babies.inserted (non-parent) → reloading');
+        }
       }
       if (__DEV__) console.log('[BabyContext] Realtime babies.inserted:', row.id);
       loadBabiesRef.current?.(true);
@@ -910,21 +922,26 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       
+      // IMPORTANT: scope the cache by user ID so a different account
+      // signing in on the same device cannot hydrate this account's
+      // baby list from AsyncStorage. `userId` is already resolved above.
+      const scopedBabiesCacheKey = `${STORAGE_KEYS.BABIES_CACHE_KEY}_${userId}`;
+      const scopedLastSyncKey = `${STORAGE_KEYS.LAST_SYNC_KEY}_${userId}`;
       if (babies.length > 0) {
         try {
           await AsyncStorage.setItem(
-            STORAGE_KEYS.BABIES_CACHE_KEY,
+            scopedBabiesCacheKey,
             JSON.stringify(babies)
           );
           await AsyncStorage.setItem(
-            STORAGE_KEYS.LAST_SYNC_KEY,
+            scopedLastSyncKey,
             Date.now().toString()
           );
         } catch (cacheError) {
           console.warn('[BabyContext] Failed to cache babies:', cacheError);
         }
       } else {
-        await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+        await AsyncStorage.removeItem(scopedBabiesCacheKey);
       }
 
       
@@ -1111,29 +1128,42 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[BabyContext] Error loading babies:', error);
 
       try {
-        const cached = await AsyncStorage.getItem(
-          STORAGE_KEYS.BABIES_CACHE_KEY
-        );
-        if (cached) {
-          const cachedBabies = JSON.parse(cached);
+        // NEVER fall back to a global "anon" bucket — that would leak the
+        // previous account's baby list into a fresh session. If we don't
+        // know who the user is yet, skip the cache entirely.
+        const cacheUid = currentUserIdRef.current;
+        if (!cacheUid) {
           if (__DEV__) {
-            console.log(
-              `[BabyContext] Loaded ${cachedBabies.length} babies from cache`
-            );
+            console.warn('[BabyContext] Cannot read cache without a user ID — skipping');
           }
-          if (isMounted.current && cachedBabies.length > 0) {
-            const cachedBaby =
-              cachedBabies.find((b: any) => b.id === state.currentBabyId) ||
-              cachedBabies[0] ||
-              null;
-            setState(prev => ({
-              ...prev,
-              isLoading: false,
-              babies: cachedBabies,
-              currentBaby: cachedBaby,
-              currentBabyId: cachedBaby?.id || null,
-              isInitialized: true,
-            }));
+        } else {
+          const cacheKey = `${STORAGE_KEYS.BABIES_CACHE_KEY}_${cacheUid}`;
+          const cached = await AsyncStorage.getItem(cacheKey);
+          if (cached) {
+            const cachedBabies = JSON.parse(cached);
+            if (__DEV__) {
+              console.log(
+                `[BabyContext] Loaded ${cachedBabies.length} babies from cache`
+              );
+            }
+            if (isMounted.current && cachedBabies.length > 0) {
+              // `state.currentBabyId` here is a stale closure — it was
+              // captured at the time `loadBabies` was first memoised.
+              // `currentBabyIdForSubsRef` is kept live by the subscriber
+              // bridge effect and always holds the current value.
+              const cachedBaby =
+                cachedBabies.find((b: any) => b.id === currentBabyIdForSubsRef.current) ||
+                cachedBabies[0] ||
+                null;
+              setState(prev => ({
+                ...prev,
+                isLoading: false,
+                babies: cachedBabies,
+                currentBaby: cachedBaby,
+                currentBabyId: cachedBaby?.id || null,
+                isInitialized: true,
+              }));
+            }
           }
         }
       } catch (cacheError) {
@@ -1175,8 +1205,10 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try {
               await AsyncStorage.multiRemove([
                 STORAGE_KEYS.BABIES_CACHE_KEY,
+                `${STORAGE_KEYS.BABIES_CACHE_KEY}_${previousUserId}`,
                 STORAGE_KEYS.CURRENT_BABY_ID,
                 STORAGE_KEYS.LAST_SYNC_KEY,
+                `${STORAGE_KEYS.LAST_SYNC_KEY}_${previousUserId}`,
               ]);
             } catch {}
             if (isMounted.current) {
@@ -1210,11 +1242,19 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // signing in on this device doesn't inherit the previous
           // account's baby list as an offline fallback.
           try {
-            await AsyncStorage.multiRemove([
+            const lastUid = currentUserIdRef.current;
+            const keys: string[] = [
               STORAGE_KEYS.BABIES_CACHE_KEY,
               STORAGE_KEYS.CURRENT_BABY_ID,
               STORAGE_KEYS.LAST_SYNC_KEY,
-            ]);
+            ];
+            if (lastUid) {
+              keys.push(
+                `${STORAGE_KEYS.BABIES_CACHE_KEY}_${lastUid}`,
+                `${STORAGE_KEYS.LAST_SYNC_KEY}_${lastUid}`,
+              );
+            }
+            await AsyncStorage.multiRemove(keys);
           } catch {}
 
           if (isMounted.current) {
@@ -1828,7 +1868,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           broadcastBabyChange(newCurrentId);
         });
 
-        await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+        await AsyncStorage.removeItem(`${STORAGE_KEYS.BABIES_CACHE_KEY}_${userId}`);
 
         Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success
@@ -2045,7 +2085,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             currentBaby:
               prev.currentBaby?.id === id ? updatedBaby : prev.currentBaby,
           }));
-          await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+          // FIX: `userId` was never declared in this scope — the old line
+          // threw `ReferenceError: userId is not defined` every time an
+          // update succeeded, which the outer catch swallowed and re-labelled
+          // as "Update baby error". Resolve it properly:
+          const _cacheUid = currentUserIdRef.current;
+          await AsyncStorage.removeItem(
+            _cacheUid
+              ? `${STORAGE_KEYS.BABIES_CACHE_KEY}_${_cacheUid}`
+              : STORAGE_KEYS.BABIES_CACHE_KEY,
+          );
         }
       } catch (error) {
         console.error('Update baby error:', error);
@@ -2100,9 +2149,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('user_id', userId);
         }
 
-        await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+        await AsyncStorage.removeItem(`${STORAGE_KEYS.BABIES_CACHE_KEY}_${userId}`);
         await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_BABY_ID);
-        await AsyncStorage.removeItem(STORAGE_KEYS.LAST_SYNC_KEY);
+        await AsyncStorage.removeItem(`${STORAGE_KEYS.LAST_SYNC_KEY}_${userId}`);
 
         if (isMounted.current) {
           const newUserRoles = { ...state.userRoles };
@@ -2264,7 +2313,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           broadcastBabyChange(id);
         });
 
-        await AsyncStorage.removeItem(STORAGE_KEYS.BABIES_CACHE_KEY);
+        await AsyncStorage.removeItem(`${STORAGE_KEYS.BABIES_CACHE_KEY}_${userId}`);
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         return true;

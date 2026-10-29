@@ -331,6 +331,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         isInitialized: true,
       }));
     }
+
+    // Also refresh the follow-set so `isFollowing(userId)` is not stale
+    // after a cross-device follow / unfollow.
+    try {
+      const followed = await CommunityService.fetchFollowedIds(meId);
+      setFollowedSet(followed);
+    } catch {}
   }, []);
 
   const scheduleRefresh = useCallback(() => {
@@ -746,17 +753,25 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (updates.bio !== undefined) dbUpdates.community_bio = updates.bio;
     if (updates.avatar !== undefined) dbUpdates.community_avatar = updates.avatar;
     if (updates.coverPhoto !== undefined) dbUpdates.community_cover = updates.coverPhoto;
-    if (updates.country !== undefined || updates.location !== undefined) {
-      dbUpdates.country = updates.country ?? updates.location;
-    }
     if (updates.isVerified !== undefined) dbUpdates.is_verified = updates.isVerified;
     if (updates.stats !== undefined) dbUpdates.community_stats = updates.stats;
+    // NOTE: `profiles` has NO `country` column. Country lives on
+    // `community_profiles.country`, which is a different table we don't
+    // use here. Do NOT add `country` to this update — Supabase rejects
+    // the entire UPDATE if any column doesn't exist, so a single invalid
+    // column rolls back ALL the other fields the caller was trying to save.
 
-    const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', meId);
-    if (error) {
-      if (__DEV__) console.warn('[Community] updateCommunityProfile DB error:', error.message);
-      // do NOT throw — the caller may be doing a best-effort background sync
+    if (Object.keys(dbUpdates).length > 1) {
+      const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', meId);
+      if (error) {
+        if (__DEV__) console.warn('[Community] updateCommunityProfile DB error:', error.message);
+        // do NOT throw — the caller may be doing a best-effort background sync
+      }
     }
+
+    // Country updates are a no-op on `profiles`. Record it only in the
+    // in-memory CommunityUser so the UI reflects what the user picked,
+    // without poisoning the profiles UPDATE.
 
     // Optimistic in-memory patch so every consumer sees the change instantly.
     setState((p) => {

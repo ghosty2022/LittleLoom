@@ -31,12 +31,22 @@ const mapProfileToCommunityUser = (row: any): CommunityUser => ({
   coverPhoto: row.community_cover || undefined,
   isVerified: row.is_verified === true,
   bio: row.community_bio || '',
-  location: row.country || '',
-  country: row.country || '',
+  // `profiles` has no `country` column — the geography lives on
+  // `community_profiles.country`. Consumers that need it must fetch it
+  // separately. Here we intentionally fall back to whatever the caller
+  // already joined; on plain `profiles` selects both are empty.
+  location: row.location || row.country || '',
+  country: row.location || row.country || '',
   onlineStatus: (row.online_status as any) || 'offline',
   lastActive: row.last_active || new Date().toISOString(),
   stats: row.community_stats || { posts: 0, followers: 0, following: 0, helpful: 0, streakDays: 0, lastStreakDate: new Date().toISOString() },
-  achievements: row.community_achievements || [],
+  // `profiles` has no `community_achievements` column — the achievements
+  // array lives on `community_profiles.achievements`. Reads through plain
+  // `profiles` selects always fall back to an empty array. If you start
+  // joining `community_profiles`, map that column explicitly.
+  achievements: Array.isArray(row.community_achievements)
+    ? row.community_achievements
+    : [],
   selectedTopics: row.community_selected_topics || [],
   isFollowing: undefined,
 });
@@ -144,7 +154,7 @@ export const fetchFeed = async (
       `id, author_id, topic_id, content, images, is_anonymous, mood, poll_data,
        likes_count, reposts_count, comments_count, bookmarks_count, helpful_votes,
        popularity_score, view_count, is_trending, created_at, updated_at,
-       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics, country)`,
+       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics)`,
     )
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
@@ -217,7 +227,7 @@ export const fetchPostById = async (postId: string, meId: string): Promise<Post 
       `id, author_id, topic_id, content, images, is_anonymous, mood, poll_data,
        likes_count, reposts_count, comments_count, bookmarks_count, helpful_votes,
        popularity_score, view_count, is_trending, created_at, updated_at,
-       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics, country)`,
+       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics)`,
     )
     .eq('id', postId)
     .eq('is_deleted', false)
@@ -250,7 +260,7 @@ export const fetchCommentsForPost = async (postId: string, meId: string): Promis
     .select(
       `id, post_id, author_id, parent_comment_id, content, likes_count, helpful_votes,
        created_at, updated_at, is_deleted,
-       author:profiles!community_comments_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, is_verified, community_stats, community_selected_topics, country)`,
+       author:profiles!community_comments_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, is_verified, community_stats, community_selected_topics)`,
     )
     .eq('post_id', postId)
     .eq('is_deleted', false)
@@ -483,25 +493,57 @@ export const incrementViewRow = async (postId: string, meId: string): Promise<vo
 };
 
 export const fetchTopicStats = async (): Promise<Topic[]> => {
+  // 1) Try the RPC (fast, single round-trip, aggregates in the DB).
   const { data, error } = await supabase.rpc('get_topic_stats');
-  if (error || !data || data.length === 0) return INITIAL_TOPICS;
-  const postMap = new Map<string, number>();
-  const memberMap = new Map<string, number>();
-  data.forEach((r: any) => {
-    postMap.set(r.topic_id, Number(r.post_count) || 0);
-    memberMap.set(r.topic_id, Number(r.member_count) || 0);
-  });
-  return INITIAL_TOPICS.map((t) => ({
-    ...t,
-    posts: Math.max(t.posts, postMap.get(t.id) || 0),
-    members: Math.max(t.members, memberMap.get(t.id) || 0),
-  }));
+  if (!error && data && data.length > 0) {
+    const postMap = new Map<string, number>();
+    const memberMap = new Map<string, number>();
+    data.forEach((r: any) => {
+      postMap.set(r.topic_id, Number(r.post_count) || 0);
+      memberMap.set(r.topic_id, Number(r.member_count) || 0);
+    });
+    return INITIAL_TOPICS.map((t) => ({
+      ...t,
+      posts: Math.max(t.posts, postMap.get(t.id) || 0),
+      members: Math.max(t.members, memberMap.get(t.id) || 0),
+    }));
+  }
+
+  // 2) Fallback: compute counts client-side from actual rows. This is
+  // fine because the topic list is small (17 topics) and the post count
+  // query returns only the topic_id column.
+  try {
+    const [postsRes, topicsRes] = await Promise.all([
+      supabase
+        .from('community_posts')
+        .select('topic_id')
+        .eq('is_deleted', false),
+      supabase
+        .from('user_topics')
+        .select('topic_id'),
+    ]);
+    const postCounts = new Map<string, number>();
+    (postsRes.data || []).forEach((r: any) => {
+      postCounts.set(r.topic_id, (postCounts.get(r.topic_id) || 0) + 1);
+    });
+    const memberCounts = new Map<string, number>();
+    (topicsRes.data || []).forEach((r: any) => {
+      memberCounts.set(r.topic_id, (memberCounts.get(r.topic_id) || 0) + 1);
+    });
+    return INITIAL_TOPICS.map((t) => ({
+      ...t,
+      posts: postCounts.get(t.id) || t.posts || 0,
+      members: memberCounts.get(t.id) || t.members || 0,
+    }));
+  } catch {
+    return INITIAL_TOPICS;
+  }
 };
 
 export const fetchUserProfileById = async (userId: string): Promise<CommunityUser | null> => {
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics, country')
+    .select('id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics')
     .eq('id', userId)
     .maybeSingle();
   return data ? mapProfileToCommunityUser(data) : null;
@@ -514,7 +556,7 @@ export const fetchUserPosts = async (userId: string, meId: string): Promise<Post
       `id, author_id, topic_id, content, images, is_anonymous, mood, poll_data,
        likes_count, reposts_count, comments_count, bookmarks_count, helpful_votes,
        popularity_score, view_count, is_trending, created_at, updated_at,
-       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics, country)`,
+       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics)`,
     )
     .eq('author_id', userId)
     .eq('is_deleted', false)
@@ -533,7 +575,7 @@ export const searchUsers = async (query: string, meId: string): Promise<Communit
   if (!q) return [];
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics, country')
+    .select('id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics')
     .or(`community_handle.ilike.%${q}%,community_display_name.ilike.%${q}%,full_name.ilike.%${q}%,username.ilike.%${q}%`)
     .neq('id', meId)
     .limit(30);

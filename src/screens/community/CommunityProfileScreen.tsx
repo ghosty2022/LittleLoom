@@ -1118,12 +1118,38 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         // `updates` so `updateCommunityProfile` doesn't re-persist it.
         delete (updates as any).handle;
       }
-      await updateUserContextProfile(updates);
-      await updateCommunityProfile(updates);
+      const userCtxUpdates: any = {
+        displayName: updates.displayName,
+        bio: updates.bio,
+        avatar: updates.avatar,
+        preferences: {
+          isPublic: updates.isPublic,
+          allowMessages: updates.allowMessages,
+          showLocation: updates.showActivityStatus,
+          selectedTopics: typeof getSelectedTopics === 'function' ? getSelectedTopics() : [],
+        },
+      };
+      // NOTE: `profiles` has no `country` column, so we deliberately omit
+      // `country` here — sending it would fail the whole UPDATE (the DB
+      // rejects unknown columns). If/when a `profiles.country` column is
+      // added, re-enable the line below.
+      const communityCtxUpdates: any = {
+        displayName: updates.displayName,
+        handle: updates.handle,
+        bio: updates.bio,
+        avatar: updates.avatar,
+        coverPhoto: updates.coverPhoto,
+        // country: updates.country,  // ← re-enable when the column exists
+      };
+      await updateUserContextProfile(userCtxUpdates);
+      await updateCommunityProfile(communityCtxUpdates);
       await syncUserProfileAcrossPosts(currentUser.id, { displayName: updates.displayName, handle: updates.handle, avatar: updates.avatar });
-      // Keep formData.handle in the canonical bare form so `hasChanges`
-      // compares like-with-like and the Save button disables on success.
+      // Keep formData AND originalData in the same canonical bare form so
+      // `hasChanges` compares like-with-like and the Save button disables
+      // on success. Without resetting `originalData`, the @-prefixed old
+      // handle vs bare new handle made `hasChanges` permanently true.
       setFormData(prev => ({ ...prev, handle: cleanHandle }));
+      setOriginalData(prev => ({ ...prev, handle: cleanHandle }));
       if (formData.avatar && formData.avatar !== originalData.avatar && !formData.avatar.startsWith('file://')) {
         try { await supabase.from('profiles').update({ community_avatar: formData.avatar, avatar_url: formData.avatar }).eq('id', currentUser.id); await supabase.from('family_members').update({ avatar: formData.avatar }).eq('user_id', currentUser.id); } catch {}
       }

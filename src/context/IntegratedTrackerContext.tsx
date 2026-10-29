@@ -500,8 +500,11 @@ export const IntegratedTrackerProvider: React.FC<{ children: React.ReactNode }> 
     if (!updatedAt[id]) updatedAt[id] = Date.now();
 
     
-    await AsyncStorage.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(updated));
-    await AsyncStorage.setItem(ACHIEVEMENT_UNLOCKED_AT_KEY, JSON.stringify(updatedAt));
+    const uid = userProfile?.id;
+    const scopedKey = uid ? `${ACHIEVEMENT_STORAGE_KEY}_${uid}` : ACHIEVEMENT_STORAGE_KEY;
+    const scopedAtKey = uid ? `${ACHIEVEMENT_UNLOCKED_AT_KEY}_${uid}` : ACHIEVEMENT_UNLOCKED_AT_KEY;
+    await AsyncStorage.setItem(scopedKey, JSON.stringify(updated));
+    await AsyncStorage.setItem(scopedAtKey, JSON.stringify(updatedAt));
 
     
     try {
