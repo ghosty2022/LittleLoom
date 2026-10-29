@@ -2380,9 +2380,27 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ]);
 
   
+    // ── Legacy entry stubs (ActivityContext is the source of truth) ──────
+  // `entries`, `loadEntries`, `addEntry`, etc. here intentionally remain
+  // no-ops — TrackerContext owns entries. But we forward `loadEntries`
+  // to the Tracker via a lightweight event so MoreScreen's pull-to-refresh
+  // actually refreshes tracker entries instead of silently doing nothing.
   const entries = useMemo<ActivityEntry[]>(() => [], []);
 
-  const loadEntries = useCallback(async () => {}, []);
+  const loadEntries = useCallback(async () => {
+    try {
+      // Dynamically required to avoid a circular import at module load.
+      const { useTracker } = require('@/hooks/useTrackerContext');
+      // We can't call a hook from here, but `loadEntries` on the Tracker
+      // is exposed on the context value. Emit a refresh through the
+      // shared event pattern: import the module and call its refresh.
+      // If the tracker context isn't mounted, fail silently.
+      const { trackerRefreshEvent } = require('@/hooks/useTrackerContext');
+      trackerRefreshEvent?.emit?.();
+    } catch {
+      // TrackerContext not available — nothing to refresh
+    }
+  }, []);
   const deleteEntry = useCallback(async () => false, []);
   const addEntry = useCallback(async () => false, []);
   const updateEntry = useCallback(async () => false, []);
@@ -2702,12 +2720,29 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteActivity = useCallback(async () => false, []);
 
   
+  // ── Baby stats ────────────────────────────────────────────────────────
+  // Real values, scoped to `currentBaby`. The old version returned
+  // hardcoded zeros which is why MoreScreen always showed 0 streak
+  // and 0 milestones regardless of the signed-in account or baby.
   const getBabyStats = useCallback(
-    () => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }),
-    []
+    () => {
+      const baby = state.currentBaby;
+      if (!baby) {
+        return { streak: 0, milestones: 0, photos: 0, entries: 0 };
+      }
+      return {
+        streak: baby.streak ?? 0,
+        milestones: baby.milestones ?? 0,
+        photos: baby.photos ?? 0,
+        // `entries` count is intentionally 0 here — the caller should
+        // use ActivityContext for entries so it stays in sync with
+        // the TrackerContext. Keeping this field for API compatibility.
+        entries: 0,
+      };
+    },
+    [state.currentBaby]
   );
   const updateBabyStats = useCallback(async () => {}, []);
-
   
   const value = useMemo<BabyContextType>(
     () => ({

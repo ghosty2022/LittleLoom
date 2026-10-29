@@ -57,6 +57,7 @@ import { useBaby } from '../../context/BabyContext';
 import { useFamily } from '../../context/FamilyContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { useActivity } from '../../context/ActivityContext';
+import { useTracker } from '../../hooks/useTrackerContext';
 import { useUser } from '../../context/UserContext';
 import { useApp } from '../../context/AppContext';
 import { useCommunity } from '../../context/CommunityContext';
@@ -299,58 +300,79 @@ const CustomModal = React.memo<CustomModalProps>(({
 
   if (!visible) return null;
 
+  // Shared inner content — rendered in both branches so we don't duplicate JSX.
+  const modalBody = (
+    <>
+      <View
+        style={[
+          styles.modalIconWrap,
+          { backgroundColor: `${iconColor || primaryColor}15` },
+        ]}
+      >
+        <Ionicons name={icon as any} size={32} color={iconColor || primaryColor} />
+      </View>
+
+      <Text style={[styles.modalTitle, isDark && styles.textLight]}>{title}</Text>
+      <Text style={[styles.modalDesc, isDark && styles.textMuted]}>{message}</Text>
+
+      <View style={styles.modalButtons}>
+        {secondaryAction && (
+          <TouchableOpacity
+            style={[
+              styles.modalSecondaryBtn,
+              { borderColor: `${primaryColor}30`, borderWidth: 1 },
+            ]}
+            onPress={() => {
+              secondaryAction.onPress();
+              onClose();
+            }}
+          >
+            <Text style={[styles.modalSecondaryBtnText, { color: primaryColor }]}>
+              {secondaryAction.label}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {primaryAction && (
+          <TouchableOpacity
+            style={[styles.modalPrimaryBtn, { backgroundColor: primaryColor }]}
+            onPress={() => {
+              primaryAction.onPress();
+              onClose();
+            }}
+          >
+            <Text style={styles.modalPrimaryBtnText}>{primaryAction.label}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </>
+  );
+
   return (
     <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
       <Animated.View style={[styles.modalOverlay, backdropStyle]}>
-        <BlurView
-          intensity={isDark ? 60 : 90}
-          style={[styles.modalContent, isDark && styles.modalContentDark]}
-          tint={isDark ? 'dark' : 'light'}
-        >
-          <Animated.View style={contentStyle}>
-            <View
-              style={[
-                styles.modalIconWrap,
-                { backgroundColor: `${iconColor || primaryColor}15` },
-              ]}
-            >
-              <Ionicons name={icon as any} size={32} color={iconColor || primaryColor} />
-            </View>
-
-            <Text style={[styles.modalTitle, isDark && styles.textLight]}>{title}</Text>
-            <Text style={[styles.modalDesc, isDark && styles.textMuted]}>{message}</Text>
-
-            <View style={styles.modalButtons}>
-              {secondaryAction && (
-                <TouchableOpacity
-                  style={[
-                    styles.modalSecondaryBtn,
-                    { borderColor: `${primaryColor}30`, borderWidth: 1 },
-                  ]}
-                  onPress={() => {
-                    secondaryAction.onPress();
-                    onClose();
-                  }}
-                >
-                  <Text style={[styles.modalSecondaryBtnText, { color: primaryColor }]}>
-                    {secondaryAction.label}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              {primaryAction && (
-                <TouchableOpacity
-                  style={[styles.modalPrimaryBtn, { backgroundColor: primaryColor }]}
-                  onPress={() => {
-                    primaryAction.onPress();
-                    onClose();
-                  }}
-                >
-                  <Text style={styles.modalPrimaryBtnText}>{primaryAction.label}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+        {/* On Android, BlurView renders a sharp opaque rectangle that ignores
+            borderRadius + overflow:hidden. Use a plain View there so the
+            rounded corners are actually respected. On iOS keep the blur. */}
+        {Platform.OS === 'ios' ? (
+          <BlurView
+            intensity={isDark ? 60 : 90}
+            style={[styles.modalContent, isDark && styles.modalContentDark]}
+            tint={isDark ? 'dark' : 'light'}
+          >
+            <Animated.View style={contentStyle}>{modalBody}</Animated.View>
+          </BlurView>
+        ) : (
+          <Animated.View
+            style={[
+              styles.modalContent,
+              styles.modalContentAndroid,
+              isDark && styles.modalContentDark,
+              contentStyle,
+            ]}
+          >
+            {modalBody}
           </Animated.View>
-        </BlurView>
+        )}
       </Animated.View>
     </Pressable>
   );
@@ -1004,11 +1026,12 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
         style={[styles.modalSheet, sheetStyle]}
         pointerEvents={visible ? 'auto' : 'none'}
       >
-        <BlurView
-          intensity={isDark ? 60 : 90}
-          style={styles.modalSheetBlur}
-          tint={isDark ? 'dark' : 'light'}
-        >
+        {Platform.OS === 'ios' ? (
+          <BlurView
+            intensity={isDark ? 60 : 90}
+            style={styles.modalSheetBlur}
+            tint={isDark ? 'dark' : 'light'}
+          >
           <View style={styles.modalHandle} />
           <View style={styles.modalSheetHeader}>
             <Text style={[styles.modalSheetTitle, isDark && styles.textLight]}>
@@ -1084,6 +1107,83 @@ const BabySelectionModal = React.memo<BabySelectionModalProps>(({
             })}
           </ScrollView>
         </BlurView>
+        ) : (
+          <View style={[styles.modalSheetBlur, styles.modalSheetBlurAndroid, isDark && styles.modalSheetBlurAndroidDark]}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalSheetHeader}>
+              <Text style={[styles.modalSheetTitle, isDark && styles.textLight]}>
+                Select Baby Profile
+              </Text>
+              <PressableScale onPress={onClose} hapticType="light">
+                <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
+                  <Ionicons name="close" size={20} color={isDark ? DS.white : DS.gray900} />
+                </View>
+              </PressableScale>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalSheetContent}>
+              {babies.map((baby) => {
+                const isActive = baby.id === currentBabyId;
+                return (
+                  <View key={baby.id} style={styles.babyOptionRow}>
+                    <PressableScale
+                      onPress={() => onSelectBaby(baby)}
+                      activeScale={0.98}
+                      style={{ flex: 1 }}
+                    >
+                      <View
+                        style={[
+                          styles.babyOption,
+                          isDark && styles.babyOptionDark,
+                          isActive && [styles.babyOptionActive, { borderColor: primaryColor }],
+                          isActive && isDark && styles.babyOptionActiveDark,
+                        ]}
+                      >
+                        <SafeBabyAvatar avatar={baby.avatar} gender={baby.gender} size={52} />
+                        <View style={styles.babyOptionInfo}>
+                          <Text
+                            style={[
+                              styles.babyOptionName,
+                              isDark && styles.textLight,
+                              isActive && { color: primaryColor },
+                            ]}
+                          >
+                            {baby.name}
+                          </Text>
+                          <Text style={[styles.babyOptionMeta, isDark && styles.textMuted]}>
+                            {baby.age || 'Age unknown'} · {baby.gender || 'Unknown'}
+                          </Text>
+                        </View>
+                        {isActive ? (
+                          <View style={[styles.activeCheck, { backgroundColor: primaryColor }]}>
+                            <Ionicons name="checkmark" size={16} color={DS.white} />
+                          </View>
+                        ) : (
+                          <Ionicons name="chevron-forward" size={18} color={isDark ? DS.gray500 : DS.gray300} />
+                        )}
+                      </View>
+                    </PressableScale>
+
+                    <PressableScale
+                      onPress={() => onEditBaby(baby)}
+                      activeScale={0.9}
+                      hapticType="light"
+                    >
+                      <View
+                        style={[
+                          styles.babyEditBtn,
+                          { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                        ]}
+                      >
+                        <Ionicons name="create-outline" size={18} color={primaryColor} />
+                      </View>
+                    </PressableScale>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
       </Animated.View>
     </View>
   );
@@ -1483,6 +1583,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const { profile: userContextProfile } = useUser();
   const { guardians, parent2: parent2Profile } = useFamily();
   const { entries, loadEntries } = useActivity();
+  const tracker = useTracker();
+  const refreshTrackerEntries = tracker?.refreshEntries;
   const {
     themeColors,
     fullThemeColors,
@@ -1558,11 +1660,16 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
   const babyStats = currentBaby
     ? getBabyStats()
     : { streak: 0, milestones: 0, photos: 0, entries: 0 };
-  const activityStats = {
-    entries: entries?.length || 0,
+
+  // `entries` from ActivityContext is already baby-scoped (see FIX #3),
+  // so this length is guaranteed to belong to the current baby.
+  // `streak` and `milestones` now come from the real `BabyProfile`
+  // fields, not the old hardcoded-zero `getBabyStats` stub.
+  const activityStats = useMemo(() => ({
+    entries: Array.isArray(entries) ? entries.length : 0,
     streak: babyStats.streak || 0,
     milestones: babyStats.milestones || 0,
-  };
+  }), [entries, babyStats.streak, babyStats.milestones]);
 
   const bgColors = useMemo(() => {
     if (isDark) {
@@ -1667,7 +1774,12 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     try {
       await Promise.all([
         loadBabies(),
-        loadEntries?.(),
+        // Refresh entries through the TRACKER, not the BabyContext stub.
+        // The tracker's refresh is the one that actually re-queries
+        // Supabase with the current baby_id filter — meaning a user
+        // switching between accounts or babies will only ever see the
+        // active baby's entries.
+        refreshTrackerEntries?.().catch(() => {}),
         refreshBiometricStatus(),
         loadAIStats(),
       ]);
@@ -1677,7 +1789,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     } finally {
       setRefreshing(false);
     }
-  }, [loadBabies, loadEntries, refreshBiometricStatus, loadAIStats]);
+  }, [loadBabies, refreshTrackerEntries, refreshBiometricStatus, loadAIStats]);
 
   const handleLogout = useCallback(async () => {
     setShowLogoutModal(true);
@@ -2090,7 +2202,14 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
       if (focusLoadTimeout.current) clearTimeout(focusLoadTimeout.current);
       focusLoadTimeout.current = setTimeout(async () => {
         loadBabies();
-        loadEntries?.();
+        // Prefer the tracker's entry refresh (it's baby-scoped and
+        // re-queries Supabase with `baby_id = current`). Fall back to
+        // the legacy `loadEntries` no-op if the tracker isn't mounted.
+        if (typeof refreshTrackerEntries === 'function') {
+          refreshTrackerEntries().catch(() => {});
+        } else {
+          loadEntries?.();
+        }
         await Promise.all([
           refreshBiometricStatus(),
           rehydratePinStatus(),
@@ -2110,6 +2229,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     }, [
       loadBabies,
       loadEntries,
+      refreshTrackerEntries,
       refreshBiometricStatus,
       rehydratePinStatus,
       readBiometricEnabledFromStorage,
@@ -2841,11 +2961,12 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
         onRequestClose={() => setShowTimeoutModal(false)}
       >
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-          <BlurView
-            intensity={isDark ? 60 : 90}
-            style={[styles.timeoutModal, isDark && styles.timeoutModalDark]}
-            tint={isDark ? 'dark' : 'light'}
-          >
+          {Platform.OS === 'ios' ? (
+            <BlurView
+              intensity={isDark ? 60 : 90}
+              style={[styles.timeoutModal, isDark && styles.timeoutModalDark]}
+              tint={isDark ? 'dark' : 'light'}
+            >
             <View style={styles.timeoutModalHeader}>
               <Text style={[styles.timeoutModalTitle, isDark && styles.textLight]}>
                 Auto-Lock Timeout
@@ -2915,7 +3036,87 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
                 );
               })}
             </ScrollView>
-          </BlurView>
+            </BlurView>
+          ) : (
+            <View
+              style={[
+                styles.timeoutModal,
+                styles.timeoutModalAndroid,
+                isDark && styles.timeoutModalDark,
+                isDark && styles.timeoutModalAndroidDark,
+              ]}
+            >
+              <View style={styles.timeoutModalHeader}>
+                <Text style={[styles.timeoutModalTitle, isDark && styles.textLight]}>
+                  Auto-Lock Timeout
+                </Text>
+                <PressableScale onPress={() => setShowTimeoutModal(false)} hapticType="light">
+                  <View style={[styles.modalCloseBtn, isDark && styles.modalCloseBtnDark]}>
+                    <Ionicons name="close" size={20} color={isDark ? DS.white : DS.gray900} />
+                  </View>
+                </PressableScale>
+              </View>
+              <Text style={[styles.timeoutModalSubtitle, isDark && styles.textMuted]}>
+                Select when to automatically lock the app
+              </Text>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {[
+                  { label: '1 minute', value: 1 },
+                  { label: '2 minutes', value: 2 },
+                  { label: '5 minutes', value: 5 },
+                  { label: '10 minutes', value: 10 },
+                  { label: '15 minutes', value: 15 },
+                  { label: '30 minutes', value: 30 },
+                  { label: '1 hour', value: 60 },
+                ].map((option) => {
+                  const isActive = securitySettings.autoLockTimeout === option.value;
+                  return (
+                    <PressableScale
+                      key={option.value}
+                      onPress={() => handleSelectTimeout(option.value)}
+                      activeScale={0.98}
+                    >
+                      <View
+                        style={[
+                          styles.timeoutOption,
+                          isDark && styles.timeoutOptionDark,
+                          isActive && [styles.timeoutOptionActive, { borderColor: primary }],
+                          isActive && isDark && styles.timeoutOptionActiveDark,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.timeoutOptionIcon,
+                            { backgroundColor: isActive ? `${primary}18` : 'transparent' },
+                          ]}
+                        >
+                          <Ionicons
+                            name={isActive ? 'time' : 'time-outline'}
+                            size={20}
+                            color={isActive ? primary : isDark ? DS.gray500 : DS.gray400}
+                          />
+                        </View>
+                        <Text
+                          style={[
+                            styles.timeoutOptionLabel,
+                            isDark && styles.textLight,
+                            isActive && { color: primary, fontWeight: '800' },
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                        {isActive && (
+                          <View style={[styles.activeCheck, { backgroundColor: primary }]}>
+                            <Ionicons name="checkmark" size={14} color={DS.white} />
+                          </View>
+                        )}
+                      </View>
+                    </PressableScale>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
         </View>
       </Modal>
 
@@ -3377,11 +3578,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
+    overflow: 'hidden', // ← forces BlurView corners to clip on iOS
     ...DS.shadow.lg,
   },
   modalContentDark: {
     backgroundColor: 'rgba(26,26,46,0.95)',
     borderColor: 'rgba(255,255,255,0.1)',
+  },
+  // Android BlurView fallback: solid rounded card that mimics the iOS
+  // blurred-glass look without the sharp rectangular artifact.
+  modalContentAndroid: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderRadius: DS.radius['2xl'],
+    overflow: 'hidden',
+  },
+  modalContentAndroidDark: {
+    backgroundColor: 'rgba(26,26,46,0.98)',
   },
   modalIconWrap: {
     width: 64,
@@ -3438,6 +3650,16 @@ const styles = StyleSheet.create({
   modalSheetBlur: {
     paddingTop: DS.space.md,
     paddingBottom: DS.space['2xl'],
+  },
+  modalSheetBlurAndroid: {
+    paddingTop: DS.space.md,
+    paddingBottom: DS.space['2xl'],
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderTopLeftRadius: DS.radius['3xl'] || 32,
+    borderTopRightRadius: DS.radius['3xl'] || 32,
+  },
+  modalSheetBlurAndroidDark: {
+    backgroundColor: 'rgba(26,26,46,0.98)',
   },
   modalHandle: {
     width: 40,
@@ -3516,6 +3738,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   timeoutModalDark: { backgroundColor: 'rgba(26,26,46,0.95)' },
+  timeoutModalAndroid: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderRadius: DS.radius['2xl'],
+    overflow: 'hidden',
+  },
+  timeoutModalAndroidDark: {
+    backgroundColor: 'rgba(26,26,46,0.98)',
+  },
   timeoutModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',

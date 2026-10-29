@@ -723,17 +723,21 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     // ── ISOLATION GUARD ──
-    if (
-      loadedForBabyIdRef.current !== null &&
-      loadedForBabyIdRef.current !== babyId
-    ) {
+    // We wipe SYNCHRONOUSLY (before any await) so no downstream consumer
+    // (MoreScreen, ActivityContext, etc.) ever paints the previous
+    // baby's entries against the new baby's id.
+    const previousBabyId = loadedForBabyIdRef.current;
+    const babyActuallyChanged =
+      previousBabyId !== null && previousBabyId !== babyId;
+
+    if (babyActuallyChanged) {
       if (__DEV__) {
         console.log(
           '[TrackerContext] Baby changed:',
-          loadedForBabyIdRef.current,
+          previousBabyId,
           '→',
           babyId,
-          '— wiping entries',
+          '— wiping entries synchronously',
         );
       }
       setState(prev => ({
@@ -761,6 +765,16 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     try {
       const entries = await loadEntries(babyId);
+
+      // Extra safety: if the baby changed WHILE we were awaiting, drop
+      // this result — it belongs to the old baby.
+      if (loadedForBabyIdRef.current !== babyId) {
+        if (__DEV__) {
+          console.log('[TrackerContext] Baby changed mid-fetch — discarding stale result');
+        }
+        return;
+      }
+
       const safeEntries = Array.isArray(entries) ? entries : [];
       const entriesByTracker: Record<string, TrackerEntry[]> = {};
       safeEntries.forEach(entry => {

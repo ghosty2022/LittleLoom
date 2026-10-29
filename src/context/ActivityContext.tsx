@@ -40,12 +40,38 @@ interface ActivityContextType {
 const ActivityContext = createContext<ActivityContextType | undefined>(undefined);
 
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
-  
+  // Get tracker from the safe bridge hook (never throws)
   const tracker = useTracker();
 
-  const entries = Array.isArray(tracker?.entries) ? tracker.entries : [];
-  const isLoading = !!tracker?.isLoading;
+  // ── CURRENT BABY SCOPE GUARD ─────────────────────────────────────
+  // `tracker.entries` is populated asynchronously on baby switch. During
+  // the refresh window it still contains the PREVIOUS baby's rows, which
+  // made MoreScreen show a stale "Entries" count. We hard-scope it here
+  // against the tracker's own current baby id so every consumer
+  // (MoreScreen, HomeScreen, etc.) only ever sees the current baby's data.
+  const trackerBabyId: string | null =
+    typeof tracker?.getCurrentBabyId === 'function'
+      ? (() => {
+          try {
+            return tracker.getCurrentBabyId();
+          } catch {
+            return null;
+          }
+        })()
+      : null;
 
+  const rawEntries = Array.isArray(tracker?.entries) ? tracker.entries : [];
+
+  // When `trackerBabyId` is null (e.g. mid-sign-out), return []. When it's
+  // present, keep only entries whose babyId matches. This also guards
+  // against the tiny window where the tracker hasn't yet committed the
+  // wipe for the new baby.
+  const entries = useMemo(() => {
+    if (!trackerBabyId) return [];
+    return rawEntries.filter((e: any) => e?.babyId === trackerBabyId);
+  }, [rawEntries, trackerBabyId]);
+
+  const isLoading = !!tracker?.isLoading;
   
   const getEntriesSafe = useCallback(
     (trackerId?: string): ActivityEntry[] => {
