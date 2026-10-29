@@ -485,7 +485,9 @@ const UserBubble: React.FC<{ member: FamilyMember; isDark: boolean; onPress: () 
           {member.fullName.split(' ')[0]}
         </Text>
         <Text style={[styles.userBubbleRole, { color: roleColor }]}>
-          {member.role === 'parent1' ? 'Primary' : member.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
+          {member.relationship && member.relationship.trim()
+            ? member.relationship
+            : member.role === 'parent1' ? 'Primary' : member.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
         </Text>
       </View>
     </PressableScale>
@@ -567,8 +569,14 @@ const ChatListItem: React.FC<{
     ?? (otherParticipantId ? chat.participantRoles?.[otherParticipantId] : null);
   const statusColor = onlineStatus === 'online' ? DS.success : onlineStatus === 'away' ? DS.warning : DS.gray400;
 
+  const otherRelationship = liveMember?.relationship;
   const subtitle = isDirect
-    ? (otherRole === 'parent1' ? 'Primary Parent' : otherRole === 'parent2' ? 'Co-Parent' : otherRole === 'guardian' ? 'Guardian' : 'Direct Message')
+    ? (otherRelationship && otherRelationship.trim()
+        ? otherRelationship
+        : otherRole === 'parent1' ? 'Primary Parent'
+        : otherRole === 'parent2' ? 'Co-Parent'
+        : otherRole === 'guardian' ? 'Guardian'
+        : 'Direct Message')
     : `${chat.participants?.length || 0} family members`;
 
   const timeStr = (() => {

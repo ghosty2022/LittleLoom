@@ -128,8 +128,8 @@ const MILESTONE_CATEGORIES = [
 ];
 
 const ROLE_PRESENTATION: Record<string, { label: string; icon: any; color: string; gradient: [string, string]; relationLabel: string }> = {
-  parent1: { label: 'Parent 1', icon: 'person-circle', color: '#6366f1', gradient: ['#6366f1', '#8b5cf6'], relationLabel: 'Primary Parent' },
-  parent2: { label: 'Parent 2', icon: 'person-circle', color: '#ec4899', gradient: ['#ec4899', '#f43f5e'], relationLabel: 'Co-Parent' },
+  parent1: { label: 'Primary Parent', icon: 'person-circle', color: '#6366f1', gradient: ['#6366f1', '#8b5cf6'], relationLabel: 'Primary Parent' },
+  parent2: { label: 'Co-Parent', icon: 'person-circle', color: '#ec4899', gradient: ['#ec4899', '#f43f5e'], relationLabel: 'Co-Parent' },
   guardian: { label: 'Guardian', icon: 'shield-checkmark', color: '#10b981', gradient: ['#10b981', '#34d399'], relationLabel: 'Guardian' },
   viewer: { label: 'Viewer', icon: 'eye', color: '#94a3b8', gradient: ['#94a3b8', '#cbd5e1'], relationLabel: 'Family Member' },
   baby: { label: 'Baby', icon: 'happy', color: '#f59e0b', gradient: ['#f59e0b', '#fbbf24'], relationLabel: 'Child' },
@@ -1613,15 +1613,16 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                       </Animated.View>
                       {members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER).map((m, i) => {
                         const roleKey = m.role === UserRole.GUARDIAN ? 'guardian' : 'viewer';
+                        const displayLabel = getMemberDisplayLabel({ role: m.role, relationship: m.relationship });
                         return (
                           <FamilyNode
-                            key={`${m.id}_${m.role}`}
+                            key={`${m.id}_${m.role}_guardian_${i}`}
                             member={m}
                             roleKey={roleKey}
                             index={i + 2}
                             onPress={() => sweetAlert.alert(
                               m.fullName,
-                              `${ROLE_PRESENTATION[roleKey]?.relationLabel || 'Family'}\n${m.email || 'No email'}`,
+                              `${displayLabel}\n${m.email || 'No email'}`,
                             )}
                             isDark={isDark}
                             size={FAMILY_NODE_SIZE * 0.55}
@@ -1633,16 +1634,20 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                 </GlassCard>
 
                 <SectionHeader title="Invite to Family" subtitle="Share with someone you trust" icon="person-add-outline" color={DS.success} />
-                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                <View style={{ flexDirection: 'row', gap: 8 }}>
                   {(['parent2', 'guardian', 'viewer'] as const).map((role) => {
                     const meta = ROLE_PRESENTATION[role];
+                    const inviteLabel =
+                      role === 'parent2' ? 'Co-Parent'
+                      : role === 'guardian' ? 'Guardian'
+                      : 'Viewer';
                     return (
                       <PressableScale key={role} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('FamilySharing' as never); }} activeScale={0.94} style={{ flex: 1 }}>
                         <View style={[styles.inviteCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
                           <LinearGradient colors={meta.gradient} style={styles.inviteIcon}>
                             <Ionicons name={meta.icon} size={18} color={DS.white} />
                           </LinearGradient>
-                          <Text style={[styles.inviteLabel, { color: isDark ? DS.gray300 : DS.gray700 }]}>{meta.label}</Text>
+                          <Text style={[styles.inviteLabel, { color: isDark ? DS.gray300 : DS.gray700 }]}>{inviteLabel}</Text>
                         </View>
                       </PressableScale>
                     );

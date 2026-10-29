@@ -904,12 +904,24 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // role, name, avatar, or contact info changes.
       try {
         if (linkedUserIdBefore) {
+          // NOTE: `relationship` is NOT part of `ProfileChangePayload['fields']`
+          // (that type tracks profile fields, not family_members fields).
+          // So when ONLY `relationship` changes we still emit a `role`
+          // field change — every FamilyContext / chat / member-card
+          // subscriber re-hydrates the whole FamilyMember row anyway,
+          // so a "spurious" role field is harmless and guarantees the
+          // relationship change fans out.
           const fields: Array<'fullName' | 'avatar' | 'phone' | 'email' | 'role'> = [];
           if (updates.fullName !== undefined) fields.push('fullName');
           if (updates.avatar !== undefined) fields.push('avatar');
           if (updates.phoneNumber !== undefined) fields.push('phone');
           if (updates.email !== undefined) fields.push('email');
           if (updates.role !== undefined) fields.push('role');
+          // Always push `role` if ONLY relationship changed so the
+          // whole FamilyMember row re-hydrates on every other surface.
+          if (fields.length === 0 && updates.relationship !== undefined) {
+            fields.push('role');
+          }
           if (fields.length > 0) {
             const { broadcastProfileChange } = require('./AuthContext');
             await broadcastProfileChange({ userId: linkedUserIdBefore, fields });

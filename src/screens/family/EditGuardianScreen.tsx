@@ -774,7 +774,11 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
 
   const currentUserId = userProfile?.id || userProfile?.uid || profile?.id;
-  const isCurrentUser = member?.id === currentUserId;
+  const isCurrentUser = useMemo(() => {
+    if (!member || !currentUserId) return false;
+    const memberUserId = (member as any).userId || member.id;
+    return memberUserId === currentUserId || member.id === currentUserId;
+  }, [member, currentUserId]);
 
   const roleConfig = member ? ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER] : null;
   const canEdit = useMemo(() => { if (isCurrentUser) return true; return hasPermission('manageFamily') && roleConfig?.canEdit; }, [hasPermission, roleConfig, isCurrentUser]);
@@ -860,7 +864,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
             email: userProfile?.email || profile?.email || '',
             phoneNumber: userProfile?.phoneNumber || profile?.phoneNumber || '',
             avatar: userProfile?.avatar || profile?.avatar || '',
-            role: UserRole.PARENT_1, relationship: 'Parent',
+            role: UserRole.PARENT_1,
+            relationship: '',   // ← leave empty so getMemberDisplayLabel
+                                //   falls back to "Primary Parent" instead of
+                                //   shadowing a real relationship like "Mother".
             addedAt: new Date().toISOString(), lastActive: new Date().toISOString(),
             notificationsEnabled: true, canBeRemove: false, canEdit: false,
           } as FamilyMember;
@@ -1111,7 +1118,11 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const handleRemove = useCallback(() => {
     if (!member) return;
     const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
-    if (member.id === currentUserIdLocal) { sweetAlert.alert('Cannot Remove', 'You cannot remove yourself.', 'warning'); return; }
+    const memberUserId = (member as any).userId || member.id;
+    if (memberUserId === currentUserIdLocal || member.id === currentUserIdLocal) {
+      sweetAlert.alert('Cannot Remove', 'You cannot remove yourself.', 'warning');
+      return;
+    }
     if (!hasPermission('manageFamily')) { sweetAlert.error('Permission Denied', 'Only parents can remove members'); triggerHaptic('error'); return; }
     sweetAlert.confirm('Remove Family Member', `Remove ${member.fullName}? Their history will be preserved but they will lose access.`, async () => {
       triggerHaptic('error');
@@ -1245,7 +1256,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     try {
       triggerHaptic('medium');
       await Share.share({
-        message: `${member.fullName} - ${ROLE_LABELS[member.role] || member.role}\n${member.email || ''}\n${member.phoneNumber || ''}`,
+        message: `${member.fullName} - ${getMemberDisplayLabel({ role: member.role, relationship: member.relationship })}\n${member.email || ''}\n${member.phoneNumber || ''}`,
         title: `${member.fullName}'s Contact Info`,
       });
     } catch (error) { if (__DEV__) console.warn('[EditGuardian] share error:', error); }
