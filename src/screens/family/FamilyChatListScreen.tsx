@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -390,7 +396,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
 
             {/* Action strip */}
             <View style={styles.pulseActions}>
-              <PressableScale onPress={onNewGroup} activeScale={0.96} haptic-styles={{}}>
+              <PressableScale onPress={onNewGroup} activeScale={0.96}>
                 <LinearGradient colors={[DS.primary, DS.accent]} style={styles.pulseActionPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                   <Ionicons name="add-circle" size={16} color={DS.white} />
                   <Text style={styles.pulseActionPrimaryText}>New Group</Text>
@@ -488,15 +494,29 @@ const TypingDots = React.memo<{ color: string }>(({ color }) => {
     const interval = setInterval(animate, 1200);
     return () => clearInterval(interval);
   }, [d1, d2, d3]);
-  const dotStyle = (val: any) => useAnimatedStyle(() => ({
-    transform: [{ translateY: val.value * -3 }],
-    opacity: 0.4 + val.value * 0.6,
+  // Hooks MUST be called unconditionally at the top of a component
+  // (or a custom hook). Wrapping `useAnimatedStyle` in a helper that
+  // is *called during render* is legal only if it's called the same
+  // number of times every render — but it's fragile and Reanimated's
+  // fast refresh can sometimes break it. Declare each animated style
+  // explicitly.
+  const style1 = useAnimatedStyle(() => ({
+    transform: [{ translateY: d1.value * -3 }],
+    opacity: 0.4 + d1.value * 0.6,
+  }));
+  const style2 = useAnimatedStyle(() => ({
+    transform: [{ translateY: d2.value * -3 }],
+    opacity: 0.4 + d2.value * 0.6,
+  }));
+  const style3 = useAnimatedStyle(() => ({
+    transform: [{ translateY: d3.value * -3 }],
+    opacity: 0.4 + d3.value * 0.6,
   }));
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-      <Animated.View style={[styles.typingDot, { backgroundColor: color }, dotStyle(d1)]} />
-      <Animated.View style={[styles.typingDot, { backgroundColor: color }, dotStyle(d2)]} />
-      <Animated.View style={[styles.typingDot, { backgroundColor: color }, dotStyle(d3)]} />
+      <Animated.View style={[styles.typingDot, { backgroundColor: color }, style1]} />
+      <Animated.View style={[styles.typingDot, { backgroundColor: color }, style2]} />
+      <Animated.View style={[styles.typingDot, { backgroundColor: color }, style3]} />
     </View>
   );
 });
@@ -510,9 +530,20 @@ const ChatListItem: React.FC<{
   userId?: string;
 }> = ({ chat, isDark, onPress, onLongPress, unreadCount, isTyping, onlineStatus, userId }) => {
   const isDirect = chat.type === 'direct';
-  const otherParticipantId = isDirect ? chat.participants.find((p) => p !== chat.participantRoles?.[p]) : null;
-  const otherAvatar = otherParticipantId ? chat.participantAvatars?.[otherParticipantId] : null;
-  const otherRole = otherParticipantId ? chat.participantRoles?.[otherParticipantId] : null;
+  // `participantRoles` is a `Record<userId, role>`. Indexing it by a
+  // participant id returns the *role string* (e.g. 'parent1'), not a
+  // userId — so the previous `p !== chat.participantRoles?.[p]` was
+  // always true and returned the wrong participant (usually yourself).
+  // We need the id of the participant that isn't `userId`.
+  const otherParticipantId = isDirect
+    ? chat.participants.find((p) => p !== userId) ?? null
+    : null;
+  const otherAvatar = otherParticipantId
+    ? chat.participantAvatars?.[otherParticipantId]
+    : null;
+  const otherRole = otherParticipantId
+    ? chat.participantRoles?.[otherParticipantId]
+    : null;
   const statusColor = onlineStatus === 'online' ? DS.success : onlineStatus === 'away' ? DS.warning : DS.gray400;
 
   const subtitle = isDirect
@@ -655,15 +686,20 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const chatIdsKey = useMemo(() => chats.map((c) => c.id).join('|'), [chats]);
   useEffect(() => {
     if (!subscribeToChatMessages) return;
+    // NOTE: `forEach` hands you the *item* (FamilyChat), not `{ id }`.
+    // The previous code passed the whole chat object as a chatId,
+    // which made every subscriber fire constantly.
     const unsubs: Array<() => void> = [];
-    chatsRef.current.forEach((id) => {
+    chatsRef.current.forEach((chat) => {
       unsubs.push(
-        subscribeToChatMessages(id, () => {
+        subscribeToChatMessages(chat.id, () => {
           requestAnimationFrame(() => setRealtimeTick((n) => n + 1));
         }),
       );
     });
-    return () => { unsubs.forEach((u) => u()); };
+    return () => {
+      unsubs.forEach((u) => u());
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatIdsKey, subscribeToChatMessages]);
 

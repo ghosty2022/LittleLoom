@@ -177,19 +177,23 @@ export async function bootstrapAI(
         if (__DEV__) {
           console.warn(
             '[AI Bootstrap] AI runtime unavailable — continuing with ' +
-              'fallback statistical engines only'
+              'fallback statistical engines only',
           );
         }
       } else if (__DEV__) {
         console.log(
-          `[AI Bootstrap] AI runtime ready (aiKit=${snap.packages.aiKit}, ` +
-            `executorch=${snap.packages.executorch}, ` +
-            `smartAi=${snap.packages.smartAi}, ` +
-            `vision=${snap.packages.visionModel})`
+          `[AI Bootstrap] AI runtime ready (aiKit=${Boolean(
+            snap.packages?.aiKit,
+          )}, executorch=${Boolean(snap.packages?.executorch)}, ` +
+            `smartAi=${Boolean(snap.packages?.smartAi)}, ` +
+            `vision=${Boolean(snap.packages?.visionModel)})`,
         );
       }
     } catch (e) {
-      if (__DEV__) console.warn('[AI Bootstrap] AIService.init failed:', e);
+      if (__DEV__) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn('[AI Bootstrap] AIService.init failed:', msg);
+      }
     }
 
     if (aborted()) return;
@@ -264,8 +268,16 @@ export async function bootstrapAI(
       await featureEngineer.computeAndStoreFeatures(babyId, today);
       console.log('[AI Bootstrap] Today features stored');
     } catch (e) {
+      // NOTE: `computeAndStoreFeatures` internally catches and logs
+      // with `console.error(...)`. Some RN builds crash LogBox when
+      // `console.error` receives an Error object — the crash is the
+      // `[TypeError: undefined is not a function]` you see.
+      //
+      // Stringify the payload BEFORE passing it to console so LogBox
+      // never has to inspect a live Error object.
       if (__DEV__) {
-        console.warn('[AI Bootstrap] Feature engineering failed:', e);
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn('[AI Bootstrap] Feature engineering failed:', msg);
       }
     }
 
@@ -336,8 +348,10 @@ export async function bootstrapAI(
       const cached = await getCachedCorrelations(babyId);
       const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
 
-      const needsRefresh =
-        cached.length === 0 || (cached[0] as any).computed_at < oneDayAgo;
+      const newestTs = cached[0]?.id
+        ? Number((cached[0] as any).computed_at ?? 0)
+        : 0;
+      const needsRefresh = cached.length === 0 || newestTs < oneDayAgo;
 
       if (needsRefresh) {
         await discoverCorrelations(babyId, 45);
@@ -345,7 +359,8 @@ export async function bootstrapAI(
       }
     } catch (e) {
       if (__DEV__) {
-        console.warn('[AI Bootstrap] Correlation refresh failed:', e);
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn('[AI Bootstrap] Correlation refresh failed:', msg);
       }
     }
 

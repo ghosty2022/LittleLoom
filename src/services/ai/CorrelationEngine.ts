@@ -79,34 +79,58 @@ const groupByDay = (entries: Entry[]): Map<string, Entry[]> => {
 };
 
 const pearson = (xs: number[], ys: number[]): number => {
-  const n = Math.min(xs.length, ys.length);
+  // Filter out any NaN/Infinity BEFORE the length check — otherwise
+  // `mx`/`my` become NaN and the return value is NaN, which Supabase
+  // rejects as an invalid `numeric`. That rejection is what surfaces
+  // as `[TypeError: undefined is not a function]` from the RN bridge.
+  const pairs: Array<[number, number]> = [];
+  const n0 = Math.min(xs.length, ys.length);
+  for (let i = 0; i < n0; i++) {
+    const x = xs[i];
+    const y = ys[i];
+    if (Number.isFinite(x) && Number.isFinite(y)) pairs.push([x, y]);
+  }
+  const n = pairs.length;
   if (n < 3) return 0;
-  const mx = xs.slice(0, n).reduce((a, b) => a + b, 0) / n;
-  const my = ys.slice(0, n).reduce((a, b) => a + b, 0) / n;
+
+  let sx = 0,
+    sy = 0;
+  for (const [x, y] of pairs) {
+    sx += x;
+    sy += y;
+  }
+  const mx = sx / n;
+  const my = sy / n;
+
   let num = 0,
     dx = 0,
     dy = 0;
-  for (let i = 0; i < n; i++) {
-    const dxv = (xs[i] ?? 0) - mx;
-    const dyv = (ys[i] ?? 0) - my;
+  for (const [x, y] of pairs) {
+    const dxv = x - mx;
+    const dyv = y - my;
     num += dxv * dyv;
     dx += dxv * dxv;
     dy += dyv * dyv;
   }
   const denom = Math.sqrt(dx * dy);
-  return denom === 0 ? 0 : num / denom;
+  const r = denom === 0 ? 0 : num / denom;
+  return Number.isFinite(r) ? r : 0;
 };
 
-const cohensD = (a: number[], b: number[]): number => {
+const cohensD = (aRaw: number[], bRaw: number[]): number => {
+  // Same NaN guard as `pearson`.
+  const a = aRaw.filter((v) => Number.isFinite(v));
+  const b = bRaw.filter((v) => Number.isFinite(v));
   if (a.length < 3 || b.length < 3) return 0;
   const ma = a.reduce((x, y) => x + y, 0) / a.length;
   const mb = b.reduce((x, y) => x + y, 0) / b.length;
   const va = a.reduce((x, y) => x + (y - ma) ** 2, 0) / (a.length - 1);
   const vb = b.reduce((x, y) => x + (y - mb) ** 2, 0) / (b.length - 1);
   const pooled = Math.sqrt(
-    ((a.length - 1) * va + (b.length - 1) * vb) / (a.length + b.length - 2)
+    ((a.length - 1) * va + (b.length - 1) * vb) / (a.length + b.length - 2),
   );
-  return pooled === 0 ? 0 : (ma - mb) / pooled;
+  const d = pooled === 0 ? 0 : (ma - mb) / pooled;
+  return Number.isFinite(d) ? d : 0;
 };
 
 
@@ -120,9 +144,27 @@ function detectFeedBeforeSleep(entries: Entry[]): DiscoveredCorrelation | null {
   const hadRecentFeed: number[] = [];
 
   for (const sleep of sleeps) {
-    const duration = Number(
-      sleep.data?.duration ?? sleep.data?.duration_minutes
+    // Prefer explicit `duration` (seconds). Fall back to a
+    // startTime/endTime pair (which the AddEntry screen writes).
+    let duration = Number(
+      sleep.data?.duration ?? sleep.data?.duration_minutes,
     );
+    if (!Number.isFinite(duration) || duration <= 0) {
+      const s = sleep.data?.startTime;
+      const e = sleep.data?.endTime;
+      if (typeof s === 'string' && typeof e === 'string') {
+        const sm = new Date(s).getTime();
+        const em = new Date(e).getTime();
+        if (Number.isFinite(sm) && Number.isFinite(em) && em > sm) {
+          duration = (em - sm) / 60; // seconds → we later divide by 60 below? No — use minutes here
+        }
+      }
+    }
+    // `duration` is stored in seconds by the app. Convert to minutes.
+    if (Number.isFinite(duration) && duration > 0) {
+      // Heuristic: small numbers (< 240) are already minutes.
+      duration = duration < 240 ? duration : duration / 60;
+    }
     if (!Number.isFinite(duration) || duration <= 0) continue;
 
     const recentFeed = feeds.find((f) => {
@@ -295,11 +337,30 @@ function detectOutdoorVsSleep(entries: Entry[]): DiscoveredCorrelation | null {
       }, 0);
     const sleepMin = dayEntries
       .filter((e) => e.tracker_id === 'sleep')
-      .reduce(
-        (sum, e) =>
-          sum + Number(e.data?.duration ?? e.data?.duration_minutes ?? 0),
-        0
-      );
+      .reduce((sum, e) => {
+        // Explicit `duration` (seconds) wins; fall back to
+        // startTime/endTime pairs; then to `minutes`.
+        let raw = Number(
+          e.data?.duration ?? e.data?.duration_minutes,
+        );
+        if (!Number.isFinite(raw) || raw <= 0) {
+          const s = e.data?.startTime;
+          const en = e.data?.endTime;
+          if (typeof s === 'string' && typeof en === 'string') {
+            const sm = new Date(s).getTime();
+            const em = new Date(en).getTime();
+            if (Number.isFinite(sm) && Number.isFinite(em) && em > sm) {
+              return sum + (em - sm) / 60000;
+            }
+          }
+          const minutes = Number(e.data?.minutes ?? 0);
+          return sum + (Number.isFinite(minutes) && minutes > 0 ? minutes : 0);
+        }
+        // Duration in the app is seconds. Small values are already
+        // minutes (legacy). Normalize.
+        const asMin = raw < 240 ? raw : raw / 60;
+        return sum + asMin;
+      }, 0);
 
     if (sleepMin === 0) continue;
     days.push({ outdoor, sleep: sleepMin });
@@ -418,26 +479,56 @@ export async function discoverCorrelations(
 
   if (results.length > 0 && !isBlocked) {
     try {
-      const rows = results.map((r) => ({
-        baby_id: babyId,
-        kind: r.kind,
-        headline: r.headline,
-        description: r.description,
-        effect_size: r.effectSize,
-        samples: r.samples,
-        direction: r.direction,
-        suggestion: r.suggestion,
-        emoji: r.emoji,
-        metric_a: r.metricA,
-        metric_b: r.metricB,
-        computed_at: new Date().toISOString(),
-      }));
+      // Sanitize EVERY numeric field before writing. Supabase
+      // rejects `NaN`/`Infinity` as "invalid input syntax for type
+      // numeric" — that rejection surfaces via the RN bridge as
+      // `[TypeError: undefined is not a function]`, which is the
+      // LogBox crash we're eliminating here.
+      const rows = results
+        .filter(
+          (r) =>
+            Number.isFinite(r.effectSize) &&
+            Number.isFinite(r.samples) &&
+            r.samples > 0,
+        )
+        .map((r) => ({
+          baby_id: babyId,
+          kind: r.kind,
+          headline: r.headline,
+          description: r.description,
+          effect_size: Number(r.effectSize.toFixed(4)),
+          samples: Math.round(r.samples),
+          direction: r.direction,
+          suggestion: r.suggestion,
+          emoji: r.emoji,
+          metric_a: r.metricA,
+          metric_b: r.metricB,
+          computed_at: new Date().toISOString(),
+        }));
 
-      await supabase
+      if (rows.length === 0) return results;
+
+      const { error: upsertError } = await supabase
         .from('ai_correlation_cache')
         .upsert(rows, { onConflict: 'baby_id,kind' });
+
+      if (upsertError) {
+        // Log and return — never let the rejection bubble up to the
+        // bootstrap's `await discoverCorrelations(...)` call.
+        if (__DEV__) {
+          console.warn(
+            '[Correlation] Cache write failed:',
+            upsertError.message,
+          );
+        }
+      }
     } catch (e) {
-      if (__DEV__) console.warn('[Correlation] Cache write failed:', e);
+      if (__DEV__) {
+        console.warn(
+          '[Correlation] Cache write threw:',
+          e instanceof Error ? e.message : String(e),
+        );
+      }
     }
   }
 

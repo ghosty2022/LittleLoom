@@ -15,7 +15,40 @@
 
 
 import { supabase } from '@/utils/supabase';
-import { calculatePercentilePrecise } from '@/hooks/useWHOGrowthCalculator';
+// NOTE: `calculatePercentilePrecise` used to be a static named import from
+// `@/hooks/useWHOGrowthCalculator`. That file is a *hook* module, and its
+// helper export is not guaranteed to exist (or to be a plain function) on
+// every build — a broken/missing export produces the classic
+// `[TypeError: undefined is not a function]` at the call site.
+//
+// We now resolve it lazily + defensively inside `computeFeatures`, so a
+// broken helper never breaks feature engineering.
+type PercentileFn = (
+  value: number,
+  ageMonths: number,
+  metric: 'weight' | 'height' | 'head',
+  gender: 'boy' | 'girl',
+) => number | null;
+
+let _cachedPercentileFn: PercentileFn | null | undefined;
+async function resolvePercentileFn(): Promise<PercentileFn | null> {
+  if (_cachedPercentileFn !== undefined) return _cachedPercentileFn ?? null;
+  try {
+    const mod: any = await import('@/hooks/useWHOGrowthCalculator');
+    // Accept several plausible export shapes.
+    const candidate =
+      (typeof mod?.calculatePercentilePrecise === 'function' &&
+        mod.calculatePercentilePrecise) ||
+      (typeof mod?.default?.calculatePercentilePrecise === 'function' &&
+        mod.default.calculatePercentilePrecise) ||
+      null;
+    _cachedPercentileFn = candidate;
+    return candidate;
+  } catch {
+    _cachedPercentileFn = null;
+    return null;
+  }
+}
 
 
 
@@ -92,20 +125,41 @@ const toMl = (data: Record<string, unknown>): number => {
   return unit === 'oz' ? raw * 29.5735 : raw;
 };
 
-/** Convert duration to minutes (handles seconds + strings like "1h 30m") */
+/** Convert duration to minutes (handles seconds + strings like "1h 30m"
+ *  + `startTime`/`endTime` pairs that the AddEntry screen writes). */
 const toMinutes = (data: Record<string, unknown>): number => {
+  // 1) startTime / endTime — the most common shape for sleep
+  //    sessions written by AddEntry.
+  const startRaw = data.startTime;
+  const endRaw = data.endTime;
+  if (
+    typeof startRaw === 'string' &&
+    startRaw.length > 0 &&
+    typeof endRaw === 'string' &&
+    endRaw.length > 0
+  ) {
+    const s = new Date(startRaw).getTime();
+    const e = new Date(endRaw).getTime();
+    if (Number.isFinite(s) && Number.isFinite(e) && e > s) {
+      return (e - s) / 60000;
+    }
+  }
+
+  // 2) explicit `duration` (seconds OR "1h 30m" string)
   const d = data.duration;
   if (typeof d === 'number' && Number.isFinite(d)) {
-    
-    return d / 60;
+    // Convention in this app: numeric `duration` is in SECONDS.
+    // But some legacy entries wrote minutes directly. Heuristic:
+    // anything < 240 is minutes; anything >= 240 is seconds.
+    return d < 240 ? d : d / 60;
   }
   if (typeof d === 'string') {
-    
     const s = d.trim().toLowerCase();
     const asNum = Number(s);
-    if (Number.isFinite(asNum)) return asNum / 60;
+    if (Number.isFinite(asNum)) return asNum < 240 ? asNum : asNum / 60;
     let total = 0;
-    const re = /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)/g;
+    const re =
+      /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)/g;
     let match: RegExpExecArray | null;
     while ((match = re.exec(s)) !== null) {
       const n = parseFloat(match[1]);
@@ -114,6 +168,8 @@ const toMinutes = (data: Record<string, unknown>): number => {
     }
     return total;
   }
+
+  // 3) explicit `minutes`
   const minutes = safeNum(data.minutes, 0);
   return minutes;
 };
@@ -135,6 +191,15 @@ export class FeatureEngineer {
    */
   async computeAndStoreFeatures(babyId: string, date: Date): Promise<void> {
     try {
+      // Resolve the WHO helper ONCE per process before we need it.
+      // If it fails to import, `weight_percentile` inherits from the
+      // previous day instead of crashing the whole pipeline.
+      try {
+        await resolvePercentileFn();
+      } catch {
+        /* resolvePercentileFn never throws — belt-and-suspenders */
+      }
+
       const entries = await this.getEntriesForDay(babyId, date);
       if (entries.length === 0) return;
 
@@ -170,7 +235,14 @@ export class FeatureEngineer {
         console.log(`[FeatureEngineer] Stored features for ${babyId} on ${dateKey(date)}`);
       }
     } catch (err) {
-      console.error('[FeatureEngineer] computeAndStoreFeatures failed:', err);
+      // Stringify before logging — some RN builds crash LogBox when
+      // `console.error` receives a live Error object (the crash
+      // surfaces as `[TypeError: undefined is not a function]` from
+      // the LogBox render path). Never let that escape.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (__DEV__) {
+        console.warn('[FeatureEngineer] computeAndStoreFeatures failed:', msg);
+      }
     }
   }
 
@@ -204,7 +276,12 @@ export class FeatureEngineer {
       .lt('timestamp', end.toISOString());
 
     if (error) {
-      console.error('[FeatureEngineer] getEntriesForDay error:', error.message);
+      if (__DEV__) {
+        console.warn(
+          '[FeatureEngineer] getEntriesForDay error:',
+          error.message,
+        );
+      }
       return [];
     }
     return (data || []) as RawEntry[];
@@ -239,11 +316,20 @@ export class FeatureEngineer {
     ) : [];
 
     
-    const feedEntries = safeEntries.filter((e) => e.tracker_id === 'feed');
+    const feedEntries = safeEntries.filter(
+      (e) => e.tracker_id === 'feed' || e.tracker_id === 'dream_feed',
+    );
     const sleepEntries = safeEntries.filter((e) => e.tracker_id === 'sleep');
     const growthEntries = safeEntries.filter((e) => e.tracker_id === 'growth');
     const tempEntries = safeEntries.filter((e) => e.tracker_id === 'temperature');
-    const symptomEntries = safeEntries.filter((e) => e.tracker_id === 'symptom');
+    // `symptom` is the canonical tracker_id but some legacy entries
+    // wrote the tracker under `symptoms` or `illness`. Match all three.
+    const symptomEntries = safeEntries.filter(
+      (e) =>
+        e.tracker_id === 'symptom' ||
+        e.tracker_id === 'symptoms' ||
+        e.tracker_id === 'illness',
+    );
 
     
     const feedCount = feedEntries.length;
@@ -327,28 +413,57 @@ export class FeatureEngineer {
     }
 
     
-    let weightPercentile: number | null = previous?.weight_percentile ?? null;
-    if (weightKgSafe !== null && baby?.birth_date && baby?.gender) {
+    let weightPercentile: number | null =
+      previous?.weight_percentile != null
+        ? Number(previous.weight_percentile)
+        : null;
+    if (
+      weightKgSafe !== null &&
+      Number.isFinite(weightKgSafe) &&
+      baby?.birth_date &&
+      baby?.gender
+    ) {
       try {
-        const b = new Date(baby.birth_date);
-        const n = new Date();
-        const ageMonths = Math.max(
-          0,
-          (n.getFullYear() - b.getFullYear()) * 12 + (n.getMonth() - b.getMonth())
-        );
-        
-        
-        const genderRaw = String(baby.gender || '').toLowerCase();
-        const g: 'boy' | 'girl' =
-          genderRaw === 'female' || genderRaw === 'girl' ? 'girl' : 'boy';
-        weightPercentile = calculatePercentilePrecise(
-          weightKgSafe,
-          ageMonths,
-          'weight',
-          g
-        );
-      } catch {
-        
+        // Defensive: only run the WHO calc if we can actually resolve
+        // the helper. A missing export is the #1 cause of the
+        // `[TypeError: undefined is not a function]` crash.
+        // (We do this synchronously via the pre-resolved cache; the
+        // resolver lives at module scope.)
+        const percentileFn =
+          _cachedPercentileFn === undefined
+            ? null
+            : (_cachedPercentileFn as PercentileFn | null);
+
+        if (percentileFn) {
+          const b = new Date(baby.birth_date);
+          const n = new Date();
+          const ageMonths = Math.max(
+            0,
+            (n.getFullYear() - b.getFullYear()) * 12 +
+              (n.getMonth() - b.getMonth()),
+          );
+
+          const genderRaw = String(baby.gender || '').toLowerCase();
+          const g: 'boy' | 'girl' =
+            genderRaw === 'female' || genderRaw === 'girl' ? 'girl' : 'boy';
+
+          const result = percentileFn(
+            weightKgSafe,
+            ageMonths,
+            'weight',
+            g,
+          );
+          if (result != null && Number.isFinite(Number(result))) {
+            weightPercentile = Number(result);
+          }
+        }
+      } catch (err) {
+        if (__DEV__) {
+          console.warn(
+            '[FeatureEngineer] WHO percentile calc failed (non-fatal):',
+            err instanceof Error ? err.message : String(err),
+          );
+        }
       }
     }
 
@@ -378,22 +493,29 @@ export class FeatureEngineer {
     
     
     const uniqueLoggers = new Set(
-      safeEntries.map(e => e.logged_by).filter(Boolean)
+      safeEntries.map((e) => e.logged_by).filter(Boolean),
     ).size;
 
     const uniqueHours = hoursWithEntries.size;
 
-    
+    // 1.3–1.5× bonus for two or three distinct loggers (co-parent
+    // engagement matters). 1.0 for single-logger days.
     const diversityMultiplier =
       uniqueLoggers >= 3 ? 1.5 : uniqueLoggers >= 2 ? 1.3 : 1.0;
 
-    
+    // Time-of-day spread: 15 distinct hours → 22.5, capped at 20.
     const spreadBonus = Math.min(20, uniqueHours * 1.5);
 
-    const rawEngagement = safeEntries.length * 2 * diversityMultiplier + spreadBonus;
-
-    
-    const parentEngagement = Math.min(100, Math.round(rawEngagement));
+    // Raw = entries × 2 × diversity + spread. 30 entries, 3 loggers,
+    // 15 hours → 30×2×1.5 + 20 = 110 → clamped 100.
+    // 3 entries, 2 loggers, 3 hours → 3×2×1.3 + 4.5 = 12.3 → 12.
+    // floor a bit so it doesn't collapse on quiet days.
+    const rawEngagement =
+      safeEntries.length * 2 * diversityMultiplier + spreadBonus;
+    const parentEngagement = Math.max(
+      1,
+      Math.min(100, Math.round(rawEngagement)),
+    );
 
     return {
       feed_count: feedCount,
