@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
@@ -17,7 +17,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity } from '../../context/CommunityContext';
 import { useFamilyChat, FamilyChat } from '../../context/FamilyChatContext';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, subscribeToProfileChanges } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 
@@ -64,8 +64,13 @@ const LL = {
 };
 
 export default function ChatListScreen({ navigation }: ChatListScreenProps) {
+  // ── Auth FIRST so `userProfile` is a stable dependency target
+  //    for the `chats` useMemo below. ──────────────────────────
+  const { userProfile } = useAuth();
+  const currentUserId = userProfile?.id || '';
+
   const { getUserById } = useCommunity();
-  const { messages, getChatMessages } = useFamilyChat() as any;
+  const { messages } = useFamilyChat() as any;
   // Community DMs live in the shared family_messages table keyed by
   // the direct chat id "direct_<idA>_<idB>". Build the list from
   // whatever direct chats the current user has.
@@ -101,13 +106,23 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   }, [messages, userProfile?.id, getUserById]);
   const refresh = undefined;
 
-  const { userProfile } = useAuth();
-  const currentUserId = userProfile?.id || '';
   const { isDark } = useApp();
 
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  // Bumped whenever any profile changes — forces `getUserById` lookups
+  // above to re-render, which refreshes participant avatars/names.
+  const [, setProfileTick] = useState(0);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    const unsub = subscribeToProfileChanges((payload) => {
+      // Only react to changes for users actually in one of my chats.
+      setProfileTick((n) => n + 1);
+    });
+    return unsub;
+  }, [currentUserId]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -357,6 +372,22 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
             }}
           >
             <Ionicons name={isSearching ? 'close' : 'search'} size={20} color={isDark ? LL.white : LL.gray900} />
+          </TouchableOpacity>
+
+          {/* Cross-link: jump to the family-chat list */}
+          <TouchableOpacity
+            style={[
+              styles.backBtn,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100, marginLeft: 8 },
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              const rootNav = (navigation as any).getParent?.()?.getParent?.() ?? navigation;
+              rootNav.navigate('FamilyChatList');
+            }}
+            accessibilityLabel="Open family chats"
+          >
+            <Ionicons name="people" size={20} color={LL.accent} />
           </TouchableOpacity>
         </View>
       </View>

@@ -49,7 +49,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { FamilyChat, FamilyMessage, useFamilyChat } from '../../context/FamilyChatContext';
 import { FamilyMember, useFamily } from '../../context/FamilyContext';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, subscribeToProfileChanges } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 
 type FamilyChatListScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyChatList'>;
@@ -408,6 +408,19 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
                   <Text style={[styles.pulseActionSecondaryText, { color: isDark ? DS.gray300 : DS.gray700 }]}>Share Code</Text>
                 </View>
               </PressableScale>
+              {/* Cross-link to the Community chat list */}
+              <PressableScale
+                onPress={() => {
+                  HAPTIC_LIGHT();
+                  const rootNav = (navigation as any).getParent?.()?.getParent?.() ?? navigation;
+                  rootNav.navigate('ChatList');
+                }}
+                activeScale={0.96}
+              >
+                <View style={[styles.pulseActionSecondary, { borderColor: isDark ? DS.darkBorder : DS.gray300, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, paddingHorizontal: 14 }]}>
+                  <Ionicons name="globe-outline" size={14} color={DS.accent} />
+                </View>
+              </PressableScale>
             </View>
           </>
         )}
@@ -528,22 +541,27 @@ const ChatListItem: React.FC<{
   chat: FamilyChat; isDark: boolean; onPress: () => void; onLongPress: () => void;
   unreadCount: number; isTyping?: boolean; onlineStatus?: 'online' | 'away' | 'offline';
   userId?: string;
-}> = ({ chat, isDark, onPress, onLongPress, unreadCount, isTyping, onlineStatus, userId }) => {
+  otherMembers?: FamilyMember[];
+}> = ({ chat, isDark, onPress, onLongPress, unreadCount, isTyping, onlineStatus, userId, otherMembers }) => {
   const isDirect = chat.type === 'direct';
-  // `participantRoles` is a `Record<userId, role>`. Indexing it by a
-  // participant id returns the *role string* (e.g. 'parent1'), not a
-  // userId — so the previous `p !== chat.participantRoles?.[p]` was
-  // always true and returned the wrong participant (usually yourself).
-  // We need the id of the participant that isn't `userId`.
+  // For direct chats, find the *other* participant. `participantRoles`
+  // and `participantAvatars` are `Record<userId, value>` keyed by the
+  // participant's *user id*.
   const otherParticipantId = isDirect
     ? chat.participants.find((p) => p !== userId) ?? null
     : null;
-  const otherAvatar = otherParticipantId
-    ? chat.participantAvatars?.[otherParticipantId]
-    : null;
-  const otherRole = otherParticipantId
-    ? chat.participantRoles?.[otherParticipantId]
-    : null;
+
+  // Prefer the *live* member from FamilyContext if available; fall back
+  // to the JSONB snapshot for members not in `members` (e.g. viewers).
+  // The snapshot is written once at chat creation and never refreshed,
+  // so it goes stale the moment the member edits their avatar.
+  const liveMember = otherMembers?.find(
+    (m) => m.id === otherParticipantId || (m as any).userId === otherParticipantId,
+  );
+  const otherAvatar = liveMember?.avatar
+    ?? (otherParticipantId ? chat.participantAvatars?.[otherParticipantId] : null);
+  const otherRole = liveMember?.role
+    ?? (otherParticipantId ? chat.participantRoles?.[otherParticipantId] : null);
   const statusColor = onlineStatus === 'online' ? DS.success : onlineStatus === 'away' ? DS.warning : DS.gray400;
 
   const subtitle = isDirect
@@ -666,6 +684,16 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const insets = useSafeAreaInsets();
   const isDark = darkMode ?? false;
   const chatsRef = useRef<FamilyChat[]>(chats);
+  // Force list re-render on any profile change so participant
+  // avatars / names re-resolve via `members` (FamilyContext).
+  const [, setProfileTick] = useState(0);
+  useEffect(() => {
+    if (!userProfile?.id) return;
+    const unsub = subscribeToProfileChanges(() => {
+      setProfileTick((n) => n + 1);
+    });
+    return unsub;
+  }, [userProfile?.id]);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1030,6 +1058,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
                     isTyping={isUserTyping(chat.id)}
                     onlineStatus={chat.type === 'direct' ? getOnlineStatus(chat.participants.find((p) => p !== userProfile?.id) || '') : undefined}
                     userId={userProfile?.id}
+                    otherMembers={otherMembers}
                   />
                 </Animated.View>
               ))

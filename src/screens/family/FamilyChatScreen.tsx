@@ -42,7 +42,7 @@ import Animated, {
 import type { RootStackParamList } from '../../types/navigation';
 import UniversalSpinner from '../../components/UniversalSpinner';
 import { FamilyMessage, FileMetadata, useFamilyChat } from '../../context/FamilyChatContext';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, subscribeToProfileChanges } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
 import { useMedia } from '../../context/MediaContext';
@@ -226,11 +226,14 @@ interface PulseHeaderProps {
   onVideo: () => void;
   onVoice: () => void;
   onOptions: () => void;
+  /** Cross-link to the Community DM with the same peer (direct chats only). */
+  onOpenCommunityChat?: () => void;
 }
 
 const PulseHeader = React.memo<PulseHeaderProps>(({
   isDark, headerName, headerAvatar, headerStatus, typingText,
   isGroup, showUserBubbles, onBack, onInfoPress, onToggleUsers, onVideo, onVoice, onOptions,
+  onOpenCommunityChat,
 }) => {
   const pulse = useSharedValue(1);
   const rotate = useSharedValue(0);
@@ -299,6 +302,12 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
             <PressableScale onPress={onToggleUsers} activeScale={0.9}>
               <View style={[styles.pulseIconBtn, { backgroundColor: showUserBubbles ? `${DS.primary}20` : (isDark ? 'rgba(255,255,255,0.06)' : DS.gray100) }]}>
                 <Ionicons name="people-outline" size={18} color={showUserBubbles ? DS.primary : (isDark ? DS.gray300 : DS.gray600)} />
+              </View>
+            </PressableScale>
+            {/* Cross-link: open the Community DM with the same peer */}
+            <PressableScale onPress={onOpenCommunityChat ?? (() => {})} activeScale={0.9}>
+              <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                <Ionicons name="globe-outline" size={18} color={DS.accent} />
               </View>
             </PressableScale>
             <PressableScale onPress={onVideo} activeScale={0.9}>
@@ -456,7 +465,14 @@ const MessageInfoModal: React.FC<{
   isDark: boolean; members: any[];
 }> = ({ visible, onClose, message, isDark, members }) => {
   if (!message) return null;
-  const sender = members.find((m) => m.id === message.senderId);
+  // Prefer the LIVE member from FamilyContext; fall back to the frozen
+  // snapshot stored on the message row. `senderId` can be either a
+  // family_members.id or a profiles.userId — match both.
+  const sender =
+    members.find((m) => m.id === message.senderId) ||
+    members.find((m) => (m as any).userId === message.senderId);
+  const senderDisplayName = sender?.fullName || message.senderName;
+  const senderRole = sender?.role || message.senderRole;
   const readBy = message.readBy?.map((uid) => members.find((m) => m.id === uid || m.userId === uid)).filter(Boolean) || [];
 
   return (
@@ -479,9 +495,9 @@ const MessageInfoModal: React.FC<{
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.md, marginTop: 6 }}>
                 <SafeAvatar avatar={sender?.avatar} size={44} fallbackEmoji="👤" fallbackColor={DS.primary} />
                 <View>
-                  <Text style={[styles.infoValue, { color: isDark ? DS.white : DS.gray900 }]}>{sender?.fullName || message.senderName}</Text>
+                  <Text style={[styles.infoValue, { color: isDark ? DS.white : DS.gray900 }]}>{senderDisplayName}</Text>
                   <Text style={[styles.infoRole, { color: DS.primary }]}>
-                    {sender?.role === 'parent1' ? 'Primary Parent' : sender?.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
+                    {senderRole === 'parent1' ? 'Primary Parent' : senderRole === 'parent2' ? 'Co-Parent' : 'Guardian'}
                   </Text>
                 </View>
               </View>
@@ -658,10 +674,12 @@ const MessageBubble: React.FC<{
   onDelete: () => void; onEdit: () => void; onInfo: () => void;
   onImagePress: (url: string) => void; onFilePress: (meta?: FileMetadata) => void;
   onResend: () => void; isFirstInGroup: boolean; isLastInGroup: boolean;
+  onAvatarPress?: (targetId: string, member: any) => void;
   showSweetAlert: (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => void;
 }> = ({
   message, isMe, isDark, member, showAvatar, onReaction, onReply, onDelete, onEdit, onInfo,
-  onImagePress, onFilePress, onResend, isFirstInGroup, isLastInGroup, showSweetAlert,
+  onImagePress, onFilePress, onResend, isFirstInGroup, isLastInGroup, onAvatarPress,
+  showSweetAlert,
 }) => {
   const [showActions, setShowActions] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -928,6 +946,19 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     setIsLoading(false);
   };
 
+  // ── Realtime profile-change: refresh chatInfo participants ─────
+  // `chatInfo.participantNames/Avatars` are snapshots from chat
+  // creation; refresh them so the pulse header reflects a member's
+  // latest identity.
+  useEffect(() => {
+    if (!chatId) return;
+    const unsub = subscribeToProfileChanges(() => {
+      const fresh = getChatById(chatId);
+      if (fresh) setChatInfo(fresh);
+    });
+    return unsub;
+  }, [chatId, getChatById]);
+
   const refreshMessages = () => {
     if (!chatId) return;
     const msgs = getChatMessages(chatId);
@@ -1073,15 +1104,17 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     }
   };
 
-  const getMemberById = (id: string) => members.find((m) => m.id === id);
+  const getMemberById = (id: string) =>
+    members.find((m) => m.id === id) ||
+    members.find((m: any) => m.userId === id);
 
-  const getTypingText = () => {
+  const typingText = useMemo(() => {
     const typingUsers = getTypingUsers(chatId);
     const others = typingUsers.filter((u) => u.userId !== userProfile?.id);
     if (!others.length) return '';
     if (others.length === 1) return `${others[0].userName} is typing...`;
     return `${others.length} people are typing...`;
-  };
+  }, [getTypingUsers, chatId, userProfile?.id]);
 
   const headerInfo = useMemo(() => {
     if (!chatInfo) return { name: memberName || 'Chat', avatar: memberAvatar || '💬', status: '' };
@@ -1089,6 +1122,9 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
       return { name: chatInfo.name || 'Family Group', avatar: chatInfo.avatar || '👨‍👩‍👧‍👦', status: `${chatInfo.participants?.length || 0} members` };
     }
     const otherId = chatInfo.participants?.find((p: string) => p !== userProfile?.id);
+    // Prefer the *live* member from FamilyContext; fall back to route
+    // params or the chat snapshot if the member isn't in the family
+    // list (e.g. a viewer joining a direct chat).
     const member = otherId ? getMemberById(otherId) : undefined;
     return {
       name: member?.fullName || memberName || 'Unknown',
@@ -1097,7 +1133,6 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     };
   }, [chatInfo, memberName, memberAvatar, userProfile, members]);
 
-  const typingText = getTypingText();
   const otherMembers = useMemo(() => members.filter((m) => m.id !== userProfile?.id && m.userId !== userProfile?.id), [members, userProfile]);
 
   const formatDuration = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
@@ -1130,6 +1165,15 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           onResend={() => handleResend(item.id)}
           isFirstInGroup={isFirst}
           isLastInGroup={isLast}
+          onAvatarPress={(targetId) => {
+            // Open EditGuardian (member profile editor) for this peer.
+            navigation.navigate('EditGuardian', {
+              memberId: targetId,
+              guardianId: targetId,
+              mode: 'guardian',
+              fromChat: true,
+            });
+          }}
           showSweetAlert={showSweetAlert}
         />
       </View>
@@ -1187,6 +1231,17 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           onToggleUsers={() => setShowUserBubbles(!showUserBubbles)}
           onVideo={() => { HAPTIC_LIGHT(); showSweetAlert('info', 'Video Call', 'Video calling feature coming soon! 📹'); }}
           onVoice={() => { HAPTIC_LIGHT(); showSweetAlert('info', 'Voice Call', 'Voice calling feature coming soon! 📞'); }}
+          onOpenCommunityChat={
+            chatInfo?.type === 'direct'
+              ? () => {
+                  const otherId = chatInfo.participants?.find((p: string) => p !== userProfile?.id);
+                  if (!otherId) return;
+                  HAPTIC_LIGHT();
+                  const rootNav = (navigation as any).getParent?.()?.getParent?.() ?? navigation;
+                  rootNav.navigate('Chat', { userId: otherId, chatId: otherId });
+                }
+              : undefined
+          }
           onOptions={() => {
             const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
             if (otherId) {

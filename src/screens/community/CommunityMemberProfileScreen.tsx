@@ -49,6 +49,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '@/utils/supabase';
+import { subscribeToProfileChanges } from '../../context/AuthContext';
 
 // Fabric detection — LayoutAnimation is a no-op there.
 const IS_FABRIC =
@@ -517,6 +518,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   const isLoadingRef = useRef(false);
   const initialLoadDone = useRef(false);
   const isMountedRef = useRef(true);
+  const profileReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!currentUser?.id || !communityProfile) return;
@@ -534,7 +536,10 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   }, [communityProfile, currentUser, syncUserProfileAcrossPosts]);
 
   useEffect(() => {
-    return () => { isMountedRef.current = false; };
+    return () => {
+      isMountedRef.current = false;
+      if (profileReloadTimerRef.current) clearTimeout(profileReloadTimerRef.current);
+    };
   }, []);
 
   const headerOpacity = useAnimatedStyle(() => ({
@@ -679,6 +684,27 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
       return () => {};
     }, [userId])
   );
+
+  /* Realtime profile-change: refresh this member's view */
+  // Fires when *any* profile changes — we only react if it's the
+  // member we're viewing. Re-runs loadUserData so avatar/name/bio
+  // update instantly. Also handles my own edits affecting posts
+  // (the context's `syncUserProfileAcrossPosts` handles that case).
+  useEffect(() => {
+    if (!userId) return;
+    const unsub = subscribeToProfileChanges((payload) => {
+      if (payload.userId === userId) {
+        // Small debounce so a save that updates 3 fields doesn't
+        // trigger 3 reloads.
+        if (profileReloadTimerRef.current) clearTimeout(profileReloadTimerRef.current);
+        profileReloadTimerRef.current = setTimeout(() => {
+          profileReloadTimerRef.current = null;
+          if (isMountedRef.current) loadUserData();
+        }, 120);
+      }
+    });
+    return unsub;
+  }, [userId]);
 
   // Re-sync topics when the context's cached user changes (e.g. that
   // user just edited their topics on another screen / device).

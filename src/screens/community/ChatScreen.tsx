@@ -43,6 +43,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { showConfirmModal } from '../../utils/modal';
 import { useApp } from '../../context/AppContext';
@@ -344,7 +345,12 @@ const MessageBubble = React.memo(
           </View>
         )}
 
-        <View style={[!isMe && !showAvatar && { marginLeft: 44 }]}>
+        <View
+          style={[
+            !isMe && !showAvatar && { marginLeft: 44 },
+            isMe && !showAvatar && { marginRight: 44 },
+          ]}
+        >
           <Animated.View style={animatedStyle}>
             <TouchableOpacity onLongPress={handleLongPress} activeOpacity={0.9} delayLongPress={250}>
               <View
@@ -387,6 +393,8 @@ const MessageBubble = React.memo(
                         ]}
                         numberOfLines={1}
                       >
+                        {/* Prefer the LIVE display name over the frozen
+                            snapshot baked into the reply preview. */}
                         {message.replyToPreview || 'Replying to message...'}
                       </Text>
                     </View>
@@ -474,6 +482,18 @@ const MessageBubble = React.memo(
             </TouchableOpacity>
           </Animated.View>
         </View>
+
+        {isMe && showAvatar && (
+          <View style={styles.avatarSmallRight}>
+            <SafeAvatar
+              avatar={user?.avatar}
+              size={32}
+              fallbackIcon="person"
+              fallbackColor={LL.accent}
+              fallbackBgColor={`${LL.accent}20`}
+            />
+          </View>
+        )}
 
         {/* Action menu */}
         <Modal
@@ -700,6 +720,15 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     };
   }, [otherUserId]);
 
+  // ── Keep `isBlocked` in sync with CommunityContext ──────────
+  // If I block/unblock from another screen, this chat must reflect
+  // it immediately. `isUserBlocked` is a stable ref-read from the
+  // CommunityContext, so re-running on mount + on focus is enough.
+  useEffect(() => {
+    if (!otherUserId) return;
+    setIsBlocked(isUserBlocked(otherUserId));
+  }, [otherUserId, isUserBlocked]);
+
   /* ── Realtime profile-change: refresh `user` ─────────────── */
   // When the peer updates their avatar / name / bio (or I do), the
   // header avatar + status text must refresh instantly. `getUserById`
@@ -718,6 +747,37 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     return unsub;
   }, [otherUserId, getUserById]);
 
+  // ── Periodic peer status refresh ─────────────────────────
+  // CommunityContext only re-fetches `user_activity` on realtime
+  // events. If the peer goes offline without emitting an event
+  // (common when a phone dies), the header stays "Online" forever.
+  // Poll the local `getUserById` snapshot every 45 s to force a
+  // re-render from whatever status we *do* have (which is fresher
+  // than what we rendered 45 s ago because it re-queries the map).
+  useEffect(() => {
+    if (!otherUserId) return;
+    const iv = setInterval(() => {
+      const fresh = getUserById(otherUserId);
+      if (fresh) {
+        setUser((prev) => {
+          // Only update when the visible fields actually changed to
+          // avoid needless re-renders.
+          if (
+            prev &&
+            prev.avatar === fresh.avatar &&
+            prev.displayName === fresh.displayName &&
+            prev.onlineStatus === fresh.onlineStatus &&
+            prev.lastActive === fresh.lastActive
+          ) {
+            return prev;
+          }
+          return fresh;
+        });
+      }
+    }, 45_000);
+    return () => clearInterval(iv);
+  }, [otherUserId, getUserById]);
+
   // Live-update messages once chatId is known
   const { subscribeToChatMessages } = useFamilyChat();
   useEffect(() => {
@@ -730,6 +790,24 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     });
     return unsub;
   }, [chatId, subscribeToChatMessages, markChatRead, userProfile?.id]);
+
+  /* ── Focus re-sync ──────────────────────────────────────── */
+  // If I block/unblock this peer from another screen, or their
+  // profile changed while I was elsewhere, refresh everything
+  // the moment this screen re-focuses.
+  useFocusEffect(
+    useCallback(() => {
+      if (!otherUserId) return;
+      setIsBlocked(isUserBlocked(otherUserId));
+      const fresh = getUserById(otherUserId);
+      if (fresh) setUser(fresh);
+      if (chatId) {
+        const fresh2 = getChatMessages(chatId);
+        setMessages(fresh2);
+        markChatRead(chatId);
+      }
+    }, [otherUserId, isUserBlocked, getUserById, chatId, getChatMessages, markChatRead]),
+  );
 
   /* ── Refresh loop ────────────────────────────────────────── */
   // ── Clear typing when leaving the chat ───────────────────────
@@ -896,12 +974,19 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   const handleReply = (message: FamilyMessage) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Prefer the LIVE peer name for reply previews of peer messages
+    // (falls back to the frozen snapshot if the peer left the family).
+    const livePeerName =
+      getUserById(message.senderId)?.displayName
+      ?? user?.displayName
+      ?? message.senderName
+      ?? 'User';
     setReplyingTo({
       id: message.id,
       content:
         message.content ||
         (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
-      senderName: message.senderId === userProfile?.id ? 'You' : user?.displayName || 'User',
+      senderName: message.senderId === userProfile?.id ? 'You' : livePeerName,
     });
   };
 
@@ -1005,13 +1090,29 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     const showDate =
       index === 0 || getMessageDate(item.timestamp) !== getMessageDate(messages[index - 1]?.timestamp);
 
+    // ── Pick the LIVE sender for this specific message ────────
+    // For my own messages, use `userProfile` (updated live by
+    // AuthContext after any edit). For peer messages, use `user`
+    // (re-hydrated from CommunityContext on profile-change).
+    // Without this, `myMessage` bubbles keep showing the *peer's*
+    // avatar because `user` is the peer's identity, not mine.
+    const senderIdentity = isMe
+      ? {
+          avatar: userProfile?.avatar,
+          displayName: userProfile?.fullName,
+        }
+      : {
+          avatar: user?.avatar,
+          displayName: user?.displayName,
+        };
+
     return (
       <>
         {showDate && <DateSeparator date={getMessageDate(item.timestamp)} isDark={isDark} />}
         <MessageBubble
           message={item}
           isMe={isMe}
-          user={user}
+          user={senderIdentity}
           showAvatar={showAvatar}
           isDark={isDark}
           onReaction={(emoji) => handleReaction(item.id, emoji)}
@@ -1241,6 +1342,22 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         </TouchableOpacity>
 
         <View style={styles.headerActions}>
+          {/* Cross-link: jump to the FamilyChat version of this DM */}
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate('FamilyChat' as never, {
+                memberId: otherUserId,
+                memberName: user?.displayName,
+                memberAvatar: user?.avatar,
+                memberRole: 'guardian',
+              } as never);
+            }}
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100 }]}
+            accessibilityLabel="Open family chat"
+          >
+            <Ionicons name="people" size={20} color={LL.accent} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setIsSearching((s) => !s)}
             style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100 }]}
@@ -1315,6 +1432,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             ]}
           >
             <Text style={[styles.typingLabel, { color: isDark ? LL.gray400 : LL.gray500 }]}>
+              {/* `user` is re-hydrated from CommunityContext on every
+                  profile change, so this stays fresh. */}
               {user.displayName} is typing
             </Text>
             <TypingDots isDark={isDark} />
@@ -1572,6 +1691,7 @@ const styles = StyleSheet.create({
   myMessage: { justifyContent: 'flex-end' },
   theirMessage: { justifyContent: 'flex-start' },
   avatarSmall: { marginRight: LL.space.sm },
+  avatarSmallRight: { marginLeft: LL.space.sm },
   messageBubble: {
     maxWidth: SCREEN_W * 0.76,
     borderRadius: LL.radius.xl,
