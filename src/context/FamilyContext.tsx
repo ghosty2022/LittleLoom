@@ -25,6 +25,7 @@ interface FamilyState {
 
 interface FamilyContextType extends FamilyState {
   loadFamily: () => Promise<void>;
+  refreshFamily: () => Promise<void>;
   inviteMember: (email: string, role: UserRole, relationship: string) => Promise<boolean>;
   removeMember: (memberId: string) => Promise<boolean>;
   getEffectivePermissions: (userId?: string) => Permission;
@@ -291,6 +292,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
+    // Always emit a brand-new state object (even if the same length)
+    // so downstream useMemo([]) consumers re-render when role or
+    // permission fields change.
+
     // ─── FIX: Recover user ID if authProfile is stale ────────────
     let effectiveUserId = authProfile?.id;
     if (!effectiveUserId) {
@@ -331,97 +336,53 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     //
     // Doing it in one round-trip here means we don't waste a second
     // query below when the user really isn't associated.
-    if (effectiveUserId && currentBaby.parent1_id !== effectiveUserId && currentBaby.parent2_id !== effectiveUserId) {
-      // Legacy local guardianIds hint — if present, allow.
-      const guardianIds: string[] = Array.isArray(currentBaby.guardian_ids)
-        ? currentBaby.guardian_ids
-        : [];
-      const isLocalGuardian = guardianIds.includes(effectiveUserId);
+    // ── Self-heal the parent1 row (idempotent) ─────────────────────
+    // If `currentBaby.parent1_id` has no active family_members row,
+    // seed one. We do this unconditionally for the baby owner because
+    // the rest of the app (FamilySharing, EditGuardian, chat headers,
+    // family tree) relies on a consistent member list — and it's a
+    // no-op if the row already exists.
+    if (effectiveUserId === currentBaby.parent1_id) {
+      try {
+        const { data: p1Rows } = await supabase
+          .from('family_members')
+          .select('id')
+          .eq('baby_id', currentBaby.id)
+          .eq('user_id', effectiveUserId)
+          .eq('status', 'active')
+          .is('deleted_at', null)
+          .limit(1);
 
-      if (!isLocalGuardian) {
-        // Authoritative check
-        try {
-          // Use `.limit(1)` + array access instead of `.maybeSingle()`
-          // so we don't throw PGRST116 if a user somehow has two
-          // active family_members rows for the same baby (which can
-          // happen if an old invite was soft-deleted and then re-added).
-          const { data: membershipRows, error: membershipError } = await supabase
-            .from('family_members')
-            .select('id, role, status, deleted_at')
-            .eq('baby_id', currentBaby.id)
-            .eq('user_id', effectiveUserId)
-            .eq('status', 'active')
-            .is('deleted_at', null)
-            .limit(1);
-
-          const membership = membershipRows?.[0] ?? null;
-
-          if (membershipError) {
-            // Transient error → don't block. Let the load run;
-            // a legit user should not lose the family view because
-            // of an RLS hiccup.
-            if (__DEV__) {
-              console.warn(
-                '[FamilyContext] Membership check errored — continuing load:',
-                membershipError.message
-              );
-            }
-          } else if (!membership) {
-            // Confirmed: this user truly has no relationship.
-            // However, `parent1` (baby owner) is often missing a
-            // family_members row — the migration inserts it, but if
-            // the migration hasn't run yet (or the user hit this path
-            // before it fired), lazily seed it here so downstream
-            // screens (chat, EditGuardian, FamilySharing) can resolve
-            // this user as a member.
-            if (effectiveUserId === currentBaby.parent1_id) {
-              try {
-                const nowIso = new Date().toISOString();
-                const perms = {
-                  canView: true, canAddEntry: true, canEditEntry: true,
-                  canEditOthersEntries: true, canDeleteEntry: true,
-                  canEditBaby: true, canInvite: true, canExport: true,
-                  canManageFamily: true,
-                };
-                await supabase.from('family_members').insert({
-                  id: `${currentBaby.id}-p1`,
-                  baby_id: currentBaby.id,
-                  user_id: effectiveUserId,
-                  email: authProfile?.email || '',
-                  full_name: authProfile?.fullName || 'Primary Parent',
-                  role: 'parent1',
-                  relationship: 'Parent',
-                  permissions: perms,
-                  added_at: nowIso,
-                  added_by: effectiveUserId,
-                  can_be_removed: false,
-                  last_active: nowIso,
-                  phone_number: authProfile?.phoneNumber || null,
-                  notifications_enabled: true,
-                  status: 'active',
-                  updated_at: nowIso,
-                });
-                console.log('[FamilyContext] ✅ Seeded parent1 family_members row');
-                // Do not `return` — let the rest of loadFamily run and
-                // pick the row up (or re-run loadFamily()).
-                await loadFamily();
-                return;
-              } catch (e) {
-                if (__DEV__) console.warn('[FamilyContext] parent1 seed failed:', e);
-              }
-            }
-            // Not parent1 and no membership → genuinely not in this family.
-            console.log(
-              '[FamilyContext] User has no family_members row for this baby — skipping load'
-            );
-            return;
-          }
-        } catch (err) {
-          // Same reasoning — network glitch shouldn't blank the list.
-          if (__DEV__) {
-            console.warn('[FamilyContext] Membership check threw — continuing load:', err);
-          }
+        if (!p1Rows || p1Rows.length === 0) {
+          const nowIso = new Date().toISOString();
+          const perms = {
+            canView: true, canAddEntry: true, canEditEntry: true,
+            canEditOthersEntries: true, canDeleteEntry: true,
+            canEditBaby: true, canInvite: true, canExport: true,
+            canManageFamily: true,
+          };
+          await supabase.from('family_members').insert({
+            id: `${currentBaby.id}-p1`,
+            baby_id: currentBaby.id,
+            user_id: effectiveUserId,
+            email: authProfile?.email || '',
+            full_name: authProfile?.fullName || 'Primary Parent',
+            role: 'parent1',
+            relationship: 'Parent',
+            permissions: perms,
+            added_at: nowIso,
+            added_by: effectiveUserId,
+            can_be_removed: false,
+            last_active: nowIso,
+            phone_number: authProfile?.phoneNumber || null,
+            notifications_enabled: true,
+            status: 'active',
+            updated_at: nowIso,
+          });
+          if (__DEV__) console.log('[FamilyContext] ✅ Seeded parent1 family_members row');
         }
+      } catch (e) {
+        if (__DEV__) console.warn('[FamilyContext] parent1 seed failed:', e);
       }
     }
 
@@ -431,99 +392,165 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      const members: FamilyMember[] = [];
-      const effectiveProfile = authProfile;
+      // ── 1. Query all family_members rows for this baby ──────────
+      const { data: dbMembers, error: membersError } = await supabase
+        .from('family_members')
+        .select('*')
+        .eq('baby_id', currentBaby.id)
+        .is('deleted_at', null);
 
-      if (currentBaby.parent1_id) {
-        const { data: parentData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', currentBaby.parent1_id)
-          .maybeSingle();
+      if (membersError && __DEV__) {
+        console.warn('[FamilyContext] family_members query error:', membersError.message);
+      }
 
-        // ─── FIX: Fall back to authProfile if profile fetch failed ─
-        const isCurrentUserParent1 = effectiveUserId === currentBaby.parent1_id;
-        const fallbackProfile = isCurrentUserParent1 ? authProfile : null;
+      const rawRows: any[] = Array.isArray(dbMembers) ? dbMembers : [];
 
-        members.push({
-          id: currentBaby.parent1_id,
-          userId: currentBaby.parent1_id,
-          fullName: parentData?.full_name || fallbackProfile?.fullName || 'Parent',
-          email: parentData?.email || fallbackProfile?.email || '',
-          avatar: parentData?.avatar || parentData?.community_avatar || fallbackProfile?.avatar,
-          role: UserRole.PARENT_1,
+      // ── 2. Ensure the parent1 row is present even if the seed
+      //    failed above (defensive: some legacy babies never got one).
+      if (
+        currentBaby.parent1_id &&
+        !rawRows.some(r => r.user_id === currentBaby.parent1_id && r.role === 'parent1')
+      ) {
+        rawRows.push({
+          id: `${currentBaby.id}-p1`,
+          baby_id: currentBaby.id,
+          user_id: currentBaby.parent1_id,
+          email: authProfile?.email || '',
+          full_name: authProfile?.fullName || 'Primary Parent',
+          role: 'parent1',
           relationship: 'Parent',
           permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
-          addedAt: currentBaby.created_at,
-          addedBy: currentBaby.parent1_id,
-          canBeRemoved: false,
-          phoneNumber: parentData?.phone_number || fallbackProfile?.phoneNumber,
-          notificationsEnabled: true,
-          lastActive: new Date().toISOString(),
+          added_at: currentBaby.created_at,
+          added_by: currentBaby.parent1_id,
+          can_be_removed: false,
+          last_active: new Date().toISOString(),
+          phone_number: authProfile?.phoneNumber || null,
+          notifications_enabled: true,
           status: 'active',
+          updated_at: new Date().toISOString(),
         });
       }
 
-const { data: dbMembers, error: membersError } = await supabase
-  .from('family_members')
-  .select('*')
-  .eq('baby_id', currentBaby.id)
-  .is('deleted_at', null);
+      // ── 3. Hydrate all profiles in ONE batch ────────────────────
+      const userIds = Array.from(
+        new Set(
+          rawRows
+            .map(r => (r.user_id || r.id) as string)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0),
+        ),
+      );
 
-      if (!membersError && dbMembers) {
-        for (const dbMember of dbMembers) {
-          if (dbMember.role === 'parent1') continue;
-
-          let userProfile = null;
-          if (dbMember.user_id) {
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', dbMember.user_id)
-              .maybeSingle();
-            userProfile = profileData;
-          }
-
-          const member: FamilyMember = {
-            id: dbMember.id,
-            userId: dbMember.user_id || dbMember.id,
-            fullName: userProfile?.full_name || dbMember.full_name || 'Family Member',
-            email: userProfile?.email || dbMember.email || '',
-            // `family_members` has no avatar column in this schema —
-            // fall back to profiles only. The old `dbMember.avatar`
-            // read always resolved to `undefined`.
-            avatar: userProfile?.community_avatar || userProfile?.avatar_url || userProfile?.avatar || undefined,
-            role: dbMember.role === 'parent2' ? UserRole.PARENT_2 
-              : dbMember.role === 'guardian' ? UserRole.GUARDIAN 
-              : UserRole.VIEWER,
-            relationship: dbMember.relationship,
-            permissions: dbMember.permissions as Permission || ROLE_PERMISSIONS[UserRole.VIEWER],
-            addedAt: dbMember.added_at,
-            addedBy: dbMember.added_by,
-            canBeRemoved: dbMember.can_be_removed !== false,
-            lastActive: dbMember.last_active || undefined,
-            phoneNumber: userProfile?.phone_number || dbMember.phone_number || undefined,
-            notificationsEnabled: dbMember.notifications_enabled !== false,
-            status: dbMember.status || (dbMember.last_active ? 'active' : 'pending'),
-          };
-          members.push(member);
+      const profileMap: Record<string, any> = {};
+      if (userIds.length > 0) {
+        try {
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('*')
+            .in('id', userIds);
+          (profilesData || []).forEach((p: any) => {
+            profileMap[p.id] = p;
+          });
+        } catch (e) {
+          if (__DEV__) console.warn('[FamilyContext] profile batch failed:', e);
         }
       }
 
-      // De-duplicate by userId (or id fallback)
-      const seenIds = new Set<string>();
-      const uniqueMembers = members.filter(m => {
+      // ── 4. Normalize each row into the FamilyMember shape ──────
+      const buildMember = (row: any): FamilyMember => {
+        const rawRole = (row.role || 'viewer').toString().toLowerCase();
+        let enumRole: UserRole =
+          rawRole === 'parent1' ? UserRole.PARENT_1
+          : rawRole === 'parent2' ? UserRole.PARENT_2
+          : rawRole === 'guardian' ? UserRole.GUARDIAN
+          : UserRole.VIEWER;
+
+        // Fallback inference: if role is viewer/parent2 but userId
+        // matches `currentBaby.parent2_id`, upgrade to PARENT_2.
+        if (row.user_id && currentBaby.parent2_id === row.user_id && enumRole === UserRole.VIEWER) {
+          enumRole = UserRole.PARENT_2;
+        }
+        if (row.user_id && currentBaby.parent1_id === row.user_id) {
+          enumRole = UserRole.PARENT_1;
+        }
+
+        const profile = row.user_id ? profileMap[row.user_id] : null;
+        const liveName =
+          profile?.community_display_name ||
+          profile?.full_name ||
+          row.full_name ||
+          'Family Member';
+        const liveEmail = profile?.email || row.email || '';
+        const liveAvatar =
+          profile?.community_avatar ||
+          profile?.avatar_url ||
+          profile?.avatar ||
+          undefined;
+        const livePhone = profile?.phone_number || row.phone_number || undefined;
+
+        // Merge permissions: use stored JSONB but backfill missing
+        // keys from the canonical role template so a legacy `{}` row
+        // still behaves like a real guardian/viewer.
+        const stored = (row.permissions as Record<string, boolean>) || {};
+        const template = ROLE_PERMISSIONS[enumRole] as unknown as Record<string, boolean>;
+        const permissions: Permission = {
+          ...template,
+          ...stored,
+        } as Permission;
+
+        return {
+          id: row.id,
+          userId: row.user_id || row.id,
+          fullName: liveName,
+          email: liveEmail,
+          avatar: liveAvatar,
+          role: enumRole,
+          relationship: row.relationship,
+          permissions,
+          addedAt: row.added_at,
+          addedBy: row.added_by,
+          canBeRemoved: row.can_be_removed !== false,
+          lastActive: row.last_active || undefined,
+          phoneNumber: livePhone,
+          notificationsEnabled: row.notifications_enabled !== false,
+          status: row.status || (row.last_active ? 'active' : 'pending'),
+        };
+      };
+
+      const built: FamilyMember[] = rawRows.map(buildMember);
+
+      // ── 5. De-dupe by user_id (fallback: id) BUT prefer parent1
+      //      > parent2 > guardian > viewer when duplicates exist ───
+      const priority: Record<UserRole, number> = {
+        [UserRole.PARENT_1]: 0,
+        [UserRole.PARENT_2]: 1,
+        [UserRole.GUARDIAN]: 2,
+        [UserRole.VIEWER]: 3,
+      };
+      const byKey = new Map<string, FamilyMember>();
+      for (const m of built) {
         const key = m.userId || m.id;
-        if (seenIds.has(key)) return false;
-        seenIds.add(key);
-        return true;
-      });
+        const existing = byKey.get(key);
+        if (!existing) {
+          byKey.set(key, m);
+        } else if ((priority[m.role] ?? 4) < (priority[existing.role] ?? 4)) {
+          byKey.set(key, m);
+        }
+      }
+      const uniqueMembers = Array.from(byKey.values()).sort(
+        (a, b) => (priority[a.role] ?? 4) - (priority[b.role] ?? 4),
+      );
 
       const nextParent1 = uniqueMembers.find(m => m.role === UserRole.PARENT_1) || null;
       const nextParent2 = uniqueMembers.find(m => m.role === UserRole.PARENT_2) || null;
-      const nextGuardians = uniqueMembers.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER);
-      const nextPending = uniqueMembers.filter(m => !m.lastActive && m.role !== UserRole.PARENT_1);
+      const nextGuardians = uniqueMembers.filter(
+        m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER,
+      );
+      const nextPending = uniqueMembers.filter(
+        m => !m.lastActive && m.role !== UserRole.PARENT_1,
+      );
 
+      // Always emit a fresh state object so `useMemo([members])`
+      // consumers re-render even when length is unchanged.
       setState({
         isLoading: false,
         members: uniqueMembers,
@@ -533,7 +560,7 @@ const { data: dbMembers, error: membersError } = await supabase
         pendingInvites: nextPending,
       });
     } catch (error) {
-      console.error('Error loading family:', error);
+      console.error('[FamilyContext] Error loading family:', error);
       setState(prev => ({ ...prev, isLoading: false }));
     } finally {
       familyLoadInProgress.current = false;
@@ -1492,6 +1519,11 @@ const { data: dbMembers, error: membersError } = await supabase
     }
   }, [validateInviteCode]);
 
+  // ─── Refresh (alias for loadFamily; used by tree screens) ─────────
+  const refreshFamily = useCallback(async () => {
+    await loadFamily();
+  }, [loadFamily]);
+
   // ─── Get Effective Permissions ────────────────────────────────────────
   const getEffectivePermissions = useCallback((userId?: string): Permission => {
     const targetId = userId || authProfile?.id;
@@ -1507,6 +1539,7 @@ const { data: dbMembers, error: membersError } = await supabase
   const value = React.useMemo(() => ({
     ...state,
     loadFamily,
+    refreshFamily,
     inviteMember,
     removeMember,
     getEffectivePermissions,
@@ -1527,7 +1560,7 @@ const { data: dbMembers, error: membersError } = await supabase
     // ─── NEW ──────────────────────────────────────────────────────────
     recoverPartialSignup,
     getPartialSignupInfo,
-  }), [state, loadFamily, inviteMember, removeMember, getEffectivePermissions, 
+  }), [state, loadFamily, refreshFamily, inviteMember, removeMember, getEffectivePermissions, 
       updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, 
       refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode,
       getCurrentBaby, getBabyId, validateInviteCode, useInviteCode,
