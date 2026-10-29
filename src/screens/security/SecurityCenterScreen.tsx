@@ -377,22 +377,40 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', async () => {
       if (!isMounted.current) return;
-      await refreshBiometricStatus();
-      if (biometricLoading) return;
 
+      // Read the persisted value FIRST — before refreshBiometricStatus
+      // mutates any state. This way, if the user just returned from
+      // BiometricSetup after enabling biometrics, we pick up the new
+      // value immediately, even if refreshBiometricStatus is slow or
+      // returns stale hardware info.
       let enabledFromStorage = false;
       try {
         const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
         enabledFromStorage = stored === 'true';
       } catch {}
 
-      if (!isMounted.current) return;
-      if (biometricLoading) return;
-      setLocalBioEnabled(enabledFromStorage);
-      setForceUpdate(prev => !prev);
+      if (isMounted.current) {
+        setLocalBioEnabled(enabledFromStorage);
+      }
+
+      await refreshBiometricStatus();
+
+      // Re-read after refresh in case it touched storage (it shouldn't,
+      // but if it ever does, this is the authoritative source).
+      try {
+        const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
+        const after = stored === 'true';
+        if (isMounted.current && after !== enabledFromStorage) {
+          setLocalBioEnabled(after);
+        }
+      } catch {}
+
+      if (isMounted.current) {
+        setForceUpdate(prev => !prev);
+      }
     });
     return unsubscribe;
-  }, [navigation, refreshBiometricStatus, biometricLoading]);
+  }, [navigation, refreshBiometricStatus]);
 
   useEffect(() => {
     const checkBiometrics = async () => {
@@ -702,14 +720,18 @@ export default function SecurityCenterScreen({ navigation, route }: SecurityCent
     try {
       const result = await toggleBiometric(newState);
 
+      // Authoritative source after the toggle: read storage.
       let storedAfter = newState;
       try {
         const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
         storedAfter = stored === 'true';
       } catch {}
 
+      // Update state regardless of toggleBiometric's return value.
+      // The return value is informational; the ground truth is storage.
+      setLocalBioEnabled(storedAfter);
+
       if (result && storedAfter === newState) {
-        setLocalBioEnabled(newState);
         await refreshBiometricStatus();
         setForceUpdate(prev => !prev);
 

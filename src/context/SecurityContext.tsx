@@ -65,6 +65,7 @@ export interface SecuritySettings {
   autoLockTimeout: number;
   availableAuthTypes: LocalAuthentication.AuthenticationType[];
   biometricTypeName: string;
+  biometricIcon: string;        // ← new: resolved enrolled-type icon
   securityLevel: LocalAuthentication.SecurityLevel;
   hasSecurityQuestions: boolean;
 }
@@ -134,6 +135,7 @@ const defaultSettings: SecuritySettings = {
   autoLockTimeout: 5,
   availableAuthTypes: [],
   biometricTypeName: 'Biometric',
+  biometricIcon: 'finger-print',
   securityLevel: LocalAuthentication.SecurityLevel.NONE,
   hasSecurityQuestions: false,
 };
@@ -203,20 +205,44 @@ const getBiometricConfigs = (types: LocalAuthentication.AuthenticationType[]): B
   return configs;
 };
 
-const getPrimaryBiometricName = (types: LocalAuthentication.AuthenticationType[]): string => {
-  if (!types || types.length === 0) return 'Biometric';
-  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'Face ID';
-  if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'Fingerprint';
-  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) return 'Iris Scan';
-  return 'Biometric';
-};
+        // ── ENROLLED-TYPE RESOLUTION ──────────────────────────────
+        // `types` is what the OS *supports*. We must narrow it down to
+        // what the user actually has enrolled. `resolveEnrolledBiometricType`
+        // does this per-platform (see definition above).
+        const enrolledType = resolveEnrolledBiometricType(types, Platform.OS);
+        const enrolledName = nameForEnrolledType(enrolledType, Platform.OS);
+        const enrolledIcon = iconForEnrolledType(enrolledType);
 
-const getPrimaryBiometricIcon = (types: LocalAuthentication.AuthenticationType[]): string => {
-  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'scan-outline';
-  if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'finger-print';
-  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) return 'eye-outline';
-  return 'finger-print';
-};
+        // Re-order the available biometric configs so the enrolled type
+        // comes FIRST. `getBiometricConfigs` returns every supported type;
+        // the UI reads `availableBiometricTypes[0]` for the "primary"
+        // biometric — making the enrolled one come first prevents the
+        // biometric setup screen from showing "Face ID" on a device
+        // where only fingerprint is enrolled.
+        const allConfigs = getBiometricConfigs(types);
+        const biometricConfigs = [
+          ...allConfigs.filter(c => c.type === enrolledType),
+          ...allConfigs.filter(c => c.type !== enrolledType),
+        ];
+
+        console.log('[Security] Enrolled type:', enrolledName, '(', enrolledType, ')');
+        console.log('[Security] Primary name:', enrolledName);
+
+        if (isMounted.current) {
+          setState(prev => ({
+            ...prev,
+            isBiometricHardwareAvailable: hasHardware,
+            isBiometricEnrolled: isEnrolled && hasHardware,
+            availableBiometricTypes: biometricConfigs,
+            settings: {
+              ...prev.settings,
+              availableAuthTypes: types,
+              biometricTypeName: enrolledName,
+              biometricIcon: enrolledIcon,
+              securityLevel,
+            } as any,
+          }));
+        }
 
 const hashPin = async (pin: string): Promise<string> => {
   return await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin + 'littleloom_salt_v1');
@@ -860,31 +886,55 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         await SecureStore.setItemAsync(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'true');
       } catch {}
 
+      // Re-read the exact value we just wrote so the returned `true`
+      // corresponds to a *persisted* true. If AsyncStorage silently
+      // failed (quota, corrupted write, WebView sandbox reset), we
+      // must NOT report success — the user would then see "enabled"
+      // in one screen and "not enabled" in another.
+      let persisted = false;
+      try {
+        const check = await AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED);
+        persisted = check === 'true';
+      } catch {
+        persisted = false;
+      }
+
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
-          settings: { ...prev.settings, isBiometricEnabled: true },
+          settings: { ...prev.settings, isBiometricEnabled: persisted },
           isBiometricHardwareAvailable: hasHardware,
           isBiometricEnrolled: isEnrolled,
         }));
       }
+
+      if (!persisted) {
+        console.warn('[Security] toggleBiometric: write did not persist');
+        return false;
+      }
+
       console.log('[Security] ✅ Biometric enabled successfully');
       return true;
     } else {
-      
       await AsyncStorage.setItem(ASYNC_KEYS.BIOMETRIC_ENABLED, 'false');
       try {
         await SecureStore.setItemAsync(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED, 'false');
       } catch {}
 
+      let persisted = true;
+      try {
+        const check = await AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED);
+        persisted = check === 'false';
+      } catch {}
+
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
-          settings: { ...prev.settings, isBiometricEnabled: false },
+          settings: { ...prev.settings, isBiometricEnabled: !persisted ? true : false },
         }));
       }
-      console.log('[Security] ❌ Biometric disabled');
-      return true;
+      console.log('[Security] ❌ Biometric disabled (persisted:', persisted, ')');
+      return persisted;
     }
   }, [authenticateWithBiometric, refreshBiometricStatus]);
 
@@ -1103,34 +1153,27 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
   }, [lockApp]);  
 
   const getBiometricTypeName = useCallback(() => {
-    const types = state.settings.availableAuthTypes;
-
-    // Hardware capability labels (used for setup prompts)
-    const hardwareName = (() => {
-      if (!types || types.length === 0) return 'Biometric';
-      const names: string[] = [];
-      if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) names.push('Face ID');
-      if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) names.push('Fingerprint');
-      if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) names.push('Iris Scan');
-      return names.length > 1 ? names.join(' or ') : names[0] || 'Biometric';
-    })();
-
-    // When biometric is NOT actually enabled, the UI label must not claim it is.
-    // Callers that need the hardware name (setup flows) should read it from
-    // `availableBiometricTypes[0]?.name` or `settings.biometricTypeName`.
-    if (!state.settings.isBiometricEnabled) {
-      return hardwareName; // used by "Enable X" / "Set Up X" prompts only
+    // Prefer the resolved enrolled-type name computed by
+    // `checkBiometricCapabilities`. Fall back to a single-type guess
+    // from `availableAuthTypes` only when we haven't resolved yet.
+    if (state.settings.biometricTypeName && state.settings.biometricTypeName !== 'Biometric') {
+      return state.settings.biometricTypeName;
     }
-    return hardwareName;
-  }, [state.settings.availableAuthTypes, state.settings.isBiometricEnabled]);
+    const types = state.settings.availableAuthTypes;
+    if (!types || types.length === 0) return 'Biometric';
+    const enrolledType = resolveEnrolledBiometricType(types, Platform.OS);
+    return nameForEnrolledType(enrolledType, Platform.OS);
+  }, [state.settings.biometricTypeName, state.settings.availableAuthTypes]);
 
   const getBiometricIcon = useCallback(() => {
+    if (state.settings.biometricIcon && state.settings.biometricIcon !== 'finger-print') {
+      return state.settings.biometricIcon;
+    }
     const types = state.settings.availableAuthTypes;
-    if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'scan-outline';
-    if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'finger-print';
-    if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) return 'eye-outline';
-    return 'finger-print';
-  }, [state.settings.availableAuthTypes]);
+    if (!types || types.length === 0) return 'finger-print';
+    const enrolledType = resolveEnrolledBiometricType(types, Platform.OS);
+    return iconForEnrolledType(enrolledType);
+  }, [state.settings.biometricIcon, state.settings.availableAuthTypes]);
 
   const getAvailableAuthMethods = useCallback(() => ({
     hasBiometric: state.settings.isBiometricEnabled && state.isBiometricHardwareAvailable,

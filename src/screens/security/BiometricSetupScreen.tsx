@@ -217,6 +217,9 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
         let configs: BiometricTypeConfig[] = [];
         
         if (contextTypes && contextTypes.length > 0) {
+          // The provider already reordered these so that the *enrolled*
+          // type comes first (see SecurityContext.checkBiometricCapabilities).
+          // Trust that order.
           configs = contextTypes;
         } else if (hasHardware) {
           console.log('[BiometricSetup] Building manual configs');
@@ -512,8 +515,8 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
 
             {/* ─── Friendly Title ─── */}
             <Text style={[styles.title, { color: '#fff' }]}>
-              {availableTypes.length > 1 ? 'Pick Your Method' : `Turn on ${availableTypes[0]?.name || 'Biometric'}`}
-            </Text>
+  Turn on {availableTypes[0]?.name || 'Biometric'}
+</Text>
 
             {/* ─── Friendly Subtitle ─── */}
             <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.85)' }]}>
@@ -535,7 +538,12 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
             {/* ─── Biometric Options ─── */}
             {availableTypes.length > 0 && hasBiometricAvailable && (
               <View style={styles.optionsContainer}>
-                {availableTypes.map((config) => (
+                {/* Only render configs that match the enrolled type.
+                    `availableTypes[0]` is guaranteed to be the enrolled
+                    type after the provider resolves it. Any others in
+                    the list are supported-but-not-enrolled and shouldn't
+                    be selectable. */}
+                {availableTypes.slice(0, 1).map((config) => (
                   <TouchableOpacity
                     key={config.type}
                     style={[

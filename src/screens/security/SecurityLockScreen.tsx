@@ -498,6 +498,12 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       clearTimeout(autoPromptTimer.current);
     }
 
+    // Longer initial delay on cold start so the screen has a chance to
+    // animate in and the OS face/fingerprint sheet doesn't cover the
+    // splash transition. On warm focus (returning to a locked screen
+    // from another screen) 1200ms is fine.
+    const initialDelay = 1800;
+
     autoPromptTimer.current = setTimeout(() => {
       if (
         isMounted.current &&
@@ -509,7 +515,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         hasAutoPrompted.current = true;
         handleBiometricAuthRef.current();
       }
-    }, 1200);
+    }, initialDelay);
 
     return () => {
       unsubscribe();

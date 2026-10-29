@@ -491,7 +491,10 @@ export default function App(): React.ReactElement | null {
       const hasBaby = hasBabyStr === 'true' || hasBabyStr === 'skipped';
       const setupDone = setupCompleteStr === 'true' || (hasParent2 && hasBaby);
 
-      if (!setupDone || wasLocked === 'true') {
+      // Only skip restore if setup wasn't completed. A locked app still
+      // gets its nav state restored — the SecurityLock modal sits on top
+      // of it, so the user returns to the same screen after unlocking.
+      if (!setupDone) {
         if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
           await statePersistence.clearNavigationState();
         }
