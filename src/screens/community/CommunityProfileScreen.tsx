@@ -781,10 +781,19 @@ export default function CommunityProfileScreen({ navigation }: Props) {
             canonicalAvatar = profileRow.community_avatar || profileRow.avatar_url || '';
             canonicalCover = profileRow.community_cover || '';
             canonicalFullName = profileRow.full_name || '';
-            if (canonicalHandle && canonicalHandle !== currentUser.handle.replace(/^@+/, '')) {
+            // Guard: the CommunityContext export may be absent on older builds.
+            if (
+              typeof updateCommunityProfile === 'function' &&
+              canonicalHandle &&
+              canonicalHandle !== (currentUser.handle || '').replace(/^@+/, '')
+            ) {
               await updateCommunityProfile({ handle: `@${canonicalHandle}` });
             }
-            if (typeof profileRow.is_verified === 'boolean' && profileRow.is_verified !== currentUser.isVerified) {
+            if (
+              typeof updateCommunityProfile === 'function' &&
+              typeof profileRow.is_verified === 'boolean' &&
+              profileRow.is_verified !== currentUser.isVerified
+            ) {
               await updateCommunityProfile({ isVerified: profileRow.is_verified });
             }
           }
@@ -1098,9 +1107,16 @@ export default function CommunityProfileScreen({ navigation }: Props) {
         notificationsEnabled: formData.notificationsEnabled, showActivityStatus: formData.showActivityStatus, allowMessages: formData.allowMessages,
       };
       const originalClean = originalHandle.replace(/^@+/, '').toLowerCase();
+      // IMPORTANT: run the rename FIRST so `updateCommunityProfile` (which
+      // also persists the handle to the DB) sees a consistent state.
+      // We must ONLY call updateUsername ONCE — calling it twice is what
+      // triggered the false "This username is already taken".
       if (cleanHandle !== originalClean) {
         const result = await updateUsername(originalClean, cleanHandle, currentUser.id);
         if (!result.success) throw new Error(result.message);
+        // The rename already persisted `community_handle`. Strip it from
+        // `updates` so `updateCommunityProfile` doesn't re-persist it.
+        delete (updates as any).handle;
       }
       await updateUserContextProfile(updates);
       await updateCommunityProfile(updates);
@@ -1579,10 +1595,52 @@ export default function CommunityProfileScreen({ navigation }: Props) {
                   {isCheckingUsername && <ActivityIndicator size="small" color={DS.primary} />}
                 </View>
                 {usernameCheckStatus && (
-                  <View style={[styles.usernameStatus, { backgroundColor: usernameCheckStatus.available ? `${DS.success}10` : `${DS.danger}10`, borderColor: usernameCheckStatus.available ? DS.success : DS.danger }]}>
-                    <Ionicons name={usernameCheckStatus.available ? 'checkmark-circle' : 'alert-circle'} size={13} color={usernameCheckStatus.available ? DS.success : DS.danger} />
-                    <Text style={[styles.usernameStatusText, { color: usernameCheckStatus.available ? DS.success : DS.danger }]}>{usernameCheckStatus.message}</Text>
-                  </View>
+                  <Animated.View
+                    entering={FadeInDown.duration(200)}
+                    style={[
+                      styles.usernameStatus,
+                      {
+                        backgroundColor: usernameCheckStatus.available ? `${DS.success}10` : `${DS.danger}10`,
+                        borderColor: usernameCheckStatus.available ? DS.success : DS.danger,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingHorizontal: 10,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        marginTop: 6,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={usernameCheckStatus.available ? 'checkmark-circle' : 'alert-circle'}
+                      size={14}
+                      color={usernameCheckStatus.available ? DS.success : DS.danger}
+                    />
+                    <Text
+                      style={[
+                        styles.usernameStatusText,
+                        { color: usernameCheckStatus.available ? DS.success : DS.danger, flex: 1 },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {usernameCheckStatus.message}
+                    </Text>
+                    {!usernameCheckStatus.available && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          const suggestion = `parent_${currentUser?.id?.slice(0, 6) || Date.now().toString().slice(-6)}`;
+                          setFormData((prev) => ({ ...prev, handle: suggestion }));
+                          // Debounced effect will re-check automatically.
+                        }}
+                        style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: `${DS.primary}20` }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: DS.primary }}>Suggest</Text>
+                      </TouchableOpacity>
+                    )}
+                  </Animated.View>
                 )}
 
                 <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500, marginTop: DS.space.md }]}>Bio</Text>

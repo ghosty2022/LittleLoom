@@ -186,6 +186,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     currentUserIdRef.current = userProfile?.id ?? null;
   }, [userProfile?.id]);
+  // Always-current snapshot of userProfile for callbacks that must not go stale.
+  const userProfileRef = useRef(userProfile);
+  useEffect(() => { userProfileRef.current = userProfile; }, [userProfile]);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ── Load / refresh ─────────────────────────────────────────── */
@@ -265,26 +268,27 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     }
 
-    const me = userProfile
+    const liveProfile = userProfileRef.current;
+    const me = liveProfile
       ? {
-          id: userProfile.id,
-          displayName: userProfile.communityDisplayName || userProfile.fullName || 'Parent',
-          handle: userProfile.communityHandle || '@parent',
-          avatar: userProfile.communityAvatar || userProfile.avatar || '👤',
+          id: liveProfile.id,
+          displayName: liveProfile.communityDisplayName || liveProfile.fullName || 'Parent',
+          handle: liveProfile.communityHandle || '@parent',
+          avatar: liveProfile.communityAvatar || liveProfile.avatar || '👤',
           isVerified: false,
           onlineStatus: 'online' as const,
           lastActive: new Date().toISOString(),
-          stats: userProfile.communityStats || { posts: 0, followers: 0, following: 0, helpful: 0, streakDays: 0, lastStreakDate: new Date().toISOString() },
+          stats: liveProfile.communityStats || { posts: 0, followers: 0, following: 0, helpful: 0, streakDays: 0, lastStreakDate: new Date().toISOString() },
           achievements: [],
           // Merge: prefer persisted → userProfile → existing state.
           // NEVER let an empty source clobber a non-empty one.
           selectedTopics: persistedTopics.length > 0
             ? persistedTopics
-            : (userProfile.communitySelectedTopics && userProfile.communitySelectedTopics.length > 0
-                ? userProfile.communitySelectedTopics
+            : (liveProfile.communitySelectedTopics && liveProfile.communitySelectedTopics.length > 0
+                ? liveProfile.communitySelectedTopics
                 : stateRef.current.selectedTopics),
           isFollowing: undefined,
-          bio: userProfile.communityBio || '',
+          bio: liveProfile.communityBio || '',
         }
       : null;
 
@@ -327,7 +331,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         isInitialized: true,
       }));
     }
-  }, [userProfile]);
+  }, []);
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) return;
@@ -772,14 +776,28 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     // Also patch every post authored by this user so the feed re-renders.
-    syncUserProfileAcrossPosts(meId, {
-      displayName: updates.displayName,
-      handle: updates.handle,
-      bio: updates.bio,
-      avatar: updates.avatar,
-      coverPhoto: updates.coverPhoto,
-      isVerified: updates.isVerified,
-    });
+        // Also patch every post authored by this user so the feed re-renders.
+    // Inlined (rather than calling `syncUserProfileAcrossPosts`) so this
+    // callback does not depend on a helper declared further down in the file.
+    setState((p) => ({
+      ...p,
+      posts: p.posts.map((post) =>
+        post.authorId === meId
+          ? {
+              ...post,
+              author: {
+                ...post.author,
+                displayName: updates.displayName ?? post.author.displayName,
+                handle: updates.handle ?? post.author.handle,
+                bio: updates.bio ?? post.author.bio,
+                avatar: updates.avatar ?? post.author.avatar,
+                coverPhoto: updates.coverPhoto ?? post.author.coverPhoto,
+                isVerified: updates.isVerified ?? post.author.isVerified,
+              },
+            }
+          : post,
+      ),
+    }));
   }, []);
 
   const updateUserLocation = useCallback(async (country: string) => {

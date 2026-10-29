@@ -1059,11 +1059,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'littleloom_community_profile',
           'littleloom_username_registry',
           'littleloom_profile_sync_queue',
+          '@community_selected_topics_v2',
+          '@littleloom_community_onboarding_v3',
+          '@user_location_cache',
         ];
 
         await AsyncStorage.multiRemove(
           keysToRemove.flatMap((k) => [k, `${k}_${signedOutUserId}`]),
         );
+        // Explicitly nuke the location cache (it is global, not scoped).
+        try { await AsyncStorage.removeItem('@user_location_cache'); } catch {}
       }
 
       clearUserIdCache();

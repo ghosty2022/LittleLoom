@@ -19,6 +19,9 @@ const ASYNC_KEYS = {
   COMMUNITY_SELECTED_TOPICS: '@community_selected_topics',
 } as const;
 
+// Per-user scoped key — prevents account bleed on shared devices.
+const scopedKey = (base: string, userId: string) => `${base}_${userId}`;
+
 
 
 export interface CommunityProfile {
@@ -160,6 +163,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const initRef = useRef(false);
   const usernameLockRef = useRef(false);
   const loadingRef = useRef(false);
+  // Always-current snapshot of state for callbacks that must not go stale.
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
 
   
 
@@ -225,7 +231,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             },
           };
 
-          await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(communityProfile));
+          await AsyncStorage.setItem(
+            scopedKey(ASYNC_KEYS.COMMUNITY_PROFILE, profile.id),
+            JSON.stringify(communityProfile),
+          );
         } else {
           profile = {
             id: authProfile.id,
@@ -263,15 +272,22 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
               });
 
             communityProfile = createDefaultCommunityProfile(profile);
-            await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(communityProfile));
+            await AsyncStorage.setItem(
+              scopedKey(ASYNC_KEYS.COMMUNITY_PROFILE, profile.id),
+              JSON.stringify(communityProfile),
+            );
           } else {
-            const communityStr = await AsyncStorage.getItem(ASYNC_KEYS.COMMUNITY_PROFILE);
+            // Read the cache ONLY under this user's scoped key. The unscoped
+            // `littleloom_community_profile` key is written by the previous
+            // session and is the source of the "old account's data" bug.
+            const scopedCommunityKey = scopedKey(ASYNC_KEYS.COMMUNITY_PROFILE, profile.id);
+            const communityStr = await AsyncStorage.getItem(scopedCommunityKey);
             if (communityStr) {
               try { communityProfile = JSON.parse(communityStr); } catch (e) { /* ignore */ }
             }
-            if (!communityProfile) {
+            if (!communityProfile || communityProfile.userId !== profile.id) {
               communityProfile = createDefaultCommunityProfile(profile);
-              await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(communityProfile));
+              await AsyncStorage.setItem(scopedCommunityKey, JSON.stringify(communityProfile));
             }
           }
         }
@@ -374,6 +390,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const registry = state.usernameRegistry;
     const existingUserId = registry[trimmed];
 
+    // Only flag as taken if the registry says a DIFFERENT user owns it.
+    // (Same rule as the DB check above — a user can always re-select
+    // their own current handle.)
     if (existingUserId && existingUserId !== currentUserId) {
       return { available: false, message: 'This username is already taken' };
     }
@@ -724,18 +743,48 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
 
   const updateCommunityProfile = useCallback(async (updates: Partial<CommunityProfile>) => {
-    if (!state.communityProfile) return;
+    // Read the LATEST profile from the ref, not the stale closure.
+    const current = stateRef.current.communityProfile;
+    if (!current) return;
 
     try {
-      const newProfile = { ...state.communityProfile, ...updates };
+      const newProfile = { ...current, ...updates };
 
-      if (updates.handle && updates.handle !== state.communityProfile.handle) {
-        const oldHandle = state.communityProfile.handle.replace(/^@/, '');
-        const newHandle = updates.handle.replace(/^@/, '');
-
-        const result = await updateUsername(oldHandle, newHandle, state.communityProfile.userId);
-        if (!result.success) {
-          throw new Error(result.message);
+      // IMPORTANT: do NOT call updateUsername() here. The caller
+      // (CommunityProfileScreen.handleSave) already validated + called
+      // updateUsername BEFORE invoking us. Calling it again causes the
+      // "This username is already taken" false positive because the DB
+      // already has the new handle for THIS user and the local registry
+      // still has the old entry.
+      //
+      // The only handle work we need to do here is persist the new handle
+      // on the profile row + registry IF the caller set one but the DB
+      // doesn't have it yet.
+      if (updates.handle !== undefined) {
+        const cleanHandle = updates.handle.trim().toLowerCase().replace(/^@+/, '');
+        const currentDbHandle = (current.handle || '').replace(/^@+/, '');
+        if (cleanHandle && cleanHandle !== currentDbHandle) {
+          // Persist without going through updateUsername's availability check
+          // (the caller already validated). Also refresh the registry.
+          const { error: hErr } = await supabase
+            .from('profiles')
+            .update({
+              community_handle: `@${cleanHandle}`,
+              community_username: cleanHandle,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', current.userId);
+          if (hErr && __DEV__) {
+            console.warn('[UserContext] handle persist failed:', hErr.message);
+          }
+          const newRegistry = { ...stateRef.current.usernameRegistry };
+          if (currentDbHandle) delete newRegistry[currentDbHandle];
+          newRegistry[cleanHandle] = current.userId;
+          await AsyncStorage.setItem(
+            ASYNC_KEYS.USERNAME_REGISTRY,
+            JSON.stringify(newRegistry),
+          );
+          setState(prev => ({ ...prev, usernameRegistry: newRegistry }));
         }
       }
 
@@ -755,19 +804,22 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { error } = await supabase
         .from('profiles')
         .update(dbUpdates)
-        .eq('id', state.communityProfile.userId);
+        .eq('id', current.userId);
 
       if (error) {
         console.error('Update community profile error:', error.message);
       }
 
-      await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(newProfile));
+      await AsyncStorage.setItem(
+        scopedKey(ASYNC_KEYS.COMMUNITY_PROFILE, newProfile.userId),
+        JSON.stringify(newProfile),
+      );
       setState(prev => ({ ...prev, communityProfile: newProfile }));
     } catch (error) {
       console.error('updateCommunityProfile error:', error);
       Alert.alert('Error', 'Failed to update community profile');
     }
-  }, [state.communityProfile, updateUsername]);
+  }, [state.communityProfile, state.usernameRegistry]);
 
   
 
@@ -803,8 +855,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...state.communityProfile,
       preferences: { ...state.communityProfile.preferences, selectedTopics: trimmedTopics },
     };
-    await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_PROFILE, JSON.stringify(newProfile));
-    await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(trimmedTopics));
+    await AsyncStorage.setItem(
+      scopedKey(ASYNC_KEYS.COMMUNITY_PROFILE, newProfile.userId),
+      JSON.stringify(newProfile),
+    );
+    await AsyncStorage.setItem(
+      scopedKey(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, newProfile.userId),
+      JSON.stringify(trimmedTopics),
+    );
     setState(prev => ({ ...prev, communityProfile: newProfile }));
   }, [state.communityProfile]);
 
@@ -840,11 +898,19 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (state.communityProfile?.handle) {
       await unregisterUsername(state.communityProfile.handle);
     }
-    await Promise.all([
-      AsyncStorage.removeItem(ASYNC_KEYS.COMMUNITY_PROFILE),
-      AsyncStorage.removeItem(ASYNC_KEYS.USERNAME_REGISTRY),
-      AsyncStorage.removeItem(ASYNC_KEYS.PROFILE_SYNC_QUEUE),
-    ]);
+    const uid = state.profile?.id;
+    const keysToRemove: string[] = [
+      ASYNC_KEYS.COMMUNITY_PROFILE,
+      ASYNC_KEYS.USERNAME_REGISTRY,
+      ASYNC_KEYS.PROFILE_SYNC_QUEUE,
+    ];
+    if (uid) {
+      keysToRemove.push(
+        scopedKey(ASYNC_KEYS.COMMUNITY_PROFILE, uid),
+        scopedKey(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, uid),
+      );
+    }
+    await Promise.all(keysToRemove.map((k) => AsyncStorage.removeItem(k)));
     setState(DEFAULT_USER_STATE);
     setIsReady(false);
     initRef.current = false;

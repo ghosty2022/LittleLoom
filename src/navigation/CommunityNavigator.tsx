@@ -368,7 +368,8 @@ function useCommunityAuthCheck() {
 
 
 const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscreenStateChange?: (fullscreen: boolean) => void } = {}) => {
-  const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = useCommunity();
+  const community = useCommunity() as any;
+  const { isLoading, currentUser, checkOnboardingStatus, getSelectedTopics, isInitialized } = community;
   
   
   const { profile: userProfile } = useUser();
@@ -444,9 +445,13 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
 
     const initialize = async () => {
   try {
+    // `refreshTopics` lives on the context value, not on the module.
+    // Re-fetch topic stats through the context instance we already have.
     try {
-      const { refreshTopics } = require('../context/CommunityContext');
-      await refreshTopics();
+      const { refreshTopics: refreshTopicsFn } = community as any;
+      if (typeof refreshTopicsFn === 'function') {
+        await refreshTopicsFn();
+      }
     } catch (e) {
       console.warn('[CommunityNavigator] Failed to refresh topics:', e);
     }
