@@ -368,6 +368,49 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           } else if (!membership) {
             // Confirmed: this user truly has no relationship.
+            // However, `parent1` (baby owner) is often missing a
+            // family_members row — the migration inserts it, but if
+            // the migration hasn't run yet (or the user hit this path
+            // before it fired), lazily seed it here so downstream
+            // screens (chat, EditGuardian, FamilySharing) can resolve
+            // this user as a member.
+            if (effectiveUserId === currentBaby.parent1_id) {
+              try {
+                const nowIso = new Date().toISOString();
+                const perms = {
+                  canView: true, canAddEntry: true, canEditEntry: true,
+                  canEditOthersEntries: true, canDeleteEntry: true,
+                  canEditBaby: true, canInvite: true, canExport: true,
+                  canManageFamily: true,
+                };
+                await supabase.from('family_members').insert({
+                  id: `${currentBaby.id}-p1`,
+                  baby_id: currentBaby.id,
+                  user_id: effectiveUserId,
+                  email: authProfile?.email || '',
+                  full_name: authProfile?.fullName || 'Primary Parent',
+                  role: 'parent1',
+                  relationship: 'Parent',
+                  permissions: perms,
+                  added_at: nowIso,
+                  added_by: effectiveUserId,
+                  can_be_removed: false,
+                  last_active: nowIso,
+                  phone_number: authProfile?.phoneNumber || null,
+                  notifications_enabled: true,
+                  status: 'active',
+                  updated_at: nowIso,
+                });
+                console.log('[FamilyContext] ✅ Seeded parent1 family_members row');
+                // Do not `return` — let the rest of loadFamily run and
+                // pick the row up (or re-run loadFamily()).
+                await loadFamily();
+                return;
+              } catch (e) {
+                if (__DEV__) console.warn('[FamilyContext] parent1 seed failed:', e);
+              }
+            }
+            // Not parent1 and no membership → genuinely not in this family.
             console.log(
               '[FamilyContext] User has no family_members row for this baby — skipping load'
             );
@@ -446,7 +489,10 @@ const { data: dbMembers, error: membersError } = await supabase
             userId: dbMember.user_id || dbMember.id,
             fullName: userProfile?.full_name || dbMember.full_name || 'Family Member',
             email: userProfile?.email || dbMember.email || '',
-            avatar: userProfile?.avatar || userProfile?.community_avatar || dbMember.avatar || undefined,
+            // `family_members` has no avatar column in this schema —
+            // fall back to profiles only. The old `dbMember.avatar`
+            // read always resolved to `undefined`.
+            avatar: userProfile?.community_avatar || userProfile?.avatar_url || userProfile?.avatar || undefined,
             role: dbMember.role === 'parent2' ? UserRole.PARENT_2 
               : dbMember.role === 'guardian' ? UserRole.GUARDIAN 
               : UserRole.VIEWER,

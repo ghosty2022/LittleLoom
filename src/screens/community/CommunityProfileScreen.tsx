@@ -1153,8 +1153,23 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       if (formData.avatar && formData.avatar !== originalData.avatar && !formData.avatar.startsWith('file://')) {
         try { await supabase.from('profiles').update({ community_avatar: formData.avatar, avatar_url: formData.avatar }).eq('id', currentUser.id); await supabase.from('family_members').update({ avatar: formData.avatar }).eq('user_id', currentUser.id); } catch {}
       }
-      const newAchievements = await checkAndAwardAchievements();
-      if (newAchievements.length > 0) sweetAlert.success('Achievement Unlocked!', `You earned ${newAchievements.length} new badge${newAchievements.length > 1 ? 's' : ''}!`);
+      // NOTE: `checkAndAwardAchievements` is not part of the
+      // CommunityContext API. Achievements are recomputed
+      // automatically on `refreshFeed()` (which reacts to realtime
+      // activity). Guard defensively in case the API changes later.
+      if (typeof checkAndAwardAchievements === 'function') {
+        try {
+          const newAchievements = await checkAndAwardAchievements();
+          if (Array.isArray(newAchievements) && newAchievements.length > 0) {
+            sweetAlert.success(
+              'Achievement Unlocked!',
+              `You earned ${newAchievements.length} new badge${newAchievements.length > 1 ? 's' : ''}!`,
+            );
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[Profile] achievement check failed:', e);
+        }
+      }
       triggerHaptic('success');
       setIsEditing(false);
       setOriginalData({ ...formData, handle: cleanHandle });

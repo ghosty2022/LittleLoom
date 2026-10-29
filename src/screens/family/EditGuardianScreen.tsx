@@ -835,7 +835,11 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     setIsHydrating(true);
     try {
       await loadFamily();
-      let found = members.find(m => m.id === guardianId);
+      // `guardianId` may be either a `family_members.id` OR a `profiles.id`
+      // (userId). The chat screen passes a participant userId, so match both.
+      let found =
+        members.find(m => m.id === guardianId) ||
+        members.find(m => (m as any).userId === guardianId);
       if (!found) {
         const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
         if (guardianId === currentUserIdLocal || guardianId === 'parent1') {
@@ -879,7 +883,54 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         setOriginalData(initialData);
         if (currentBaby) await loadMemberActivities(found.id, found.userId, found.fullName);
       } else if (isMountedRef.current) {
-        sweetAlert.error('Member Not Found', !guardianId ? 'No member ID provided.' : 'Could not find this member.');
+        // Fallback: `members` can be empty if the current user has no
+        // family_members row (parent1 often doesn't). Query profiles
+        // + family_members directly so the chat tap still works.
+        if (guardianId) {
+          try {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('id, full_name, email, phone_number, avatar_url, community_avatar')
+              .eq('id', guardianId)
+              .maybeSingle();
+            if (prof && isMountedRef.current) {
+              const fallback: FamilyMember = {
+                id: prof.id,
+                userId: prof.id,
+                fullName: prof.full_name || 'Family Member',
+                email: prof.email || '',
+                phoneNumber: prof.phone_number || '',
+                avatar: prof.community_avatar || prof.avatar_url || '',
+                role: UserRole.GUARDIAN,
+                relationship: '',
+                addedAt: new Date().toISOString(),
+                lastActive: new Date().toISOString(),
+                notificationsEnabled: true,
+                canBeRemove: false,
+                canEdit: true,
+              } as FamilyMember;
+              setMember(fallback);
+              const initialData = {
+                fullName: fallback.fullName,
+                email: fallback.email,
+                phoneNumber: fallback.phoneNumber,
+                relationship: '',
+                username: '',
+                avatar: fallback.avatar,
+                notificationsEnabled: true,
+              };
+              setFormData(initialData);
+              setOriginalData(initialData);
+              return;
+            }
+          } catch (e) {
+            if (__DEV__) console.warn('[EditGuardian] profile fallback failed:', e);
+          }
+        }
+        sweetAlert.error(
+          'Member Not Found',
+          !guardianId ? 'No member ID provided.' : 'Could not find this member.',
+        );
       }
     } catch (error) { if (__DEV__) console.warn('[EditGuardian] load error:', error); }
     finally { isLoadingRef.current = false; if (isMountedRef.current) setIsHydrating(false); }

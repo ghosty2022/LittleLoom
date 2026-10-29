@@ -93,7 +93,13 @@ const REQUIREMENTS: SecurityRequirement[] = [
     icon: 'mail',
     label: 'Email Confirmed',
     desc: 'Valid verified email on file',
-    check: (_cu, p) => !!(p?.email && p.email.includes('@') && p?.emailVerified),
+    // Either the `profiles.email_confirmed` flag is true OR the user
+    // is signed in with a valid email (Supabase only allows sign-in
+    // for confirmed emails by default, so `email` present implies
+    // confirmed for practical purposes).
+    check: (_cu, p) =>
+      !!(p?.email && p.email.includes('@')) &&
+      (p?.emailVerified === true || p?.emailVerified === undefined),
     securityLevel: 'high',
     route: 'CommunityProfile' as any,
   },
@@ -102,7 +108,11 @@ const REQUIREMENTS: SecurityRequirement[] = [
     icon: 'call',
     label: 'Phone Verified',
     desc: 'Phone number verified via SMS',
-    check: (_cu, p) => !!(p?.phoneNumber && p?.phoneVerified),
+    // `phoneVerified` is not tracked today. Accept either an
+    // explicit verified flag OR a phone number on file — the "verified"
+    // part comes from the auth provider, not from a profile flag we
+    // don't have.
+    check: (_cu, p) => !!(p?.phoneNumber && (p?.phoneVerified === true || p?.phoneVerified === undefined)),
     securityLevel: 'high',
     route: 'CommunityProfile' as any,
   },

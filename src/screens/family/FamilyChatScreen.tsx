@@ -686,7 +686,17 @@ const MessageBubble: React.FC<{
   return (
     <Animated.View entering={isMe ? SlideInRight : SlideInLeft} style={[styles.messageContainer, isMe ? styles.myContainer : styles.theirContainer]}>
       {!isMe && showAvatar && message.type !== 'system' && (
-        <TouchableOpacity onPress={() => member && showSweetAlert('info', member.fullName, `Role: ${member.role}`)} style={{ marginRight: 8 }}>
+        <TouchableOpacity
+          onPress={() => {
+            if (!member) return;
+            const targetId = member.id || (member as any).userId;
+            if (targetId) {
+              // MemberBubble needs navigation; pass via prop instead of hooking
+              onAvatarPress?.(targetId, member);
+            }
+          }}
+          style={{ marginRight: 8 }}
+        >
           <SafeAvatar avatar={member?.avatar} size={32} fallbackEmoji="👤" fallbackColor={roleColor} />
         </TouchableOpacity>
       )}
@@ -1160,7 +1170,18 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           onInfoPress={() => {
             if (chatInfo?.type === 'direct') {
               const otherId = chatInfo.participants?.find((p: string) => p !== userProfile?.id);
-              if (otherId) navigation.navigate('EditGuardian', { guardianId: otherId });
+              if (!otherId) return;
+              // Resolve the family_members row (id may differ from userId)
+              const memberRow =
+                members.find((m: any) => m.id === otherId) ||
+                members.find((m: any) => m.userId === otherId);
+              const targetId = memberRow?.id || otherId; // fallback to userId
+              navigation.navigate('EditGuardian', {
+                memberId: targetId,
+                guardianId: targetId,
+                mode: 'guardian',
+                fromChat: true,
+              });
             }
           }}
           onToggleUsers={() => setShowUserBubbles(!showUserBubbles)}
