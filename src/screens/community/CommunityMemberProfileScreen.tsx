@@ -682,21 +682,27 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
 
   // Re-sync topics when the context's cached user changes (e.g. that
   // user just edited their topics on another screen / device).
-  const contextUserTopics = useMemo(
-    () => getUserById(userId)?.selectedTopics,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [userId, user],
+  // Re-sync topics whenever the context updates them for this user.
+  // Depend on the actual array reference, not on `user` (which changes
+  // for unrelated reasons and would re-fire this needlessly).
+  const contextUser = getUserById(userId);
+  const contextUserTopicsKey = useMemo(
+    () => (contextUser?.selectedTopics || []).join('|'),
+    [contextUser?.selectedTopics],
   );
   useEffect(() => {
-    if (!contextUserTopics || contextUserTopics.length === 0) return;
+    if (!contextUser || !Array.isArray(contextUser.selectedTopics)) return;
+    const next = contextUser.selectedTopics;
+    if (next.length === 0) return;
     setUser((prev) => {
       if (!prev) return prev;
       const prevKey = (prev.selectedTopics || []).join('|');
-      const nextKey = contextUserTopics.join('|');
+      const nextKey = next.join('|');
       if (prevKey === nextKey) return prev;
-      return { ...prev, selectedTopics: contextUserTopics };
+      return { ...prev, selectedTopics: next };
     });
-  }, [contextUserTopics]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextUserTopicsKey]);
 
   const loadUserData = async () => {
     if (isLoadingRef.current) return;

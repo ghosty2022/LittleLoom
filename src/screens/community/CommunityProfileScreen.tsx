@@ -652,10 +652,12 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     setSelectedTopics(contextSelectedTopics);
   }, [contextSelectedTopics]);
 
+  const currentUserId = currentUser?.id;
   useFocusEffect(useCallback(() => {
-    if (currentUser && !isLoadingRef.current) refreshUserData();
+    if (currentUserId && !isLoadingRef.current) refreshUserData();
     return () => {};
-  }, [currentUser]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId]));
 
   useEffect(() => { loadActivityLog(); }, []);
 
@@ -1828,4 +1830,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
   modalClose: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   pickerOption: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, marginBottom: 6 },
-  pickerIcon: { width: 44, height: 44, borderRadius: 12, align
+  pickerIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  pickerLabel: { fontSize: 15, fontWeight: '600', flex: 1 },
+  emojiBtn: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+});

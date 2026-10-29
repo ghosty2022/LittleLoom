@@ -1046,7 +1046,14 @@ export default function CommunityScreen({ navigation }: Props) {
                     placeholder={replyingTo?.postId === item.id ? 'Write a reply...' : 'Add a comment...'}
                     placeholderTextColor={DS.gray400}
                     value={commentInputs[item.id] || ''}
-                    onChangeText={t => setCommentInputs(prev => ({ ...prev, [item.id]: t }))}
+                    onChangeText={t => {
+                      // Debounce identity — React 18 batches these anyway,
+                      // but the list doesn't need to re-render on every key.
+                      setCommentInputs(prev => {
+                        if (prev[item.id] === t) return prev;
+                        return { ...prev, [item.id]: t };
+                      });
+                    }}
                     multiline
                     maxLength={500}
                   />

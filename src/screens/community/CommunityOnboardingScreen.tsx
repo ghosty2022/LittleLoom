@@ -445,17 +445,10 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       } catch (err) {
         console.warn('[CommunityOnboarding] updateUserTopics:', err);
       }
-      try {
-        await updateSectionState('community', { onboardingComplete: true, topicSelected: true });
-      } catch (err) {
-        console.warn('[CommunityOnboarding] updateSectionState:', err);
-      }
-      try {
-        const { refreshTopics } = require('../../context/CommunityContext');
-        await refreshTopics();
-      } catch (err) {
-        console.warn('[CommunityOnboarding] refreshTopics:', err);
-      }
+      // Fire-and-forget: these don't gate the caller's toast/transition,
+      // so don't block the onboarding → main hop on them.
+      updateSectionState('community', { onboardingComplete: true, topicSelected: true })
+        .catch((err) => console.warn('[CommunityOnboarding] updateSectionState:', err));
     },
     [currentUser?.id, updateUserTopics, updateContextSelectedTopics],
   );

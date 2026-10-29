@@ -96,6 +96,7 @@ interface CommunityContextType extends CommunityState {
   isFollowing: (userId: string) => boolean;
   updateUserBio: (bio: string) => Promise<void>;
   updateUserLocation: (country: string) => Promise<void>;
+  updateCommunityProfile: (updates: Partial<CommunityUser> & { isVerified?: boolean; coverPhoto?: string }) => Promise<void>;
   updateOnlineStatus: (status: OnlineStatus) => Promise<void>;
   getUserStats: (userId: string) => CommunityUser['stats'] | undefined;
   markNotificationRead: (id: string) => Promise<void>;
@@ -235,10 +236,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (persistedTopics.length === 0) {
         try {
-          const [scopedRaw, globalRaw, onboardingRaw] = await Promise.all([
+          // Scoped reads ONLY. The global key is shared across accounts on the
+          // same device and is the root cause of "previous account's topics"
+          // bleeding into the new session.
+          const [scopedRaw, onboardingRaw] = await Promise.all([
             AsyncStorage.getItem(`@community_selected_topics_v2_${meId}`),
-            AsyncStorage.getItem('@community_selected_topics_v2'),
-            AsyncStorage.getItem('@littleloom_community_onboarding_v3'),
+            AsyncStorage.getItem(`@littleloom_community_onboarding_v3_${meId}`),
           ]);
           const parse = (raw: string | null): string[] => {
             if (!raw) return [];
@@ -250,14 +253,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
           };
           const scoped = parse(scopedRaw);
-          const global = parse(globalRaw);
           let fromBlob: string[] = [];
           try {
             const blob = onboardingRaw ? JSON.parse(onboardingRaw) : null;
             if (Array.isArray(blob?.selectedTopics)) fromBlob = blob.selectedTopics;
           } catch {}
           persistedTopics = scoped.length > 0 ? scoped
-            : global.length > 0 ? global
             : fromBlob.length > 0 ? fromBlob
             : [];
         } catch {}
@@ -727,6 +728,60 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await supabase.from('profiles').update({ community_bio: bio, updated_at: new Date().toISOString() }).eq('id', meId);
   }, []);
 
+  // NEW: mirrors what CommunityProfileScreen expects. Handles ONLY the fields
+  // that live on the community profile, and updates state optimistically.
+  const updateCommunityProfile = useCallback(async (
+    updates: Partial<CommunityUser> & { isVerified?: boolean; coverPhoto?: string },
+  ) => {
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+
+    const dbUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (updates.displayName !== undefined) dbUpdates.community_display_name = updates.displayName;
+    if (updates.handle !== undefined) dbUpdates.community_handle = updates.handle;
+    if (updates.bio !== undefined) dbUpdates.community_bio = updates.bio;
+    if (updates.avatar !== undefined) dbUpdates.community_avatar = updates.avatar;
+    if (updates.coverPhoto !== undefined) dbUpdates.community_cover = updates.coverPhoto;
+    if (updates.country !== undefined || updates.location !== undefined) {
+      dbUpdates.country = updates.country ?? updates.location;
+    }
+    if (updates.isVerified !== undefined) dbUpdates.is_verified = updates.isVerified;
+    if (updates.stats !== undefined) dbUpdates.community_stats = updates.stats;
+
+    const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', meId);
+    if (error) {
+      if (__DEV__) console.warn('[Community] updateCommunityProfile DB error:', error.message);
+      // do NOT throw — the caller may be doing a best-effort background sync
+    }
+
+    // Optimistic in-memory patch so every consumer sees the change instantly.
+    setState((p) => {
+      if (!p.currentUser || p.currentUser.id !== meId) return p;
+      const merged: CommunityUser = {
+        ...p.currentUser,
+        displayName: updates.displayName ?? p.currentUser.displayName,
+        handle: updates.handle ?? p.currentUser.handle,
+        bio: updates.bio ?? p.currentUser.bio,
+        avatar: updates.avatar ?? p.currentUser.avatar,
+        coverPhoto: updates.coverPhoto ?? p.currentUser.coverPhoto,
+        country: updates.country ?? updates.location ?? p.currentUser.country,
+        isVerified: updates.isVerified ?? p.currentUser.isVerified,
+        stats: updates.stats ?? p.currentUser.stats,
+      };
+      return { ...p, currentUser: merged };
+    });
+
+    // Also patch every post authored by this user so the feed re-renders.
+    syncUserProfileAcrossPosts(meId, {
+      displayName: updates.displayName,
+      handle: updates.handle,
+      bio: updates.bio,
+      avatar: updates.avatar,
+      coverPhoto: updates.coverPhoto,
+      isVerified: updates.isVerified,
+    });
+  }, []);
+
   const updateUserLocation = useCallback(async (country: string) => {
     const meId = currentUserIdRef.current; if (!meId) return;
     await supabase.from('profiles').update({ country, updated_at: new Date().toISOString() }).eq('id', meId);
@@ -811,21 +866,20 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       AsyncStorage.setItem(`@community_selected_topics_v2_${meId}`, JSON.stringify(cleanIds))
         .catch((e) => console.warn('[Community] scoped topic save failed:', e)),
     );
-    writes.push(
-      AsyncStorage.setItem(`@community_selected_topics_v2`, JSON.stringify(cleanIds))
-        .catch((e) => console.warn('[Community] global topic save failed:', e)),
-    );
+    // NOTE: we intentionally DO NOT write the global `@community_selected_topics_v2`
+    // key anymore. It is shared across accounts on the same device and leaks
+    // the previous account's selection into the next session.
 
     // Onboarding blob keeps the "completed" flag so the navigator
     // does not re-prompt.
     writes.push(
       (async () => {
         try {
-          const existingRaw = await AsyncStorage.getItem('@littleloom_community_onboarding_v3');
+          const existingRaw = await AsyncStorage.getItem(`@littleloom_community_onboarding_v3_${meId}`);
           let existing: any = {};
           try { existing = existingRaw ? JSON.parse(existingRaw) : {}; } catch {}
           await AsyncStorage.setItem(
-            '@littleloom_community_onboarding_v3',
+            `@littleloom_community_onboarding_v3_${meId}`,
             JSON.stringify({
               ...existing,
               completed: true,
@@ -870,7 +924,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     getPostById, voteHelpful, addComment, likeComment, voteCommentHelpful, replyToComment,
     joinTopic, leaveTopic, getTopicById, getPostsByTopic,
     followUser, unfollowUser, getUserById, getUserPosts, isFollowing: isFollowingFinal,
-    updateUserBio, updateUserLocation, updateOnlineStatus, getUserStats,
+    updateUserBio, updateUserLocation, updateOnlineStatus, updateCommunityProfile, getUserStats,
     markNotificationRead, markAllNotificationsRead, getUnreadCount,
     getFollowers, getFollowing, getAllUsers, getFeedPosts, getPopularPosts, getTrendingTopics,
     incrementViewCount, getPostRank, isUserBlocked, blockUser,
@@ -884,7 +938,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     getPostById, voteHelpful, addComment, likeComment, voteCommentHelpful, replyToComment,
     joinTopic, leaveTopic, getTopicById, getPostsByTopic,
     followUser, unfollowUser, getUserById, getUserPosts, isFollowingFinal,
-    updateUserBio, updateUserLocation, updateOnlineStatus, getUserStats,
+    updateUserBio, updateUserLocation, updateOnlineStatus, updateCommunityProfile, getUserStats,
     markNotificationRead, markAllNotificationsRead, getUnreadCount,
     getFollowers, getFollowing, getAllUsers, getFeedPosts, getPopularPosts, getTrendingTopics,
     incrementViewCount, getPostRank, isUserBlocked, blockUser,
