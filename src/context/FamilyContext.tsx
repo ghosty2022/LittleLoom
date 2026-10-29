@@ -361,6 +361,20 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             canEditBaby: true, canInvite: true, canExport: true,
             canManageFamily: true,
           };
+          // Prefer the relationship the user declared at signup (stored
+          // in `profiles.community_bio` as a fallback slot) over the
+          // generic "Parent". Falls back to "Parent" only if nothing
+          // was ever declared.
+          let seededRelationship = 'Parent';
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const metaRel = (user?.user_metadata as any)?.relationship;
+            if (metaRel && String(metaRel).trim()) {
+              seededRelationship = String(metaRel).trim();
+            } else if (authProfile?.communityBio && authProfile.communityBio.trim()) {
+              seededRelationship = authProfile.communityBio.trim();
+            }
+          } catch {}
           await supabase.from('family_members').insert({
             id: `${currentBaby.id}-p1`,
             baby_id: currentBaby.id,
@@ -368,7 +382,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             email: authProfile?.email || '',
             full_name: authProfile?.fullName || 'Primary Parent',
             role: 'parent1',
-            relationship: 'Parent',
+            relationship: seededRelationship,
             permissions: perms,
             added_at: nowIso,
             added_by: effectiveUserId,
@@ -379,7 +393,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             status: 'active',
             updated_at: nowIso,
           });
-          if (__DEV__) console.log('[FamilyContext] ✅ Seeded parent1 family_members row');
+          if (__DEV__) console.log('[FamilyContext] ✅ Seeded parent1 family_members row:', seededRelationship);
         }
       } catch (e) {
         if (__DEV__) console.warn('[FamilyContext] parent1 seed failed:', e);
@@ -635,6 +649,49 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // write that synchronises `babies.parent1_id` (in
   // updateGuardianProfile) races with the `family_members.role`
   // write. We give it 250 ms so the reconcile step has landed.
+    // ── ONE-TIME BACKFILL: fix `relationship IS NULL` on parent1 rows ──
+  // Older babies were created before this fix existed, so their
+  // parent1 `family_members` row has `relationship = NULL` (or the
+  // literal string 'Parent'). We backfill it from `user_metadata`
+  // once per session so the chat header shows "Mother"/"Father" etc.
+  useEffect(() => {
+    if (!currentBaby?.id || !authProfile?.id) return;
+    if (currentBaby.parent1_id !== authProfile.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (cancelled) return;
+        const metaRel = (user?.user_metadata as any)?.relationship;
+        if (!metaRel || !String(metaRel).trim()) return;
+        const cleanRel = String(metaRel).trim();
+        const { data: row } = await supabase
+          .from('family_members')
+          .select('id, relationship')
+          .eq('baby_id', currentBaby.id)
+          .eq('user_id', authProfile.id)
+          .eq('role', 'parent1')
+          .maybeSingle();
+        if (cancelled || !row) return;
+        const currentRel = (row.relationship || '').trim();
+        if (currentRel && currentRel.toLowerCase() !== 'parent') return;
+        await supabase
+          .from('family_members')
+          .update({
+            relationship: cleanRel,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id);
+        if (__DEV__) console.log('[FamilyContext] Backfilled relationship:', cleanRel);
+        // Re-load so the family tree / chat header reflect it immediately.
+        loadFamilyRef.current?.().catch(() => {});
+      } catch (e) {
+        if (__DEV__) console.warn('[FamilyContext] relationship backfill failed:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentBaby?.id, authProfile?.id]);
+  
   useEffect(() => {
     if (!currentBaby?.id) return;
     let timer: ReturnType<typeof setTimeout> | null = null;

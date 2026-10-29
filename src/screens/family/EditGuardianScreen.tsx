@@ -1618,12 +1618,38 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                       <TextInput style={[styles.inputText, { color: isDark ? DS.white : DS.gray900, flex: 1 }]} value={formData.phoneNumber} onChangeText={(t) => setFormData(p => ({ ...p, phoneNumber: t }))} placeholder="+1 (555) 123-4567" placeholderTextColor={isDark ? DS.gray500 : DS.gray400} keyboardType="phone-pad" editable={isEditing} selectionColor={roleConfig.color} />
                     </View>
 
-                    {/* Relationship */}
-                    <Text style={[styles.inputLabel, { color: isDark ? DS.gray500 : DS.gray400, marginTop: DS.space.md }]}>Relationship</Text>
+                    {/* Relationship — this is the HUMAN label shown everywhere:
+                        chats, family tree, entry attribution. Must be filled in
+                        so users never see "Primary Parent" in the UI. */}
+                    <Text style={[styles.inputLabel, { color: isDark ? DS.gray500 : DS.gray400, marginTop: DS.space.md }]}>
+                      Relationship to Child
+                    </Text>
+                    <Text style={{ fontSize: 10, color: isDark ? DS.gray500 : DS.gray400, marginBottom: 6 }}>
+                      Shown in chats and family tree · e.g. Mother, Father, Grandma, Nanny
+                    </Text>
                     <View style={[styles.inputRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.gray50 }, !isEditing && { opacity: 0.5 }]}>
                       <Ionicons name="people-outline" size={16} color={roleConfig.color} />
-                      <TextInput style={[styles.inputText, { color: isDark ? DS.white : DS.gray900, flex: 1 }]} value={formData.relationship} onChangeText={(t) => setFormData(p => ({ ...p, relationship: t }))} placeholder="e.g., Grandma, Uncle" placeholderTextColor={isDark ? DS.gray500 : DS.gray400} editable={isEditing} selectionColor={roleConfig.color} />
+                      <TextInput style={[styles.inputText, { color: isDark ? DS.white : DS.gray900, flex: 1 }]} value={formData.relationship} onChangeText={(t) => setFormData(p => ({ ...p, relationship: t }))} placeholder="e.g., Mother, Father, Grandma" placeholderTextColor={isDark ? DS.gray500 : DS.gray400} editable={isEditing} selectionColor={roleConfig.color} />
                     </View>
+                    {/* Quick-pick chips so users don't have to type */}
+                    {isEditing && (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {['Mother', 'Father', 'Parent', 'Guardian', 'Grandmother', 'Grandfather', 'Nanny', 'Caregiver'].map((rel) => (
+                          <TouchableOpacity
+                            key={rel}
+                            onPress={() => setFormData((p) => ({ ...p, relationship: rel }))}
+                            style={{
+                              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12,
+                              backgroundColor: formData.relationship === rel ? roleConfig.color : `${roleConfig.color}15`,
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: formData.relationship === rel ? '#fff' : roleConfig.color }}>
+                              {rel}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
 
                     {isEditing && (
                       <View style={[styles.prefRow, { borderTopColor: isDark ? DS.darkBorder : DS.gray200, marginTop: DS.space.md, paddingTop: DS.space.md }]}>

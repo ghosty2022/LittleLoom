@@ -98,7 +98,7 @@ export interface UserLookupResult {
 
 interface AuthContextType extends AuthState {
   signIn: (identifier: string, password: string) => Promise<{ success: boolean; message?: string }>;
-  signUp: (fullName: string, email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  signUp: (fullName: string, email: string, password: string, relationship?: string) => Promise<{ success: boolean; message?: string }>;
   signInWithSocial: (socialUser: SocialUser) => Promise<{ success: boolean; message?: string }>;
   signOut: () => Promise<void>;
   checkBiometricAvailability: () => Promise<boolean>;
@@ -914,7 +914,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // SIGN UP — FIXED: proper try/catch/finally structure
   // ═══════════════════════════════════════════════════════════════════════
 
-  const signUp = useCallback(async (fullName: string, email: string, password: string): Promise<{ success: boolean; message?: string }> => {
+  const signUp = useCallback(async (
+    fullName: string,
+    email: string,
+    password: string,
+    relationship?: string,
+  ): Promise<{ success: boolean; message?: string }> => {
     if (!acquireSignInLock()) return { success: false, message: 'Another operation in progress' };
     if (signInLockTimer.current) clearTimeout(signInLockTimer.current);
     signInLockTimer.current = setTimeout(() => { signInLock.current = false; }, 30000);
@@ -925,7 +930,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
-        options: { data: { full_name: fullName } },
+        options: {
+          data: {
+            full_name: fullName,
+            // `relationship` is the human label ("Mother", "Father", "Guardian")
+            // and is stored in user_metadata so it survives session refresh.
+            // It is ALSO mirrored to `profiles.community_bio` (as a fallback
+            // via UserContext.loadUser) and to `family_members.relationship`
+            // when the baby is created.
+            relationship: (arguments as any)?.[3]?.relationship ?? '',
+          },
+        },
       });
 
       if (signUpError || !signUpData?.user) {
@@ -975,6 +990,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await new Promise(resolve => setTimeout(resolve, 300));
 
       const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+      // Persist the declared relationship into the profile row so it
+      // survives across devices even before a baby exists.
+      const declaredRelationship =
+        (signUpData.user?.user_metadata as any)?.relationship || '';
+
+      try {
+        if (declaredRelationship) {
+          await supabase
+            .from('profiles')
+            .update({
+              // We store it in `community_bio` as a temporary slot; the
+              // authoritative per-baby relationship is written to
+              // `family_members.relationship` when the baby is created
+              // (see BabyContext.createBaby → family_members insert).
+              // Using community_bio means we don't need a schema change.
+              community_bio: declaredRelationship.slice(0, 160),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', userId);
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Auth] relationship persist failed:', e);
+      }
 
       const userProfile: UserProfile = {
         id: userId,
@@ -986,7 +1024,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         preferences: { notifications: true, darkMode: false, language: 'en' },
         communityUsername: fullName,
         communityHandle: handle,
-        communityBio: '',
+        communityBio: declaredRelationship,
         communityAvatar: '👤',
         communityDisplayName: fullName,
         communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
@@ -1017,6 +1055,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ASYNC_KEYS.PARENT2_COMPLETED,
         ASYNC_KEYS.BABY_COMPLETED,
       ]);
+
+      // Mirror the declared relationship to the profile's bio slot so
+      // UserContext / EditGuardian can surface it before any baby exists.
+      if (declaredRelationship) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({
+              community_bio: declaredRelationship.slice(0, 160),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', userId);
+        } catch (e) {
+          if (__DEV__) console.warn('[Auth] relationship profile sync failed:', e);
+        }
+      }
 
       if (isMounted.current) {
         setState(prev => ({

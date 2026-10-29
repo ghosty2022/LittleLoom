@@ -1789,6 +1789,59 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return null;
         }
 
+        // ─── SEED THE PARENT1 family_members ROW ───────────────────
+        // This is the canonical row that FamilyContext reads to build
+        // the family tree and chat header labels. Doing it here (rather
+        // than lazily in FamilyContext.loadFamily) guarantees:
+        //   • The relationship the user declared at signup is persisted
+        //     per-baby (the same user can be "Mother" for baby A and
+        //     "Guardian" for baby B if they own both).
+        //   • Parent 1 appears in the family tree / chat roster on the
+        //     very first render — no "Primary Parent" fallback flash.
+        //   • The `relationship` column is populated, so every consumer
+        //     of `getMemberDisplayLabel()` gets "Mother"/"Father" etc.
+        try {
+          const { data: authUser } = await supabase.auth.getUser();
+          const meta: any = authUser?.user?.user_metadata || {};
+          const declaredRelationship: string =
+            (meta.relationship && String(meta.relationship).trim()) ||
+            (meta.full_name ? '' : '') ||
+            '';
+          const seededPermissions = {
+            canView: true, canAddEntry: true, canEditEntry: true,
+            canEditOthersEntries: true, canDeleteEntry: true,
+            canEditBaby: true, canInvite: true, canExport: true,
+            canManageFamily: true,
+          };
+          const nowIso = new Date().toISOString();
+          const { error: fmErr } = await supabase
+            .from('family_members')
+            .insert({
+              id: `${result.id}-p1`,
+              baby_id: result.id,
+              user_id: userId,
+              email: (authUser?.user?.email || '').toLowerCase(),
+              full_name: authUser?.user?.user_metadata?.full_name || 'Primary Parent',
+              role: 'parent1',
+              relationship: declaredRelationship || 'Parent',
+              permissions: seededPermissions,
+              added_at: nowIso,
+              added_by: userId,
+              can_be_removed: false,
+              last_active: nowIso,
+              phone_number: authUser?.user?.phone || null,
+              notifications_enabled: true,
+              status: 'active',
+              updated_at: nowIso,
+              is_deleted: false,
+            });
+          if (fmErr && __DEV__) {
+            console.warn('[BabyContext] Failed to seed parent1 family_member:', fmErr.message);
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[BabyContext] parent1 seed threw:', e);
+        }
+
         const newBaby: BabyProfile = {
           ...data,
           id: result.id,

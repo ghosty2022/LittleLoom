@@ -127,6 +127,16 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // ── "Who are you to your child?" ────────────────────────────────
+  // This is the human label shown EVERYWHERE: chat headers, family
+  // tree, entry attribution (`getMemberDisplayLabel`). It is stored
+  // in `user_metadata.relationship` at signup and mirrored into
+  // `family_members.relationship` when the baby is created. Without
+  // it, every surface falls back to the generic "Primary Parent".
+  const [relationship, setRelationship] = useState('');
+  const [customRelationship, setCustomRelationship] = useState('');
+  const [showCustomRelationship, setShowCustomRelationship] = useState(false);
+
   const [inviteCode, setInviteCode] = useState('');
   const [joinFullName, setJoinFullName] = useState('');
   const [joinEmail, setJoinEmail] = useState('');
@@ -180,6 +190,7 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
   const isMounted = useRef(true);
   const signUpAttempted = useRef(false);
+  const [triedSubmit, setTriedSubmit] = useState(false);
   const joinAttempted = useRef(false);
   const codeDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socialAuthInProgress = useRef(false);
@@ -211,10 +222,26 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
   );
 
   useEffect(() => {
-    const code = (route.params as any)?.inviteCode;
+    const params = (route.params ?? {}) as any;
+    const code = params?.inviteCode;
     if (code) {
       if (activeTab !== 'join') setActiveTab('join');
       setInviteCode(code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
+    }
+    // Pre-select relationship if the caller already knows it (e.g.
+    // "Mother" from a referral link, or "Guardian" from a family invite).
+    const preRelationship: string | undefined = params?.relationship;
+    if (preRelationship && typeof preRelationship === 'string') {
+      const trimmed = preRelationship.trim();
+      const presets = ['Mother', 'Father', 'Parent', 'Guardian', 'Caregiver'];
+      if (presets.includes(trimmed)) {
+        setRelationship(trimmed);
+        setShowCustomRelationship(false);
+      } else if (trimmed) {
+        setRelationship('');
+        setShowCustomRelationship(true);
+        setCustomRelationship(trimmed);
+      }
     }
   }, [route.params]);
 
@@ -612,6 +639,14 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
       return;
     }
 
+    setTriedSubmit(true);
+    const resolvedRelationship = (relationship || customRelationship || '').trim();
+    if (!resolvedRelationship) {
+      showError('Missing Relationship', 'Please tell us who you are to your child');
+      triggerHaptic('error');
+      return;
+    }
+
     try {
       const existingUser = await findUserByEmail(email.trim());
       if (existingUser) {
@@ -631,7 +666,20 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     triggerHaptic('medium');
 
     try {
-      const result = await signUp(fullName.trim(), email.trim(), password);
+      // Resolve the final relationship: preset chip wins; otherwise
+      // the free-text "custom" value (e.g. "Godmother", "Au Pair").
+      const finalRelationship =
+        (relationship || customRelationship || '').trim();
+
+      if (!finalRelationship) {
+        showError('Missing Relationship', 'Please tell us who you are to your child (e.g. Mother, Father, Guardian)');
+        triggerHaptic('error');
+        setIsProcessing(false);
+        signUpAttempted.current = false;
+        return;
+      }
+
+      const result = await signUp(fullName.trim(), email.trim(), password, finalRelationship);
 
       if (result.success && isMounted.current) {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
@@ -663,6 +711,8 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     email,
     password,
     confirmPassword,
+    relationship,
+    customRelationship,
     signUp,
     findUserByEmail,
     isProcessing,
@@ -975,6 +1025,147 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
                       returnKeyType="next"
                       textContentType="name"
                     />
+                  </View>
+
+                  {/* ── RELATIONSHIP PICKER ──────────────────────────────
+                      This is THE authoritative source for the label shown
+                      in chats / family tree / entry attribution. The chosen
+                      value is stored in `user_metadata.relationship` and
+                      mirrored into `family_members.relationship` when a
+                      baby is created. */}
+                  <View style={styles.relationshipBlock}>
+                    <View style={styles.relationshipLabelRow}>
+                      <Ionicons name="heart-outline" size={16} color={AURA.primary} />
+                      <Text style={[styles.relationshipLabel, { color: isDark ? AURA.white : AURA.gray900 }]}>
+                        Who are you to your child?
+                      </Text>
+                    </View>
+                    <Text style={[styles.relationshipHint, { color: isDark ? AURA.gray400 : AURA.gray500 }]}>
+                      Shown in chats, family tree & entry attribution
+                    </Text>
+
+                    <View style={styles.relationshipChips}>
+                      {['Mother', 'Father', 'Parent', 'Guardian', 'Caregiver'].map((option) => {
+                        const active = relationship === option && !showCustomRelationship;
+                        return (
+                          <TouchableOpacity
+                            key={option}
+                            onPress={() => {
+                              if (isLoading) return;
+                              triggerHaptic('light');
+                              setRelationship(option);
+                              setShowCustomRelationship(false);
+                              setCustomRelationship('');
+                            }}
+                            disabled={isLoading}
+                            activeOpacity={0.8}
+                            style={[
+                              styles.relationshipChip,
+                              {
+                                backgroundColor: active
+                                  ? AURA.primary
+                                  : isDark
+                                  ? 'rgba(255,255,255,0.06)'
+                                  : 'rgba(99,102,241,0.08)',
+                                borderColor: active
+                                  ? AURA.primary
+                                  : isDark
+                                  ? 'rgba(255,255,255,0.12)'
+                                  : 'rgba(99,102,241,0.2)',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.relationshipChipText,
+                                { color: active ? AURA.white : isDark ? AURA.gray400 : AURA.primary },
+                              ]}
+                            >
+                              {option}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (isLoading) return;
+                          triggerHaptic('light');
+                          setShowCustomRelationship((v) => !v);
+                          if (showCustomRelationship) {
+                            setCustomRelationship('');
+                          } else {
+                            setRelationship('');
+                          }
+                        }}
+                        disabled={isLoading}
+                        activeOpacity={0.8}
+                        style={[
+                          styles.relationshipChip,
+                          {
+                            backgroundColor:
+                              showCustomRelationship
+                                ? AURA.accent
+                                : isDark
+                                ? 'rgba(255,255,255,0.06)'
+                                : 'rgba(236,72,153,0.08)',
+                            borderColor:
+                              showCustomRelationship
+                                ? AURA.accent
+                                : isDark
+                                ? 'rgba(255,255,255,0.12)'
+                                : 'rgba(236,72,153,0.2)',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="create-outline"
+                          size={13}
+                          color={showCustomRelationship ? AURA.white : AURA.accent}
+                        />
+                        <Text
+                          style={[
+                            styles.relationshipChipText,
+                            {
+                              color: showCustomRelationship
+                                ? AURA.white
+                                : isDark
+                                ? AURA.gray400
+                                : AURA.accent,
+                            },
+                          ]}
+                        >
+                          Other
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {showCustomRelationship && (
+                      <View
+                        style={[
+                          styles.inputContainer,
+                          styles.customRelationshipInput,
+                          {
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(236,72,153,0.06)',
+                            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(236,72,153,0.25)',
+                          },
+                        ]}
+                      >
+                        <Ionicons name="create-outline" size={20} color={AURA.accent} style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.input, { color: isDark ? AURA.white : AURA.gray900 }]}
+                          placeholder="e.g. Godmother, Au Pair, Foster Parent"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(236,72,153,0.5)'}
+                          value={customRelationship}
+                          onChangeText={setCustomRelationship}
+                          autoCapitalize="words"
+                          autoCorrect={false}
+                          editable={!isLoading}
+                          returnKeyType="next"
+                          maxLength={40}
+                        />
+                      </View>
+                    )}
                   </View>
 
                   <View style={[
@@ -1711,6 +1902,50 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     height: 54,
     borderWidth: 1,
+  },
+
+  /* ── RELATIONSHIP PICKER ──────────────────────────────────── */
+  relationshipBlock: {
+    marginBottom: 14,
+  },
+  relationshipLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  relationshipLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  relationshipHint: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginBottom: 10,
+    marginLeft: 22,
+  },
+  relationshipChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  relationshipChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  relationshipChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  customRelationshipInput: {
+    marginTop: 10,
+    marginBottom: 0,
   },
   inputContainerDark: {
     backgroundColor: 'rgba(255,255,255,0.05)',
