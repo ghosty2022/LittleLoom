@@ -701,18 +701,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   }, [otherUserId]);
 
   /* ── Refresh loop ────────────────────────────────────────── */
+  // ── Clear typing when leaving the chat ───────────────────────
   useEffect(() => {
     if (!chatId) return;
-    const iv = setInterval(() => {
-      const fresh = getChatMessages(chatId);
-      setMessages(fresh);
-      markChatRead(chatId);
-    }, 2000);
-    return () => {
-      clearInterval(iv);
-      setTypingStatus(chatId, false);
-    };
-  }, [chatId]);
+    return () => { setTypingStatus(chatId, false); };
+  }, [chatId, setTypingStatus]);
 
   /* ── Send ────────────────────────────────────────────────── */
   const handleSend = useCallback(async () => {
@@ -967,6 +960,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     if (user.onlineStatus === 'away') return 'Away';
     const lastActive = new Date(user.lastActive).getTime();
     const diff = Date.now() - lastActive;
+    if (diff < 60_000) return 'Active now';
     const minutes = Math.floor(diff / 60000);
     if (minutes < 60) return `Active ${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
@@ -1239,7 +1233,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messagesList}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => !searchQuery && flatListRef.current?.scrollToEnd({ animated: false })}
+        onContentSizeChange={() => {
+          if (searchQuery) return;
+          // instant scroll on new message arrival
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }}
         ListHeaderComponent={renderListHeader}
         ListEmptyComponent={
           searchQuery ? (

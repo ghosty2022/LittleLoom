@@ -474,32 +474,46 @@ export default function CommunityScreen({ navigation }: Props) {
     return () => clearTimeout(timer);
   }, []);
 
+  // Twitter-style feed: pure chronological DESC. No pinned welcome post,
+  // no re-ordering. Newest first, always.
   const getFilteredPosts = useCallback(() => {
-    let filtered = getFeedPosts();
-    filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    if (welcomePost) {
-      filtered = filtered.filter(p => p.id !== welcomePost.id);
-      filtered.unshift(welcomePost);
+    let filtered = [...getFeedPosts()];
+    filtered.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+    if (activeTopic !== 'all') {
+      filtered = filtered.filter((p) => p.topicId === activeTopic);
     }
-    if (activeTopic !== 'all') filtered = filtered.filter(p => p.topicId === activeTopic);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
-        p =>
+        (p) =>
           p.content.toLowerCase().includes(q) ||
           p.author.displayName.toLowerCase().includes(q) ||
           p.topic.toLowerCase().includes(q),
       );
     }
     return filtered;
-  }, [activeTopic, searchQuery, getFeedPosts, welcomePost]);
+  }, [activeTopic, searchQuery, getFeedPosts]);
 
+  // Whenever `posts` changes (create, realtime insert, refresh, react),
+  // re-derive the visible page. Reset to page 1 so a new post from the
+  // user appears at the top, not appended after page 2.
   useEffect(() => {
     const filtered = getFilteredPosts();
     setDisplayedPosts(filtered.slice(0, POSTS_PER_PAGE));
     setHasMore(filtered.length > POSTS_PER_PAGE);
     setPage(1);
-  }, [posts, activeTopic, searchQuery, topicRefreshKey, getFilteredPosts]);
+    // Any fresh post should auto-dismiss the "N new threads" banner.
+    if (showBanner && filtered.length > 0) {
+      const newest = filtered[0];
+      if (newest && prevPostsRef.current.every((p) => p.id !== newest.id)) {
+        setShowBanner(false);
+        setNewPostsCount(0);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts, activeTopic, searchQuery, topicRefreshKey]);
 
   useEffect(() => {
     if (prevPostsRef.current.length > 0 && posts.length > prevPostsRef.current.length) {

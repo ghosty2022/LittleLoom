@@ -109,7 +109,18 @@ interface FamilyChatState {
   isSynced: boolean;
 }
 
+type ChatMessageListener = (chatId: string, messages: FamilyMessage[]) => void;
+
 interface FamilyChatContextType extends FamilyChatState {
+  /**
+   * Subscribe to per-chat message arrays without polling.
+   * Returns an unsubscribe function. Called every time the chat's
+   * message array changes (append, edit, delete, read-receipt).
+   */
+  subscribeToChatMessages: (
+    chatId: string,
+    cb: ChatMessageListener,
+  ) => () => void;
   createFamilyGroup: (name?: string, avatar?: string) => Promise<string>;
   getOrCreateDirectChat: (memberId: string, memberInfo?: Partial<FamilyMember>) => Promise<string>;
   getChatMessages: (chatId: string) => FamilyMessage[];
@@ -295,6 +306,52 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // `value` memo. Reading from a ref keeps the callback stable.
   const blockedUsersRef = useRef<string[]>([]);
   useEffect(() => { blockedUsersRef.current = state.blockedUsers; }, [state.blockedUsers]);
+
+  // ── Per-chat message subscribers ──────────────────────────────
+  const messageSubscribersRef = useRef<
+    Map<string, Set<ChatMessageListener>>
+  >(new Map());
+  const subscribeToChatMessages = useCallback(
+    (chatId: string, cb: ChatMessageListener) => {
+      let set = messageSubscribersRef.current.get(chatId);
+      if (!set) {
+        set = new Set();
+        messageSubscribersRef.current.set(chatId, set);
+      }
+      set.add(cb);
+      // fire current value immediately
+      try {
+        cb(chatId, messagesRef.current[chatId] ?? []);
+      } catch {}
+      return () => {
+        const s = messageSubscribersRef.current.get(chatId);
+        if (!s) return;
+        s.delete(cb);
+        if (s.size === 0) messageSubscribersRef.current.delete(chatId);
+      };
+    },
+    [],
+  );
+
+  // notify subscribers only for chats whose message array actually changed
+  const prevMessagesRef = useRef<Record<string, FamilyMessage[]>>({});
+  useEffect(() => {
+    const subs = messageSubscribersRef.current;
+    if (subs.size === 0) {
+      prevMessagesRef.current = state.messages;
+      return;
+    }
+    const prev = prevMessagesRef.current;
+    subs.forEach((listeners, chatId) => {
+      const arr = state.messages[chatId] ?? [];
+      // Only fire if this chat's array reference actually changed
+      if (prev[chatId] === arr) return;
+      listeners.forEach((cb) => {
+        try { cb(chatId, arr); } catch {}
+      });
+    });
+    prevMessagesRef.current = state.messages;
+  }, [state.messages]);
 
   // ── Account-change guard ─────────────────────────────────────
   // A new account on the same device must not see the previous
@@ -588,6 +645,63 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
       },
     );
+
+    /* ─── Instant message broadcast (arrives in ~50ms) ────────── */
+    channel.on('broadcast', { event: 'message' }, (payload: { payload: any }) => {
+      const data = payload?.payload;
+      if (!data || !data.message) return;
+      // Ignore our own echo (we already inserted it optimistically)
+      if (data.deviceId === deviceIdRef.current) return;
+
+      try {
+        const m = data.message as FamilyMessage;
+        const chat = chatsRef.current.find(c => c.id === m.chatId);
+        const isChatMuted = chat?.isMuted ?? false;
+
+        setState(prev => {
+          const existing = prev.messages[m.chatId] ?? [];
+          if (existing.some(x => x.id === m.id || x.syncId === m.syncId)) return prev;
+          const updatedMessages = { ...prev.messages, [m.chatId]: [...existing, m] };
+          const updatedChats = prev.chats.map(c =>
+            c.id === m.chatId
+              ? {
+                  ...c,
+                  lastMessage: m,
+                  updatedAt: m.timestamp,
+                  unreadCount:
+                    currentChatIdRef.current === m.chatId
+                      ? 0
+                      : (c.unreadCount || 0) + 1,
+                }
+              : c,
+          );
+          return { ...prev, messages: updatedMessages, chats: updatedChats };
+        });
+
+        // local notification only when user is NOT in this chat
+        if (
+          currentChatIdRef.current !== m.chatId &&
+          !isChatMuted &&
+          m.type !== 'system'
+        ) {
+          notificationService
+            .sendChatNotification(
+              m.senderName,
+              m.type === 'image'
+                ? '📷 Sent a photo'
+                : m.type === 'file'
+                ? '📎 Sent a file'
+                : m.type === 'voice'
+                ? '🎤 Sent a voice message'
+                : m.content,
+              m.chatId,
+            )
+            .catch(() => {});
+        }
+      } catch (e) {
+        console.warn('[FamilyChat] broadcast message parse failed:', e);
+      }
+    });
 
     /* ─── Typing Broadcast ───────────────────────────────────── */
     channel.on('broadcast', { event: 'typing' }, (payload: { payload: any }) => {
@@ -1110,13 +1224,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (newMessage.replyTo) insertData.reply_to = newMessage.replyTo;
         if (newMessage.replyToPreview) insertData.reply_to_preview = newMessage.replyToPreview;
 
+        // Insert first — only flip to 'sent' after the DB confirms.
         const { error } = await supabase.from('family_messages').insert(insertData);
         if (error) throw error;
-
-        await supabase
-          .from('family_chats')
-          .update({ last_message_id: newMessage.id, updated_at: now })
-          .eq('id', chatId);
 
         setState(prev => ({
           ...prev,
@@ -1127,6 +1237,30 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             ),
           },
         }));
+
+        // ─── INSTANT BROADCAST to every subscribed device ─────
+        // Fires in ~50ms on the peer's phone — no Postgres webhook
+        // and no polling needed. deviceId prevents self-echo.
+        if (realtimeChannelRef.current && isSubscribedRef.current) {
+          realtimeChannelRef.current
+            .send({
+              type: 'broadcast',
+              event: 'message',
+              payload: {
+                deviceId: deviceIdRef.current,
+                message: { ...newMessage, deliveryStatus: 'sent' },
+              },
+            })
+            .catch(() => {});
+        }
+
+        // Fire-and-forget DB row update (chat last-message pointer)
+        supabase
+          .from('family_chats')
+          .update({ last_message_id: newMessage.id, updated_at: now })
+          .eq('id', chatId)
+          .then(() => {})
+          .catch(() => {});
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       } catch (error) {
@@ -1555,7 +1689,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           type: 'broadcast',
           event: 'typing',
           payload: {
-            userId: me.id,
+            // deviceId used as userId so typing uses our per-device
+            // identifier (user may be signed in on 2 devices).
+            userId: deviceIdRef.current,
             userName: me.fullName,
             chatId,
             isTyping,
@@ -1566,7 +1702,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     if (isTyping) {
-      typingTimeoutRef.current[key] = setTimeout(() => setTypingStatus(chatId, false), 3000);
+      // 2.5s auto-stop; long enough that typing isn't flickery.
+      typingTimeoutRef.current[key] = setTimeout(() => setTypingStatus(chatId, false), 2500);
     }
   }, []);
 
@@ -1805,7 +1942,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
 const getChatMessages = useCallback(
   (chatId: string) => messagesRef.current[chatId] ?? [],
-  [state.messages],
+  [],
 );
 
   const getMessageById = useCallback(
@@ -1868,6 +2005,7 @@ const getChatMessages = useCallback(
   const value = useMemo<FamilyChatContextType>(
     () => ({
       ...state,
+      subscribeToChatMessages,
       createFamilyGroup,
       getOrCreateDirectChat,
       getChatMessages,
@@ -1906,6 +2044,7 @@ const getChatMessages = useCallback(
     }),
     [
       state,
+      subscribeToChatMessages,
       createFamilyGroup,
       getOrCreateDirectChat,
       getChatMessages,

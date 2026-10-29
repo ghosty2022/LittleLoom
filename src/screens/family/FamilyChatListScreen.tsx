@@ -626,13 +626,15 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const {
     chats, getUnreadCount, getOrCreateDirectChat, shareFamilyCode, deleteChat,
     pinChat, muteChat, getTypingUsers, createFamilyGroup,
+    subscribeToChatMessages,
   } = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
   const { darkMode } = useCustomization();
   const insets = useSafeAreaInsets();
   const isDark = darkMode ?? false;
-
+  const chatsRef = useRef<FamilyChat[]>(chats);
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -644,6 +646,25 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const [groupPhoto, setGroupPhoto] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [alert, setAlert] = useState<{ visible: boolean; type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }>({ visible: false, type: 'success', title: '', message: '' });
+
+  // ── Instant list updates on any inbound message ─────────────
+  // Subscribing to each chat's message stream is 100x cheaper
+  // than polling; the map rebuild is trivial.
+  const [realtimeTick, setRealtimeTick] = useState(0);
+  const chatIdsKey = useMemo(() => chats.map((c) => c.id).join('|'), [chats]);
+  useEffect(() => {
+    if (!subscribeToChatMessages) return;
+    const unsubs: Array<() => void> = [];
+    chatsRef.current.forEach((id) => {
+      unsubs.push(
+        subscribeToChatMessages(id, () => {
+          requestAnimationFrame(() => setRealtimeTick((n) => n + 1));
+        }),
+      );
+    });
+    return () => { unsubs.forEach((u) => u()); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatIdsKey, subscribeToChatMessages]);
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
@@ -658,7 +679,11 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     return (Date.now() - new Date(m.lastActive).getTime()) / 60000 < 5;
   }).length, [members]);
 
-  const totalUnread = useMemo(() => chats.reduce((sum, c) => sum + (c.isMuted ? 0 : c.unreadCount), 0), [chats]);
+  const totalUnread = useMemo(
+    () => chats.reduce((sum, c) => sum + (c.isMuted ? 0 : c.unreadCount), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chats, realtimeTick],
+  );
 
   const showSweetAlert = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
     setAlert({ visible: true, type, title, message });
@@ -845,7 +870,8 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
       const timeB = b.lastMessage ? new Date(b.lastMessage.timestamp).getTime() : 0;
       return timeB - timeA;
     });
-  }, [chats, searchQuery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chats, searchQuery, realtimeTick]);
 
   const renderMembersRow = () => (
     <View style={{ marginTop: DS.space.md }}>

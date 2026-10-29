@@ -405,7 +405,19 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
     setPhase('loading');
   }, [currentUser?.id]);
 
-  const isReady = !isLoading && isInitialized && splashReady;
+  // Guard: never declare "ready" until the context is initialized AND we
+  // have a valid signed-in user AND the topics list has actually been
+  // hydrated. Otherwise checkOnboardingStatus() sees selectedTopics=[]
+  // and always routes to onboarding.
+  const hasAuthedUser = !!currentUser?.id;
+  const topicsHydrated =
+    Array.isArray(getSelectedTopics()) && getSelectedTopics().length >= 0;
+  const isReady =
+    !isLoading &&
+    isInitialized &&
+    splashReady &&
+    hasAuthedUser &&
+    isAuthValid === true;
 
   // Notify parent tabs to hide/show the liquid-glass tab bar.
   // Onboarding + splash must be truly full-screen (no tab bar overlay).
@@ -424,24 +436,69 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
       return;
     }
     
-    if (!isReady || initDone.current || isAuthValid === null) return;
+    if (!isReady || initDone.current) return;
+    if (isAuthValid !== true) return;   // wait for real auth confirmation
 
     let mounted = true;
     initDone.current = true;
 
     const initialize = async () => {
   try {
-    
     try {
       const { refreshTopics } = require('../context/CommunityContext');
       await refreshTopics();
     } catch (e) {
       console.warn('[CommunityNavigator] Failed to refresh topics:', e);
     }
-    
+
     const onboardingStatus = await checkOnboardingStatus();
 
     if (!mounted) return;
+
+    // SECOND GUARD: if the context reports 0 topics AND we've never
+    // written the onboarding-complete flag for THIS user, we show
+    // onboarding. Otherwise — even if selectedTopics is briefly [] —
+    // go to main. `checkOnboardingStatus()` already checks the scoped
+    // AsyncStorage key, so a completed-then-cleared-then-remounted
+    // user won't re-onboard.
+    if (!onboardingStatus.completed && !onboardingStatus.hasTopics) {
+      const userId = currentUser?.id;
+      const scopedKey = userId
+        ? `@community_selected_topics_v2_${userId}`
+        : '@community_selected_topics_v2';
+      const [rawScoped, rawGlobal, rawOnboarding] = await Promise.all([
+        AsyncStorage.getItem(scopedKey),
+        AsyncStorage.getItem('@community_selected_topics_v2'),
+        AsyncStorage.getItem('@littleloom_community_onboarding_v3'),
+      ]);
+      const parse = (s: string | null) => {
+        if (!s) return [] as string[];
+        try {
+          const v = JSON.parse(s);
+          return Array.isArray(v) ? v : [];
+        } catch {
+          return [];
+        }
+      };
+      const scoped = parse(rawScoped);
+      const global = parse(rawGlobal);
+      let fromBlob: string[] = [];
+      try {
+        const blob = rawOnboarding ? JSON.parse(rawOnboarding) : null;
+        if (Array.isArray(blob?.selectedTopics)) fromBlob = blob.selectedTopics;
+      } catch {}
+      const anyStored = scoped.length || global.length || fromBlob.length;
+      if (!anyStored) {
+        if (__DEV__) console.log('[CommunityNavigator] → onboarding (truly no topics stored)');
+        setPhase('onboarding');
+        return;
+      }
+      // Topics exist in AsyncStorage but context hasn't caught up — force
+      // one more refresh, then go to main instead of onboarding.
+      if (__DEV__) console.log('[CommunityNavigator] → main (topics exist on disk, syncing context)');
+      setPhase('main');
+      return;
+    }
 
     // Single source of truth: the context's checkOnboardingStatus().
     // (It already reads scoped key → Supabase → global → in-memory.)
@@ -687,6 +744,7 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
   if (phase === 'onboarding') {
     return (
       <Stack.Navigator
+        key={`community-onboarding-${currentUser?.id ?? 'anon'}`}
         initialRouteName="CommunityOnboarding"
         screenOptions={ONBOARDING_SCREEN_OPTIONS}
       >
@@ -712,7 +770,7 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
     // On completion the navigator transitions out of this branch cleanly.
     return (
       <Stack.Navigator
-        key="community-splash-navigator"
+        key={`community-splash-${currentUser?.id ?? 'anon'}`}
         initialRouteName="CommunitySplash"
         screenOptions={SPLASH_SCREEN_OPTIONS}
       >
@@ -788,6 +846,7 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
     <>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <Stack.Navigator
+        key={`community-main-${currentUser?.id ?? 'anon'}`}
         ref={communityNavRef}
         initialRouteName="CommunityMain"
         screenOptions={MAIN_SCREEN_OPTIONS}

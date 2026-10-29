@@ -65,9 +65,41 @@ const LL = {
 
 export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const { getUserById } = useCommunity();
-  const family = useFamilyChat() as any;
-  const chats: FamilyChat[] = family.chats ?? [];
-  const refresh: (() => Promise<void> | void) | undefined = family.refresh;
+  const { messages, getChatMessages } = useFamilyChat() as any;
+  // Community DMs live in the shared family_messages table keyed by
+  // the direct chat id "direct_<idA>_<idB>". Build the list from
+  // whatever direct chats the current user has.
+  const chats: FamilyChat[] = useMemo(() => {
+    const meId = userProfile?.id;
+    if (!meId) return [];
+    const out: FamilyChat[] = [];
+    const allMsgs = (messages ?? {}) as Record<string, FamilyMessage[]>;
+    Object.keys(allMsgs).forEach((chatKey) => {
+      if (!chatKey.startsWith('direct_')) return;
+      const parts = chatKey.replace('direct_', '').split('_');
+      if (!parts.includes(meId)) return;
+      const otherId = parts.find((p) => p !== meId);
+      if (!otherId) return;
+      const msgs = allMsgs[chatKey] ?? [];
+      const last = msgs[msgs.length - 1];
+      out.push({
+        id: chatKey,
+        type: 'direct',
+        name: getUserById(otherId)?.displayName || 'Conversation',
+        participants: parts,
+        unreadCount: msgs.filter((m) => !m.readBy?.includes(meId)).length,
+        createdAt: msgs[0]?.timestamp || new Date().toISOString(),
+        updatedAt: last?.timestamp || new Date().toISOString(),
+        isMuted: false,
+        familyCode: '',
+        lastMessage: last,
+      } as any);
+    });
+    return out.sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+  }, [messages, userProfile?.id, getUserById]);
+  const refresh = undefined;
 
   const { userProfile } = useAuth();
   const currentUserId = userProfile?.id || '';

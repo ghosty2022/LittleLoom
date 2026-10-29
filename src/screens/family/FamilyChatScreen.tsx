@@ -876,6 +876,20 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     return () => { setCurrentChatId(null); };
   }, [chatId, setCurrentChatId]);
 
+  // ── Instant message sync via context subscription (no polling) ──
+  const { subscribeToChatMessages } = useFamilyChat();
+  useEffect(() => {
+    if (!chatId) return;
+    const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
+      setMessages(msgs);
+      // mark as read the instant a message lands
+      markChatRead(chatId);
+      // auto-scroll on new message
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 30);
+    });
+    return unsub;
+  }, [chatId, subscribeToChatMessages, markChatRead]);
+
   useEffect(() => { initializeChat(); }, [initialChatId, memberId]);
 
 const liveMessages = useFamilyChat().messages[chatId] || [];
