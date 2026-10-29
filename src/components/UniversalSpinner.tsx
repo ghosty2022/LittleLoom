@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   useColorScheme,
   Animated as RNAnimated,
 } from 'react-native';
@@ -22,8 +21,6 @@ import AnimatedReanimated, {
   cancelAnimation,
 } from 'react-native-reanimated';
 import { useCustomization } from '../hooks/useCustomization';
-
-
 
 export type SpinnerSection = 'main' | 'community' | 'auth' | 'settings' | 'tracking';
 
@@ -79,7 +76,6 @@ interface ThemeColorsSafe {
   [key: string]: any;
 }
 
-
 const useCustomizationSafe = () => {
   try {
     const c = useCustomization();
@@ -119,21 +115,11 @@ const resolveTheme = (
   return base;
 };
 
-
 const SIZE_MAP = {
   small: { spinner: 40, fontSize: 13, container: 100 },
   medium: { spinner: 56, fontSize: 15, container: 140 },
   large: { spinner: 72, fontSize: 17, container: 180 },
 };
-
-
-const VARIANT_MAP = {
-  liquid: 'LiquidDots',
-  aurora: 'AuroraRings',
-  nebula: 'NebulaOrbit',
-} as const;
-
-
 
 interface LiquidDotProps {
   index: number;
@@ -368,14 +354,11 @@ const NebulaOrbit = memo<{
   );
 });
 
-
 const SPINNER_COMPONENTS = {
   liquid: LiquidDots,
   aurora: AuroraRings,
   nebula: NebulaOrbit,
 };
-
-
 
 interface UniversalSpinnerProps {
   visible: boolean;
@@ -408,7 +391,6 @@ export const UniversalSpinner = memo<UniversalSpinnerProps>(({
   const { themeColors, darkMode, shouldReduceMotion } = useCustomizationSafe();
   const isDark = darkMode ?? (colorScheme === 'dark');
 
-  
   const fadeAnim = useRef<RNAnimated.Value | null>(null);
   if (!fadeAnim.current) fadeAnim.current = new RNAnimated.Value(0);
 
@@ -420,15 +402,15 @@ export const UniversalSpinner = memo<UniversalSpinnerProps>(({
     [section, customColors, themeColors]
   );
 
-  
+  // Fade in on mount (the component is only rendered when visible=true, see bottom)
   useEffect(() => {
-    const duration = shouldReduceMotion ? (visible ? 100 : 50) : (visible ? 200 : 150);
+    const duration = shouldReduceMotion ? 100 : 200;
     RNAnimated.timing(fadeAnim.current!, {
-      toValue: visible ? 1 : 0,
+      toValue: 1,
       duration,
       useNativeDriver: true,
     }).start();
-  }, [visible, shouldReduceMotion]);
+  }, [shouldReduceMotion]);
 
   useEffect(() => {
     if (!showProgress) return;
@@ -492,17 +474,28 @@ export const UniversalSpinner = memo<UniversalSpinnerProps>(({
 
   if (!overlay) return spinnerContent;
 
+  // ── Absolute overlay instead of <Modal> ──────────────────────────
+  // This avoids the Android Modal-over-Modal z-fighting bug when the
+  // spinner appears while a SweetAlert modal is open, and keeps a
+  // single z-layer above the navigator.
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
-      <View style={[styles.overlay, { backgroundColor: `rgba(0,0,0,${theme.backgroundOpacity})` }]}>
-        {blur && <BlurView intensity={isDark ? 80 : 90} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />}
-        {spinnerContent}
-      </View>
-    </Modal>
+    <View
+      style={[
+        StyleSheet.absoluteFill,
+        styles.overlay,
+        {
+          backgroundColor: `rgba(0,0,0,${theme.backgroundOpacity})`,
+          zIndex: 99998,
+          elevation: 99998,
+        },
+      ]}
+      pointerEvents="auto"
+    >
+      {blur && <BlurView intensity={isDark ? 80 : 90} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />}
+      {spinnerContent}
+    </View>
   );
 });
-
-
 
 interface InlineSpinnerProps {
   size?: number;
@@ -519,7 +512,6 @@ export const InlineSpinner = memo<InlineSpinnerProps>(({
 }) => {
   const { themeColors, shouldReduceMotion } = useCustomizationSafe();
 
-  
   const spinnerColor = color
     || (section === 'main' && themeColors?.spinnerColor)
     || SECTION_THEMES[section]?.spinnerColor
@@ -546,8 +538,6 @@ export const InlineSpinner = memo<InlineSpinnerProps>(({
   );
 });
 
-
-
 export const CommunitySpinner = memo<Omit<UniversalSpinnerProps, 'section'>>((props) => (
   <UniversalSpinner {...props} section="community" />
 ));
@@ -563,8 +553,6 @@ export const SettingsSpinner = memo<Omit<UniversalSpinnerProps, 'section'>>((pro
 export const TrackingSpinner = memo<Omit<UniversalSpinnerProps, 'section'>>((props) => (
   <UniversalSpinner {...props} section="tracking" />
 ));
-
-
 
 export const SkeletonLoader = memo<{
   width?: number | string;
@@ -605,8 +593,6 @@ export const SkeletonLoader = memo<{
     />
   );
 });
-
-// ─── SHIMMER LOADER (memoized) ────────────────────────────────────────
 
 interface ShimmerLoaderProps {
   width?: number | string;
@@ -663,8 +649,6 @@ export const ShimmerLoader = memo<ShimmerLoaderProps>(({
   );
 });
 
-
-
 const ShimmerText = memo<{ width?: number; lines?: number; section?: SpinnerSection }>(({ width = 200, lines = 1, section = 'main' }) => (
   <View style={{ gap: 8 }}>
     {Array.from({ length: lines }, (_, i) => (
@@ -700,8 +684,6 @@ export const ShimmerPresets = {
   Avatar: ShimmerAvatar,
   List: ShimmerList,
 };
-
-// ─── SCREEN SKELETONS (memoized) ──────────────────────────────────────
 
 const TimelineSkeleton = memo<{ count?: number; section?: SpinnerSection }>(({ count = 3, section = 'main' }) => (
   <View style={skeletonStyles.container}>
@@ -769,8 +751,6 @@ export const ScreenSkeletons = {
   Profile: ProfileSkeleton,
   Community: CommunitySkeleton,
 };
-
-// ─── STYLES ───────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },

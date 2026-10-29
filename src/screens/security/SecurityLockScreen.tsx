@@ -332,6 +332,38 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }, 250);
   }, [navigation]);
 
+  // ── Canonical sign-out (mirrors MoreScreen's confirmLogout) ──────
+  const performSignOut = useCallback(async () => {
+    try {
+      triggerHaptic('medium');
+      // Clear the lock flag so the app doesn't re-lock on next cold start
+      await AsyncStorage.setItem('littleloom_security_lock', 'false');
+      await AsyncStorage.multiRemove([
+        'littleloom_nav_state_v4',
+        '@littleloom_nav_state_v4',
+        'littleloom_last_auth_state',
+        'littleloom_security_lock',
+      ]);
+      await signOut();
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' as never }],
+      });
+      sweetAlert.success('Signed Out', 'You have been signed out successfully');
+    } catch (error) {
+      console.error('Sign out error:', error);
+      try {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login' as never }],
+        });
+      } catch (navError) {
+        console.error('Navigation reset error:', navError);
+      }
+      sweetAlert.error('Error', 'Failed to sign out. Please try again.');
+    }
+  }, [signOut, triggerHaptic, navigation, sweetAlert]);
+
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!isLockedOut) return true;
@@ -521,15 +553,17 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       'Too Many Attempts',
       'For security purposes, you need to sign out and sign in again.',
       async () => {
-        await forceUnlock?.();
-        signOut();
+        try {
+          await forceUnlock?.();
+        } catch {}
+        await performSignOut();
       },
       undefined,
       'Sign Out',
       'Cancel',
       true
     );
-  }, [signOut, forceUnlock, triggerHaptic, sweetAlert]);
+  }, [performSignOut, forceUnlock, triggerHaptic, sweetAlert]);
 
   const handlePinComplete = useCallback(
     async (completedPin: string) => {
@@ -1152,8 +1186,8 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             onPress={() => {
               sweetAlert.confirm(
                 'Sign Out',
-                'Are you sure you want to sign out?',
-                () => signOut(),
+                'Are you sure you want to sign out? You will need to sign in again to access your account.',
+                () => { performSignOut(); },
                 undefined,
                 'Sign Out',
                 'Cancel',

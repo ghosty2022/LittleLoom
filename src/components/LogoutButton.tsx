@@ -2,6 +2,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 
 interface LogoutButtonProps {
@@ -21,19 +22,25 @@ export const LogoutButton: React.FC<LogoutButtonProps> = ({
       'Are you sure you want to sign out? You will need to sign in again to access your account.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Sign Out', 
+        {
+          text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
             try {
+              await AsyncStorage.setItem('littleloom_security_lock', 'false');
+              await AsyncStorage.multiRemove([
+                'littleloom_nav_state_v4',
+                '@littleloom_nav_state_v4',
+                'littleloom_last_auth_state',
+                'littleloom_security_lock',
+              ]);
               await auth.signOut();
-              
               if (onPress) onPress();
             } catch (error) {
               Alert.alert('Error', 'Failed to sign out. Please try again.');
             }
-          }
-        }
+          },
+        },
       ],
       { cancelable: false }
     );

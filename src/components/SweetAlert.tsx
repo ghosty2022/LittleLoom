@@ -132,7 +132,7 @@ const ALERT_CONFIG: Record<AlertType, {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   GLOBAL EVENT BUS — single owner, atomic queue drain
+   GLOBAL EVENT BUS
    ═══════════════════════════════════════════════════════════════════════════ */
 type AlertListener = (config: SweetAlertConfig) => void;
 type HideListener = () => void;
@@ -143,11 +143,12 @@ const pendingQueue: SweetAlertConfig[] = [];
 const MAX_QUEUE_SIZE = 50;
 let providerMountCount = 0;
 
+// ── Declared BEFORE emitHide so the closure can reference it safely ──
+const dedupResetFns: Set<() => void> = new Set();
+
 const flushQueue = () => {
-  // Only the LAST-registered listener (the active provider) receives replayed items.
-  // Guard: if multiple providers ever exist, only the most recent owns the bus.
   if (providerMountCount <= 0 || pendingQueue.length === 0) return;
-  const queue = pendingQueue.splice(0); // atomic drain — no re-replay possible
+  const queue = pendingQueue.splice(0);
   const listeners = Array.from(alertListeners);
   const owner = listeners[listeners.length - 1];
   if (!owner) return;
@@ -167,38 +168,11 @@ const emitShow = (config: SweetAlertConfig) => {
 const emitHide = () => {
   pendingQueue.length = 0;
   hideListeners.forEach((listener) => listener());
+  dedupResetFns.forEach((fn) => fn());
 };
 
 export const showSweetAlert = (config: SweetAlertConfig) => emitShow(config);
 export const hideSweetAlert = () => emitHide();
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   PULSING DOT
-   ═══════════════════════════════════════════════════════════════════════════ */
-const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
-  const pulse = useSharedValue(1);
-  const halo = useSharedValue(1);
-  useEffect(() => {
-    pulse.value = withSequence(withTiming(1.15, { duration: 900 }), withTiming(1, { duration: 900 }));
-    halo.value = withSequence(withTiming(1.8, { duration: 1400 }), withTiming(1, { duration: 1400 }));
-    const id = setInterval(() => {
-      pulse.value = withSequence(withTiming(1.15, { duration: 900 }), withTiming(1, { duration: 900 }));
-      halo.value = withSequence(withTiming(1.8, { duration: 1400 }), withTiming(1, { duration: 1400 }));
-    }, 1400);
-    return () => clearInterval(id);
-  }, [pulse, halo]);
-  const dotStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
-  const haloStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: halo.value }],
-    opacity: 1 - (halo.value - 1) / 0.8,
-  }));
-  return (
-    <View style={{ width: size * 2, height: size * 2, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={[{ position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: color }, haloStyle]} />
-      <Animated.View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }, dotStyle]} />
-    </View>
-  );
-};
 
 /* ═══════════════════════════════════════════════════════════════════════════
    LOADING RING
@@ -238,7 +212,7 @@ const ProgressBar: React.FC<{ progress: number; color: string }> = React.memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TOAST — single instance per id, self-dismissing, uses unified MOTION
+   TOAST
    ═══════════════════════════════════════════════════════════════════════════ */
 const SweetAlertToast: React.FC<{ config: SweetAlertConfig; isDark: boolean; onDismiss: () => void }> = React.memo(({ config, isDark, onDismiss }) => {
   const type = config.type || 'info';
@@ -335,7 +309,7 @@ const SweetAlertPrompt: React.FC<{ config: SweetAlertConfig; isDark: boolean; th
     overlayOpacity.value = withTiming(1, { duration: MOTION.overlayIn, easing: MOTION.easingIn });
     modalScale.value = withSpring(1, MOTION.spring);
     modalTranslateY.value = withSpring(0, MOTION.spring);
-    const t = setTimeout(() => inputRef.current?.focus(), 300);
+    const t = setTimeout(() => inputRef.current?.focus(), MOTION.enterDuration + 40);
     return () => clearTimeout(t);
   }, []);
 
@@ -617,8 +591,7 @@ const SweetAlertBottomSheet: React.FC<{ config: SweetAlertConfig; isDark: boolea
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PROVIDER — single-owner bus, atomic queue, toast cleared on modal open,
-   dedup guard against identical configs fired in the same tick
+   PROVIDER
    ═══════════════════════════════════════════════════════════════════════════ */
 interface AlertQueueItem { id: string; config: SweetAlertConfig; }
 
@@ -637,12 +610,17 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({ children
   const idCounter = useRef(0);
   const lastFiredRef = useRef<{ signature: string; at: number } | null>(null);
 
-  // Keep reduceMotion in a ref so `sweetAlert` stays identity-stable forever.
   const reduceMotionRef = useRef(reduceMotion);
   useEffect(() => { reduceMotionRef.current = reduceMotion; }, [reduceMotion]);
 
+  // Register dedup reset so emitHide() can clear it.
+  useEffect(() => {
+    const reset = () => { lastFiredRef.current = null; };
+    dedupResetFns.add(reset);
+    return () => { dedupResetFns.delete(reset); };
+  }, []);
+
   const sweetAlert = useCallback((config: SweetAlertConfig) => {
-    // Dedup guard: identical title+message+style fired within 500ms → ignore.
     const signature = `${config.style || 'toast'}|${config.type || 'info'}|${config.title}|${config.message || ''}`;
     const now = Date.now();
     if (lastFiredRef.current && lastFiredRef.current.signature === signature && now - lastFiredRef.current.at < 500) {
@@ -654,16 +632,15 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({ children
     const fullConfig = { ...config, reduceMotion: config.reduceMotion ?? reduceMotionRef.current };
 
     if (config.isPrompt) {
-      // Prompts are exclusive overlays — clear toasts so nothing stacks behind.
       setToastQueue([]);
       setPromptQueue((prev) => [...prev, { id, config: fullConfig }]);
     } else {
       const style = fullConfig.style || 'toast';
       if (style === 'modal') {
-        setToastQueue([]);          // ← critical: no toast behind a modal
+        setToastQueue([]);
         setModalQueue((prev) => [...prev, { id, config: fullConfig }]);
       } else if (style === 'bottom-sheet') {
-        setToastQueue([]);          // ← same for sheets
+        setToastQueue([]);
         setSheetQueue((prev) => [...prev, { id, config: fullConfig }]);
       } else {
         setToastQueue((prev) => [...prev, { id, config: fullConfig }]);
@@ -677,20 +654,19 @@ export const SweetAlertProvider: React.FC<SweetAlertProviderProps> = ({ children
   }, []);
 
   useEffect(() => {
-    // Register as the active provider. If a stale provider is unmounting
-    // concurrently, the most-recently-added listener wins (see emitShow).
     providerMountCount += 1;
     const handleShow: AlertListener = (config) => sweetAlert(config);
     const handleHide: HideListener = () => {
-      setModalQueue([]);
-      setToastQueue([]);
-      setSheetQueue([]);
-      setPromptQueue([]);
+      setTimeout(() => {
+        setModalQueue([]);
+        setToastQueue([]);
+        setSheetQueue([]);
+        setPromptQueue([]);
+      }, MOTION.exitDuration);
     };
     alertListeners.add(handleShow);
     hideListeners.add(handleHide);
 
-    // Give the previous provider's cleanup a tick to unregister, then flush.
     const t = setTimeout(flushQueue, 0);
 
     return () => {
@@ -798,7 +774,7 @@ const styles = StyleSheet.create({
   toastMessage: { fontSize: 11, lineHeight: 16, marginTop: 2, fontWeight: '500' },
   toastClose: { padding: 4, marginLeft: 4, marginTop: 2 },
 
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 24 },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(12,10,9,0.55)', padding: 24 },
   modalContainer: {
     width: Math.min(SCREEN_W - 48, 380), borderRadius: DS.radius['2xl'],
     padding: 24, paddingTop: 28, alignItems: 'center',
@@ -830,7 +806,7 @@ const styles = StyleSheet.create({
   customActionBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: DS.radius.md },
   customActionText: { fontSize: 13, fontWeight: '700' },
 
-  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(12,10,9,0.5)' },
   sheetContainer: {
     borderTopLeftRadius: DS.radius['2xl'], borderTopRightRadius: DS.radius['2xl'],
     paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
