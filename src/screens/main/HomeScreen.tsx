@@ -130,9 +130,18 @@ const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 /* ═══════════════════════════════════════════════════════════════════════════
    CACHE KEYS
    ═══════════════════════════════════════════════════════════════════════════ */
+// Cache keys are namespaced by userId so account-switch on the same device
+// can never hydrate one user's cache into another user's session. The bare
+// names are kept only for one-time cleanup in signOut (AuthContext).
 const CACHE_KEYS = {
-  BABY: '@littleloom_cached_baby',
-  ACTIVITIES: '@littleloom_cached_activities_v2',
+  BABY: '@littleloom_cached_baby_v3',
+  ACTIVITIES: '@littleloom_cached_activities_v3',
+};
+
+const scopedCacheKey = (base: string, userId: string | null | undefined, babyId?: string | null) => {
+  if (!userId) return null;
+  const babySuffix = babyId ? `_${babyId}` : '';
+  return `${base}_${userId}${babySuffix}`;
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1721,14 +1730,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     milestones,
     getGrowthData,
   } = useBaby();
-  const {
-    entries: trackerEntries,
-    refreshEntries: refreshTrackerEntries,
-    isLoading: activitiesLoading,
-  } = useTracker();
-  const activities = trackerEntries;
-  const loadActivities = refreshTrackerEntries;
-  const getRecentTimelineEvents = (_limit?: number, _babyId?: string) => trackerEntries;
+
+const {
+  entries: trackerEntriesRaw,
+  refreshEntries: refreshTrackerEntries,
+  isLoading: activitiesLoading,
+} = useTracker();
+
+// NOTE: `trackerEntries` memo has been moved BELOW the `displayedBaby`
+// declaration (see further down). It cannot be defined here because
+// `displayedBaby` is a `const` and is in the temporal dead zone until its
+// declaration runs.
+
+const loadActivities = refreshTrackerEntries;
+
   const { lockApp, getAvailableAuthMethods, getSecuritySnapshot, rehydratePinStatus } = useSecurity();
   const { getUnreadCount } = useCommunity();
   const { getUnreadCount: getFamilyChatUnread } = useFamilyChat();
@@ -1754,52 +1769,144 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const isInitialLoad = useRef(true);
   const dataLoaded = useRef(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [babyJson, actJson] = await Promise.all([
-          AsyncStorage.getItem(CACHE_KEYS.BABY),
-          AsyncStorage.getItem(CACHE_KEYS.ACTIVITIES),
-        ]);
-        if (babyJson) setCachedBaby(JSON.parse(babyJson));
-        if (actJson) {
+// Track the userId we hydrated cache for. If it changes (sign-out → sign-in),
+// we wipe the in-memory cache and reload scoped keys.
+const cacheHydratedForUserRef = useRef<string | null>(null);
+
+useEffect(() => {
+  const userId = userProfile?.id ?? null;
+
+  // Account changed or signed out — hard reset cached in-memory state.
+  if (cacheHydratedForUserRef.current !== userId) {
+    cacheHydratedForUserRef.current = userId;
+    setCachedBaby(null);
+    setCachedActivities([]);
+    setSmartNotifications([]);
+    cacheLoaded.current = false;
+  }
+
+  if (!userId) {
+    // Signed out — nothing to load, and nothing to keep.
+    setIsLoadingInitial(false);
+    return;
+  }
+
+  let cancelled = false;
+  (async () => {
+    try {
+      // Only load the BABY cache keyed by user (baby not yet known here).
+      const babyKey = scopedCacheKey(CACHE_KEYS.BABY, userId);
+      const babyJson = babyKey ? await AsyncStorage.getItem(babyKey) : null;
+
+      // Activities cache is keyed by user + the cached baby's id, so that a
+      // different baby's rows can NEVER leak into this user's session even
+      // if they own multiple babies.
+      let actJson: string | null = null;
+      if (babyJson) {
+        try {
+          const cachedBabyObj = JSON.parse(babyJson);
+          const actKey = scopedCacheKey(CACHE_KEYS.ACTIVITIES, userId, cachedBabyObj?.id ?? null);
+          if (actKey) actJson = await AsyncStorage.getItem(actKey);
+        } catch {}
+      }
+
+      if (cancelled) return;
+      if (babyJson) {
+        try { setCachedBaby(JSON.parse(babyJson)); } catch {}
+      }
+      if (actJson) {
+        try {
           const parsed = JSON.parse(actJson);
           if (Array.isArray(parsed)) setCachedActivities(parsed);
-        }
-      } catch (e) {
-        // ignore — fresh load will handle it
-      } finally {
+        } catch {}
+      }
+    } catch {
+      // ignore — fresh load will handle it
+    } finally {
+      if (!cancelled) {
         cacheLoaded.current = true;
         setIsLoadingInitial(false);
       }
-    })();
-  }, []);
+    }
+  })();
+
+  return () => { cancelled = true; };
+}, [userProfile?.id]);
 
   const displayedBaby = currentBaby || cachedBaby;
   const hasBaby = !!displayedBaby;
 
-  useEffect(() => {
-    if (currentBaby) {
-      AsyncStorage.setItem(CACHE_KEYS.BABY, JSON.stringify(currentBaby)).catch(() => {});
-    }
-  }, [currentBaby]);
+  // HARD BABY SCOPE — the tracker context can briefly hold the *previous*
+  // baby's rows during a switch (setState → await loadEntries). We filter
+  // here so nothing downstream (activityStats, dailySummary, streak,
+  // todayCounts, RecentTimeline) can ever see rows from another baby.
+  // (This memo lives here — not above — because `displayedBaby` must be
+  // declared before this runs.)
+  const trackerEntries = useMemo(() => {
+    const currentId = displayedBaby?.id;
+    if (!currentId) return [];
+    const list = Array.isArray(trackerEntriesRaw) ? trackerEntriesRaw : [];
+    return list.filter((e: any) => e?.babyId === currentId);
+  }, [trackerEntriesRaw, displayedBaby?.id]);
 
-  /* ── Smart notifications: load + persist ── */
-  useEffect(() => {
-    (async () => {
-      try {
-        const savedNotifs = await AsyncStorage.getItem('@littleloom_smart_notifications');
-        if (savedNotifs) {
-          const parsed = JSON.parse(savedNotifs);
-          if (Array.isArray(parsed)) setSmartNotifications(parsed);
-        }
-      } catch (err) { /* ignore */ }
-    })();
-  }, []);
+  const getRecentTimelineEvents = useCallback(
+    (_limit?: number, _babyId?: string) => trackerEntries,
+    [trackerEntries],
+  );
 
-  useEffect(() => {
-    AsyncStorage.setItem('@littleloom_smart_notifications', JSON.stringify(smartNotifications)).catch(() => {});
-  }, [smartNotifications]);
+useEffect(() => {
+  const userId = userProfile?.id;
+  if (!userId || !currentBaby) return;
+
+  const babyKey = scopedCacheKey(CACHE_KEYS.BABY, userId);
+  if (babyKey) {
+    AsyncStorage.setItem(babyKey, JSON.stringify(currentBaby)).catch(() => {});
+  }
+}, [currentBaby, userProfile?.id]);
+
+// Whenever the active baby changes, drop any in-memory activities cache
+// that belonged to the previous baby. This is the last line of defense
+// against showing baby A's entries under baby B.
+useEffect(() => {
+  setCachedActivities([]);
+}, [currentBaby?.id]);
+
+// Smart notifications are scoped by userId so account-switch never inherits
+// the previous account's dismissed + generated entries.
+const smartNotifsHydratedForUserRef = useRef<string | null>(null);
+
+useEffect(() => {
+  const userId = userProfile?.id ?? null;
+
+  if (smartNotifsHydratedForUserRef.current !== userId) {
+    smartNotifsHydratedForUserRef.current = userId;
+    setSmartNotifications([]);
+  }
+
+  if (!userId) return;
+
+  let cancelled = false;
+  (async () => {
+    try {
+      const key = `@littleloom_smart_notifications_${userId}`;
+      const saved = await AsyncStorage.getItem(key);
+      if (cancelled || !saved) return;
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) setSmartNotifications(parsed);
+    } catch {}
+  })();
+
+  return () => { cancelled = true; };
+}, [userProfile?.id]);
+
+useEffect(() => {
+  const userId = userProfile?.id;
+  if (!userId) return;
+  AsyncStorage.setItem(
+    `@littleloom_smart_notifications_${userId}`,
+    JSON.stringify(smartNotifications),
+  ).catch(() => {});
+}, [smartNotifications, userProfile?.id]);
 
   /* ── Generate smart notifications ── */
   useEffect(() => {
@@ -2085,23 +2192,48 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   }, [requireBaby, navigateToScreen, triggerHaptic]);
 
   /* ── Unified timeline events ── */
-  const allTimelineEvents = useMemo(() => {
-    if (!hasBaby) return [];
-    const trackerList = (trackerEntries || []).filter((e: any) => e?.timestamp);
-    const activityEvents = getRecentTimelineEvents ? getRecentTimelineEvents(50, displayedBaby?.id) : [];
-    const merged = [...trackerList];
-    (activityEvents || []).forEach((ae: any) => {
-      if (ae && !merged.find((me: any) => me?.id === ae.id)) merged.push(ae);
-    });
-    if (merged.length === 0 && cachedActivities.length > 0) return [...cachedActivities].sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0)).slice(0, 50);
-    return merged.slice(0, 50).sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
-  }, [hasBaby, displayedBaby?.id, trackerEntries, getRecentTimelineEvents, cachedActivities]);
+const allTimelineEvents = useMemo(() => {
+  const babyId = displayedBaby?.id;
+  if (!babyId) return [];
 
-  useEffect(() => {
-    if (allTimelineEvents.length > 0) {
-      AsyncStorage.setItem(CACHE_KEYS.ACTIVITIES, JSON.stringify(allTimelineEvents.slice(0, 50))).catch(() => {});
+  // 1) Live tracker rows — already baby-scoped by FIX #4
+  const trackerList = (trackerEntries || []).filter((e: any) => e?.timestamp);
+
+  // 2) Any additional sources — also filtered to this baby
+  const activityEvents = (getRecentTimelineEvents ? getRecentTimelineEvents(50, babyId) : [])
+    .filter((e: any) => e?.babyId === babyId);
+
+  const merged = [...trackerList];
+  activityEvents.forEach((ae: any) => {
+    if (ae && !merged.find((me: any) => me?.id === ae.id)) merged.push(ae);
+  });
+
+  // 3) Offline cache fallback — ONLY if every cached row belongs to this
+  // baby. Without this guard, after a baby switch the cache still holds
+  // the previous baby's rows and they would be rendered as this baby's.
+  if (merged.length === 0 && cachedActivities.length > 0) {
+    const scoped = cachedActivities.filter((e: any) => e?.babyId === babyId);
+    if (scoped.length > 0) {
+      return [...scoped].sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0)).slice(0, 50);
     }
-  }, [allTimelineEvents]);
+  }
+
+  return merged
+    .slice(0, 50)
+    .sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
+}, [hasBaby, displayedBaby?.id, trackerEntries, getRecentTimelineEvents, cachedActivities]);
+
+useEffect(() => {
+  const userId = userProfile?.id;
+  const babyId = displayedBaby?.id;
+  if (!userId || !babyId) return;
+  if (allTimelineEvents.length === 0) return;
+
+  const actKey = scopedCacheKey(CACHE_KEYS.ACTIVITIES, userId, babyId);
+  if (actKey) {
+    AsyncStorage.setItem(actKey, JSON.stringify(allTimelineEvents.slice(0, 50))).catch(() => {});
+  }
+}, [allTimelineEvents, userProfile?.id, displayedBaby?.id]);
 
   /* ── Real per-tracker today counts ── */
   const todayCounts = useMemo(() => {
@@ -2208,11 +2340,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   }, [allTimelineEvents, hasBaby]);
 
   /* ── Growth KPIs ── */
-  const growthStats = useMemo(() => {
-    if (!hasBaby) return null;
-    const result: Record<string, any> = {};
-    (['height', 'weight', 'head'] as const).forEach((type) => {
-      const data = getGrowthData(type as any).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+const growthStats = useMemo(() => {
+  if (!hasBaby) return null;
+  const babyId = displayedBaby?.id;
+  if (!babyId) return null;
+
+  const result: Record<string, any> = {};
+  (['height', 'weight', 'head'] as const).forEach((type) => {
+    const raw = getGrowthData(type as any);
+    // Growth data must belong to the current baby. Any cached / stale
+    // rows from a previous baby get filtered here.
+    const data = (Array.isArray(raw) ? raw : [])
+      .filter((g: any) => !g?.babyId || g.babyId === babyId)
+      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
       const current = data[0];
       const prev = data[1];
       if (current) {
@@ -2225,7 +2366,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       result.bmi = { value: (w / (h * h)).toFixed(1), unit: '' };
     }
     return result;
-  }, [growthData, hasBaby, getGrowthData]);
+  }, [growthData, hasBaby, getGrowthData, displayedBaby?.id]);
 
   const unreadCommunityCount = useMemo(() => getUnreadCount(), [getUnreadCount]);
   const unreadFamilyChatCount = useMemo(() => getFamilyChatUnread?.() || 0, [getFamilyChatUnread]);
