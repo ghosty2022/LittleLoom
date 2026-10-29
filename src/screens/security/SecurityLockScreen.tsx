@@ -1,17 +1,19 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  StyleSheet,
   ActivityIndicator,
+  BackHandler,
   Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  BackHandler,
-  Image,
-  Platform,
 } from 'react-native';
 
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -20,18 +22,19 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import AnimatedReanimated, {
+  FadeInUp,
+  FadeInDown,
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
   withSequence,
   withTiming,
-  withSpring,
-  interpolate,
-  Extrapolation,
-  FadeInUp,
-  FadeInDown,
-  FadeIn,
 } from 'react-native-reanimated';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -88,9 +91,7 @@ const getBiometricInfo = (types: LocalAuthentication.AuthenticationType[]): Biom
   if (!types || types.length === 0) {
     return { name: 'Biometric', icon: 'finger-print', label: 'Biometric' };
   }
-
   const preferFingerprint = Platform.OS === 'android';
-
   if (preferFingerprint && types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
     return { name: 'Fingerprint', icon: 'finger-print', label: 'Touch ID' };
   }
@@ -176,7 +177,6 @@ const PulsingBiometricRing = React.memo(({
   return (
     <TouchableOpacity onPress={onPress} disabled={disabled || isLoading} activeOpacity={0.85}>
       <View style={{ width: size + 20, height: size + 20, alignItems: 'center', justifyContent: 'center' }}>
-        {/* Pulsing glow */}
         <AnimatedReanimated.View
           style={[
             styles.biometricGlow,
@@ -185,7 +185,6 @@ const PulsingBiometricRing = React.memo(({
           ]}
           pointerEvents="none"
         />
-        {/* Gradient ring */}
         <LinearGradient
           colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.4)', 'rgba(255,255,255,0.9)']}
           start={{ x: 0, y: 0 }}
@@ -206,7 +205,7 @@ const PulsingBiometricRing = React.memo(({
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PIN Dots with aura fill
+   PIN Dots
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const PinDots = React.memo(({
@@ -258,25 +257,11 @@ const PinDots = React.memo(({
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function SecurityLockScreen({ navigation }: SecurityLockScreenProps) {
-  const [pin, setPin] = useState<string>('');
-  const [shakeAnim] = useState(new Animated.Value(0));
-  const [biometricInfo, setBiometricInfo] = useState<BiometricTypeInfo>({
-    name: 'Biometric',
-    icon: 'finger-print',
-    label: 'Biometric',
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-  const [isLockedOut, setIsLockedOut] = useState(false);
-  const [pinProgress] = useState(new Animated.Value(0));
-
-  const [showForgotPin, setShowForgotPin] = useState(false);
-  const [securityQuestions, setSecurityQuestions] = useState<SecurityQuestion[]>([]);
-  const [verifyAnswers, setVerifyAnswers] = useState(['', '', '']);
-  const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
-  const [isVerifyingQuestions, setIsVerifyingQuestions] = useState(false);
-
+  const insets = useSafeAreaInsets();
+  const sweetAlert = useSweetAlert();
   const { signOut, userProfile } = useAuth();
+  const { darkMode: isDark, triggerHaptic } = useCustomization();
+
   const {
     unlockApp,
     forceUnlock,
@@ -292,24 +277,55 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     settings: securitySettings,
   } = useSecurity();
 
-  const [biometricReady, setBiometricReady] = useState(false);
+  // ── State ────────────────────────────────────────────────────────
+  const [pin, setPin] = useState('');
+  const [shakeAnim] = useState(new Animated.Value(0));
+  const [pinProgress] = useState(new Animated.Value(0));
+  const [isLoading, setIsLoading] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const [isLockedOut, setIsLockedOut] = useState(false);
 
+  const [biometricReady, setBiometricReady] = useState(false);
+  const [biometricInfo, setBiometricInfo] = useState<BiometricTypeInfo>({
+    name: 'Biometric',
+    icon: 'finger-print',
+    label: 'Biometric',
+  });
+
+  // Forgot PIN state
+  const [showForgotPin, setShowForgotPin] = useState(false);
+  const [securityQuestions, setSecurityQuestions] = useState<SecurityQuestion[]>([]);
+  const [verifyAnswers, setVerifyAnswers] = useState(['', '', '']);
+  const [hasSecurityQuestions, setHasSecurityQuestions] = useState(false);
+  const [isVerifyingQuestions, setIsVerifyingQuestions] = useState(false);
+
+  // ── Refs ─────────────────────────────────────────────────────────
+  const isMounted = useRef(true);
+  const autoPromptTimer = useRef<NodeJS.Timeout | null>(null);
+  const unlockInProgress = useRef(false);
+  const hasAutoPrompted = useRef(false);
+  const handleBiometricAuthRef = useRef<(() => Promise<void>) | null>(null);
+  const lastUnlockAttemptRef = useRef(0);
+
+  const hasBiometric = biometricReady;
+  const hasPin = !!securitySettings?.isPinEnabled || getAvailableAuthMethods().hasPin;
+
+  const userName = userProfile?.fullName || 'Welcome Back';
+  const userAvatar = userProfile?.avatar || '👶';
+
+  // ── biometricReady refresh ───────────────────────────────────────
   const refreshBiometricReady = useCallback(async () => {
+    let enabledFromStorage = false;
     try {
       const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
-      const enabledFromStorage = stored === 'true';
-      setBiometricReady(
-        !!isBiometricHardwareAvailable &&
-        !!isBiometricEnrolled &&
-        (isBiometricEnabled === true || enabledFromStorage),
-      );
-    } catch {
-      setBiometricReady(
-        !!isBiometricHardwareAvailable &&
-        !!isBiometricEnrolled &&
-        !!isBiometricEnabled,
-      );
-    }
+      enabledFromStorage = stored === 'true';
+    } catch {}
+    if (!isMounted.current) return;
+    setBiometricReady(
+      !!isBiometricHardwareAvailable &&
+      !!isBiometricEnrolled &&
+      (isBiometricEnabled === true || enabledFromStorage),
+    );
   }, [isBiometricHardwareAvailable, isBiometricEnrolled, isBiometricEnabled]);
 
   useEffect(() => {
@@ -323,69 +339,53 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }, [refreshBiometricReady, refreshBiometricStatus]),
   );
 
-  const biometricAvailable = biometricReady;
-  const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
-  const insets = useSafeAreaInsets();
-  const sweetAlert = useSweetAlert();
-
-  const hasBiometric = biometricReady;
-  const hasPin = !!securitySettings?.isPinEnabled || getAvailableAuthMethods().hasPin;
-
-  const userName = userProfile?.fullName || 'Welcome Back';
-  const userAvatar = userProfile?.avatar || '👶';
-
-  const isMounted = useRef(true);
-  const autoPromptTimer = useRef<NodeJS.Timeout | null>(null);
-  const unlockInProgress = useRef(false);
-  const hasAutoPrompted = useRef(false);
-  const handleBiometricAuthRef = useRef<(() => Promise<void>) | null>(null);
-  const lastUnlockAttemptRef = useRef<number>(0);
-
-  const dismissLockScreen = useCallback(() => {
-    setTimeout(() => {
-      try {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Main' as never }],
-        });
-      } catch {
-        navigation.replace('Main' as never);
-      }
-    }, 250);
-  }, [navigation]);
-
-  // ── Canonical sign-out (mirrors MoreScreen's confirmLogout) ──────
-  const performSignOut = useCallback(async () => {
-    try {
-      triggerHaptic('medium');
-      // Clear the lock flag so the app doesn't re-lock on next cold start
-      await AsyncStorage.setItem('littleloom_security_lock', 'false');
-      await AsyncStorage.multiRemove([
-        'littleloom_nav_state_v4',
-        '@littleloom_nav_state_v4',
-        'littleloom_last_auth_state',
-        'littleloom_security_lock',
-      ]);
-      await signOut();
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' as never }],
-      });
-      sweetAlert.success('Signed Out', 'You have been signed out successfully');
-    } catch (error) {
-      console.error('Sign out error:', error);
-      try {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' as never }],
-        });
-      } catch (navError) {
-        console.error('Navigation reset error:', navError);
-      }
-      sweetAlert.error('Error', 'Failed to sign out. Please try again.');
+  // ── Detect biometric type (context-first, then platform-aware) ──
+  useEffect(() => {
+    const contextName = getBiometricTypeName?.();
+    const contextIcon = getBiometricIcon?.();
+    if (contextName && contextName !== 'Biometric') {
+      setBiometricInfo({ name: contextName, icon: contextIcon || 'finger-print', label: contextName });
+      return;
     }
-  }, [signOut, triggerHaptic, navigation, sweetAlert]);
+    (async () => {
+      try {
+        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+        if (isMounted.current) setBiometricInfo(getBiometricInfo(types));
+      } catch {}
+    })();
+  }, [getBiometricTypeName, getBiometricIcon]);
 
+  // ── Lifecycle ────────────────────────────────────────────────────
+  useEffect(() => {
+    isMounted.current = true;
+    resetUnlockLock();
+    hasAutoPrompted.current = false;
+    unlockInProgress.current = false;
+    lastUnlockAttemptRef.current = 0;
+    return () => {
+      isMounted.current = false;
+      if (autoPromptTimer.current) clearTimeout(autoPromptTimer.current);
+    };
+  }, [resetUnlockLock]);
+
+  // ── Load security questions once ─────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const questionsStr = await AsyncStorage.getItem('littleloom_security_questions');
+        if (questionsStr) {
+          const parsed = JSON.parse(questionsStr);
+          if (isMounted.current) {
+            setSecurityQuestions(parsed);
+            setHasSecurityQuestions(parsed.length > 0);
+          }
+        }
+      } catch {}
+    })();
+    refreshBiometricStatus();
+  }, [refreshBiometricStatus]);
+
+  // ── Back-handler ─────────────────────────────────────────────────
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!isLockedOut) return true;
@@ -394,136 +394,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     return () => backHandler.remove();
   }, [isLockedOut]);
 
-  useEffect(() => {
-    loadSecurityQuestions();
-    refreshBiometricStatus();
-  }, [refreshBiometricStatus]);
-
-  const loadSecurityQuestions = async () => {
-    try {
-      const questionsStr = await AsyncStorage.getItem('littleloom_security_questions');
-      if (questionsStr) {
-        const parsed = JSON.parse(questionsStr);
-        setSecurityQuestions(parsed);
-        setHasSecurityQuestions(true);
-      }
-    } catch (error) {
-      console.log('No security questions available');
-    }
-  };
-
-  const verifySecurityAnswers = async () => {
-    if (verifyAnswers.some(a => a.trim().length === 0)) {
-      sweetAlert.warning('Incomplete', 'Please answer all questions');
-      return;
-    }
-
-    setIsVerifyingQuestions(true);
-    try {
-      const allCorrect = await Promise.all(
-        securityQuestions.map(async (sq, i) => {
-          const hashed = await hashAnswer(verifyAnswers[i]);
-          return hashed === sq.answerHash;
-        })
-      );
-
-      if (allCorrect.every(Boolean)) {
-        triggerHaptic('success');
-
-        // 1. User proved identity via security questions. Nuke the old PIN
-        //    so SecurityCenter's `create` flow doesn't need it.
-        try {
-          await clearPinOnly();
-        } catch (clearErr) {
-          if (__DEV__) console.warn('[SecurityLock] clearPinOnly failed:', clearErr);
-        }
-
-        // 2. Mark the app unlocked in storage AND state so nothing
-        //    re-routes us back to SecurityLock.
-        try {
-          await forceUnlock?.();
-          await AsyncStorage.setItem('littleloom_security_lock', 'false');
-          await AsyncStorage.setItem('littleloom_last_active', Date.now().toString());
-        } catch {}
-
-        setShowForgotPin(false);
-        setVerifyAnswers(['', '', '']);
-        sweetAlert.success('Verified!', 'Set a new PIN to continue.');
-
-        // 3. Replace the whole nav stack: Main is the base, SecurityCenter
-        //    is pushed on top in reset mode. When the user finishes there,
-        //    the success button does a final `reset({ Main })` and lands
-        //    them cleanly on Home — never back here.
-        setTimeout(() => {
-          try {
-            navigation.reset({
-              index: 0,
-              routes: [
-                { name: 'Main' as never },
-                {
-                  name: 'SecurityCenter' as never,
-                  params: { mode: 'reset', fromForgotPassword: true },
-                },
-              ],
-            });
-          } catch (err) {
-            if (__DEV__) console.warn('[SecurityLock] nav reset failed:', err);
-            // Fallback: just go to SecurityCenter on top of current stack.
-            navigation.navigate('SecurityCenter' as never, {
-              mode: 'reset',
-              fromForgotPassword: true,
-            } as never);
-          }
-        }, 900);
-      } else {
-        triggerHaptic('error');
-        sweetAlert.error('Incorrect', 'One or more answers are wrong. Try again.');
-        setVerifyAnswers(['', '', '']);
-      }
-    } finally {
-      setIsVerifyingQuestions(false);
-    }
-  };
-
-  useEffect(() => {
-    isMounted.current = true;
-    resetUnlockLock();
-    hasAutoPrompted.current = false;
-    unlockInProgress.current = false;
-    lastUnlockAttemptRef.current = 0;
-
-    return () => {
-      isMounted.current = false;
-      hasAutoPrompted.current = false;
-      if (autoPromptTimer.current) {
-        clearTimeout(autoPromptTimer.current);
-      }
-    };
-  }, [resetUnlockLock]);
-
-  const bailOutChecked = useRef(false);
-  useEffect(() => {
-    if (bailOutChecked.current) return;
-    if (isLoading) return;
-    // Wait for biometric detection to settle before concluding "no auth".
-    // biometricReady starts false and flips to true once storage + hardware
-    // checks complete; a synchronous bailout here would race that.
-    if (!biometricReady && isBiometricHardwareAvailable !== false) return;
-    bailOutChecked.current = true;
-
-    const hasAnyAuthMethod = hasPin || hasBiometric;
-    if (hasAnyAuthMethod) return;
-
-    console.log('[SecurityLock] No auth method configured — force-unlocking');
-    (async () => {
-      try {
-        await forceUnlock?.();
-        await AsyncStorage.removeItem('littleloom_security_lock');
-      } catch {}
-      dismissLockScreen();
-    })();
-  }, [biometricReady, hasPin, hasBiometric, isLoading, forceUnlock, dismissLockScreen]);
-
+  // ── PIN animation ────────────────────────────────────────────────
   useEffect(() => {
     Animated.spring(pinProgress, {
       toValue: pin.length,
@@ -533,49 +404,15 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }).start();
   }, [pin]);
 
+  // ── Auto-prompt biometrics ───────────────────────────────────────
   useEffect(() => {
-    // Prefer the context's platform-aware resolved name/icon. Fall back to
-    // local detection only if the context hasn't resolved yet.
-    const contextName = getBiometricTypeName?.();
-    const contextIcon = getBiometricIcon?.();
-    if (contextName && contextName !== 'Biometric') {
-      setBiometricInfo({
-        name: contextName,
-        icon: contextIcon || 'finger-print',
-        label: contextName,
-      });
-    }
-    const detectBiometricType = async () => {
-      try {
-        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-        setBiometricInfo(getBiometricInfo(types));
-      } catch (error) {
-        console.error('Error detecting biometric type:', error);
-      }
-    };
-    detectBiometricType();
-  }, [getBiometricTypeName, getBiometricIcon]);
-
-  useEffect(() => {
-    if (!biometricAvailable) return;
+    if (!hasBiometric) return;
     if (!isBiometricHardwareAvailable) return;
     if (isLockedOut) return;
+    if (showForgotPin) return;
     if (unlockInProgress.current) return;
 
-    const unsubscribe = navigation.addListener('focus', () => {
-      hasAutoPrompted.current = false;
-      refreshBiometricStatus();
-    });
-
-    if (autoPromptTimer.current) {
-      clearTimeout(autoPromptTimer.current);
-    }
-
-    // Longer initial delay on cold start so the screen has a chance to
-    // animate in and the OS face/fingerprint sheet doesn't cover the
-    // splash transition. On warm focus (returning to a locked screen
-    // from another screen) 1200ms is fine.
-    const initialDelay = 1800;
+    if (autoPromptTimer.current) clearTimeout(autoPromptTimer.current);
 
     autoPromptTimer.current = setTimeout(() => {
       if (
@@ -583,36 +420,64 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         !unlockInProgress.current &&
         !isLockedOut &&
         !hasAutoPrompted.current &&
+        !showForgotPin &&
         handleBiometricAuthRef.current
       ) {
         hasAutoPrompted.current = true;
         handleBiometricAuthRef.current();
       }
-    }, initialDelay);
+    }, 1800);
 
     return () => {
-      unsubscribe();
-      if (autoPromptTimer.current) {
-        clearTimeout(autoPromptTimer.current);
-      }
+      if (autoPromptTimer.current) clearTimeout(autoPromptTimer.current);
     };
-  }, [
-    biometricAvailable,
-    isBiometricHardwareAvailable,
-    isLockedOut,
-    navigation,
-    refreshBiometricStatus,
-  ]);
+  }, [hasBiometric, isBiometricHardwareAvailable, isLockedOut, showForgotPin]);
 
+  // ── Reset state on focus ─────────────────────────────────────────
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
+    const unsub = navigation.addListener('focus', () => {
       hasAutoPrompted.current = false;
       setShowForgotPin(false);
       setVerifyAnswers(['', '', '']);
       refreshBiometricStatus();
+      refreshBiometricReady();
     });
-    return unsubscribe;
-  }, [navigation, refreshBiometricStatus]);
+    return unsub;
+  }, [navigation, refreshBiometricStatus, refreshBiometricReady]);
+
+  // ── Bail-out if no security is configured ───────────────────────
+  const bailOutChecked = useRef(false);
+  useEffect(() => {
+    if (bailOutChecked.current) return;
+    if (isLoading) return;
+    if (!biometricReady && isBiometricHardwareAvailable !== false) return;
+    bailOutChecked.current = true;
+
+    if (hasPin || hasBiometric) return;
+
+    (async () => {
+      try {
+        await forceUnlock?.();
+        await AsyncStorage.removeItem('littleloom_security_lock');
+      } catch {}
+      try {
+        navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+      } catch {
+        navigation.replace('Main' as never);
+      }
+    })();
+  }, [biometricReady, hasPin, hasBiometric, isLoading, forceUnlock, navigation, isBiometricHardwareAvailable]);
+
+  // ── Helpers ──────────────────────────────────────────────────────
+  const dismissLockScreen = useCallback(() => {
+    setTimeout(() => {
+      try {
+        navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+      } catch {
+        navigation.replace('Main' as never);
+      }
+    }, 250);
+  }, [navigation]);
 
   const shake = useCallback(() => {
     triggerHaptic('error');
@@ -625,6 +490,28 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     ]).start();
   }, [shakeAnim, triggerHaptic]);
 
+  const performSignOut = useCallback(async () => {
+    try {
+      triggerHaptic('medium');
+      await AsyncStorage.setItem('littleloom_security_lock', 'false');
+      await AsyncStorage.multiRemove([
+        'littleloom_nav_state_v4',
+        '@littleloom_nav_state_v4',
+        'littleloom_last_auth_state',
+        'littleloom_security_lock',
+      ]);
+      await signOut();
+      navigation.reset({ index: 0, routes: [{ name: 'Login' as never }] });
+      sweetAlert.success('Signed Out', 'You have been signed out successfully');
+    } catch (error) {
+      console.error('Sign out error:', error);
+      try {
+        navigation.reset({ index: 0, routes: [{ name: 'Login' as never }] });
+      } catch {}
+      sweetAlert.error('Error', 'Failed to sign out. Please try again.');
+    }
+  }, [signOut, triggerHaptic, navigation, sweetAlert]);
+
   const handleLockout = useCallback(() => {
     setIsLockedOut(true);
     triggerHaptic('error');
@@ -632,18 +519,17 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       'Too Many Attempts',
       'For security purposes, you need to sign out and sign in again.',
       async () => {
-        try {
-          await forceUnlock?.();
-        } catch {}
+        try { await forceUnlock?.(); } catch {}
         await performSignOut();
       },
       undefined,
       'Sign Out',
       'Cancel',
-      true
+      true,
     );
   }, [performSignOut, forceUnlock, triggerHaptic, sweetAlert]);
 
+  // ── PIN flow ─────────────────────────────────────────────────────
   const handlePinComplete = useCallback(
     async (completedPin: string) => {
       if (isLockedOut || unlockInProgress.current) return;
@@ -654,23 +540,18 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
       try {
         const success = await unlockApp('pin', completedPin);
-
         if (!success) {
           const newAttempts = attempts + 1;
           setAttempts(newAttempts);
           shake();
           setPin('');
-
           if (newAttempts >= MAX_ATTEMPTS) {
             handleLockout();
           } else {
             const remaining = MAX_ATTEMPTS - newAttempts;
             if (remaining <= 2) {
               triggerHaptic('warning');
-              sweetAlert.warning(
-                'Incorrect PIN',
-                `${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
-              );
+              sweetAlert.warning('Incorrect PIN', `${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`);
             }
           }
         } else {
@@ -680,17 +561,15 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
           await forceUnlock?.();
           dismissLockScreen();
         }
-      } catch (error) {
+      } catch {
         shake();
         setPin('');
       } finally {
         unlockInProgress.current = false;
-        if (isMounted.current) {
-          setIsLoading(false);
-        }
+        if (isMounted.current) setIsLoading(false);
       }
     },
-    [unlockApp, shake, attempts, isLockedOut, handleLockout, triggerHaptic, userName, sweetAlert, forceUnlock, dismissLockScreen]
+    [unlockApp, shake, attempts, isLockedOut, handleLockout, triggerHaptic, userName, sweetAlert, forceUnlock, dismissLockScreen],
   );
 
   const handleNumberPress = useCallback(
@@ -699,13 +578,12 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         triggerHaptic('light');
         const newPin = pin + num;
         setPin(newPin);
-
         if (newPin.length === PIN_LENGTH) {
           setTimeout(() => handlePinComplete(newPin), 150);
         }
       }
     },
-    [pin, isLoading, isLockedOut, handlePinComplete, triggerHaptic]
+    [pin, isLoading, isLockedOut, handlePinComplete, triggerHaptic],
   );
 
   const handleDelete = useCallback(() => {
@@ -715,77 +593,53 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
   }, [pin.length, isLoading, isLockedOut, triggerHaptic]);
 
+  // ── Biometric flow ───────────────────────────────────────────────
   const handleBiometricAuth = useCallback(async () => {
     if (!isBiometricHardwareAvailable) {
-      sweetAlert.warning(
-        'Biometric Not Available',
-        'This device does not support biometric authentication.'
-      );
+      sweetAlert.warning('Biometric Not Available', 'This device does not support biometric authentication.');
       return;
     }
+    if (isLockedOut || isLoading || unlockInProgress.current) return;
 
     await refreshBiometricStatus();
 
-    // Read the authoritative source — AsyncStorage — instead of the React
-    // state variable, which can lag behind after the user enables biometrics
-    // on the setup screen and comes straight back to the lock screen.
     let enabledNow = false;
     try {
       enabledNow = (await AsyncStorage.getItem('littleloom_biometric_enabled')) === 'true';
     } catch {}
-    // Fall back to the context's value if storage read failed.
     if (!enabledNow && isBiometricEnabled) enabledNow = true;
 
     if (!enabledNow) {
-      sweetAlert.warning(
-        'Biometric Not Enabled',
-        'Please enable biometric unlock in Settings first.'
-      );
+      sweetAlert.warning('Biometric Not Enabled', 'Please enable biometric unlock in Settings first.');
       return;
     }
 
-    if (isLockedOut || isLoading || unlockInProgress.current) {
-      return;
-    }
-
-    let isEnrolled = isBiometricEnrolled;
+    let enrolledNow = isBiometricEnrolled;
     try {
-      const freshEnrolled = await LocalAuthentication.isEnrolledAsync();
-      if (freshEnrolled) isEnrolled = true;
-    } catch { /* noop */ }
-    if (!isEnrolled && Platform.OS === 'android') {
+      const fresh = await LocalAuthentication.isEnrolledAsync();
+      if (fresh) enrolledNow = true;
+    } catch {}
+    if (!enrolledNow && Platform.OS === 'android') {
       try {
-        const enrolled = await LocalAuthentication.isEnrolledAsync();
-        if (!enrolled) {
-          const testAuth = await LocalAuthentication.authenticateAsync({
-            promptMessage: 'Verify biometric setup',
-            disableDeviceFallback: true,
-            cancelLabel: 'Cancel',
-          });
-          if (testAuth.success || testAuth.error === 'user_cancel' || testAuth.error === 'system_cancel') {
-            isEnrolled = true;
-          }
-        } else {
-          isEnrolled = enrolled;
+        const testAuth = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Verify biometric setup',
+          disableDeviceFallback: true,
+          cancelLabel: 'Cancel',
+        });
+        if (testAuth.success || testAuth.error === 'user_cancel' || testAuth.error === 'system_cancel') {
+          enrolledNow = true;
         }
-      } catch (e) {
-        console.log('[SecurityLock] Enrollment check failed:', e);
-      }
+      } catch {}
     }
 
-    if (!isEnrolled) {
-      sweetAlert.warning(
-        'Biometric Not Set Up',
-        'Please set up biometrics in your device settings first.'
-      );
+    if (!enrolledNow) {
+      sweetAlert.warning('Biometric Not Set Up', 'Please set up biometrics in your device settings first.');
       refreshBiometricStatus();
       return;
     }
 
     const now = Date.now();
-    if (now - lastUnlockAttemptRef.current < 1500) {
-      return;
-    }
+    if (now - lastUnlockAttemptRef.current < 1500) return;
     lastUnlockAttemptRef.current = now;
 
     resetUnlockLock();
@@ -795,7 +649,6 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     try {
       triggerHaptic('medium');
       const success = await unlockApp('biometric');
-
       if (success) {
         triggerHaptic('success');
         sweetAlert.success('Welcome Back!', `Good to see you, ${userName}`);
@@ -806,43 +659,91 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         shake();
       }
     } catch (error) {
-      console.error('[SecurityLock] Biometric error:', error);
       if (error instanceof Error && error.message.includes('not_enrolled')) {
-        sweetAlert.warning(
-          'Biometric Not Set Up',
-          'Please set up biometrics in your device settings first.'
-        );
+        sweetAlert.warning('Biometric Not Set Up', 'Please set up biometrics in your device settings first.');
         refreshBiometricStatus();
       }
     } finally {
       unlockInProgress.current = false;
-      if (isMounted.current) {
-        setIsLoading(false);
-      }
+      if (isMounted.current) setIsLoading(false);
     }
   }, [
-    isBiometricHardwareAvailable,
-    isBiometricEnabled,
-    isBiometricEnrolled,
-    isLockedOut,
-    isLoading,
-    unlockApp,
-    resetUnlockLock,
-    shake,
-    triggerHaptic,
-    userName,
-    sweetAlert,
-    forceUnlock,
-    dismissLockScreen,
-    refreshBiometricStatus,
+    isBiometricHardwareAvailable, isBiometricEnabled, isBiometricEnrolled,
+    isLockedOut, isLoading, unlockApp, resetUnlockLock, shake, triggerHaptic,
+    userName, sweetAlert, forceUnlock, dismissLockScreen, refreshBiometricStatus,
   ]);
 
   useEffect(() => {
     handleBiometricAuthRef.current = handleBiometricAuth;
   }, [handleBiometricAuth]);
 
-  /* ─── Keypad ──────────────────────────────────────────────────────── */
+  // ── Forgot-PIN flow ─────────────────────────────────────────────
+  const verifySecurityAnswers = useCallback(async () => {
+    if (verifyAnswers.some((a) => a.trim().length === 0)) {
+      sweetAlert.warning('Incomplete', 'Please answer all questions');
+      return;
+    }
 
+    setIsVerifyingQuestions(true);
+    try {
+      const allCorrect = await Promise.all(
+        securityQuestions.map(async (sq, i) => {
+          const hashed = await hashAnswer(verifyAnswers[i]);
+          return hashed === sq.answerHash;
+        }),
+      );
+
+      if (allCorrect.every(Boolean)) {
+        triggerHaptic('success');
+
+        // Identity confirmed → clear old PIN so the reset flow is clean.
+        try { await clearPinOnly(); } catch {}
+        // Unlock so no re-lock race brings us back here.
+        try {
+          await forceUnlock?.();
+          await AsyncStorage.setItem('littleloom_security_lock', 'false');
+          await AsyncStorage.setItem('littleloom_last_active', Date.now().toString());
+        } catch {}
+
+        setShowForgotPin(false);
+        setVerifyAnswers(['', '', '']);
+        sweetAlert.success('Verified!', 'Set a new PIN to continue.');
+
+        setTimeout(() => {
+          try {
+            navigation.reset({
+              index: 0,
+              routes: [
+                { name: 'Main' as never },
+                {
+                  name: 'SecurityCenter' as never,
+                  params: { mode: 'reset', fromForgotPassword: true },
+                },
+              ],
+            });
+          } catch {
+            navigation.navigate('SecurityCenter' as never, {
+              mode: 'reset',
+              fromForgotPassword: true,
+            } as never);
+          }
+        }, 900);
+      } else {
+        triggerHaptic('error');
+        sweetAlert.error('Incorrect', 'One or more answers are wrong. Try again.');
+        setVerifyAnswers(['', '', '']);
+      }
+    } finally {
+      if (isMounted.current) setIsVerifyingQuestions(false);
+    }
+  }, [
+    verifyAnswers, securityQuestions, triggerHaptic, clearPinOnly, forceUnlock,
+    navigation, sweetAlert,
+  ]);
+
+  // ══════════════════════════════════════════════════════════════════
+  // RENDER — Keypad
+  // ══════════════════════════════════════════════════════════════════
   const renderKeypad = () => {
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
     const disabled = isLoading || isLockedOut || unlockInProgress.current;
@@ -869,28 +770,29 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             </TouchableOpacity>
           ))}
 
-          {/* Biometric slot */}
+          {/* Biometric slot (left) */}
           <TouchableOpacity
             style={[
               styles.keypadButton,
               styles.keypadButtonSpecial,
-              (disabled || !biometricAvailable) && styles.keypadButtonDisabled,
+              (disabled || !biometricReady) && styles.keypadButtonDisabled,
             ]}
             onPress={handleBiometricAuth}
-            disabled={disabled || !biometricAvailable}
+            disabled={disabled || !biometricReady}
+            activeOpacity={0.75}
           >
-            {biometricAvailable ? (
+            {biometricReady ? (
               <View style={styles.keypadBiometricWrap}>
                 <LinearGradient
-                  colors={[`${DS.primary}80`, `${DS.accent}80`]}
+                  colors={[`${DS.primary}CC`, `${DS.accent}CC`]}
                   style={styles.keypadBiometricBg}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                 />
-                <Ionicons name={biometricInfo.icon as any} size={26} color={DS.white} />
+                <Ionicons name={biometricInfo.icon as any} size={28} color={DS.white} />
               </View>
             ) : (
-              <View style={{ width: 26 }} />
+              <View style={{ width: 28 }} />
             )}
           </TouchableOpacity>
 
@@ -918,10 +820,11 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
             ]}
             onPress={handleDelete}
             disabled={pin.length === 0 || disabled}
+            activeOpacity={0.75}
           >
             <Ionicons
               name="backspace-outline"
-              size={24}
+              size={26}
               color={pin.length > 0 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.3)'}
             />
           </TouchableOpacity>
@@ -930,109 +833,182 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     );
   };
 
-  /* ─── Forgot PIN sheet ───────────────────────────────────────────── */
-
+  // ══════════════════════════════════════════════════════════════════
+  // RENDER — Forgot PIN sheet
+  // ══════════════════════════════════════════════════════════════════
   const renderForgotPin = () => {
     if (!showForgotPin) return null;
 
     return (
-      <AnimatedReanimated.View entering={FadeInUp.duration(300)} style={styles.forgotPinOverlay}>
+      <AnimatedReanimated.View
+        entering={FadeIn.duration(220)}
+        exiting={FadeOut.duration(160)}
+        style={styles.forgotPinOverlay}
+      >
         <BlurView
-          intensity={isDark ? 40 : 80}
-          style={styles.forgotPinContainer}
+          intensity={isDark ? 60 : 90}
+          style={StyleSheet.absoluteFill}
           tint={isDark ? 'dark' : 'light'}
+        />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.forgotPinKAV}
         >
-          <View style={styles.forgotPinHeader}>
-            <View style={styles.forgotPinIconWrap}>
-              <LinearGradient
-                colors={[DS.primary, DS.accent]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <Ionicons name="help-circle-outline" size={28} color={DS.white} />
-            </View>
-            <Text style={styles.forgotPinTitle}>Forgot Your PIN?</Text>
-            <Text style={styles.forgotPinSubtitle}>
-              Answer your security questions to reset
-            </Text>
-          </View>
+          <AnimatedReanimated.View
+            entering={SlideInDown.duration(320)}
+            exiting={SlideOutDown.duration(220)}
+            style={[
+              styles.forgotPinSheet,
+              {
+                backgroundColor: isDark ? 'rgba(20,20,32,0.96)' : 'rgba(255,255,255,0.97)',
+                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
+                paddingBottom: insets.bottom + 20,
+              },
+            ]}
+          >
+            <View style={styles.sheetHandle} />
 
-          {hasSecurityQuestions ? (
-            <>
-              {securityQuestions.map((sq, index) => (
-                <View key={index} style={styles.questionCard}>
-                  <Text style={styles.questionText}>
-                    {index + 1}. {sq.question}
-                  </Text>
-                  <View style={styles.answerInputWrap}>
-                    <TextInput
-                      style={styles.answerInput}
-                      placeholder="Your answer"
-                      placeholderTextColor="rgba(255,255,255,0.4)"
-                      value={verifyAnswers[index]}
-                      onChangeText={(text) => {
-                        const newAnswers = [...verifyAnswers];
-                        newAnswers[index] = text;
-                        setVerifyAnswers(newAnswers);
-                      }}
-                      autoCapitalize="none"
-                      editable={!isVerifyingQuestions}
-                    />
-                  </View>
-                </View>
-              ))}
-
-              <TouchableOpacity
-                style={styles.verifyButton}
-                onPress={verifySecurityAnswers}
-                disabled={isVerifyingQuestions}
-                activeOpacity={0.85}
-              >
+            <View style={styles.forgotPinHeader}>
+              <View style={styles.forgotPinIconWrap}>
                 <LinearGradient
                   colors={[DS.primary, DS.accent]}
-                  style={StyleSheet.absoluteFill}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
                 />
-                {isVerifyingQuestions ? (
-                  <ActivityIndicator color={DS.white} />
-                ) : (
-                  <>
-                    <Ionicons name="shield-checkmark" size={18} color={DS.white} />
-                    <Text style={styles.verifyButtonText}>Verify & Reset PIN</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </>
-          ) : (
-            <View style={styles.noQuestionsContainer}>
-              <Ionicons name="warning-outline" size={48} color={DS.warning} />
-              <Text style={styles.noQuestionsText}>
-                No security questions set up.{'\n'}
-                Please sign out and sign in again to reset your PIN.
+                <Ionicons name="shield-checkmark-outline" size={26} color={DS.white} />
+              </View>
+              <Text style={[styles.forgotPinTitle, { color: isDark ? DS.white : '#1c1917' }]}>
+                Reset Your PIN
+              </Text>
+              <Text style={[styles.forgotPinSubtitle, { color: isDark ? 'rgba(255,255,255,0.7)' : '#57534e' }]}>
+                Answer your security questions to prove it's you
               </Text>
             </View>
-          )}
 
-          <TouchableOpacity
-            style={styles.backToPinButton}
-            onPress={() => {
-              setShowForgotPin(false);
-              setVerifyAnswers(['', '', '']);
-            }}
-          >
-            <Ionicons name="arrow-back" size={16} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.backToPinText}>Back to PIN Entry</Text>
-          </TouchableOpacity>
-        </BlurView>
+            <ScrollView
+              style={styles.forgotPinScroll}
+              contentContainerStyle={styles.forgotPinScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {hasSecurityQuestions && securityQuestions.length > 0 ? (
+                <>
+                  {securityQuestions.map((sq, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.questionCard,
+                        {
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                          borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                        },
+                      ]}
+                    >
+                      <View style={styles.questionHeaderRow}>
+                        <View style={[styles.questionIndexBadge, { backgroundColor: `${DS.primary}20` }]}>
+                          <Text style={[styles.questionIndexText, { color: DS.primary }]}>
+                            {index + 1}
+                          </Text>
+                        </View>
+                        <Text style={[styles.questionText, { color: isDark ? DS.white : '#1c1917' }]}>
+                          {sq.question}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.answerInputWrap,
+                          {
+                            borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.7)',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="key-outline"
+                          size={16}
+                          color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+                          style={{ marginLeft: 12 }}
+                        />
+                        <TextInput
+                          style={[styles.answerInput, { color: isDark ? DS.white : '#1c1917' }]}
+                          placeholder="Your answer"
+                          placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'}
+                          value={verifyAnswers[index]}
+                          onChangeText={(text) => {
+                            const newAnswers = [...verifyAnswers];
+                            newAnswers[index] = text;
+                            setVerifyAnswers(newAnswers);
+                          }}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          editable={!isVerifyingQuestions}
+                          returnKeyType={index === securityQuestions.length - 1 ? 'done' : 'next'}
+                        />
+                      </View>
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    style={styles.verifyButton}
+                    onPress={verifySecurityAnswers}
+                    disabled={isVerifyingQuestions}
+                    activeOpacity={0.85}
+                  >
+                    <LinearGradient
+                      colors={[DS.primary, DS.accent]}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                    {isVerifyingQuestions ? (
+                      <ActivityIndicator color={DS.white} />
+                    ) : (
+                      <>
+                        <Ionicons name="shield-checkmark" size={18} color={DS.white} />
+                        <Text style={styles.verifyButtonText}>Verify & Reset PIN</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <View style={styles.noQuestionsContainer}>
+                  <View style={styles.noQuestionsIconWrap}>
+                    <Ionicons name="warning-outline" size={42} color={DS.warning} />
+                  </View>
+                  <Text style={[styles.noQuestionsTitle, { color: isDark ? DS.white : '#1c1917' }]}>
+                    No Security Questions
+                  </Text>
+                  <Text style={[styles.noQuestionsText, { color: isDark ? 'rgba(255,255,255,0.7)' : '#57534e' }]}>
+                    Security questions haven't been set up. Please sign out and sign in again to reset your PIN, or contact support.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.backToPinButton}
+              onPress={() => {
+                setShowForgotPin(false);
+                setVerifyAnswers(['', '', '']);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={16} color={isDark ? 'rgba(255,255,255,0.85)' : '#57534e'} />
+              <Text style={[styles.backToPinText, { color: isDark ? 'rgba(255,255,255,0.85)' : '#57534e' }]}>
+                Back to PIN Entry
+              </Text>
+            </TouchableOpacity>
+          </AnimatedReanimated.View>
+        </KeyboardAvoidingView>
       </AnimatedReanimated.View>
     );
   };
 
-  /* ─── Context ribbon ─────────────────────────────────────────────── */
-
-  const ribbon = (() => {
+  // ══════════════════════════════════════════════════════════════════
+  // RENDER — Context ribbon
+  // ══════════════════════════════════════════════════════════════════
+  const ribbon = useMemo(() => {
     if (isLockedOut) {
       return {
         icon: 'lock-closed' as const,
@@ -1088,23 +1064,21 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       label: 'Setup',
       text: 'Set up security in settings',
     };
-  })();
+  }, [isLockedOut, showForgotPin, attempts, hasBiometric, hasPin, biometricInfo]);
 
-  /* ─── Render ──────────────────────────────────────────────────────── */
-
+  // ══════════════════════════════════════════════════════════════════
+  // MAIN RENDER
+  // ══════════════════════════════════════════════════════════════════
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Aura gradient — matches app palette */}
       <LinearGradient
         colors={['#6366f1', '#8b5cf6', '#ec4899']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-
-      {/* Aura glows */}
       <LinearGradient
         colors={['rgba(255,255,255,0.22)', 'transparent']}
         style={styles.auraGlowTopLeft}
@@ -1120,15 +1094,19 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
         pointerEvents="none"
       />
 
-      <View
-        style={[
-          styles.content,
-          { paddingTop: insets.top + 30, paddingBottom: insets.bottom + 20 },
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 16 },
         ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* ── Header ── */}
-        <AnimatedReanimated.View entering={FadeInDown.duration(500).springify()} style={styles.header}>
-          {/* Avatar with animated gradient ring */}
+        {/* ── Header: avatar + greeting ── */}
+        <AnimatedReanimated.View
+          entering={FadeInDown.duration(500).springify()}
+          style={styles.header}
+        >
           <View style={styles.avatarRingWrap}>
             <View style={styles.avatarGlow} />
             <LinearGradient
@@ -1140,14 +1118,18 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
               <View style={styles.avatarInner}>
                 {typeof userAvatar === 'number' ? (
                   <Image source={userAvatar} style={styles.avatarImage} resizeMode="cover" />
-                ) : typeof userAvatar === 'string' && (userAvatar.startsWith('file://') || userAvatar.startsWith('http://') || userAvatar.startsWith('https://') || userAvatar.startsWith('data:')) ? (
+                ) : typeof userAvatar === 'string' && (
+                  userAvatar.startsWith('file://') ||
+                  userAvatar.startsWith('http://') ||
+                  userAvatar.startsWith('https://') ||
+                  userAvatar.startsWith('data:')
+                ) ? (
                   <Image source={{ uri: userAvatar }} style={styles.avatarImage} resizeMode="cover" />
                 ) : (
                   <Text style={styles.avatarText}>{userAvatar}</Text>
                 )}
               </View>
             </LinearGradient>
-            {/* Lock badge */}
             <View style={styles.lockBadge}>
               <Ionicons name="lock-closed" size={12} color={DS.white} />
             </View>
@@ -1165,42 +1147,52 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
           </Text>
         </AnimatedReanimated.View>
 
-        {/* ── Context Ribbon ── */}
-        <AnimatedReanimated.View entering={FadeInUp.delay(100).duration(400)} style={styles.ribbonWrap}>
-          <View style={styles.ribbon}>
-            <View style={[styles.ribbonIcon, { backgroundColor: `${ribbon.color}30` }]}>
-              <Ionicons name={ribbon.icon} size={16} color={DS.white} />
+        {/* ── Ribbon ── */}
+        {!showForgotPin && (
+          <AnimatedReanimated.View
+            entering={FadeInUp.delay(100).duration(400)}
+            style={styles.ribbonWrap}
+          >
+            <View style={styles.ribbon}>
+              <View style={[styles.ribbonIcon, { backgroundColor: `${ribbon.color}30` }]}>
+                <Ionicons name={ribbon.icon} size={16} color={DS.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.ribbonLabel}>{ribbon.label}</Text>
+                <Text style={styles.ribbonText} numberOfLines={1}>{ribbon.text}</Text>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.ribbonLabel}>{ribbon.label}</Text>
-              <Text style={styles.ribbonText} numberOfLines={1}>{ribbon.text}</Text>
-            </View>
-          </View>
-        </AnimatedReanimated.View>
+          </AnimatedReanimated.View>
+        )}
 
-        {/* ── Forgot PIN sheet ── */}
-        {showForgotPin && renderForgotPin()}
-
-        {/* ── Biometric button ── */}
+        {/* ── Biometric quick-action ── */}
         {!showForgotPin && hasBiometric && !isLockedOut && (
-          <AnimatedReanimated.View entering={FadeInUp.delay(150).springify()} style={styles.biometricSection}>
+          <AnimatedReanimated.View
+            entering={FadeInUp.delay(150).springify()}
+            style={styles.biometricSection}
+          >
             <PulsingBiometricRing
               icon={biometricInfo.icon}
-              isLoading={isLoading}
+              isLoading={isLoading && unlockInProgress.current}
               onPress={handleBiometricAuth}
-              disabled={isLoading || unlockInProgress.current}
+              disabled={isLoading || isLockedOut}
             />
             <Text style={styles.biometricLabel}>
-              {isLoading ? 'Authenticating...' : `Tap to use ${biometricInfo.name}`}
+              {isLoading && unlockInProgress.current
+                ? 'Authenticating…'
+                : `Tap to use ${biometricInfo.name}`}
             </Text>
           </AnimatedReanimated.View>
         )}
 
-        {/* ── PIN section ── */}
-        {!showForgotPin && hasPin && (
-          <AnimatedReanimated.View entering={FadeInUp.delay(200).springify()} style={styles.pinSection}>
+        {/* ── PIN dots + keypad ── */}
+        {!showForgotPin && hasPin && !isLockedOut && (
+          <AnimatedReanimated.View
+            entering={FadeInUp.delay(200).springify()}
+            style={styles.pinSection}
+          >
             <PinDots pin={pin} shakeAnim={shakeAnim} pinProgress={pinProgress} />
-            {isLoading && (
+            {isLoading && !unlockInProgress.current && (
               <ActivityIndicator size="small" color={DS.white} style={styles.loadingIndicator} />
             )}
             {renderKeypad()}
@@ -1209,7 +1201,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
         {/* ── No security configured ── */}
         {!showForgotPin && !hasBiometric && !hasPin && !isLockedOut && (
-          <AnimatedReanimated.View entering={FadeInUp.delay(200).springify()} style={styles.noSecurityContainer}>
+          <AnimatedReanimated.View
+            entering={FadeInUp.delay(200).springify()}
+            style={styles.noSecurityContainer}
+          >
             <View style={styles.noSecurityIconWrap}>
               <LinearGradient
                 colors={['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.08)']}
@@ -1220,16 +1215,12 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
               <Ionicons name="lock-open-outline" size={44} color={DS.white} />
             </View>
             <Text style={styles.noSecurityTitle}>No Security Enabled</Text>
-            <Text style={styles.noSecurityText}>
-              Tap below to unlock the app
-            </Text>
+            <Text style={styles.noSecurityText}>Tap below to unlock the app</Text>
             <TouchableOpacity
               style={styles.unlockButton}
               onPress={async () => {
                 await forceUnlock?.();
-                try {
-                  await AsyncStorage.removeItem('littleloom_security_lock');
-                } catch {}
+                try { await AsyncStorage.removeItem('littleloom_security_lock'); } catch {}
                 sweetAlert.success('Unlocked', 'Welcome back!');
                 dismissLockScreen();
               }}
@@ -1251,9 +1242,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
                 navigation.navigate('SecurityCenter', { mode: 'setup' });
               }}
             >
-              <Text style={styles.setupSecurityText}>
-                Set Up Security Now
-              </Text>
+              <Text style={styles.setupSecurityText}>Set Up Security Now</Text>
             </TouchableOpacity>
           </AnimatedReanimated.View>
         )}
@@ -1263,36 +1252,44 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
           <TouchableOpacity
             style={styles.forgotPinLink}
             onPress={() => {
+              triggerHaptic('light');
               setShowForgotPin(true);
               setPin('');
             }}
+            activeOpacity={0.7}
           >
             <Ionicons name="help-circle-outline" size={16} color="rgba(255,255,255,0.85)" />
             <Text style={styles.forgotPinLinkText}>Forgot PIN?</Text>
           </TouchableOpacity>
         )}
 
-        {/* ── Footer ── */}
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.emergencyButton}
-            onPress={() => {
-              sweetAlert.confirm(
-                'Sign Out',
-                'Are you sure you want to sign out? You will need to sign in again to access your account.',
-                () => { performSignOut(); },
-                undefined,
-                'Sign Out',
-                'Cancel',
-                true
-              );
-            }}
-          >
-            <Ionicons name="log-out-outline" size={16} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.emergencyText}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        {/* ── Sign-out footer ── */}
+        {!showForgotPin && (
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.emergencyButton}
+              onPress={() => {
+                sweetAlert.confirm(
+                  'Sign Out',
+                  'Are you sure you want to sign out? You will need to sign in again to access your account.',
+                  () => { performSignOut(); },
+                  undefined,
+                  'Sign Out',
+                  'Cancel',
+                  true,
+                );
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="log-out-outline" size={16} color="rgba(255,255,255,0.7)" />
+              <Text style={styles.emergencyText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* ── Forgot-PIN overlay ── */}
+      {showForgotPin && renderForgotPin()}
     </View>
   );
 }
@@ -1321,8 +1318,8 @@ const styles = StyleSheet.create({
     borderRadius: 180,
   },
 
-  content: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 24,
     alignItems: 'center',
   },
@@ -1330,7 +1327,7 @@ const styles = StyleSheet.create({
   /* Header */
   header: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   avatarRingWrap: {
     width: 92,
@@ -1338,7 +1335,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   avatarGlow: {
     position: 'absolute',
@@ -1397,7 +1394,7 @@ const styles = StyleSheet.create({
   /* Ribbon */
   ribbonWrap: {
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   ribbon: {
     flexDirection: 'row',
@@ -1435,7 +1432,7 @@ const styles = StyleSheet.create({
   biometricSection: {
     alignItems: 'center',
     marginBottom: 12,
-    marginTop: 6,
+    marginTop: 4,
   },
   biometricGlow: {
     position: 'absolute',
@@ -1468,7 +1465,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 18,
-    marginBottom: 24,
+    marginBottom: 20,
     height: 30,
     alignItems: 'center',
   },
@@ -1492,7 +1489,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     borderWidth: 2,
   },
-  loadingIndicator: { marginBottom: 12 },
+  loadingIndicator: { marginBottom: 10 },
 
   /* Keypad */
   keypadContainer: {
@@ -1541,9 +1538,9 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   keypadBiometricWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -1559,23 +1556,30 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 100,
   },
-  forgotPinContainer: {
-    position: 'absolute',
-    top: '12%',
-    left: 16,
-    right: 16,
-    bottom: '12%',
-    borderRadius: 28,
-    padding: 24,
-    overflow: 'hidden',
+  forgotPinKAV: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  forgotPinSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 10,
+    paddingHorizontal: 22,
+    maxHeight: '88%',
+    borderTopWidth: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.3,
-    shadowRadius: 40,
-    elevation: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: 'rgba(30,30,40,0.6)',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 24,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(150,150,150,0.35)',
+    alignSelf: 'center',
+    marginBottom: 16,
   },
   forgotPinHeader: {
     alignItems: 'center',
@@ -1593,36 +1597,65 @@ const styles = StyleSheet.create({
   forgotPinTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: DS.white,
     marginBottom: 6,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   forgotPinSubtitle: {
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 19,
-    color: 'rgba(255,255,255,0.75)',
+    paddingHorizontal: 10,
   },
-  questionCard: { marginBottom: 14 },
+  forgotPinScroll: {
+    maxHeight: 380,
+  },
+  forgotPinScrollContent: {
+    paddingBottom: 8,
+  },
+  questionCard: {
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  questionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  questionIndexBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  questionIndexText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
   questionText: {
+    flex: 1,
     fontSize: 13,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: 8,
+    lineHeight: 19,
   },
   answerInputWrap: {
-    borderRadius: 14,
-    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
   },
   answerInput: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 11,
+    fontSize: 14,
     fontWeight: '500',
-    color: DS.white,
   },
   verifyButton: {
     flexDirection: 'row',
@@ -1630,14 +1663,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     borderRadius: 16,
-    paddingVertical: 14,
-    marginTop: 16,
+    paddingVertical: 15,
+    marginTop: 8,
     overflow: 'hidden',
     shadowColor: DS.primary,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowRadius: 14,
+    elevation: 6,
   },
   verifyButtonText: {
     color: DS.white,
@@ -1650,25 +1683,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 16,
+    marginTop: 14,
     paddingVertical: 10,
   },
   backToPinText: {
     fontSize: 14,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
     textDecorationLine: 'underline',
   },
   noQuestionsContainer: {
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: 28,
+    paddingHorizontal: 8,
+  },
+  noQuestionsIconWrap: {
+    width: 76,
+    height: 76,
+    borderRadius: 24,
+    backgroundColor: `${DS.warning}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  noQuestionsTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   noQuestionsText: {
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 21,
-    marginTop: 14,
-    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 19,
+    paddingHorizontal: 12,
   },
 
   /* No security */

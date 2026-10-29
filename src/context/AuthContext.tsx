@@ -472,6 +472,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
+          secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
+          secureStorage.deleteItem('@littleloom_recent_pw_hashes'),
         ]);
 
         clearUserIdCache();
@@ -1778,6 +1780,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, message: 'No account found for this email address' };
       }
 
+      // ── RECENT-PASSWORD BLOCKLIST ─────────────────────────────────
+      // Refuse if the user is trying to reuse a password they changed
+      // in the last 3 successful resets. Backed by SecureStore so it
+      // survives app restarts but is wiped on signOut.
+      try {
+        const Crypto = require('expo-crypto');
+        const newHash = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          newPassword + 'littleloom_pw_salt_v1',
+        );
+        const recentRaw = await secureStorage.getItem('@littleloom_recent_pw_hashes');
+        const recentHashes: string[] = recentRaw ? JSON.parse(recentRaw) : [];
+        if (recentHashes.includes(newHash)) {
+          return {
+            success: false,
+            message: "You can't reuse one of your last 3 passwords. Choose a new one.",
+          };
+        }
+        // Save this password's hash AFTER a successful reset (below).
+        (resetPasswordWithPin as any)._pendingHash = newHash;
+      } catch {}
+
       const storedHash = await secureStorage.getItem(SECURE_KEYS.PIN_HASH);
       if (!storedHash) {
         return {
@@ -1815,6 +1839,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const payload = (data ?? {}) as { success?: boolean; message?: string };
         if (payload.success === true) {
+          // Persist the new hash for the recent-passwords blocklist.
+          try {
+            const pendingHash = (resetPasswordWithPin as any)._pendingHash as string | undefined;
+            if (pendingHash) {
+              const recentRaw = await secureStorage.getItem('@littleloom_recent_pw_hashes');
+              const recentHashes: string[] = recentRaw ? JSON.parse(recentRaw) : [];
+              const next = [pendingHash, ...recentHashes.filter((h) => h !== pendingHash)].slice(0, 3);
+              await secureStorage.setItem('@littleloom_recent_pw_hashes', JSON.stringify(next));
+            }
+          } catch {}
           return {
             success: true,
             message:
