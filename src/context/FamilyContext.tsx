@@ -630,12 +630,26 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // ── Realtime profile-change subscription ──────────────────────
   // Any member editing their name / avatar / bio re-loads the family
   // so the member card, EditGuardian, and chat headers stay fresh.
+  //
+  // Role changes need a slightly longer debounce because the DB
+  // write that synchronises `babies.parent1_id` (in
+  // updateGuardianProfile) races with the `family_members.role`
+  // write. We give it 250 ms so the reconcile step has landed.
   useEffect(() => {
     if (!currentBaby?.id) return;
-    const unsub = subscribeToProfileChanges(() => {
-      loadFamilyRef.current?.().catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = subscribeToProfileChanges((payload) => {
+      const isRoleChange = Array.isArray(payload?.fields) && payload.fields.includes('role');
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        loadFamilyRef.current?.().catch(() => {});
+      }, isRoleChange ? 250 : 0);
     });
-    return unsub;
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsub();
+    };
   }, [currentBaby?.id]);
 
   useEffect(() => {
@@ -1740,10 +1754,47 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 };
 
-export const useFamily = () => {
+/**
+ * Safe hook — never throws. Returns safe defaults if the provider
+ * isn't mounted (early bootstrap, unit tests, or onboarding before
+ * FamilyProvider hydrates). This mirrors the pattern used by
+ * `useActivity` and prevents `useFamily must be used within
+ * FamilyProvider` crashes during hot-reload or route transitions.
+ */
+export const useFamily = (): FamilyContextType => {
   const context = useContext(FamilyContext);
-  if (!context) throw new Error('useFamily must be used within FamilyProvider');
-  return context;
+  if (context) return context;
+
+  // Fallback — inert, but stable-shape so destructuring never crashes.
+  return {
+    isLoading: false,
+    members: [],
+    parent1: null,
+    parent2: null,
+    guardians: [],
+    pendingInvites: [],
+    loadFamily: async () => {},
+    refreshFamily: async () => {},
+    inviteMember: async () => false,
+    removeMember: async () => false,
+    getEffectivePermissions: () => ROLE_PERMISSIONS[UserRole.VIEWER],
+    updateParent2Profile: async () => false,
+    updateGuardianProfile: async () => false,
+    resendInvite: async () => false,
+    cancelInvite: async () => false,
+    refreshMemberStatus: async () => {},
+    generateInviteCode: async () => ({ code: '', success: false, message: 'Not ready' }),
+    getActiveInviteCodes: async () => [],
+    revokeInviteCode: async () => false,
+    getCurrentBaby: () => null,
+    getBabyId: () => null,
+    validateInviteCode: async () => ({ valid: false, data: null, message: 'Not ready' }),
+    useInviteCode: async () => ({ success: false, message: 'Not ready' }),
+    markSignupComplete: async () => ({ success: false, message: 'Not ready' }),
+    getInviteCodeById: async () => null,
+    recoverPartialSignup: async () => ({ success: false, message: 'Not ready' }),
+    getPartialSignupInfo: async () => ({ exists: false }),
+  };
 };
 
 export default FamilyProvider;

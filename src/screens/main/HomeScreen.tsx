@@ -56,6 +56,7 @@ import { useCommunity } from '../../context/CommunityContext';
 import { useAudio, SOUND_TRACKS } from '../../context/AudioContext';
 import { useMedia } from '../../context/MediaContext';
 import { useFamilyChat } from '../../context/FamilyChatContext';
+import { useFamily } from '../../context/FamilyContext';
 import { useSafety } from '../../context/SafetyContext';
 import { useApp } from '../../context/AppContext';
 
@@ -1746,11 +1747,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     getGrowthData,
   } = useBaby();
 
-const {
-  entries: trackerEntriesRaw,
-  refreshEntries: refreshTrackerEntries,
-  isLoading: activitiesLoading,
-} = useTracker();
+  // ── Family members (needed by RecentTimeline for attribution) ──
+  // This is a REAL hook call, not a comment. It supplies `members`
+  // to `<RecentTimeline members={members} />` and to
+  // `todayContributors`, both of which broke with
+  // `ReferenceError: Property 'members' doesn't exist` when this
+  // line was accidentally left inside a JSDoc block.
+  const { members } = useFamily();
+
+  const {
+    entries: trackerEntriesRaw,
+    refreshEntries: refreshTrackerEntries,
+    isLoading: activitiesLoading,
+  } = useTracker();
 
 // NOTE: `trackerEntries` memo has been moved BELOW the `displayedBaby`
 // declaration (see further down). It cannot be defined here because

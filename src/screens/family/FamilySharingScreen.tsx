@@ -850,7 +850,12 @@ const AccessTab = ({
                       )}
                     </View>
                     <View style={[styles.permRolePill, { backgroundColor: `${roleCfg.color}15` }]}>
-                      <Text style={[styles.permRoleText, { color: roleCfg.color }]}>{roleCfg.badge}</Text>
+                      <Text style={[styles.permRoleText, { color: roleCfg.color }]}>
+                        {getMemberDisplayLabel({
+                          role: member.role,
+                          relationship: member.relationship,
+                        })}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -1087,9 +1092,18 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
   const isPrimaryParent = useMemo(() => {
     if (!currentUserId) return false;
-    return parent1?.id === currentUserId || userProfile?.role === 'parent1' || profile?.role === 'parent1' ||
-      members.some(m => m.role === UserRole.PARENT_1 && (m.id === currentUserId || m.userId === currentUserId));
-  }, [parent1, members, currentUserId, userProfile, profile]);
+    // `parent1` is a `FamilyMember` — its `id` is the `family_members` row id,
+    // NOT the profile UUID. Match against BOTH `id` and `userId`.
+    if (parent1 && (parent1.id === currentUserId || (parent1 as any).userId === currentUserId)) {
+      return true;
+    }
+    // Fall back to scanning `members` for a PARENT_1 row that belongs to me.
+    return members.some(
+      (m) =>
+        m.role === UserRole.PARENT_1 &&
+        (m.id === currentUserId || (m as any).userId === currentUserId),
+    );
+  }, [parent1, members, currentUserId]);
 
   const hasCoParent = useMemo(() => members.some(m => m.role === UserRole.PARENT_2) || !!parent2, [members, parent2]);
   const familyCount = useMemo(() => members.length, [members]);
@@ -1162,14 +1176,18 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
   const handleRemoveMember = () => {
     if (!selectedMember) return;
-    if (selectedMember.role === UserRole.PARENT_1) {
-      sweetAlert.alert('Cannot Remove', 'Primary Parent cannot be removed', 'warning');
-      return;
-    }
-    if (selectedMember.id === currentUserId) {
+    // Self-removal guard — must match on userId (profile UUID), not
+    // family_members.id, otherwise this guard silently passes and
+    // the real check has to fire inside FamilyContext.removeMember.
+    const memberUserId = (selectedMember as any).userId || selectedMember.id;
+    if (memberUserId === currentUserId || selectedMember.id === currentUserId) {
       sweetAlert.alert('Cannot Remove', 'You cannot remove yourself', 'warning');
       return;
     }
+    // Original Primary Parent protection. Only the original owner may
+    // be removed by someone they themselves promoted — this is
+    // enforced in `FamilyContext.removeMember` where the `addedBy`
+    // graph is available. Do NOT block at the UI layer.
     sweetAlert.confirm('Remove Family Member', `Remove ${selectedMember.fullName}?`, () => {
       triggerHaptic('success');
       removeMember(selectedMember.id);
@@ -1237,7 +1255,14 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
   /* ─── Render helpers ────────────────────────────────────────────── */
   const renderMemberSection = (title: string, data: FamilyMember[], emptyText?: string) => {
-    const unique = data.filter((m, i, arr) => i === arr.findIndex(x => x.id === m.id));
+    // De-dupe by `userId` (profile UUID) — this is stable across role
+    // changes. `id` (family_members row id) can change if a member is
+    // removed and re-invited, so the old check sometimes showed the
+    // same person twice.
+    const unique = data.filter(
+      (m, i, arr) =>
+        i === arr.findIndex((x) => (x.userId || x.id) === (m.userId || m.id)),
+    );
     return (
       <View style={{ marginBottom: DS.space.lg }}>
         <SectionHeader title={title} subtitle={`${unique.length} ${unique.length === 1 ? 'member' : 'members'}`} icon="people-outline" />
@@ -1514,7 +1539,12 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               />
               <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.modalRoleBadge}>
                 <Ionicons name={ROLE_CONFIG[selectedMember.role].icon} size={13} color={DS.white} />
-                <Text style={styles.modalRoleText}>{ROLE_CONFIG[selectedMember.role].label}</Text>
+                <Text style={styles.modalRoleText}>
+                  {getMemberDisplayLabel({
+                    role: selectedMember.role,
+                    relationship: selectedMember.relationship,
+                  })}
+                </Text>
               </LinearGradient>
             </View>
 
@@ -1534,7 +1564,10 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               <View style={[styles.detailRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
                 <Ionicons name="people" size={18} color={DS.warning} />
                 <Text style={[styles.detailText, { color: isDark ? DS.white : DS.gray900 }]}>
-                  {selectedMember.relationship || 'Family Member'}
+                  {getMemberDisplayLabel({
+                    role: selectedMember.role,
+                    relationship: selectedMember.relationship,
+                  })}
                 </Text>
               </View>
             </View>
