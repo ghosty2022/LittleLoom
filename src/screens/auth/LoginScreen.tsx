@@ -1007,7 +1007,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         showSuccess(`Welcome${userName !== 'there' ? `, ${userName}` : ''}!`, 'Biometric login successful');
         forceUnlock().catch(() => {});
         return true;
-      } else if (!success) {
+      } else {
         showError('Biometric Failed', 'Please use your password');
         loginAttempted.current = false;
         return false;

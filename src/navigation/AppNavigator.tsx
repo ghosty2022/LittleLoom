@@ -62,7 +62,7 @@ import QRScannerScreen from '../screens/tracking/QRScannerScreen';
 import { TimelinePicker } from '../components/trackers/TimelinePicker';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
-import { InlineSpinner } from '../components/UniversalSpinner';
+import { InlineSpinner, UniversalSpinner } from '../components/UniversalSpinner';
 import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
 import { RootStackParamList, MainTabParamList, NavigationState } from '../types/navigation';
