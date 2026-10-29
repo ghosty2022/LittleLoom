@@ -871,10 +871,14 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const handleDeleteChat = async () => {
     if (!selectedChat) return;
     HAPTIC_WARNING();
-    await deleteChat(selectedChat.id);
-    setShowOptionsModal(false);
-    setSelectedChat(null);
-    showSweetAlert('success', 'Deleted', 'Chat has been removed');
+    try {
+      await deleteChat(selectedChat.id);
+      setShowOptionsModal(false);
+      setSelectedChat(null);
+      showSweetAlert('success', 'Deleted', 'Chat has been removed permanently');
+    } catch {
+      showSweetAlert('error', 'Error', 'Failed to delete chat. Please try again.');
+    }
   };
 
   const handlePinChat = async () => {
@@ -1131,9 +1135,19 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
 
             <OptionRow icon={selectedChat?.isPinned ? 'pin-off' : 'pin'} label={selectedChat?.isPinned ? 'Unpin Chat' : 'Pin Chat'} color={DS.primary} onPress={handlePinChat} isDark={isDark} />
             <OptionRow icon={selectedChat?.isMuted ? 'volume-high' : 'volume-mute'} label={selectedChat?.isMuted ? 'Unmute' : 'Mute'} color={DS.warning} onPress={handleMuteChat} isDark={isDark} />
-            {selectedChat?.type === 'direct' && (
-              <OptionRow icon="trash" label="Delete Chat" color={DS.danger} onPress={handleDeleteChat} isDark={isDark} />
-            )}
+            {/* Delete is available for every chat the user can see.
+                • Direct chats: any participant can delete (per-user hide +
+                  physical delete).
+                • Group chats: any member can hide-for-me; only Parent 1
+                  can physically delete for everyone (handled inside
+                  deleteChat). */}
+            <OptionRow
+              icon="trash"
+              label={selectedChat?.type === 'direct' ? 'Delete Chat' : 'Delete for Me'}
+              color={DS.danger}
+              onPress={handleDeleteChat}
+              isDark={isDark}
+            />
           </View>
         </TouchableOpacity>
       </Modal>

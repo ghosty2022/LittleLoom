@@ -71,7 +71,12 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const currentUserId = userProfile?.id || '';
 
   const { getUserById } = useCommunity();
-  const { messages } = useFamilyChat() as any;
+  const {
+    messages,
+    isChatHidden,
+    deleteChat,
+    subscribeToChatMessages,
+  } = useFamilyChat() as any;
   // Community DMs live in the shared family_messages table keyed by
   // the direct chat id "direct_<idA>_<idB>". Build the list from
   // whatever direct chats the current user has.
@@ -82,6 +87,8 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     const allMsgs = (messages ?? {}) as Record<string, FamilyMessage[]>;
     Object.keys(allMsgs).forEach((chatKey) => {
       if (!chatKey.startsWith('direct_')) return;
+      // Deleted-for-me chats must never reappear.
+      if (isChatHidden(chatKey)) return;
       const parts = chatKey.replace('direct_', '').split('_');
       if (!parts.includes(meId)) return;
       const otherId = parts.find((p) => p !== meId);
@@ -104,7 +111,29 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     return out.sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
-  }, [messages, userProfile?.id, getUserById]);
+  }, [messages, userProfile?.id, getUserById, isChatHidden]);
+  // Real-time: refresh the list whenever any direct chat receives a
+  // message. Also re-runs after a delete so a hidden chat disappears
+  // immediately even if a stray broadcast arrives.
+  const [listTick, setListTick] = useState(0);
+  const chatIdsKey = useMemo(
+    () => chats.map(c => c.id).sort().join('|'),
+    [chats],
+  );
+  useEffect(() => {
+    if (!subscribeToChatMessages) return;
+    const unsubs: Array<() => void> = [];
+    chats.forEach((c) => {
+      unsubs.push(
+        subscribeToChatMessages(c.id, () => {
+          requestAnimationFrame(() => setListTick(n => n + 1));
+        }),
+      );
+    });
+    return () => { unsubs.forEach(u => u()); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatIdsKey, subscribeToChatMessages]);
+
   const refresh = undefined;
 
   const { isDark } = useApp();
@@ -137,8 +166,10 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const sortedChats = useMemo(() => {
     return [...chats]
       .filter((c: FamilyChat) => c.type === 'direct')
+      .filter((c: FamilyChat) => !isChatHidden(c.id))
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [chats]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chats, isChatHidden, listTick]);
 
   const filteredChats = useMemo(() => {
     if (!searchQuery.trim()) return sortedChats;
@@ -190,6 +221,26 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             if (otherId) navigation.navigate('Chat', { chatId: otherId } as any);
+          }}
+          onLongPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            // Simple confirm + delete. Uses `deleteChat` from FamilyChatContext
+            // which hides the chat per-user AND physically deletes the
+            // direct-chat row + messages.
+            const proceed = () => {
+              deleteChat(item.id);
+            };
+            // Reuse native Alert rather than SweetAlert here so the
+            // long-press flow stays snappy and doesn't need extra state.
+            const { Alert } = require('react-native');
+            Alert.alert(
+              'Delete Conversation',
+              `Delete your conversation with ${participant?.displayName || item.name}? This cannot be undone.`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Delete', style: 'destructive', onPress: proceed },
+              ],
+            );
           }}
           activeOpacity={0.85}
         >

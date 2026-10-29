@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -871,6 +872,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     getOrCreateDirectChat, getChatMessages, sendMessage, editMessage, markChatRead,
     deleteMessage, addReaction, setTypingStatus, getChatById, pickAndSendImage,
     pickAndSendFile, getTypingUsers, resendMessage, blockUser, isUserBlocked, setCurrentChatId,
+    deleteChat, isChatHidden,
   } = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
@@ -937,6 +939,14 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
       const member = members.find((m) => m.id === memberId);
       targetChatId = await getOrCreateDirectChat(memberId, member);
     }
+
+    // If the user previously deleted this chat, don't resurrect it.
+    // `isChatHidden` is a synchronous ref-read from FamilyChatContext.
+    if (targetChatId && isChatHidden(targetChatId)) {
+      navigation.goBack();
+      return;
+    }
+
     if (targetChatId) {
       setChatId(targetChatId);
       const chat = getChatById(targetChatId);
@@ -1244,11 +1254,55 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           }
           onOptions={() => {
             const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
-            if (otherId) {
-              blockUser(otherId);
-              const nowBlocked = isUserBlocked(otherId);
-              showSweetAlert(nowBlocked ? 'warning' : 'success', nowBlocked ? 'Blocked' : 'Unblocked', nowBlocked ? 'User blocked' : 'User unblocked');
-            }
+            const peerName =
+              headerInfo.name || (chatInfo?.type === 'group' ? 'this group' : 'this conversation');
+
+            Alert.alert(
+              'Chat Options',
+              undefined,
+              [
+                {
+                  text: isUserBlocked(otherId || '') ? 'Unblock User' : 'Block User',
+                  style: isUserBlocked(otherId || '') ? 'default' : 'destructive',
+                  onPress: () => {
+                    if (!otherId) return;
+                    blockUser(otherId);
+                    const nowBlocked = isUserBlocked(otherId);
+                    showSweetAlert(
+                      nowBlocked ? 'warning' : 'success',
+                      nowBlocked ? 'Blocked' : 'Unblocked',
+                      nowBlocked ? 'User blocked' : 'User unblocked',
+                    );
+                  },
+                },
+                {
+                  text: chatInfo?.type === 'group' ? 'Delete for Me' : 'Delete Chat',
+                  style: 'destructive',
+                  onPress: () => {
+                    Alert.alert(
+                      chatInfo?.type === 'group' ? 'Delete for Me' : 'Delete Chat',
+                      `Permanently delete ${peerName}? This cannot be undone.`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await deleteChat(chatId);
+                              navigation.goBack();
+                            } catch {
+                              showSweetAlert('error', 'Error', 'Failed to delete chat.');
+                            }
+                          },
+                        },
+                      ],
+                    );
+                  },
+                },
+                { text: 'Cancel', style: 'cancel' },
+              ],
+            );
           }}
         />
       </View>

@@ -107,6 +107,8 @@ interface FamilyChatState {
   pendingSync: string[];
   blockedUsers: string[];
   isSynced: boolean;
+  /** Chat IDs this user has permanently hidden/deleted (per-account). */
+  hiddenChats: string[];
 }
 
 type ChatMessageListener = (chatId: string, messages: FamilyMessage[]) => void;
@@ -169,6 +171,12 @@ interface FamilyChatContextType extends FamilyChatState {
   isUserBlocked: (userId: string) => boolean;
   forceSync: () => Promise<void>;
   setCurrentChatId: (chatId: string | null) => void;
+  /** Permanently hide a chat for the current user (survives realtime + restart). */
+  hideChat: (chatId: string) => Promise<void>;
+  /** Un-hide (restore) a hidden chat. */
+  unhideChat: (chatId: string) => Promise<void>;
+  /** Whether a chat is hidden for the current user. */
+  isChatHidden: (chatId: string) => boolean;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -179,6 +187,7 @@ const STORAGE_KEYS = {
   FAMILY_CODE: '@littleloom_current_family_code',
   TYPING_STATUS: '@littleloom_typing_status',
   DEVICE_ID: '@littleloom_device_id',
+  HIDDEN_CHATS: '@littleloom_hidden_chats',
 } as const;
 
 const FamilyChatContext = createContext<FamilyChatContextType | null>(null);
@@ -281,6 +290,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     pendingSync: [],
     blockedUsers: [],
     isSynced: false,
+    hiddenChats: [],
   });
 
   /* ─── Refs (stable identity across renders) ──────────────────── */
@@ -310,6 +320,59 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // `value` memo. Reading from a ref keeps the callback stable.
   const blockedUsersRef = useRef<string[]>([]);
   useEffect(() => { blockedUsersRef.current = state.blockedUsers; }, [state.blockedUsers]);
+
+  // ── Per-user hidden chats (deleted-but-must-stay-gone) ────────
+  // Persisted under a user-scoped AsyncStorage key so a different
+  // account on the same device never inherits them.
+  const hiddenChatsRef = useRef<Set<string>>(new Set());
+
+  const hiddenChatsStorageKey = useCallback(
+    (uid: string | null | undefined) =>
+      `${STORAGE_KEYS.HIDDEN_CHATS}_${uid ?? 'anon'}`,
+    [],
+  );
+
+  const persistHiddenChats = useCallback(
+    async (next: Set<string>) => {
+      hiddenChatsRef.current = next;
+      if (isMountedRef.current) {
+        setState(prev => ({ ...prev, hiddenChats: [...next] }));
+      }
+      try {
+        const uid = userProfileRef.current?.id ?? null;
+        await AsyncStorage.setItem(
+          hiddenChatsStorageKey(uid),
+          JSON.stringify([...next]),
+        );
+      } catch {}
+    },
+    [hiddenChatsStorageKey],
+  );
+
+  const hideChat = useCallback(
+    async (chatId: string) => {
+      if (!chatId) return;
+      const next = new Set(hiddenChatsRef.current);
+      next.add(chatId);
+      await persistHiddenChats(next);
+    },
+    [persistHiddenChats],
+  );
+
+  const unhideChat = useCallback(
+    async (chatId: string) => {
+      if (!chatId) return;
+      const next = new Set(hiddenChatsRef.current);
+      next.delete(chatId);
+      await persistHiddenChats(next);
+    },
+    [persistHiddenChats],
+  );
+
+  const isChatHidden = useCallback(
+    (chatId: string) => hiddenChatsRef.current.has(chatId),
+    [],
+  );
 
   // ── Per-chat message subscribers ──────────────────────────────
   const messageSubscribersRef = useRef<
@@ -493,6 +556,27 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ─── Load per-user hidden chats ───────────────────────────── */
+  useEffect(() => {
+    const uid = userProfile?.id ?? null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(hiddenChatsStorageKey(uid));
+        const list = raw ? JSON.parse(raw) : [];
+        const set = new Set<string>(Array.isArray(list) ? list : []);
+        if (cancelled) return;
+        hiddenChatsRef.current = set;
+        if (isMountedRef.current) {
+          setState(prev => ({ ...prev, hiddenChats: [...set] }));
+        }
+      } catch {
+        if (!cancelled) hiddenChatsRef.current = new Set();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userProfile?.id, hiddenChatsStorageKey]);
+
   /* ─── Setup Realtime Listeners ──────────────────────────────── */
   /**
    * IMPORTANT: this callback must NOT depend on `state.chats` or `state.messages`.
@@ -590,6 +674,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             editedAt: (raw.edited_at as string) || undefined,
             deliveryStatus: 'sent',
           };
+
+          // If this chat is hidden for me, drop the message entirely.
+          if (hiddenChatsRef.current.has(message.chatId)) return;
 
           const chat = chatsRef.current.find(c => c.id === message.chatId);
           const isChatMuted = chat?.isMuted ?? false;
@@ -689,6 +776,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       try {
         const m = data.message as FamilyMessage;
+        // Ignore messages for chats this user has permanently hidden.
+        if (hiddenChatsRef.current.has(m.chatId)) return;
         const chat = chatsRef.current.find(c => c.id === m.chatId);
         const isChatMuted = chat?.isMuted ?? false;
 
@@ -841,6 +930,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const messages: Record<string, FamilyMessage[]> = {};
 
       for (const chatRow of chatsData ?? []) {
+        // Permanently hidden/deleted chats must never be rehydrated.
+        if (hiddenChatsRef.current.has(chatRow.id)) continue;
         // ── Hydrate participant_names / participant_avatars from
         //    the CURRENT `profiles` rows. The JSONB snapshot on the
         //    chat row is only written at creation time, so without
@@ -1107,6 +1198,14 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const me = userProfileRef.current;
       if (!familyCode || !me) return '';
 
+      // A brand-new direct chat with this member means the user is
+      // re-engaging — un-hide any previously-deleted DM between us.
+      // We don't know the chatId yet, so compute the canonical key.
+      const preKey = `direct_${[me.id, memberId].sort().join('_')}`;
+      if (hiddenChatsRef.current.has(preKey)) {
+        await unhideChat(preKey);
+      }
+
       let actualUserId = memberId;
       let memberName = memberInfo?.fullName || '';
       let memberAvatar = memberInfo?.avatar || '👤';
@@ -1152,7 +1251,13 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         .contains('participants', [me.id, actualUserId])
         .maybeSingle();
 
-      if (existing) return existing.id;
+      if (existing) {
+        // If the user re-opens a previously hidden DM, un-hide it.
+        if (hiddenChatsRef.current.has(existing.id)) {
+          await unhideChat(existing.id);
+        }
+        return existing.id;
+      }
 
       const chatId = `direct_${[me.id, actualUserId].sort().join('_')}`;
       const now = new Date().toISOString();
@@ -1893,13 +1998,60 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [sweetAlert],
   );
 
+  /**
+   * Delete a chat permanently for the CURRENT user.
+   *
+   * Semantics:
+   *  • Always hide the chat for me (per-user `hiddenChats`) so it can
+   *    never reappear from realtime / initial sync, regardless of
+   *    whether the underlying rows are physically deleted.
+   *  • For DIRECT chats, physically delete the row + its messages —
+   *    direct chats belong to exactly two people, and both expect a
+   *    "delete" to nuke the conversation. No parent1 guard here: either
+   *    participant can delete a 1:1 DM they're part of.
+   *  • For GROUP chats, physically deleting is destructive for everyone,
+   *    so only Parent 1 may do it; otherwise we just hide it for me.
+   */
   const deleteChat = useCallback(
     async (chatId: string) => {
       const familyCode = familyCodeRef.current;
       const me = userProfileRef.current;
-      if (!familyCode || !me) return;
+      if (!familyCode || !me || !chatId) return;
+
+      const chat = chatsRef.current.find(c => c.id === chatId);
+      const isDirect = chat?.type === 'direct';
+
+      // Hide for me immediately — this is what "disappears forever" means.
+      await hideChat(chatId);
+
+      // Optimistic local removal.
+      setState(prev => {
+        const nextMessages = { ...prev.messages };
+        delete nextMessages[chatId];
+        return {
+          ...prev,
+          chats: prev.chats.filter(c => c.id !== chatId),
+          messages: nextMessages,
+        };
+      });
+
+      if (isDirect) {
+        // Physical delete — either participant may delete a 1:1 DM.
+        const { error } = await supabase
+          .from('family_chats')
+          .delete()
+          .eq('id', chatId)
+          .eq('family_code', familyCode);
+        if (error && __DEV__) {
+          console.warn('[FamilyChat] deleteChat (direct) failed:', error.message);
+        }
+        await supabase.from('family_messages').delete().eq('chat_id', chatId);
+        return;
+      }
+
+      // Group chat — only Parent 1 may physically delete for everyone.
       if (me.role !== 'parent1') {
-        sweetAlert.alert('Permission Denied', 'Only Parent 1 can delete chats', 'warning');
+        // Hidden-for-me only; nothing else to do.
         return;
       }
 
@@ -1908,19 +2060,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         .delete()
         .eq('id', chatId)
         .eq('family_code', familyCode);
-      if (error) {
-        sweetAlert.alert('Error', 'Failed to delete chat', 'error');
-        return;
+      if (error && __DEV__) {
+        console.warn('[FamilyChat] deleteChat (group) failed:', error.message);
       }
       await supabase.from('family_messages').delete().eq('chat_id', chatId);
-
-      setState(prev => {
-        const nextMessages = { ...prev.messages };
-        delete nextMessages[chatId];
-        return { ...prev, chats: prev.chats.filter(c => c.id !== chatId), messages: nextMessages };
-      });
     },
-    [sweetAlert],
+    [sweetAlert, hideChat],
   );
 
   /* ─── Family Code ───────────────────────────────────────────── */
@@ -2070,11 +2215,15 @@ const getChatMessages = useCallback(
   const getUnreadCount = useCallback(
     (chatId?: string): number => {
       if (chatId) {
+        if (hiddenChatsRef.current.has(chatId)) return 0;
         const chat = chatsRef.current.find(c => c.id === chatId);
         return chat?.isMuted ? 0 : chat?.unreadCount ?? 0;
       }
       return chatsRef.current.reduce(
-        (total, chat) => total + (chat.isMuted ? 0 : chat.unreadCount),
+        (total, chat) =>
+          hiddenChatsRef.current.has(chat.id)
+            ? total
+            : total + (chat.isMuted ? 0 : chat.unreadCount),
         0,
       );
     },
@@ -2150,6 +2299,9 @@ const getChatMessages = useCallback(
       isUserBlocked,
       forceSync,
       setCurrentChatId,
+      hideChat,
+      unhideChat,
+      isChatHidden,
     }),
     [
       state,
@@ -2188,6 +2340,9 @@ const getChatMessages = useCallback(
       isUserBlocked,
       forceSync,
       setCurrentChatId,
+      hideChat,
+      unhideChat,
+      isChatHidden,
     ],
   );
 

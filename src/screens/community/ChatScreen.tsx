@@ -1037,11 +1037,21 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     setShowOptions(false);
     showConfirmModal({
       title: 'Delete Chat',
-      message: 'This will delete the entire conversation. This cannot be undone.',
-      onConfirm: () => {
-        deleteChat(chatId);
-        navigation.goBack();
-        sweetAlert.toast('Deleted', 'Chat deleted', 'success');
+      message: 'This will permanently delete the entire conversation. This cannot be undone.',
+      onConfirm: async () => {
+        try {
+          // `deleteChat` hides the chat for me AND physically deletes
+          // the direct-chat row + messages. Await so navigation only
+          // happens after the removal lands in state.
+          await deleteChat(chatId);
+          // Clear the local message buffer so the next render doesn't
+          // briefly flash the deleted messages.
+          setMessages([]);
+          navigation.goBack();
+          sweetAlert.toast('Deleted', 'Chat deleted permanently', 'success');
+        } catch {
+          sweetAlert.alert('Error', 'Failed to delete chat. Please try again.', 'error');
+        }
       },
     });
   };

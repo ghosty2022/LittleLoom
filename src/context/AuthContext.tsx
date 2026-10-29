@@ -1154,6 +1154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (signedOutUserId) {
         const keysToRemove = [
           '@community_posts_v2',
+          '@littleloom_hidden_chats',
           '@community_likes_v2',
           '@community_bookmarks_v2',
           '@community_reposts_v2',
