@@ -1629,10 +1629,20 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                     </Text>
                     <View style={[styles.inputRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.gray50 }, !isEditing && { opacity: 0.5 }]}>
                       <Ionicons name="people-outline" size={16} color={roleConfig.color} />
-                      <TextInput style={[styles.inputText, { color: isDark ? DS.white : DS.gray900, flex: 1 }]} value={formData.relationship} onChangeText={(t) => setFormData(p => ({ ...p, relationship: t }))} placeholder="e.g., Mother, Father, Grandma" placeholderTextColor={isDark ? DS.gray500 : DS.gray400} editable={isEditing} selectionColor={roleConfig.color} />
+                      <TextInput
+                        style={[styles.inputText, { color: isDark ? DS.white : DS.gray900, flex: 1 }]}
+                        value={formData.relationship}
+                        onChangeText={(t) => setFormData(p => ({ ...p, relationship: t }))}
+                        placeholder="e.g., Mother, Father, Grandma"
+                        placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
+                        // ALWAYS editable by the member themselves, AND
+                        // editable by anyone with manageFamily permission.
+                        editable={isEditing && (isCurrentUser || canEdit)}
+                        selectionColor={roleConfig.color}
+                      />
                     </View>
                     {/* Quick-pick chips so users don't have to type */}
-                    {isEditing && (
+                    {isEditing && (isCurrentUser || canEdit) && (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                         {['Mother', 'Father', 'Parent', 'Guardian', 'Grandmother', 'Grandfather', 'Nanny', 'Caregiver'].map((rel) => (
                           <TouchableOpacity

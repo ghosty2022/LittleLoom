@@ -53,6 +53,13 @@ interface FamilyContextType extends FamilyState {
   recoverPartialSignup: (code: string, userId: string, email?: string, phone?: string, name?: string) => Promise<{ success: boolean; message: string }>;
   // ─── NEW: Get partial signup info ──────────────────────────────────
   getPartialSignupInfo: (code: string) => Promise<{ exists: boolean; email?: string; phone?: string; name?: string; usedBy?: string; usedAt?: number }>;
+
+  // ─── OWNERSHIP TRANSFER ─────────────────────────────────────────────
+  // Used when the current Parent1 wants to hand the crown to someone else
+  // (e.g. before deleting their own account, or to switch roles with a
+  // partner). Both rows must already exist in family_members for this baby.
+  // Caller must currently be Parent1 OR have manageFamily.
+  transferOwnership: (newParent1MemberId: string) => Promise<{ success: boolean; message: string }>;
 }
 
 const FamilyContext = createContext<FamilyContextType | null>(null);
@@ -691,7 +698,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     })();
     return () => { cancelled = true; };
   }, [currentBaby?.id, authProfile?.id]);
-  
+
   useEffect(() => {
     if (!currentBaby?.id) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -835,13 +842,36 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // ─── Update Guardian Profile ───────────────────────────────────────────
   const updateGuardianProfile = useCallback(async (memberId: string, updates: Partial<FamilyMember>): Promise<boolean> => {
+    // ── SELF-SERVE RELATIONSHIP EDIT ──────────────────────────────
+    // A member editing THEIR OWN relationship (Mother/Father/etc.)
+    // is always allowed — that's the "who am I to this child" label.
+    // Same for updating their own avatar, phone, email. We only require
+    // `manageFamily` for editing OTHER members.
+    const targetRow = state.members.find(m => m.id === memberId);
+    const targetUserId = (targetRow as any)?.userId || memberId;
+    const editingSelf = targetUserId === authProfile?.id;
+
     const canManage = state.members.some(m => 
       m.userId === authProfile?.id && m.permissions?.manageFamily
     );
+    const isParent1 = authProfile?.role === 'parent1' ||
+      state.members.some(m => m.userId === authProfile?.id && m.role === 'parent1');
 
-    if (!canManage && authProfile?.role !== 'parent1') {
-      showAlert('Error', 'Permission denied');
-      return false;
+    // What fields is the caller trying to change?
+    const isOnlySelfEditableFields =
+      updates.relationship !== undefined ||
+      updates.avatar !== undefined ||
+      updates.phoneNumber !== undefined ||
+      updates.notificationsEnabled !== undefined;
+
+    const isRoleChange = updates.role !== undefined;
+
+    if (!canManage && !isParent1) {
+      // Non-parents can only edit their own profile fields, never role.
+      if (!(editingSelf && isOnlySelfEditableFields && !isRoleChange)) {
+        showAlert('Error', 'Permission denied');
+        return false;
+      }
     }
 
     // ── UPGRADE PROTECTION for role changes ──────────────────────
@@ -993,6 +1023,99 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [authProfile, state.members, loadFamily]);
 
+  // ─── Transfer Ownership ────────────────────────────────────────────────
+  const transferOwnership = useCallback(async (
+    newParent1MemberId: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!currentBaby?.id || !authProfile?.id) {
+      return { success: false, message: 'Not signed in or no baby selected' };
+    }
+
+    const target = state.members.find(m => m.id === newParent1MemberId);
+    if (!target) {
+      return { success: false, message: 'Target member not found' };
+    }
+
+    const me = state.members.find(
+      m => m.userId === authProfile.id || m.id === authProfile.id,
+    );
+    if (!me) {
+      return { success: false, message: 'You are not a member of this family' };
+    }
+
+    // Authorisation: I must currently be PARENT_1 OR have manageFamily.
+    const iAmParent1 = me.role === UserRole.PARENT_1;
+    const iCanManage = Boolean(me.permissions?.manageFamily);
+    if (!iAmParent1 && !iCanManage) {
+      return { success: false, message: 'You do not have permission to transfer ownership' };
+    }
+
+    if (target.role === UserRole.PARENT_1) {
+      return { success: false, message: 'That member is already Primary Parent' };
+    }
+
+    try {
+      const nowIso = new Date().toISOString();
+      const targetUserId = (target as any).userId || target.id;
+
+      // 1) Demote myself (Parent1 → Parent2) — do NOT remove the row,
+      //    just change the role so history is preserved.
+      const { error: demoteErr } = await supabase
+        .from('family_members')
+        .update({ role: 'parent2', updated_at: nowIso })
+        .eq('id', me.id);
+
+      if (demoteErr) {
+        return { success: false, message: `Failed to demote current owner: ${demoteErr.message}` };
+      }
+
+      // 2) Promote target to Parent1
+      const { error: promoteErr } = await supabase
+        .from('family_members')
+        .update({ role: 'parent1', can_be_removed: false, updated_at: nowIso })
+        .eq('id', newParent1MemberId);
+
+      if (promoteErr) {
+        // Roll back the demotion so we don't end up with 0 parents.
+        await supabase
+          .from('family_members')
+          .update({ role: 'parent1', updated_at: nowIso })
+          .eq('id', me.id);
+        return { success: false, message: `Failed to promote target: ${promoteErr.message}` };
+      }
+
+      // 3) Update babies.parent1_id / parent2_id to match
+      const { error: babyErr } = await supabase
+        .from('babies')
+        .update({
+          parent1_id: targetUserId,
+          parent2_id: authProfile.id,
+          updated_at: nowIso,
+        })
+        .eq('id', currentBaby.id);
+
+      if (babyErr && __DEV__) {
+        console.warn('[FamilyContext] transferOwnership baby sync failed:', babyErr.message);
+      }
+
+      // 4) Re-load + broadcast so every device picks up the change
+      await loadFamily();
+      try {
+        const { broadcastProfileChange } = require('./AuthContext');
+        await broadcastProfileChange({ userId: targetUserId, fields: ['role'] });
+        await broadcastProfileChange({ userId: authProfile.id, fields: ['role'] });
+      } catch {}
+
+      return {
+        success: true,
+        message: `${target.fullName} is now Primary Parent. You are now Co-Parent.`,
+      };
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Ownership transfer failed' };
+    }
+  }, [currentBaby, authProfile, state.members, loadFamily]);
+
+
   // ─── Invite Member ─────────────────────────────────────────────────────
   const inviteMember = useCallback(async (email: string, role: UserRole, relationship: string) => {
     if (!isOwner || !authProfile || !currentBaby) {
@@ -1108,17 +1231,58 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         );
         return false;
       }
-      // Never allow removing the original Primary Parent unless the
-      // current user IS that original parent.
+      // ── PARENT1 REMOVAL RULES ─────────────────────────────────────
+      //
+      // Default: only Parent1 can remove themselves.
+      //
+      // EXCEPTION: if Parent1 has been completely inactive for ≥ 90 days
+      // (no `last_active` in that window), a Co-Parent (Parent2) or any
+      // member with `manageFamily` may remove them. This prevents a
+      // departed/abandoned Parent1 account from stranding the family.
+      //
+      // "Absent" requires ALL of:
+      //   • target is PARENT_1
+      //   • I am NOT the target
+      //   • target has `last_active` older than 90 days OR NULL
+      //   • I am PARENT_2 OR have manageFamily permission
       if (
         target.role === UserRole.PARENT_1 &&
         currentBaby.parent1_id !== authProfile?.id
       ) {
-        showAlert(
-          'Cannot Remove',
-          'Only the Primary Parent can remove themselves. Promote someone else first.',
-        );
-        return false;
+        const ABANDONED_DAYS = 90;
+        const lastActiveMs = target.lastActive
+          ? new Date(target.lastActive).getTime()
+          : 0;
+        const daysSinceActive =
+          lastActiveMs > 0
+            ? Math.floor((Date.now() - lastActiveMs) / (1000 * 60 * 60 * 24))
+            : Number.POSITIVE_INFINITY;
+
+        const iAmParent2 = me?.role === UserRole.PARENT_2;
+        const iCanManage = Boolean(me?.permissions?.manageFamily);
+
+        const isAbandoned =
+          !lastActiveMs || daysSinceActive >= ABANDONED_DAYS;
+
+        const canRemoveAbsentParent1 =
+          isAbandoned && (iAmParent2 || iCanManage);
+
+        if (!canRemoveAbsentParent1) {
+          showAlert(
+            'Cannot Remove',
+            daysSinceActive < ABANDONED_DAYS
+              ? `Primary Parent was active ${daysSinceActive} day${daysSinceActive === 1 ? '' : 's'} ago. Only they can remove themselves, or you can wait until ${ABANDONED_DAYS} days of inactivity.`
+              : 'Only the Primary Parent can remove themselves. Promote someone else first.',
+          );
+          return false;
+        }
+
+        if (__DEV__) {
+          console.log(
+            '[FamilyContext] Removing absent Parent1 (inactive ' +
+            (lastActiveMs ? `${daysSinceActive}d` : 'never') + ')',
+          );
+        }
       }
     }
 
@@ -1809,12 +1973,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ─── NEW ──────────────────────────────────────────────────────────
     recoverPartialSignup,
     getPartialSignupInfo,
+    transferOwnership,
   }), [state, loadFamily, refreshFamily, inviteMember, removeMember, getEffectivePermissions, 
       updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, 
       refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode,
       getCurrentBaby, getBabyId, validateInviteCode, useInviteCode,
       markSignupComplete, getInviteCodeById,
-      recoverPartialSignup, getPartialSignupInfo]);
+      recoverPartialSignup, getPartialSignupInfo, transferOwnership]);
 
   return (
     <FamilyContext.Provider value={value}>
@@ -1863,6 +2028,7 @@ export const useFamily = (): FamilyContextType => {
     getInviteCodeById: async () => null,
     recoverPartialSignup: async () => ({ success: false, message: 'Not ready' }),
     getPartialSignupInfo: async () => ({ exists: false }),
+    transferOwnership: async () => ({ success: false, message: 'Not ready' }),
   };
 };
 

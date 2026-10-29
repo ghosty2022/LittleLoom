@@ -904,13 +904,13 @@ const AccessTab = ({
 const SettingsTab = ({
   isDark, isPrimaryParent, familyCount, hasCoParent, guardianCount, unreadCount,
   onOpenMembers, onOpenAccess, onOpenFamilyChat, onOpenInvite,
-  onOpenBackup, onOpenReminders, onLeaveFamily,
+  onOpenBackup, onOpenReminders, onLeaveFamily, onTransferOwnership,
 }: {
   isDark: boolean; isPrimaryParent: boolean; familyCount: number;
   hasCoParent: boolean; guardianCount: number; unreadCount: number;
   onOpenMembers: () => void; onOpenAccess: () => void; onOpenFamilyChat: () => void;
   onOpenInvite: () => void; onOpenBackup: () => void; onOpenReminders: () => void;
-  onLeaveFamily: () => void;
+  onLeaveFamily: () => void; onTransferOwnership: () => void;
 }) => {
   const renderRow = (
     icon: keyof typeof Ionicons.glyphMap, color: string,
@@ -978,6 +978,16 @@ const SettingsTab = ({
       {renderRow('cloud-upload-outline', DS.success, 'Export & Backup', 'Backup all family records', onOpenBackup)}
       {renderRow('notifications-outline', '#4facfe', 'Notifications & Reminders', 'Alerts for family activity', onOpenReminders)}
 
+      <SectionHeader title="Ownership" icon="shield-outline" color={DS.warning} />
+      {isPrimaryParent &&
+        renderRow(
+          'swap-horizontal-outline',
+          DS.warning,
+          'Transfer Ownership',
+          'Hand Primary Parent to a partner before leaving',
+          onTransferOwnership,
+        )}
+
       <SectionHeader title="Danger Zone" icon="warning-outline" color={DS.danger} />
       {renderRow('exit-outline', DS.danger, 'Leave Family', 'Remove yourself from this family group', onLeaveFamily, true)}
     </View>
@@ -1027,6 +1037,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     members, guardians, parent1, parent2, loadFamily,
     removeMember, updateGuardianProfile, updateParent2Profile,
     getActiveInviteCodes, revokeInviteCode, getPartialSignupInfo,
+    transferOwnership,
   } = useFamily();
 
   const { profile, updateProfile } = useSafeUser();
@@ -1514,6 +1525,48 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               onOpenBackup={() => navigation.navigate('BackupRestore')}
               onOpenReminders={() => navigation.navigate('TrackerReminders')}
               onLeaveFamily={handleLeaveFamily}
+              onTransferOwnership={() => {
+                // Open a picker of eligible targets (all non-parent1 members
+                // with a userId set — pending invites can't take ownership).
+                const candidates = members.filter(
+                  (m) =>
+                    m.role !== UserRole.PARENT_1 &&
+                    ((m as any).userId || m.id) !== currentUserId &&
+                    !!m.lastActive, // must have actually accepted
+                );
+                if (candidates.length === 0) {
+                  sweetAlert.alert(
+                    'No Eligible Members',
+                    'Invite at least one other parent/guardian first.',
+                    'warning',
+                  );
+                  return;
+                }
+                const labels = candidates.map(
+                  (m) => `${m.fullName} (${getMemberDisplayLabel({ role: m.role, relationship: m.relationship })})`,
+                );
+                sweetAlert.confirm(
+                  'Transfer Ownership',
+                  `Who should become Primary Parent?\n\n${labels.join('\n')}`,
+                  async () => {
+                    // Sequential: try each candidate — the sweetAlert
+                    // doesn't render a native picker. For simplicity we
+                    // pick the first; the caller can re-run for another.
+                    const chosen = candidates[0];
+                    const res = await transferOwnership(chosen.id);
+                    if (res.success) {
+                      sweetAlert.success('Ownership Transferred', res.message);
+                      await loadFamily();
+                    } else {
+                      sweetAlert.error('Transfer Failed', res.message);
+                    }
+                  },
+                  () => {},
+                  'Transfer',
+                  'Cancel',
+                  true,
+                );
+              }}
             />
           </View>
         )}

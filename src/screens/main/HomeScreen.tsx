@@ -66,6 +66,7 @@ import PredictionCard from '../../components/trackers/PredictionCard';
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { ShimmerLoader } from '../../components/UniversalSpinner';
+import { RelationshipBackfillBanner } from '../../components/RelationshipBackfillBanner';
 
 // Types
 import type { RootStackParamList } from '../../types/navigation';
@@ -2477,6 +2478,18 @@ const growthStats = useMemo(() => {
               onBabyPress={() => navigateToScreen('SwitchBaby', { returnTo: 'Main' })}
               onQuickAction={handleHeroQuickAction}
             />
+
+            {/* ═══ RELATIONSHIP BACKFILL (existing users only) ═══ */}
+            {userProfile?.id && (
+              <RelationshipBackfillBanner
+                isDark={isDark}
+                userId={userProfile.id}
+                onCompleted={() => {
+                  // reload family so the chat header label updates
+                  try { loadBabies(true); } catch {}
+                }}
+              />
+            )}
 
             {/* ═══ AI PREDICTIONS ═══ */}
             {hasBaby && (
