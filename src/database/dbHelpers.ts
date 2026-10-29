@@ -157,32 +157,36 @@ export async function tableExists(tableName: string): Promise<boolean> {
 export async function getCurrentUserId(): Promise<string | null> {
   const now = Date.now();
 
-  
-  if (cachedUserId !== null && (now - cachedUserIdTimestamp) < USER_ID_CACHE_TTL) {
+  // Fast path: return the cached value if still fresh.
+  if (
+    cachedUserId !== null &&
+    now - cachedUserIdTimestamp < USER_ID_CACHE_TTL
+  ) {
     return cachedUserId;
   }
 
-  
-  
-  
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (session?.user?.id) {
       cachedUserId = session.user.id;
       cachedUserIdTimestamp = now;
       return cachedUserId;
     }
 
-    
-    const { data: { user } } = await supabase.auth.getUser();
+    // Session may still be hydrating — fall back to getUser() which hits
+    // the auth server. Only do this if getSession() gave us nothing.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (user?.id) {
       cachedUserId = user.id;
       cachedUserIdTimestamp = now;
       return user.id;
     }
-
-      } catch {
-    
+  } catch {
+    // Network/parse failure — fall through to the "unknown" return.
   }
 
   // IMPORTANT: do NOT cache a `null` result. Supabase session hydration is
@@ -709,7 +713,22 @@ export async function getMultipleAppSettings(keys: string[]): Promise<Record<str
 
     const result: Record<string, string | null> = {};
     keys.forEach(key => { result[key] = null; });
-    data?.forEach(item => { result[item.key] = item.value; });
+    // Write each successful read back to AsyncStorage so a later DB
+    // failure still falls back to fresh values, matching getAppSetting's
+    // behaviour.
+    const writes: Promise<void>[] = [];
+    data?.forEach(item => {
+      result[item.key] = item.value;
+      const storageKey = userId
+        ? `app_setting_${userId}_${item.key}`
+        : `app_setting_${item.key}`;
+      writes.push(
+        AsyncStorage.setItem(storageKey, item.value).catch(() => {}),
+      );
+    });
+    if (writes.length > 0) {
+      Promise.all(writes).catch(() => {});
+    }
     return result;
   } catch (error) {
     console.error('[DB] getMultipleAppSettings error:', error);
@@ -1197,7 +1216,7 @@ export async function createEntryInDb(data: {
     // legitimate user-supplied fields of the same name.
     const payload: Record<string, unknown> = { ...data.data };
 
-    const { data: result, error } = await supabase
+    const { data: resultRows, error } = await supabase
       .from('tracker_entries')
       .insert({
         id: data.id,
@@ -1223,17 +1242,31 @@ export async function createEntryInDb(data: {
         updated_at: now,
         is_deleted: false,
       })
-      .select()
-      .single();
+      .select();
 
     if (error) {
+      // Duplicate primary key from an offline-sync race — the row already
+      // exists with the same id, so treat as success.
+      const code = (error as any).code;
+      if (code === '23505') {
+        const { data: existing } = await supabase
+          .from('tracker_entries')
+          .select('*')
+          .eq('id', data.id)
+          .maybeSingle();
+        await AsyncStorage.removeItem(`@littleloom_entries_${data.babyId}`);
+        return existing || null;
+      }
       console.error('[DB] createEntryInDb error:', error.message);
       throw error;
     }
 
     await AsyncStorage.removeItem(`@littleloom_entries_${data.babyId}`);
 
-    return result;
+    return Array.isArray(resultRows) && resultRows.length > 0
+      ? resultRows[0]
+      : null;
+
   } catch (error) {
     console.error('[DB] createEntryInDb error:', error);
     throw error;
@@ -1288,17 +1321,24 @@ export async function updateEntryInDb(id: string, updates: Partial<{
     if (updates.editedBy !== undefined) remoteUpdates.edited_by = updates.editedBy;
     if (updates.editedAt !== undefined) remoteUpdates.edited_at = updates.editedAt;
 
-    const { data: result, error } = await supabase
+    // Use `.select()` (array) instead of `.single()` so a no-op update
+    // does not throw PGRST116. The row is either updated or unchanged —
+    // both are acceptable to the caller.
+    const { data: resultRows, error } = await supabase
       .from('tracker_entries')
       .update(remoteUpdates)
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error(`[DB] updateEntryInDb error for ${id}:`, error.message);
       throw error;
     }
+
+    const result =
+      Array.isArray(resultRows) && resultRows.length > 0
+        ? resultRows[0]
+        : null;
 
     if (babyId) {
       await AsyncStorage.removeItem(`@littleloom_entries_${babyId}`);
@@ -1503,17 +1543,21 @@ export async function updateFamilyMemberInDb(id: string, updates: Partial<{
     if (updates.status !== undefined) remoteUpdates.status = updates.status;
     if (updates.lastActive !== undefined) remoteUpdates.last_active = updates.lastActive;
 
-    const { data: result, error } = await supabase
+    const { data: resultRows, error } = await supabase
       .from('family_members')
       .update(remoteUpdates)
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error(`[DB] updateFamilyMemberInDb error for ${id}:`, error.message);
       throw error;
     }
+
+    const result =
+      Array.isArray(resultRows) && resultRows.length > 0
+        ? resultRows[0]
+        : null;
 
     return result;
   } catch (error) {

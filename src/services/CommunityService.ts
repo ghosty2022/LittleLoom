@@ -31,10 +31,13 @@ const mapProfileToCommunityUser = (row: any): CommunityUser => ({
   coverPhoto: row.community_cover || undefined,
   isVerified: row.is_verified === true,
   bio: row.community_bio || '',
-  // `profiles` has no `country` column — the geography lives on
-  // `community_profiles.country`. Consumers that need it must fetch it
-  // separately. Here we intentionally fall back to whatever the caller
-  // already joined; on plain `profiles` selects both are empty.
+  // `profiles` has no `country` column. The geography lives on
+  // `community_profiles.country` (a separate table we don't join here).
+  // Consumers that need it must fetch it separately. On plain `profiles`
+  // selects both of these will always be `''`.
+  //
+  // If/when a `profiles.country` column is added, the fallback chains
+  // below will pick it up automatically.
   location: row.location || row.country || '',
   country: row.location || row.country || '',
   onlineStatus: (row.online_status as any) || 'offline',

@@ -507,60 +507,148 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [loadEverything, sweetAlert],
   );
 
+  // ── Per-post in-flight guards ────────────────────────────────
+  // A Set of "postId:action" strings that are currently being
+  // written to the DB. While a key is present, further taps for
+  // that post+action are ignored (no-op) — this is what stops a
+  // user from spamming +1 per tap.
+  //
+  // We ALSO compute the optimistic next-state from the CURRENT
+  // in-memory post first, so the UI flips instantly.
+  const inFlightReactionsRef = useRef<Set<string>>(new Set());
+
   const likePost = useCallback(async (postId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    if (inFlightReactionsRef.current.has(`like:${postId}`)) return;
+    const cur = stateRef.current.posts.find((p) => p.id === postId);
+    // Already liked → treat as unlike, do NOT add another +1.
+    if (cur?.isLiked) {
+      return unlikePost(postId);
+    }
+    inFlightReactionsRef.current.add(`like:${postId}`);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    await CommunityService.toggleLike(postId, meId, true);
-    // optimistic
+    // Optimistic first: flip state immediately.
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
         x.id === postId ? { ...x, isLiked: true, likes: x.likes + 1 } : x,
       ),
     }));
+    try {
+      await CommunityService.toggleLike(postId, meId, true);
+    } catch {
+      // Roll back on failure.
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id === postId
+            ? { ...x, isLiked: false, likes: Math.max(0, x.likes - 1) }
+            : x,
+        ),
+      }));
+    } finally {
+      inFlightReactionsRef.current.delete(`like:${postId}`);
+    }
   }, []);
 
   const unlikePost = useCallback(async (postId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    await CommunityService.toggleLike(postId, meId, false);
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    if (inFlightReactionsRef.current.has(`unlike:${postId}`)) return;
+    const cur = stateRef.current.posts.find((p) => p.id === postId);
+    if (!cur?.isLiked) return; // nothing to remove
+    inFlightReactionsRef.current.add(`unlike:${postId}`);
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
-        x.id === postId ? { ...x, isLiked: false, likes: Math.max(0, x.likes - 1) } : x,
+        x.id === postId
+          ? { ...x, isLiked: false, likes: Math.max(0, x.likes - 1) }
+          : x,
       ),
     }));
+    try {
+      await CommunityService.toggleLike(postId, meId, false);
+    } catch {
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id === postId ? { ...x, isLiked: true, likes: x.likes + 1 } : x,
+        ),
+      }));
+    } finally {
+      inFlightReactionsRef.current.delete(`unlike:${postId}`);
+    }
   }, []);
 
   const repostPost = useCallback(async (postId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    if (inFlightReactionsRef.current.has(`repost:${postId}`)) return;
+    const cur = stateRef.current.posts.find((p) => p.id === postId);
+    if (cur?.isReposted) return unrepostPost(postId);
+    inFlightReactionsRef.current.add(`repost:${postId}`);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    await CommunityService.toggleRepost(postId, meId, true);
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
         x.id === postId ? { ...x, isReposted: true, reposts: x.reposts + 1 } : x,
       ),
     }));
+    try {
+      await CommunityService.toggleRepost(postId, meId, true);
+    } catch {
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id === postId
+            ? { ...x, isReposted: false, reposts: Math.max(0, x.reposts - 1) }
+            : x,
+        ),
+      }));
+    } finally {
+      inFlightReactionsRef.current.delete(`repost:${postId}`);
+    }
   }, []);
 
   const unrepostPost = useCallback(async (postId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    await CommunityService.toggleRepost(postId, meId, false);
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    if (inFlightReactionsRef.current.has(`unrepost:${postId}`)) return;
+    const cur = stateRef.current.posts.find((p) => p.id === postId);
+    if (!cur?.isReposted) return;
+    inFlightReactionsRef.current.add(`unrepost:${postId}`);
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
-        x.id === postId ? { ...x, isReposted: false, reposts: Math.max(0, x.reposts - 1) } : x,
+        x.id === postId
+          ? { ...x, isReposted: false, reposts: Math.max(0, x.reposts - 1) }
+          : x,
       ),
     }));
+    try {
+      await CommunityService.toggleRepost(postId, meId, false);
+    } catch {
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id === postId ? { ...x, isReposted: true, reposts: x.reposts + 1 } : x,
+        ),
+      }));
+    } finally {
+      inFlightReactionsRef.current.delete(`unrepost:${postId}`);
+    }
   }, []);
 
   const bookmarkPost = useCallback(async (postId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    if (inFlightReactionsRef.current.has(`bookmark:${postId}`)) return;
     const cur = stateRef.current.posts.find((p) => p.id === postId);
     if (!cur) return;
     const next = !cur.isBookmarked;
-    await CommunityService.toggleBookmark(postId, meId, next);
+    inFlightReactionsRef.current.add(`bookmark:${postId}`);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
@@ -569,6 +657,20 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           : x,
       ),
     }));
+    try {
+      await CommunityService.toggleBookmark(postId, meId, next);
+    } catch {
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id === postId
+            ? { ...x, isBookmarked: !next, bookmarks: Math.max(0, x.bookmarks + (next ? -1 : 1)) }
+            : x,
+        ),
+      }));
+    } finally {
+      inFlightReactionsRef.current.delete(`bookmark:${postId}`);
+    }
   }, []);
 
   const sharePost = useCallback(async (postId: string) => {
@@ -586,25 +688,49 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const voteHelpful = useCallback(async (postId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    if (inFlightReactionsRef.current.has(`helpful:${postId}`)) return;
     const cur = stateRef.current.posts.find((p) => p.id === postId);
     if (!cur) return;
     const wasVoted = cur.votedHelpfulBy.includes(meId);
-    await CommunityService.toggleHelpful(postId, meId, !wasVoted);
+    const next = !wasVoted;
+    inFlightReactionsRef.current.add(`helpful:${postId}`);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
         x.id === postId
           ? {
               ...x,
-              helpfulVotes: Math.max(0, x.helpfulVotes + (wasVoted ? -1 : 1)),
-              votedHelpfulBy: wasVoted
-                ? x.votedHelpfulBy.filter((u) => u !== meId)
-                : [...x.votedHelpfulBy, meId],
+              helpfulVotes: Math.max(0, x.helpfulVotes + (next ? 1 : -1)),
+              votedHelpfulBy: next
+                ? [...x.votedHelpfulBy, meId]
+                : x.votedHelpfulBy.filter((u) => u !== meId),
             }
           : x,
       ),
     }));
+    try {
+      await CommunityService.toggleHelpful(postId, meId, next);
+    } catch {
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id === postId
+            ? {
+                ...x,
+                helpfulVotes: Math.max(0, x.helpfulVotes + (next ? -1 : 1)),
+                votedHelpfulBy: next
+                  ? x.votedHelpfulBy.filter((u) => u !== meId)
+                  : [...x.votedHelpfulBy, meId],
+              }
+            : x,
+        ),
+      }));
+    } finally {
+      inFlightReactionsRef.current.delete(`helpful:${postId}`);
+    }
   }, []);
 
   const addComment = useCallback(async (postId: string, content: string) => {
