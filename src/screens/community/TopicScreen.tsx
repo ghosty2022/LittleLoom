@@ -387,42 +387,100 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     transform: [{ translateY: interpolate(scrollY.value, [0, 80], [-10, 0], Extrapolation.CLAMP) }],
   }));
 
-  /* ── Supabase live stats ─────────────────────────────────── */
+  /* ── Live topic stats ────────────────────────────────────── */
+  // This MUST mirror what CommunityScreen computes so the numbers
+  // agree everywhere. CommunityScreen → refreshTopics → fetchTopicStats
+  // → get_topic_stats RPC (or fallback scan of community_posts).
+  // We reuse that same value: `topics.find(t => t.id === topicId)`.
+  //
+  // Additional fields we derive client-side (NOT denormalized cols):
+  //   • members    → count of `user_topics` rows (this is live)
+  //   • engagement → sum(likes + comments_count + reposts_count) over
+  //                  the topic's non-deleted posts — computed here so
+  //                  it can never be stale (there is no such column).
+  //   • isJoined   → whether the *current user* has a user_topics row.
   useEffect(() => {
     let cancelled = false;
     const fetchTopicData = async () => {
       try {
-        const { data: topicData, error: topicError } = await supabase
-          .from('community_topics')
-          .select('*')
-          .eq('id', topicId)
-          .single();
+        // 1. Live per-topic stats from the same source CommunityScreen
+        //    uses. `topics` in context already got populated by
+        //    `refreshTopics()` — if not, fall back to a direct call.
+        let liveTopics: Topic[] | null = null;
+        try {
+          const fresh = await refreshTopicsFn?.();
+          if (Array.isArray(fresh)) liveTopics = fresh;
+        } catch {
+          /* fall through to context `topics` */
+        }
+        const fromContext = Array.isArray(topics) ? topics : [];
+        const fromFn = Array.isArray(liveTopics) ? liveTopics : [];
+        const liveTopic =
+          fromFn.find((t) => t.id === topicId) ||
+          fromContext.find((t) => t.id === topicId);
 
-        if (cancelled || topicError || !topicData) return;
+        // 2. Members (count of user_topics rows — authoritative).
+        const membersRes = await supabase
+          .from('user_topics')
+          .select('user_id', { count: 'exact', head: true })
+          .eq('topic_id', topicId);
+        const members = membersRes.count ?? 0;
 
-        const [{ count: postCount }, { count: memberCount }] = await Promise.all([
-          supabase
-            .from('community_posts')
-            .select('*', { count: 'exact', head: true })
-            .eq('topic_id', topicId),
-          supabase
+        // 3. am I joined?
+        let isJoined = false;
+        if (currentUser?.id) {
+          const meRes = await supabase
             .from('user_topics')
-            .select('*', { count: 'exact', head: true })
-            .eq('topic_id', topicId),
-        ]);
+            .select('user_id')
+            .eq('topic_id', topicId)
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+          isJoined = !!meRes.data;
+        }
+
+        // 4. Engagement = sum of likes + comments + reposts over live posts.
+        //    (community_topics has no `trending`/`engagement` column,
+        //     so we never trust a cached value here.)
+        const { data: engagementRows } = await supabase
+          .from('community_posts')
+          .select('likes_count, comments_count, reposts_count')
+          .eq('topic_id', topicId)
+          .eq('is_deleted', false);
+        const engagementScore = (engagementRows || []).reduce(
+          (acc: number, row: any) =>
+            acc +
+            (Number(row.likes_count) || 0) +
+            (Number(row.comments_count) || 0) +
+            (Number(row.reposts_count) || 0),
+          0,
+        );
 
         if (cancelled) return;
+
+        // 5. Build from `liveTopic` (matches CommunityScreen exactly)
+        //    but override the fields we just proved.
+        const base: Topic =
+          liveTopic ||
+          ({
+            id: topicId,
+            name: topicId,
+            emoji: '💬',
+            color: DS.primary,
+            members: 0,
+            posts: 0,
+            trending: false,
+            description: '',
+            isJoined: false,
+            joinedBy: [],
+            engagementScore: 0,
+            weeklyGrowth: 0,
+          } as Topic);
+
         setRealTopicData({
-          ...topicData,
-          posts: postCount || 0,
-          members: memberCount || 0,
-          isJoined: false,
-          joinedBy: [],
-          engagementScore: 0,
-          weeklyGrowth: 0,
-          trending: topicData.trending || false,
-          category: topicData.category || undefined,
-          subcategory: topicData.subcategory || undefined,
+          ...base,
+          members: Math.max(base.members || 0, members),
+          isJoined,
+          engagementScore,
         } as Topic);
       } catch (err) {
         if (__DEV__) console.warn('[TopicScreen] live stats failed:', err);
@@ -430,7 +488,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     };
     fetchTopicData();
     return () => { cancelled = true; };
-  }, [topicId]);
+  }, [topicId, topics, refreshTopicsFn, currentUser?.id]);
 
   /* ── Sync profile across posts ───────────────────────────── */
   useEffect(() => {
@@ -457,6 +515,28 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     currentUser?.bio,
     syncUserProfileAcrossPosts,
   ]);
+
+  /* ── Refresh on focus ────────────────────────────────────── */
+  // Numbers go stale the moment you leave and come back. Pull them
+  // again on focus so the Topic screen always matches CommunityScreen.
+  const lastFocusRefreshRef = useRef(0);
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      const now = Date.now();
+      if (now - lastFocusRefreshRef.current < 15_000) return;
+      lastFocusRefreshRef.current = now;
+      (async () => {
+        try {
+          await refreshFeed();
+          await refreshTopicsFn?.();
+          setPosts(getPostsByTopic(topicId));
+        } catch (err) {
+          if (__DEV__) console.warn('[TopicScreen] focus refresh failed:', err);
+        }
+      })();
+    });
+    return unsubscribe;
+  }, [navigation, topicId, refreshFeed, refreshTopicsFn, getPostsByTopic]);
 
   /* ── Load data ───────────────────────────────────────────── */
   useEffect(() => {
@@ -488,24 +568,109 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refreshFeed();
-    try { await refreshTopicsFn?.(); } catch {}
-    setPosts(getPostsByTopic(topicId));
-    setRefreshing(false);
-  }, [topicId, refreshFeed, getPostsByTopic, refreshTopicsFn]);
+    try {
+      await refreshFeed();
+      try { await refreshTopicsFn?.(); } catch {}
+      setPosts(getPostsByTopic(topicId));
+
+      // Also refresh the hero stats inline — otherwise pull-to-refresh
+      // updates the list but the member/post/engagement counters stay
+      // stale until you leave the screen.
+      try {
+        const membersRes = await supabase
+          .from('user_topics')
+          .select('user_id', { count: 'exact', head: true })
+          .eq('topic_id', topicId);
+        const members = membersRes.count ?? 0;
+
+        let isJoined = false;
+        if (currentUser?.id) {
+          const meRes = await supabase
+            .from('user_topics')
+            .select('user_id')
+            .eq('topic_id', topicId)
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+          isJoined = !!meRes.data;
+        }
+
+        const { data: engagementRows } = await supabase
+          .from('community_posts')
+          .select('likes_count, comments_count, reposts_count')
+          .eq('topic_id', topicId)
+          .eq('is_deleted', false);
+        const engagementScore = (engagementRows || []).reduce(
+          (acc: number, row: any) =>
+            acc +
+            (Number(row.likes_count) || 0) +
+            (Number(row.comments_count) || 0) +
+            (Number(row.reposts_count) || 0),
+          0,
+        );
+
+        setRealTopicData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            members: Math.max(prev.members || 0, members),
+            isJoined,
+            engagementScore,
+          };
+        });
+      } catch {}
+    } finally {
+      setRefreshing(false);
+    }
+  }, [topicId, refreshFeed, getPostsByTopic, refreshTopicsFn, currentUser?.id]);
 
   const handleJoinToggle = useCallback(async () => {
     if (!topic) return;
-    if (topic.isJoined) {
-      await leaveTopic(topic.id);
-      setTopic((p) => (p ? { ...p, isJoined: false, members: Math.max(0, p.members - 1) } : p));
-      triggerHaptic?.('light');
-      sweetAlert.toast('Left Topic', `You left ${topic.name}`);
-    } else {
-      await joinTopic(topic.id);
-      setTopic((p) => (p ? { ...p, isJoined: true, members: p.members + 1 } : p));
-      triggerHaptic?.('success');
-      sweetAlert.toast('Joined Topic', `You joined ${topic.name}!`);
+    const wasJoined = topic.isJoined;
+    const delta = wasJoined ? -1 : 1;
+
+    // Optimistic — both `topic` and `realTopicData` so the hero card
+    // reflects the new member count instantly.
+    setTopic((p) =>
+      p ? { ...p, isJoined: !wasJoined, members: Math.max(0, p.members + delta) } : p,
+    );
+    setRealTopicData((p) =>
+      p
+        ? { ...p, isJoined: !wasJoined, members: Math.max(0, (p.members || 0) + delta) }
+        : p,
+    );
+
+    try {
+      if (wasJoined) {
+        await leaveTopic(topic.id);
+        triggerHaptic?.('light');
+        sweetAlert.toast('Left Topic', `You left ${topic.name}`);
+      } else {
+        await joinTopic(topic.id);
+        triggerHaptic?.('success');
+        sweetAlert.toast('Joined Topic', `You joined ${topic.name}!`);
+      }
+      // Reconcile with the server (best-effort, avoids drift if another
+      // device joined/left at the same time).
+      try {
+        const membersRes = await supabase
+          .from('user_topics')
+          .select('user_id', { count: 'exact', head: true })
+          .eq('topic_id', topic.id);
+        const members = membersRes.count ?? 0;
+        setRealTopicData((p) => (p ? { ...p, members } : p));
+        setTopic((p) => (p ? { ...p, members } : p));
+      } catch {}
+    } catch {
+      // Roll back.
+      setTopic((p) =>
+        p ? { ...p, isJoined: wasJoined, members: Math.max(0, p.members - delta) } : p,
+      );
+      setRealTopicData((p) =>
+        p
+          ? { ...p, isJoined: wasJoined, members: Math.max(0, (p.members || 0) - delta) }
+          : p,
+      );
+      sweetAlert.error('Error', 'Could not update topic membership.');
     }
   }, [topic, joinTopic, leaveTopic, triggerHaptic, sweetAlert]);
 
@@ -1010,9 +1175,16 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     );
   }
 
-  const displayTopic = realTopicData || topic;
+  // Merge: prefer server-derived fields (`realTopicData`) but fall back
+  // to the local `topic` object so name/emoji/color/description still
+  // render while the network call is in flight.
+  const displayTopic: Topic =
+    (realTopicData || topic) as Topic;
   const topicColor = displayTopic.color || DS.primary;
   const category = TOPIC_CATEGORIES.find((c) => c.id === displayTopic.category);
+  const displayMembers = realTopicData?.members ?? displayTopic.members ?? 0;
+  const displayPosts = realTopicData?.posts ?? displayTopic.posts ?? 0;
+  const displayEngagement = realTopicData?.engagementScore ?? displayTopic.engagementScore ?? 0;
 
   return (
     <View style={[s.container, { backgroundColor: isDark ? DS.darkBg : DS.lightBg }]}>
@@ -1115,7 +1287,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                     <Ionicons name="people" size={14} color={topicColor} />
                   </View>
                   <Text style={[s.heroStatValue, { color: isDark ? DS.white : DS.gray900 }]}>
-                    {displayTopic.members.toLocaleString()}
+                    {displayMembers.toLocaleString()}
                   </Text>
                   <Text style={[s.heroStatLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>
                     Members
@@ -1129,7 +1301,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                     <Ionicons name="document-text" size={14} color={DS.accent} />
                   </View>
                   <Text style={[s.heroStatValue, { color: isDark ? DS.white : DS.gray900 }]}>
-                    {displayTopic.posts.toLocaleString()}
+                    {displayPosts.toLocaleString()}
                   </Text>
                   <Text style={[s.heroStatLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>
                     Posts
@@ -1143,7 +1315,7 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
                     <Ionicons name="trending-up" size={14} color={DS.warning} />
                   </View>
                   <Text style={[s.heroStatValue, { color: isDark ? DS.white : DS.gray900 }]}>
-                    {displayTopic.engagementScore || 0}
+                    {displayEngagement > 0 ? displayEngagement.toLocaleString() : '—'}
                   </Text>
                   <Text style={[s.heroStatLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>
                     Engagement
@@ -1152,27 +1324,54 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
               </View>
 
               <View style={s.heroActions}>
-                <TouchableOpacity
-                  style={[
-                    s.heroJoinBtn,
-                    {
-                      backgroundColor: topic.isJoined ? (isDark ? 'rgba(255,255,255,0.06)' : DS.gray100) : topicColor,
-                      borderColor: topic.isJoined ? (isDark ? DS.darkBorder : DS.lightBorder) : 'transparent',
-                    },
-                  ]}
-                  onPress={handleJoinToggle}
-                  activeOpacity={0.85}
-                >
-                  {topic.isJoined && <Ionicons name="checkmark" size={16} color={isDark ? DS.gray300 : DS.gray700} />}
-                  <Text
-                    style={[
-                      s.heroJoinText,
-                      { color: topic.isJoined ? (isDark ? DS.gray300 : DS.gray700) : DS.white },
-                    ]}
-                  >
-                    {topic.isJoined ? 'Joined' : 'Join Topic'}
-                  </Text>
-                </TouchableOpacity>
+                {(() => {
+                  // Prefer the server-derived flag when we have it —
+                  // `topic.isJoined` in INITIAL_TOPICS is always false.
+                  const joined = realTopicData?.isJoined ?? topic.isJoined;
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        s.heroJoinBtn,
+                        {
+                          backgroundColor: joined
+                            ? isDark
+                              ? 'rgba(255,255,255,0.06)'
+                              : DS.gray100
+                            : topicColor,
+                          borderColor: joined
+                            ? isDark
+                              ? DS.darkBorder
+                              : DS.lightBorder
+                            : 'transparent',
+                        },
+                      ]}
+                      onPress={handleJoinToggle}
+                      activeOpacity={0.85}
+                    >
+                      {joined && (
+                        <Ionicons
+                          name="checkmark"
+                          size={16}
+                          color={isDark ? DS.gray300 : DS.gray700}
+                        />
+                      )}
+                      <Text
+                        style={[
+                          s.heroJoinText,
+                          {
+                            color: joined
+                              ? isDark
+                                ? DS.gray300
+                                : DS.gray700
+                              : DS.white,
+                          },
+                        ]}
+                      >
+                        {joined ? 'Joined' : 'Join Topic'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })()}
 
                 {isTopicSelected ? (
                   <TouchableOpacity
