@@ -332,8 +332,14 @@ export default function BiometricSetupScreen({ navigation }: BiometricSetupScree
         }).start();
       }
 
+      // Navigate back — SecurityCenter's useFocusEffect will read the
+      // fresh storage value and re-render the toggle as ON.
       setTimeout(() => {
-        safeGoBack();
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate('Main' as never);
+        }
       }, 2000);
     }
   }, [setupComplete, safeGoBack, shouldReduceMotion]);

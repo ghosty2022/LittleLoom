@@ -81,12 +81,28 @@ interface SecurityQuestion {
   answerHash: string;
 }
 
+// Platform-aware: on Android, `supportedAuthenticationTypesAsync()` often
+// over-reports FACIAL_RECOGNITION on devices where only fingerprint is
+// actually enrolled. Prefer fingerprint on Android when both are reported.
 const getBiometricInfo = (types: LocalAuthentication.AuthenticationType[]): BiometricTypeInfo => {
+  if (!types || types.length === 0) {
+    return { name: 'Biometric', icon: 'finger-print', label: 'Biometric' };
+  }
+
+  const preferFingerprint = Platform.OS === 'android';
+
+  if (preferFingerprint && types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+    return { name: 'Fingerprint', icon: 'finger-print', label: 'Touch ID' };
+  }
   if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-    return { name: 'Face ID', icon: 'scan-outline', label: 'Face Recognition' };
+    return {
+      name: Platform.OS === 'ios' ? 'Face ID' : 'Face Unlock',
+      icon: 'scan-outline',
+      label: 'Face Recognition',
+    };
   }
   if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
-    return { name: 'Fingerprint', icon: 'finger-print', label: 'Touch ID' };
+    return { name: Platform.OS === 'ios' ? 'Touch ID' : 'Fingerprint', icon: 'finger-print', label: 'Touch ID' };
   }
   if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
     return { name: 'Iris Scan', icon: 'eye', label: 'Iris Recognition' };
@@ -270,36 +286,42 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     getAvailableAuthMethods,
     resetUnlockLock,
     refreshBiometricStatus,
+    clearPinOnly,
+    getBiometricTypeName,
+    getBiometricIcon,
     settings: securitySettings,
   } = useSecurity();
 
   const [biometricReady, setBiometricReady] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
-        const enabledFromStorage = stored === 'true';
-        if (mounted) {
-          setBiometricReady(
-            !!isBiometricHardwareAvailable &&
-            !!isBiometricEnrolled &&
-            (isBiometricEnabled === true || enabledFromStorage)
-          );
-        }
-      } catch {
-        if (mounted) {
-          setBiometricReady(
-            !!isBiometricHardwareAvailable &&
-            !!isBiometricEnrolled &&
-            !!isBiometricEnabled
-          );
-        }
-      }
-    })();
-    return () => { mounted = false; };
+  const refreshBiometricReady = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem('littleloom_biometric_enabled');
+      const enabledFromStorage = stored === 'true';
+      setBiometricReady(
+        !!isBiometricHardwareAvailable &&
+        !!isBiometricEnrolled &&
+        (isBiometricEnabled === true || enabledFromStorage),
+      );
+    } catch {
+      setBiometricReady(
+        !!isBiometricHardwareAvailable &&
+        !!isBiometricEnrolled &&
+        !!isBiometricEnabled,
+      );
+    }
   }, [isBiometricHardwareAvailable, isBiometricEnrolled, isBiometricEnabled]);
+
+  useEffect(() => {
+    refreshBiometricReady();
+  }, [refreshBiometricReady]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshBiometricReady();
+      refreshBiometricStatus();
+    }, [refreshBiometricReady, refreshBiometricStatus]),
+  );
 
   const biometricAvailable = biometricReady;
   const { darkMode: isDark, themeColors, triggerHaptic } = useCustomization();
@@ -407,15 +429,52 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
       if (allCorrect.every(Boolean)) {
         triggerHaptic('success');
-        setShowForgotPin(false);
-        sweetAlert.success('Verified!', 'Redirecting to PIN reset...');
 
+        // 1. User proved identity via security questions. Nuke the old PIN
+        //    so SecurityCenter's `create` flow doesn't need it.
+        try {
+          await clearPinOnly();
+        } catch (clearErr) {
+          if (__DEV__) console.warn('[SecurityLock] clearPinOnly failed:', clearErr);
+        }
+
+        // 2. Mark the app unlocked in storage AND state so nothing
+        //    re-routes us back to SecurityLock.
+        try {
+          await forceUnlock?.();
+          await AsyncStorage.setItem('littleloom_security_lock', 'false');
+          await AsyncStorage.setItem('littleloom_last_active', Date.now().toString());
+        } catch {}
+
+        setShowForgotPin(false);
+        setVerifyAnswers(['', '', '']);
+        sweetAlert.success('Verified!', 'Set a new PIN to continue.');
+
+        // 3. Replace the whole nav stack: Main is the base, SecurityCenter
+        //    is pushed on top in reset mode. When the user finishes there,
+        //    the success button does a final `reset({ Main })` and lands
+        //    them cleanly on Home — never back here.
         setTimeout(() => {
-          navigation.navigate('SecurityCenter', {
-            mode: 'reset',
-            fromForgotPassword: true,
-          });
-        }, 1500);
+          try {
+            navigation.reset({
+              index: 0,
+              routes: [
+                { name: 'Main' as never },
+                {
+                  name: 'SecurityCenter' as never,
+                  params: { mode: 'reset', fromForgotPassword: true },
+                },
+              ],
+            });
+          } catch (err) {
+            if (__DEV__) console.warn('[SecurityLock] nav reset failed:', err);
+            // Fallback: just go to SecurityCenter on top of current stack.
+            navigation.navigate('SecurityCenter' as never, {
+              mode: 'reset',
+              fromForgotPassword: true,
+            } as never);
+          }
+        }, 900);
       } else {
         triggerHaptic('error');
         sweetAlert.error('Incorrect', 'One or more answers are wrong. Try again.');
@@ -446,7 +505,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   useEffect(() => {
     if (bailOutChecked.current) return;
     if (isLoading) return;
-    if (biometricReady) return;
+    // Wait for biometric detection to settle before concluding "no auth".
+    // biometricReady starts false and flips to true once storage + hardware
+    // checks complete; a synchronous bailout here would race that.
+    if (!biometricReady && isBiometricHardwareAvailable !== false) return;
     bailOutChecked.current = true;
 
     const hasAnyAuthMethod = hasPin || hasBiometric;
@@ -472,6 +534,17 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
   }, [pin]);
 
   useEffect(() => {
+    // Prefer the context's platform-aware resolved name/icon. Fall back to
+    // local detection only if the context hasn't resolved yet.
+    const contextName = getBiometricTypeName?.();
+    const contextIcon = getBiometricIcon?.();
+    if (contextName && contextName !== 'Biometric') {
+      setBiometricInfo({
+        name: contextName,
+        icon: contextIcon || 'finger-print',
+        label: contextName,
+      });
+    }
     const detectBiometricType = async () => {
       try {
         const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
@@ -481,7 +554,7 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
       }
     };
     detectBiometricType();
-  }, []);
+  }, [getBiometricTypeName, getBiometricIcon]);
 
   useEffect(() => {
     if (!biometricAvailable) return;
@@ -653,7 +726,17 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
 
     await refreshBiometricStatus();
 
-    if (!isBiometricEnabled) {
+    // Read the authoritative source — AsyncStorage — instead of the React
+    // state variable, which can lag behind after the user enables biometrics
+    // on the setup screen and comes straight back to the lock screen.
+    let enabledNow = false;
+    try {
+      enabledNow = (await AsyncStorage.getItem('littleloom_biometric_enabled')) === 'true';
+    } catch {}
+    // Fall back to the context's value if storage read failed.
+    if (!enabledNow && isBiometricEnabled) enabledNow = true;
+
+    if (!enabledNow) {
       sweetAlert.warning(
         'Biometric Not Enabled',
         'Please enable biometric unlock in Settings first.'
@@ -666,6 +749,10 @@ export default function SecurityLockScreen({ navigation }: SecurityLockScreenPro
     }
 
     let isEnrolled = isBiometricEnrolled;
+    try {
+      const freshEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (freshEnrolled) isEnrolled = true;
+    } catch { /* noop */ }
     if (!isEnrolled && Platform.OS === 'android') {
       try {
         const enrolled = await LocalAuthentication.isEnrolledAsync();

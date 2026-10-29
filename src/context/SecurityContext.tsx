@@ -1060,7 +1060,8 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
           enabledFromStorage =
             (await AsyncStorage.getItem(ASYNC_KEYS.BIOMETRIC_ENABLED)) === 'true';
         } catch {}
-        if (!enabledFromStorage) {
+        const enabledInState = state.settings.isBiometricEnabled === true;
+        if (!enabledFromStorage && !enabledInState) {
           console.log('[Security] Biometric not enabled in settings');
           return false;
         }
@@ -1096,7 +1097,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } finally {
       setTimeout(() => { unlockInProgressRef.current = false; }, 300);
     }
-  }, [authenticateWithBiometric, verifyPin]);
+  }, [authenticateWithBiometric, verifyPin, state.settings.isBiometricEnabled]);
 
   const forceUnlock = useCallback(async () => {
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'false');

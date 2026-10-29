@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, AppStateStatus, Alert } from 'react-native';
+import { AppState, AppStateStatus, Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -184,18 +184,33 @@ const secureStorage = {
   },
 };
 
+// Platform-aware: Android over-reports FACIAL_RECOGNITION. Prefer fingerprint
+// when both are supported, matching SecurityContext.resolveEnrolledBiometricType.
 const getBiometricTypeName = (types: LocalAuthentication.AuthenticationType[]): string => {
   if (!types || types.length === 0) return 'Biometric';
-  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'Face ID';
-  if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'Fingerprint';
+  const preferFingerprint = Platform.OS === 'android';
+  if (preferFingerprint && types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+    return 'Fingerprint';
+  }
+  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+    return Platform.OS === 'ios' ? 'Face ID' : 'Face Unlock';
+  }
+  if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+    return Platform.OS === 'ios' ? 'Touch ID' : 'Fingerprint';
+  }
   if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) return 'Iris Scan';
   return 'Biometric';
 };
 
 const getBiometricIcon = (types: LocalAuthentication.AuthenticationType[]): string => {
+  if (!types || types.length === 0) return 'finger-print';
+  const preferFingerprint = Platform.OS === 'android';
+  if (preferFingerprint && types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+    return 'finger-print';
+  }
   if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'scan-outline';
   if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'finger-print';
-  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) return 'eye';
+  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) return 'eye-outline';
   return 'finger-print';
 };
 
