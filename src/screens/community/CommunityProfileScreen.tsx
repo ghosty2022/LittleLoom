@@ -1073,7 +1073,39 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     }, () => {}, 'Delete', 'Cancel');
   }, [deleteAccountWithConfirmation, navigation, sweetAlert]);
 
-  const handleGoVerify = useCallback(() => { triggerHaptic('light'); navigation.navigate('CommunityVerification'); }, [navigation, triggerHaptic]);
+  const handleGoVerify = useCallback(() => {
+    triggerHaptic('light');
+    // Guard against the navigator being mid-remount (the main stack
+    // is keyed by `currentUser?.id`, so it briefly re-mounts when the
+    // user id hydrates). If the screen isn't in the current navigator
+    // the navigate would bubble to the root stack and throw
+    // "not handled by any navigator".
+    try {
+      const state = (navigation as any).getState?.();
+      const routes: any[] = state?.routes ?? [];
+      const hasVerification = routes.some((r) => r.name === 'CommunityVerification');
+      // Also check nested state for stack-in-stack.
+      const hasInNested = routes.some((r: any) => {
+        const nested: any[] = r?.state?.routes ?? [];
+        return nested.some((n: any) => n.name === 'CommunityVerification');
+      });
+      if (!hasVerification && !hasInNested) {
+        // Fall back to root stack navigation — it will either find
+        // the screen (registered in AppNavigator in some setups) or
+        // fail silently rather than throw.
+        const rootNav = (navigation as any).getParent?.()?.getParent?.() ?? navigation;
+        rootNav?.navigate?.('Main' as never, {
+          screen: 'Connect',
+          params: { screen: 'CommunityVerification' },
+        } as never);
+        return;
+      }
+      navigation.navigate('CommunityVerification');
+    } catch {
+      // Swallow — the verification flow is non-critical. A toast
+      // would be annoying if it fires on a transient remount.
+    }
+  }, [navigation, triggerHaptic]);
 
   const handleSave = async () => {
     if (!currentUser) return;

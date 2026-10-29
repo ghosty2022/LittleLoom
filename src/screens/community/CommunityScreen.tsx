@@ -18,7 +18,6 @@ import {
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
-import UniversalSpinner from '../../components/UniversalSpinner';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
@@ -124,9 +123,7 @@ const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
 const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 
-/* ────────────────────────────────────────────────────────────
-   GradientText
-   ──────────────────────────────────────────────────────────── */
+/* ── GradientText ─────────────────────────────────────────── */
 const GradientText = React.memo(
   ({
     children,
@@ -177,28 +174,40 @@ const GradientText = React.memo(
   },
 );
 
-/* ────────────────────────────────────────────────────────────
-   BlurredImage
-   ──────────────────────────────────────────────────────────── */
+/* ── BlurredImage ─────────────────────────────────────────── */
+const SUSPICIOUS_IMAGE_PATH_KEYWORDS = [
+  'sensitive', 'private', 'nsfw', 'explicit', 'medical',
+  'wound', 'injury', 'rash', 'blood', 'surgery',
+];
+
+const uriLooksSensitive = (uri: string): boolean => {
+  if (!uri) return false;
+  const lower = uri.toLowerCase();
+  return SUSPICIOUS_IMAGE_PATH_KEYWORDS.some((kw) => lower.includes(kw));
+};
+
 const BlurredImage = React.memo(
-  ({ imageUri, isSensitive = false, isDark = false }: { imageUri: string; isSensitive?: boolean; isDark?: boolean }) => {
+  ({ imageUri, isSensitive, isDark = false }: { imageUri: string; isSensitive?: boolean; isDark?: boolean }) => {
     const [revealed, setRevealed] = useState(false);
     if (!imageUri) return null;
+
+    const shouldBlur =
+      (isSensitive ?? uriLooksSensitive(imageUri)) && !revealed;
 
     return (
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={() => isSensitive && setRevealed(true)}
-        disabled={!isSensitive || revealed}
+        onPress={() => shouldBlur && setRevealed(true)}
+        disabled={!shouldBlur}
         style={styles.blurredImageContainer}
       >
         <Image
           source={{ uri: imageUri }}
           style={styles.blurredImage}
           resizeMode="cover"
-          blurRadius={isSensitive && !revealed ? 20 : 0}
+          blurRadius={shouldBlur ? 20 : 0}
         />
-        {isSensitive && !revealed && (
+        {shouldBlur && (
           <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
             <View style={styles.blurOverlay}>
               <View style={[styles.blurIconWrap, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.8)' }]}>
@@ -214,9 +223,7 @@ const BlurredImage = React.memo(
   },
 );
 
-/* ────────────────────────────────────────────────────────────
-   Sentiment + Summary helpers
-   ──────────────────────────────────────────────────────────── */
+/* ── Sentiment + summary ──────────────────────────────────── */
 const SentimentAnalyzer = {
   analyze: (text: string) => {
     const positiveWords = ['happy','joy','love','great','wonderful','amazing','excellent','good','beautiful','fantastic','awesome','incredible','perfect','glad','thankful','grateful','blessed','proud','exciting','milestone','achievement','success','celebrate','celebrating'];
@@ -390,7 +397,6 @@ export default function CommunityScreen({ navigation }: Props) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [newPostsCount, setNewPostsCount] = useState(0);
   const [showBanner, setShowBanner] = useState(false);
-  const [displayedPosts, setDisplayedPosts] = useState<Post[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isHydrating, setIsHydrating] = useState(true);
@@ -488,8 +494,7 @@ export default function CommunityScreen({ navigation }: Props) {
     return () => clearTimeout(timer);
   }, []);
 
-  // Twitter-style feed: pure chronological DESC. No pinned welcome post,
-  // no re-ordering. Newest first, always.
+  // Twitter-style feed: pure chronological DESC. Newest first, always.
   const getFilteredPosts = useCallback(() => {
     let filtered = [...getFeedPosts()];
     filtered.sort(
@@ -517,25 +522,28 @@ export default function CommunityScreen({ navigation }: Props) {
     return filtered;
   }, [feedFilter, activeTopic, searchQuery, getFeedPosts, currentUser?.id]);
 
-  // Whenever `posts` changes (create, realtime insert, refresh, react),
-  // re-derive the visible page. Reset to page 1 so a new post from the
-  // user appears at the top, not appended after page 2.
-  useEffect(() => {
-    const filtered = getFilteredPosts();
-    setDisplayedPosts(filtered.slice(0, POSTS_PER_PAGE));
-    setHasMore(filtered.length > POSTS_PER_PAGE);
-    setPage(1);
-    // Any fresh post should auto-dismiss the "N new threads" banner.
-    if (showBanner && filtered.length > 0) {
-      const newest = filtered[0];
-      if (newest && prevPostsRef.current.every((p) => p.id !== newest.id)) {
-        setShowBanner(false);
-        setNewPostsCount(0);
-      }
-    }
+  // ⚠️  IMPORTANT: `displayedPosts` MUST come after `getFilteredPosts`
+  //     is declared, because it's a `useMemo` that references it.
+  //     Deriving it (rather than mirroring into local state) means
+  //     every like / bookmark / comment reflected in the context
+  //     is visible here on the very next render — instant.
+  const displayedPosts = useMemo(() => {
+    return getFilteredPosts().slice(0, page * POSTS_PER_PAGE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posts, activeTopic, searchQuery, topicRefreshKey, feedFilter]);
+  }, [getFilteredPosts, page, posts]);
 
+  // Reset pagination when the user changes a filter.
+  useEffect(() => {
+    setPage(1);
+  }, [activeTopic, searchQuery, feedFilter, topicRefreshKey]);
+
+  // Keep `hasMore` in sync with the live feed length.
+  useEffect(() => {
+    setHasMore(getFilteredPosts().length > page * POSTS_PER_PAGE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts.length, page, activeTopic, feedFilter, searchQuery]);
+
+  // "N new threads" banner detection.
   useEffect(() => {
     if (prevPostsRef.current.length > 0 && posts.length > prevPostsRef.current.length) {
       const count = posts.length - prevPostsRef.current.length;
@@ -545,12 +553,24 @@ export default function CommunityScreen({ navigation }: Props) {
     prevPostsRef.current = posts;
   }, [posts]);
 
+  // Auto-dismiss the banner when a new post arrives.
+  useEffect(() => {
+    if (!showBanner) return;
+    const filtered = getFilteredPosts();
+    if (filtered.length > 0) {
+      const newest = filtered[0];
+      if (newest && prevPostsRef.current.every((p) => p.id !== newest.id)) {
+        setShowBanner(false);
+        setNewPostsCount(0);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts]);
+
   useEffect(() => {
     if (isHydrating || hasTopics || !canInteract) return;
-    // Guard against firing before context hydration completes.
     if (!currentUser?.id) return;
     const timer = setTimeout(async () => {
-      // Final disk check — never prompt if topics exist anywhere.
       try {
         const scopedRaw = await AsyncStorage.getItem(
           `@community_selected_topics_v2_${currentUser.id}`,
@@ -582,11 +602,8 @@ export default function CommunityScreen({ navigation }: Props) {
       await refreshTopics();
       setTopicRefreshKey(k => k + 1);
       setPage(1);
-      const filtered = getFilteredPosts();
-      setDisplayedPosts(filtered.slice(0, POSTS_PER_PAGE));
-      setHasMore(filtered.length > POSTS_PER_PAGE);
+      // `displayedPosts` is derived — no manual reset needed.
 
-      // Refresh follower / following counts too
       if (currentUser?.id && typeof getFollowers === 'function' && typeof getFollowing === 'function') {
         try {
           const [followers, following] = await Promise.all([
@@ -600,25 +617,25 @@ export default function CommunityScreen({ navigation }: Props) {
     } finally {
       setRefreshing(false);
     }
-  }, [refreshFeed, triggerHaptic, getFilteredPosts, refreshTopics, currentUser?.id, getFollowers, getFollowing]);
+  }, [refreshFeed, triggerHaptic, refreshTopics, currentUser?.id, getFollowers, getFollowing]);
 
   const onLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
-    await loadMorePosts();
-    const nextPage = page + 1;
-    const filtered = getFilteredPosts();
-    const start = page * POSTS_PER_PAGE;
-    const end = start + POSTS_PER_PAGE;
-    const newPosts = filtered.slice(start, end);
-    if (newPosts.length > 0) {
-      setDisplayedPosts(prev => [...prev, ...newPosts]);
-      setPage(nextPage);
-      setHasMore(filtered.length > end);
-    } else {
-      setHasMore(false);
+    try {
+      await loadMorePosts();
+      const filtered = getFilteredPosts();
+      const nextPage = page + 1;
+      const end = nextPage * POSTS_PER_PAGE;
+      if (filtered.length > page * POSTS_PER_PAGE) {
+        setPage(nextPage);
+        setHasMore(filtered.length > end);
+      } else {
+        setHasMore(false);
+      }
+    } finally {
+      setLoadingMore(false);
     }
-    setLoadingMore(false);
   }, [loadMorePosts, loadingMore, hasMore, page, getFilteredPosts]);
 
   const handleLike = useCallback(
@@ -713,8 +730,6 @@ export default function CommunityScreen({ navigation }: Props) {
     onRefresh();
   }, [onRefresh]);
 
-  // Track posts we've already counted *this screen session*. This is
-  // what stops "scroll up → down → up" from adding +N views.
   const viewedPostsRef = useRef<Set<string>>(new Set());
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -731,7 +746,6 @@ export default function CommunityScreen({ navigation }: Props) {
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 45 }).current;
 
-  /* Subtle follower tap handler */
   const openFollowers = useCallback(() => {
     if (!currentUser?.id) {
       sweetAlert.alert('Sign In Required', 'Please sign in to view followers', 'warning');
@@ -933,17 +947,39 @@ export default function CommunityScreen({ navigation }: Props) {
 
           {item.images && item.images.length > 0 && (
             <View style={[styles.mediaBox, { marginHorizontal: DS.space.lg, marginBottom: DS.space.md }]}>
-              {item.images.length === 1 ? (
-                <BlurredImage imageUri={item.images[0]} isSensitive={false} isDark={isDark} />
-              ) : (
-                <View style={styles.imageGrid}>
-                  {item.images.slice(0, 4).map((img, idx) => (
-                    <View key={idx} style={[styles.gridItem, item.images!.length === 3 && idx === 0 && styles.gridItemLarge]}>
-                      <BlurredImage imageUri={img} isSensitive={false} isDark={isDark} />
-                    </View>
-                  ))}
-                </View>
-              )}
+              {(() => {
+                // Only blur when there's an explicit signal:
+                //   • anonymous post
+                //   • "venting" mood (private/emotional content)
+                //   • URL keyword match (handled inside BlurredImage)
+                const explicitSensitive =
+                  item.isAnonymous === true || item.mood === 'venting';
+                return item.images.length === 1 ? (
+                  <BlurredImage
+                    imageUri={item.images[0]}
+                    isSensitive={explicitSensitive}
+                    isDark={isDark}
+                  />
+                ) : (
+                  <View style={styles.imageGrid}>
+                    {item.images.slice(0, 4).map((img, idx) => (
+                      <View
+                        key={idx}
+                        style={[
+                          styles.gridItem,
+                          item.images!.length === 3 && idx === 0 && styles.gridItemLarge,
+                        ]}
+                      >
+                        <BlurredImage
+                          imageUri={img}
+                          isSensitive={explicitSensitive}
+                          isDark={isDark}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()}
             </View>
           )}
 
@@ -1064,8 +1100,6 @@ export default function CommunityScreen({ navigation }: Props) {
                     placeholderTextColor={DS.gray400}
                     value={commentInputs[item.id] || ''}
                     onChangeText={t => {
-                      // Debounce identity — React 18 batches these anyway,
-                      // but the list doesn't need to re-render on every key.
                       setCommentInputs(prev => {
                         if (prev[item.id] === t) return prev;
                         return { ...prev, [item.id]: t };
@@ -1119,7 +1153,6 @@ export default function CommunityScreen({ navigation }: Props) {
 
     return (
       <View>
-        {/* ─────────── AURA HERO BANNER ─────────── */}
         <View
           style={[
             styles.heroBanner,
@@ -1130,7 +1163,6 @@ export default function CommunityScreen({ navigation }: Props) {
             },
           ]}
         >
-          {/* Base gradient */}
           <LinearGradient
             colors={
               isDark
@@ -1141,7 +1173,6 @@ export default function CommunityScreen({ navigation }: Props) {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           />
-          {/* Aura glows */}
           <LinearGradient
             colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']}
             style={styles.auraGlowTopLeft}
@@ -1158,7 +1189,6 @@ export default function CommunityScreen({ navigation }: Props) {
           />
 
           <View style={styles.heroContent}>
-            {/* Title row */}
             <View style={styles.heroHeader}>
               <View style={{ flex: 1 }}>
                 <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={[styles.heroTitle]}>
@@ -1170,7 +1200,6 @@ export default function CommunityScreen({ navigation }: Props) {
               </View>
             </View>
 
-            {/* Stats strip — Posts · Members · Topics */}
             <View
               style={[
                 styles.heroStats,
@@ -1193,7 +1222,6 @@ export default function CommunityScreen({ navigation }: Props) {
               </View>
             </View>
 
-            {/* ─── Subtle follower / following pill row ─── */}
             <View style={styles.socialRow}>
               <TouchableOpacity
                 activeOpacity={0.75}
@@ -1240,7 +1268,6 @@ export default function CommunityScreen({ navigation }: Props) {
               </TouchableOpacity>
             </View>
 
-            {/* Action buttons */}
             <View style={styles.heroActions}>
               <TouchableOpacity
                 style={[styles.heroActionBtn, { backgroundColor: DS.primary }]}
@@ -1272,7 +1299,6 @@ export default function CommunityScreen({ navigation }: Props) {
               </TouchableOpacity>
             </View>
 
-            {/* Topic pills */}
             <View style={styles.topicStatusContainer}>
               {hasTopics ? (
                 <>
@@ -1324,7 +1350,6 @@ export default function CommunityScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* Compose bar */}
         <View style={[styles.composeBar, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
           <TouchableOpacity
             style={styles.composeInput}
@@ -1343,7 +1368,6 @@ export default function CommunityScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
-        {/* Feed filter chips — All / Saved / Reposts / Mine */}
         <View
           style={{
             flexDirection: 'row',
@@ -1408,7 +1432,6 @@ export default function CommunityScreen({ navigation }: Props) {
           })}
         </View>
 
-        {/* Topic filter row */}
         <View style={styles.topicFilterRow}>
           <TouchableOpacity
             style={[
@@ -1535,15 +1558,7 @@ export default function CommunityScreen({ navigation }: Props) {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
-        <UniversalSpinner
-          visible={refreshing}
-          section="community"
-          size="small"
-          overlay={true}
-          blur={true}
-          text="Refreshing..."
-          variant="aurora"
-        />
+
         {/* Header */}
         <View
           style={[
@@ -1556,7 +1571,6 @@ export default function CommunityScreen({ navigation }: Props) {
           ]}
         >
           <View style={styles.headerInner}>
-            {/* Left: profile avatar only */}
             <TouchableOpacity
               style={styles.headerLeftSlot}
               onPress={() => {
@@ -1581,7 +1595,6 @@ export default function CommunityScreen({ navigation }: Props) {
               )}
             </TouchableOpacity>
 
-            {/* Center: brand + community label (absolutely centered) */}
             <View style={styles.headerCenterSlot} pointerEvents="box-none">
               <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={[styles.headerTitle]}>
                 THE LOOM
@@ -1804,7 +1817,7 @@ export default function CommunityScreen({ navigation }: Props) {
           </Pressable>
         </Modal>
 
-        {/* FAB with aura halo */}
+        {/* FAB */}
         <Animated.View entering={FadeIn.delay(600).duration(400)} style={styles.fabWrap}>
           <LinearGradient
             colors={[`${DS.primary}55`, `${DS.accent}30`, 'transparent']}
@@ -1933,7 +1946,6 @@ const styles = StyleSheet.create({
   },
   headerBadgeText: { color: DS.white, fontSize: 9, fontWeight: '800', lineHeight: 14, textAlign: 'center' },
 
-  /* ─── Aura hero ─────────────────────────────────────── */
   heroBanner: {
     marginHorizontal: DS.space.lg,
     marginTop: DS.space.md,
@@ -1979,7 +1991,6 @@ const styles = StyleSheet.create({
   heroStatLabel: { fontSize: DS.text.xs.size, fontWeight: '600' },
   heroStatDivider: { width: 1, height: 24 },
 
-  /* ─── Subtle followers / following pills ─────────────── */
   socialRow: {
     flexDirection: 'row',
     gap: DS.space.sm,

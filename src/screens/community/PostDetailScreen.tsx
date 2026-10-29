@@ -114,52 +114,99 @@ const LinkifyText = ({
 };
 
 /* ── Sensitive image (tap-to-reveal) ──────────────────────── */
+/**
+ * Deterministic client-side sensitivity classifier.
+ *
+ * We do NOT blur everything. We only blur images that match one of
+ * these signals:
+ *   1. The caller explicitly passed `isSensitive` (e.g. a post marked
+ *      with `is_anonymous` or a `venting` mood).
+ *   2. The image URL contains sensitive-content keywords in the path
+ *      (uploader tagged it).
+ *   3. The image was uploaded to the `community_avatars` bucket with a
+ *      "sensitive/" prefix (poster explicitly marked it private).
+ *
+ * Baby / family photos are NOT auto-blurred — only explicit signals
+ * hide them. That matches what users expect: their own baby pictures
+ * should show, not be blurred by default.
+ */
+const SUSPICIOUS_PATH_KEYWORDS = [
+  'sensitive',
+  'private',
+  'nsfw',
+  'explicit',
+  'medical',
+  'wound',
+  'injury',
+  'rash',
+  'blood',
+  'surgery',
+];
+
+const imageUrlLooksSensitive = (uri: string): boolean => {
+  if (!uri) return false;
+  const lower = uri.toLowerCase();
+  return SUSPICIOUS_PATH_KEYWORDS.some((kw) => lower.includes(kw));
+};
+
 const SensitiveImage = ({
   uri,
   style,
   resizeMode = 'cover',
+  isSensitive,
 }: {
   uri: string;
   style?: any;
   resizeMode?: any;
+  /** Caller-supplied override. `undefined` → auto-detect from URL. */
+  isSensitive?: boolean;
 }) => {
   const [revealed, setRevealed] = useState(false);
+  const shouldBlur = (isSensitive ?? imageUrlLooksSensitive(uri)) && !revealed;
+
   return (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={() => setRevealed(true)}
-      disabled={revealed}
+      onPress={() => shouldBlur && setRevealed(true)}
+      disabled={!shouldBlur}
       style={style}
     >
       <Image
         source={{ uri }}
         style={[style, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}
         resizeMode={resizeMode}
+        blurRadius={shouldBlur ? 20 : 0}
       />
-      {!revealed && (
+      {shouldBlur && (
         <BlurView
           intensity={75}
-          style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}
+          style={[
+            StyleSheet.absoluteFill,
+            { justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+          ]}
           tint="dark"
         >
           <View style={{ alignItems: 'center', padding: 20 }}>
             <Ionicons name="shield-checkmark" size={36} color="#fff" />
-            <Text style={{ color: '#fff', fontWeight: '800', marginTop: 10, fontSize: 15 }}>
-              Sensitive Content Hidden
-            </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 6, textAlign: 'center' }}>
-              Tap to reveal image
+            <Text
+              style={{
+                color: '#fff',
+                fontWeight: '800',
+                marginTop: 10,
+                fontSize: 15,
+              }}
+            >
+              Sensitive Content
             </Text>
             <Text
               style={{
-                color: 'rgba(255,255,255,0.55)',
-                fontSize: 11,
-                marginTop: 12,
+                color: 'rgba(255,255,255,0.85)',
+                fontSize: 13,
+                marginTop: 6,
                 textAlign: 'center',
-                maxWidth: 220,
               }}
             >
-              LittleLoom blurs photos by default to keep our community safe.
+              Tap to reveal image
             </Text>
           </View>
         </BlurView>
@@ -169,19 +216,36 @@ const SensitiveImage = ({
 };
 
 /* ── Image grid ───────────────────────────────────────────── */
-const ImageGrid = ({ images }: { images: string[] }) => {
+const ImageGrid = ({
+  images,
+  isSensitive,
+}: {
+  images: string[];
+  /** Explicit sensitivity override for ALL images (e.g. anonymous post). */
+  isSensitive?: boolean;
+}) => {
   if (!images || images.length === 0) return null;
   return (
     <View style={s.imageGridWrapper}>
       {images.length === 1 ? (
         <View style={s.singleImageContainer}>
-          <SensitiveImage uri={images[0]} style={s.singleImage} resizeMode="cover" />
+          <SensitiveImage
+            uri={images[0]}
+            style={s.singleImage}
+            resizeMode="cover"
+            isSensitive={isSensitive}
+          />
         </View>
       ) : (
         <View style={s.multiImageGrid}>
           {images.slice(0, 4).map((img, idx) => (
             <View key={idx} style={s.gridImageItem}>
-              <SensitiveImage uri={img} style={s.gridImage} resizeMode="cover" />
+              <SensitiveImage
+                uri={img}
+                style={s.gridImage}
+                resizeMode="cover"
+                isSensitive={isSensitive}
+              />
               {idx === 3 && images.length > 4 && (
                 <View style={s.gridMoreOverlay}>
                   <Text style={s.gridMoreText}>+{images.length - 4}</Text>
@@ -498,15 +562,27 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     if (!post || !commentText.trim()) return;
     triggerHaptic('success');
 
-    if (replyingTo) {
-      await replyToComment(post.id, replyingTo.commentId, commentText.trim());
-      setReplyingTo(null);
-    } else {
-      await addComment(post.id, commentText.trim());
-    }
+    const content = commentText.trim();
+    const parent = replyingTo;
 
+    // Optimistic clear so the input empties instantly.
     setCommentText('');
-    refreshPost();
+
+    try {
+      if (parent) {
+        await replyToComment(post.id, parent.commentId, content);
+        setReplyingTo(null);
+      } else {
+        await addComment(post.id, content);
+      }
+
+      // Give React one microtask to flush the context setState so
+      // `stateRef.current.posts` is up to date before we read it.
+      await new Promise((r) => setTimeout(r, 0));
+      refreshPost();
+    } catch (e) {
+      if (__DEV__) console.warn('[PostDetail] comment submit failed:', e);
+    }
   }, [post, commentText, addComment, replyToComment, replyingTo, refreshPost, triggerHaptic]);
 
   const handleFollow = useCallback(async () => {
@@ -625,6 +701,14 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
       <Text style={[s.commentBody, { color: isDark ? DS.gray300 : DS.gray700 }]}>
         {comment.content}
       </Text>
+      {comment.replies && comment.replies.length > 0 && (
+        <View style={s.replyCountRow}>
+          <Ionicons name="return-down-forward" size={11} color={DS.primary} />
+          <Text style={[s.replyCountText, { color: DS.primary }]}>
+            {comment.replies.length} {comment.replies.length === 1 ? 'reply' : 'replies'}
+          </Text>
+        </View>
+      )}
 
       <View style={s.commentFooter}>
         <TouchableOpacity
@@ -698,6 +782,8 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
 
       {comment.replies && comment.replies.length > 0 && (
         <View style={s.repliesContainer}>
+          {/* Thread connector line */}
+          <View style={[s.replyThreadLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(99,102,241,0.15)' }]} />
           {comment.replies.map((reply) => (
             <View key={reply.id} style={s.replyCard}>
               <SafeAvatar
@@ -1134,7 +1220,19 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
             )}
 
             {/* Images */}
-            {post.images && post.images.length > 0 && <ImageGrid images={post.images} />}
+            {post.images && post.images.length > 0 && (
+              <ImageGrid
+                images={post.images}
+                // Only explicit signals hide content:
+                //  • anonymous posts are hidden by default
+                //  • "venting" mood posts are hidden by default
+                // Baby photos and normal threads stay visible.
+                isSensitive={
+                  post.isAnonymous === true ||
+                  post.mood === 'venting'
+                }
+              />
+            )}
 
             {/* Helpful votes */}
             {post.helpfulVotes > 0 && (
@@ -1702,7 +1800,8 @@ const s = StyleSheet.create({
   commentActionBtnActive: { backgroundColor: `${DS.heart}10` },
   commentActionText: { fontSize: 12, fontWeight: '600' },
 
-  repliesContainer: { marginTop: 10, marginLeft: 46, gap: 8 },
+  repliesContainer: { marginTop: 10, marginLeft: 46, gap: 8, position: 'relative', paddingLeft: 14 },
+  replyThreadLine: { position: 'absolute', left: 0, top: 0, bottom: 20, width: 2, borderRadius: 1 },
   replyCard: { flexDirection: 'row', gap: 8 },
   replyContent: { flex: 1 },
   replyBubble: { borderRadius: DS.radius.lg, padding: 10, borderWidth: 1 },
@@ -1779,6 +1878,9 @@ const s = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(120,120,120,0.15)',
   },
+    replyCountRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
+  replyCountText: { fontSize: 11, fontWeight: '700' },
+
   moreMenuItemLast: { borderBottomWidth: 0 },
   moreMenuIconWrap: {
     width: 36,

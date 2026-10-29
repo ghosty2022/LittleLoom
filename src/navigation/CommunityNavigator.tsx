@@ -768,6 +768,28 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
             />
           )}
         </Stack.Screen>
+        {/*
+          Register every screen that could be navigated to *from* onboarding
+          (e.g. an "editing" flow navigating into the profile, which then
+          tries to `navigate('CommunityVerification')`). Without these, the
+          action bubbles up to the root stack and throws "not handled by
+          any navigator".
+        */}
+        <Stack.Screen
+          name="CommunityProfile"
+          component={CommunityProfileScreen}
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="CommunityVerification"
+          component={CommunityVerificationScreen}
+          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="CommunityMain"
+          component={CommunityScreen}
+          options={{ animation: 'fade' }}
+        />
       </Stack.Navigator>
     );
   }

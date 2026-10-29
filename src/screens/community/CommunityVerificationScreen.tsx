@@ -106,14 +106,20 @@ const REQUIREMENTS: SecurityRequirement[] = [
   {
     id: 'phone',
     icon: 'call',
-    label: 'Phone Verified',
-    desc: 'Phone number verified via SMS',
-    // `phoneVerified` is not tracked today. Accept either an
-    // explicit verified flag OR a phone number on file — the "verified"
-    // part comes from the auth provider, not from a profile flag we
-    // don't have.
-    check: (_cu, p) => !!(p?.phoneNumber && (p?.phoneVerified === true || p?.phoneVerified === undefined)),
-    securityLevel: 'high',
+    label: 'Phone Added',
+    desc: 'Phone number on file (optional)',
+    // Phone verification isn't enforced anywhere else in the app,
+    // so treat this as satisfied once a phone number exists OR the
+    // user has explicitly dismissed it. Users without a phone
+    // shouldn't be permanently blocked from verification.
+    check: (_cu, p) =>
+      // Verified flag wins.
+      p?.phoneVerified === true ||
+      // No phone set — treat as satisfied (phone is optional).
+      !p?.phoneNumber ||
+      // Phone present and no verification flag → still counts.
+      p?.phoneVerified === undefined,
+    securityLevel: 'medium',
     route: 'CommunityProfile' as any,
   },
   {
@@ -160,7 +166,7 @@ const SecurityBadge = ({ level }: { level: 'low' | 'medium' | 'high' }) => {
 
 export default function CommunityVerificationScreen({ navigation }: Props) {
   const { currentUser, updateCommunityProfile, syncUserProfileAcrossPosts } = useCommunity();
-  const { profile } = useUser();
+  const { profile, loadUser } = useUser();
   const { darkMode, triggerHaptic } = useCustomization();
   const isDark = darkMode ?? false;
   const insets = useSafeAreaInsets();
@@ -169,6 +175,12 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
   const [securityScore, setSecurityScore] = useState(0);
+  // Local "verified" flag so the screen flips immediately after a
+  // successful write, even before `useCommunity().currentUser` and
+  // `useUser().profile` finish re-hydrating.
+  const [locallyVerified, setLocallyVerified] = useState(false);
+
+  const effectiveVerified = locallyVerified || !!currentUser?.isVerified;
 
   /* ── Device fingerprint ─────────────────────────────── */
   useEffect(() => {
@@ -284,16 +296,48 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
         }
       }
 
-      await updateCommunityProfile({
-        isVerified: true,
-        verificationDate: new Date().toISOString(),
-        verificationMethod: 'security_bundle',
-        securityScore,
-      } as any);
+      // Write through BOTH contexts so the flag lands regardless of
+      // which one is hydrated. `useCommunity().updateCommunityProfile`
+      // updates its in-memory `currentUser` for immediate UI refresh.
+      try {
+        await updateCommunityProfile({
+          isVerified: true,
+          verificationDate: new Date().toISOString(),
+          verificationMethod: 'security_bundle',
+          securityScore,
+        } as any);
+      } catch (ctxErr) {
+        if (__DEV__) console.warn('[Verification] community ctx update failed:', ctxErr);
+        // Continue — the direct write below is the source of truth.
+      }
 
-      await syncUserProfileAcrossPosts(currentUser.id, {
-        isVerified: true,
-      } as any);
+      // Belt-and-braces: write directly to `profiles` so we can
+      // confirm the row actually changed. Context wrappers may no-op
+      // if they haven't hydrated yet.
+      const { error: verifyErr } = await supabase
+        .from('profiles')
+        .update({
+          is_verified: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', currentUser.id);
+
+      if (verifyErr) {
+        if (__DEV__) console.warn('[Verification] profiles update failed:', verifyErr.message);
+        throw new Error(verifyErr.message);
+      }
+
+      // Flip the local flag immediately so this screen reflects the
+      // new state without waiting on context re-hydration.
+      setLocallyVerified(true);
+
+      try {
+        await syncUserProfileAcrossPosts(currentUser.id, {
+          isVerified: true,
+        } as any);
+      } catch (syncErr) {
+        if (__DEV__) console.warn('[Verification] sync across posts failed:', syncErr);
+      }
 
       try {
         await supabase.from('verification_events').insert({
@@ -311,6 +355,10 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
         await AsyncStorage.setItem(key, JSON.stringify(new Date().toISOString()));
       } catch {}
 
+      // Refresh UserContext so `profile` / `communityProfile` reflect
+      // the new `is_verified` flag on other screens too.
+      try { await loadUser(); } catch {}
+
       triggerHaptic?.('success');
       sweetAlert.success(
         'Verified! 🎉',
@@ -324,7 +372,18 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
     } finally {
       setIsSubmitting(false);
     }
-  }, [allMet, currentUser, updateCommunityProfile, syncUserProfileAcrossPosts, navigation, sweetAlert, triggerHaptic, deviceFingerprint, securityScore]);
+  }, [
+    allMet,
+    currentUser,
+    updateCommunityProfile,
+    syncUserProfileAcrossPosts,
+    navigation,
+    sweetAlert,
+    triggerHaptic,
+    deviceFingerprint,
+    securityScore,
+    loadUser,
+  ]);
 
   const handleGoBack = useCallback(() => {
     if (!isSubmitting && navigation.canGoBack()) navigation.goBack();
@@ -332,11 +391,11 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
 
   /* ── Status config ─────────────────────────────────── */
   const status = useMemo(() => {
-    if (currentUser?.isVerified) return 'verified' as const;
+    if (effectiveVerified) return 'verified' as const;
     if (allMet) return 'ready' as const;
     if (securityScore > 50) return 'partial' as const;
     return 'incomplete' as const;
-  }, [currentUser?.isVerified, allMet, securityScore]);
+  }, [effectiveVerified, allMet, securityScore]);
 
   const statusConfig = {
     verified: {
@@ -523,7 +582,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
         </Animated.View>
 
         {/* Requirements */}
-        {!currentUser?.isVerified && (
+        {!effectiveVerified && (
           <Animated.View entering={FadeInUp.delay(200).springify()}>
             <Text style={[styles.sectionTitle, { color: textPrimary }]}>🔒 Requirements</Text>
             <View style={[styles.reqCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
@@ -583,7 +642,7 @@ export default function CommunityVerificationScreen({ navigation }: Props) {
         )}
 
         {/* Action button */}
-        {!currentUser?.isVerified && (
+        {!effectiveVerified && (
           <Animated.View entering={FadeInUp.delay(280).springify()} style={{ marginTop: 8 }}>
             <TouchableOpacity
               onPress={handleRequest}
