@@ -154,7 +154,7 @@ interface AuthContextType extends AuthState {
   refreshSession: () => Promise<boolean>;
   /** Fan out a profile change to every context + every signed-in device. */
   broadcastProfileChange: (
-    fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email'>,
+    fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email' | 'role'>,
   ) => Promise<void>;
   /** Subscribe to profile-change events. Returns unsubscribe. */
   subscribeToProfileChanges: (listener: ProfileChangeListener) => () => void;
@@ -272,7 +272,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 // ─────────────────────────────────────────────────────────────────────
 type ProfileChangePayload = {
   userId: string;
-  fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email'>;
+  fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email' | 'role'>;
   at: number;
 };
 
@@ -1193,9 +1193,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'littleloom_username_registry',
           'littleloom_profile_sync_queue',
           '@community_selected_topics_v2',
-          '@community_selected_topics',       // UserContext's scoped key (no _v2)
+          '@community_selected_topics',
           '@littleloom_community_onboarding_v3',
           '@user_location_cache',
+          '@littleloom_hidden_chats',
+          '@littleloom_role_cache',
         ];
 
         await AsyncStorage.multiRemove(
@@ -1457,7 +1459,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Fan out so every other context (UserContext, CommunityContext,
       // FamilyContext, tracker screens, chat avatars) re-hydrates.
-      const changed: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email'> = [];
+      const changed: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email' | 'role'> = [];
       if (updates.fullName !== undefined) changed.push('fullName');
       if (updates.avatar !== undefined) changed.push('avatar');
       if (updates.communityBio !== undefined) changed.push('bio');
@@ -1465,6 +1467,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (updates.communityHandle !== undefined) changed.push('handle');
       if (updates.phoneNumber !== undefined) changed.push('phone');
       if (updates.email !== undefined) changed.push('email');
+      if (updates.role !== undefined) changed.push('role');
       if (changed.length > 0) {
         await broadcastProfileChange({
           userId: currentProfile.id,
@@ -1528,7 +1531,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
       }
 
-      const changed: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email'> = [];
+      const changed: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email' | 'role'> = [];
       if (updates.displayName !== undefined) changed.push('displayName');
       if (updates.avatar !== undefined) changed.push('avatar');
       if (updates.bio !== undefined) changed.push('bio');

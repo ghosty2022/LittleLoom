@@ -1077,11 +1077,12 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           const { broadcastProfileChange } = require('../../context/AuthContext');
           const linkedUserId = (member as any).userId || member.id;
           if (linkedUserId) {
-            const fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'phone' | 'email'> = [];
-            if (updates.fullName !== undefined) fields.push('fullName');
-            if (updates.avatar !== undefined) fields.push('avatar');
-            if (updates.phoneNumber !== undefined) fields.push('phone');
-            if (updates.email !== undefined) fields.push('email');
+          const fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'phone' | 'email' | 'role'> = [];
+          if (updates.fullName !== undefined) fields.push('fullName');
+          if (updates.avatar !== undefined) fields.push('avatar');
+          if (updates.phoneNumber !== undefined) fields.push('phone');
+          if (updates.email !== undefined) fields.push('email');
+          if (updates.role !== undefined) fields.push('role');
             if (fields.length > 0) {
               await broadcastProfileChange({ userId: linkedUserId, fields });
             }
@@ -1193,7 +1194,22 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       setIsSaving(true);
       try {
         const success = await updateGuardianProfile(member.id, { role: newRole });
-        if (success) { setMember(prev => prev ? { ...prev, role: newRole } : null); sweetAlert.success('Role Updated', `${member.fullName} is now a ${roleConfigLocal.label}`); await refreshMemberData(); }
+        if (success) {
+          setMember(prev => prev ? { ...prev, role: newRole } : null);
+          // updateGuardianProfile already broadcasts, but we ALSO re-broadcast
+          // here to guarantee every subscribed surface (including this
+          // screen's own family list) picks up the change even if the
+          // FamilyContext broadcast was skipped due to an early return.
+          try {
+            const { broadcastProfileChange } = require('../../context/AuthContext');
+            const linkedUserId = (member as any).userId || member.id;
+            if (linkedUserId) {
+              await broadcastProfileChange({ userId: linkedUserId, fields: ['role'] });
+            }
+          } catch {}
+          sweetAlert.success('Role Updated', `${member.fullName} is now a ${roleConfigLocal.label}`);
+          await refreshMemberData();
+        }
         else sweetAlert.error('Error', 'Failed to update role');
       } catch { sweetAlert.error('Error', 'An error occurred'); }
       setIsSaving(false);

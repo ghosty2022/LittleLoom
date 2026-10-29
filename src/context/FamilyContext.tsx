@@ -651,6 +651,22 @@ const { data: dbMembers, error: membersError } = await supabase
       }
 
       await loadFamily();
+
+      // ── ROLE CHANGE FAN-OUT ───────────────────────────────────────
+      try {
+        const memberRow = state.members.find(m => m.id === currentBaby.parent2_id);
+        const linkedUserId = (memberRow as any)?.userId || currentBaby.parent2_id;
+        if (linkedUserId) {
+          const fields: Array<'fullName' | 'avatar' | 'phone' | 'email' | 'role'> = [];
+          if (updates.fullName !== undefined) fields.push('fullName');
+          if (updates.avatar !== undefined) fields.push('avatar');
+          if (updates.phoneNumber !== undefined) fields.push('phone');
+          if (updates.email !== undefined) fields.push('email');
+          fields.push('role');
+          const { broadcastProfileChange } = require('./AuthContext');
+          await broadcastProfileChange({ userId: linkedUserId, fields });
+        }
+      } catch {}
       return true;
     } catch (error) {
       console.error('Error updating parent2 profile:', error);
@@ -697,6 +713,26 @@ const { data: dbMembers, error: membersError } = await supabase
       }
 
       await loadFamily();
+
+      // ── ROLE CHANGE FAN-OUT ───────────────────────────────────────
+      // Any consumer (chats, EditGuardian, FamilySharing, Community,
+      // header role badges) must re-hydrate the moment a member's
+      // role, name, avatar, or contact info changes.
+      try {
+        const linkedUserId = (state.members.find(m => m.id === memberId) as any)?.userId || memberId;
+        if (linkedUserId) {
+          const fields: Array<'fullName' | 'avatar' | 'phone' | 'email' | 'role'> = [];
+          if (updates.fullName !== undefined) fields.push('fullName');
+          if (updates.avatar !== undefined) fields.push('avatar');
+          if (updates.phoneNumber !== undefined) fields.push('phone');
+          if (updates.email !== undefined) fields.push('email');
+          if (updates.role !== undefined) fields.push('role');
+          if (fields.length > 0) {
+            const { broadcastProfileChange } = require('./AuthContext');
+            await broadcastProfileChange({ userId: linkedUserId, fields });
+          }
+        }
+      } catch {}
       return true;
     } catch (error) {
       console.error('Error updating guardian:', error);
@@ -825,12 +861,27 @@ const { data: dbMembers, error: membersError } = await supabase
           .eq('id', currentBaby.id);
       }
 
+      const removedMember = state.members.find(m => m.id === memberId);
+      const removedUserId = (removedMember as any)?.userId || memberId;
+
       setState(prev => ({
         ...prev,
         members: prev.members.filter(m => m.id !== memberId),
         guardians: prev.guardians.filter(m => m.id !== memberId),
         parent2: prev.parent2?.id === memberId ? null : prev.parent2,
       }));
+
+      // Fan out so chats / EditGuardian / chat headers drop this user
+      // immediately, and any profile card showing them re-renders.
+      try {
+        if (removedUserId) {
+          const { broadcastProfileChange } = require('./AuthContext');
+          await broadcastProfileChange({
+            userId: removedUserId,
+            fields: ['fullName', 'avatar', 'role'],
+          });
+        }
+      } catch {}
 
       return true;
     } catch (error) {

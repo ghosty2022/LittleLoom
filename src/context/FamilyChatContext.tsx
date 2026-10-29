@@ -942,6 +942,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           : [];
         let liveNames: Record<string, string> = { ...(chatRow.participant_names || {}) };
         let liveAvatars: Record<string, string> = { ...(chatRow.participant_avatars || {}) };
+        // Also read the live roles from `family_members` for this baby
+        // so a role change on Parent 2 ↔ Guardian ↔ Viewer is reflected
+        // in the chat header, member badges, and permission gates.
+        let liveRoles: Record<string, string> = { ...(chatRow.participant_roles || {}) };
         if (participantIds.length > 0) {
           try {
             const { data: profs } = await supabase
@@ -955,6 +959,21 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               if (av) liveAvatars[p.id] = av;
             });
           } catch {}
+
+          // Authoritative role source: `family_members` for this baby.
+          try {
+            const babyId = babyContext?.id;
+            if (babyId) {
+              const { data: fms } = await supabase
+                .from('family_members')
+                .select('user_id, role, status, deleted_at')
+                .eq('baby_id', babyId)
+                .is('deleted_at', null);
+              (fms || []).forEach((fm: any) => {
+                if (fm?.user_id && fm?.role) liveRoles[fm.user_id] = fm.role;
+              });
+            }
+          } catch {}
         }
 
         const chat: FamilyChat = {
@@ -962,7 +981,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           type: chatRow.type,
           name: chatRow.name,
           participants: chatRow.participants ?? [],
-          participantRoles: chatRow.participant_roles || {},
+          participantRoles: liveRoles,
           participantNames: liveNames,
           participantAvatars: liveAvatars,
           unreadCount: chatRow.unread_count || 0,

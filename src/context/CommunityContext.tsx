@@ -179,6 +179,8 @@ interface CommunityContextType extends CommunityState {
   followUser: (userId: string) => Promise<void>;
   unfollowUser: (userId: string) => Promise<void>;
   getUserById: (userId: string) => CommunityUser | undefined;
+  /** Async lookup of the canonical role from `profiles.role`, cache-backed. */
+  getUserRole: (userId: string) => Promise<string | null>;
   getUserPosts: (userId: string) => Post[];
   isFollowing: (userId: string) => boolean;
   updateUserBio: (bio: string) => Promise<void>;
@@ -508,6 +510,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const meId = currentUserIdRef.current;
     if (!meId) return;
     const unsub = subscribeToProfileChanges((payload) => {
+      // Invalidate the per-user role cache so the next getUserRole()
+      // call re-reads the authoritative `profiles.role`.
+      if (payload?.userId) {
+        roleCacheRef.current.delete(payload.userId);
+      }
       // Refresh feed regardless of whose profile changed — a different
       // user's avatar update must reflect too (they may be an author
       // in the current feed).
@@ -593,6 +600,30 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (p.authorId === userId) return p.author;
     }
     return undefined;
+  }, []);
+
+  // Lightweight role lookup: `profiles.role` is the canonical role
+  // column, and it must be readable by ChatScreen / ChatListScreen
+  // even when the peer has no authored post in the current feed.
+  // Cache per-user so we don't hammer the DB on every render.
+  const roleCacheRef = useRef<Map<string, { role: string; at: number }>>(new Map());
+
+  const getUserRole = useCallback(async (userId: string): Promise<string | null> => {
+    if (!userId) return null;
+    const cached = roleCacheRef.current.get(userId);
+    if (cached && Date.now() - cached.at < 30_000) return cached.role;
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .maybeSingle();
+      const role = data?.role || null;
+      if (role) roleCacheRef.current.set(userId, { role, at: Date.now() });
+      return role;
+    } catch {
+      return null;
+    }
   }, []);
 
   const getUserPosts = useCallback((userId: string) => {
@@ -1559,6 +1590,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       followUser,
       unfollowUser,
       getUserById,
+      getUserRole,
       getUserPosts,
       isFollowing: isFollowingFinal,
       updateUserBio,
@@ -1613,6 +1645,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       followUser,
       unfollowUser,
       getUserById,
+      getUserRole,
       getUserPosts,
       isFollowingFinal,
       updateUserBio,
