@@ -44,7 +44,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
-import { UserRole, FamilyMember } from '../../types/roles';
+import { UserRole, FamilyMember, getMemberDisplayLabel, canonicalizeRelationship } from '../../types/roles';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -693,13 +693,15 @@ const MemberCard = React.memo(({
               <View style={styles.memberMetaRow}>
                 <LinearGradient colors={roleCfg.gradient} style={styles.roleBadge}>
                   <Ionicons name={roleCfg.icon} size={9} color={DS.white} />
-                  <Text style={styles.roleBadgeText}>{roleCfg.badge}</Text>
-                </LinearGradient>
-                {member.relationship && (
-                  <Text style={[styles.memberRelationship, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>
-                    {member.relationship}
+                  <Text style={styles.roleBadgeText}>
+                    {getMemberDisplayLabel({ role: member.role, relationship: member.relationship })}
                   </Text>
-                )}
+                </LinearGradient>
+                {member.relationship && canonicalizeRelationship(member.relationship).toLowerCase() !== getMemberDisplayLabel({ role: member.role, relationship: member.relationship }).toLowerCase() ? (
+                  <Text style={[styles.memberRelationship, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>
+                    · {canonicalizeRelationship(member.relationship)}
+                  </Text>
+                ) : null}
               </View>
               {isPending ? (
                 <View style={styles.pendingInline}>

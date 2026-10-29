@@ -45,7 +45,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
-import { UserRole, ROLE_LABELS } from '../../types/roles';
+import { UserRole, ROLE_LABELS, getMemberDisplayLabel, canonicalizeRelationship } from '../../types/roles';
 import { useFamily, FamilyMember } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
 import { useBaby } from '../../context/BabyContext';
@@ -265,11 +265,13 @@ const MemberIdentityCapsule = React.memo<any>(({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
               <View style={[styles.roleBadge, { backgroundColor: `${roleConfig.color}18` }]}>
                 <Ionicons name={roleConfig.icon as any} size={10} color={roleConfig.color} />
-                <Text style={[styles.roleBadgeText, { color: roleConfig.color }]}>{roleConfig.badge}</Text>
+                <Text style={[styles.roleBadgeText, { color: roleConfig.color }]}>
+                  {getMemberDisplayLabel({ role: member.role, relationship: member.relationship })}
+                </Text>
               </View>
-              {member.relationship ? (
+              {member.relationship && member.relationship.trim().toLowerCase() !== getMemberDisplayLabel({ role: member.role, relationship: member.relationship }).toLowerCase() ? (
                 <Text style={[styles.capsuleMeta, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
-                  · {member.relationship}
+                  · {canonicalizeRelationship(member.relationship)}
                 </Text>
               ) : null}
             </View>
@@ -816,10 +818,19 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     if (!currentBaby) return;
     setIsLoadingActivities(true);
     try {
+      // `loggedBy` is a profile UUID. Match on `memberUserId` first
+      // (the canonical `family_members.user_id`), then on `member.id`
+      // as a legacy fallback (some very old rows logged by the
+      // family_members.id), then on the exact display name.
+      const matchesByUserId = (a: any) =>
+        !!memberUserId && (
+          a.loggedBy === memberUserId ||
+          (a as any).loggedByUserId === memberUserId
+        );
       const memberActs = trackerEntries.filter((a: any) => {
         if (a.isDeleted) return false;
+        if (matchesByUserId(a)) return true;
         if (a.loggedBy === memberId) return true;
-        if (memberUserId && a.loggedBy === memberUserId) return true;
         if (memberName && a.loggedByName === memberName) return true;
         return false;
       });
@@ -1298,7 +1309,9 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       <Animated.View style={[styles.stickyHeader, { paddingTop: insets.top + 8 }, headerOpacity]} pointerEvents="none">
         <BlurView intensity={40} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <Text style={[styles.stickyTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{member?.fullName || 'Member'}</Text>
-        <Text style={[styles.stickySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>{roleConfig?.label || ''}</Text>
+        <Text style={[styles.stickySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+          {member ? getMemberDisplayLabel({ role: member.role, relationship: member.relationship }) : (roleConfig?.label || '')}
+        </Text>
       </Animated.View>
 
       {/* Back button */}

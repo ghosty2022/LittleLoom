@@ -69,6 +69,7 @@ import { ShimmerLoader } from '../../components/UniversalSpinner';
 // Types
 import type { RootStackParamList } from '../../types/navigation';
 import { navigationRef } from '../../navigation/navigationRef';
+import { getMemberDisplayLabel } from '../../types/roles';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -1266,7 +1267,8 @@ const RecentTimeline: React.FC<{
   onViewAll: () => void;
   onEntryPress: (entry: any) => void;
   borderRadius: number;
-}> = React.memo(({ activities, isDark, theme, onViewAll, onEntryPress, borderRadius }) => {
+  members?: any[];
+}> = React.memo(({ activities, isDark, theme, onViewAll, onEntryPress, borderRadius, members = [] }) => {
   const groups: DayGroup[] = useMemo(() => {
     const sorted = [...(activities || [])]
       .filter((e: any) => e?.timestamp)
@@ -1362,7 +1364,20 @@ const RecentTimeline: React.FC<{
                                 </Text>
                                 <Text style={[styles.entryMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                                   {fullDate}
-                                  {event?.loggedByName ? ` • by ${event.loggedByName}` : ''}
+                                  {(() => {
+                                    // Resolve the CURRENT name + relationship for
+                                    // the logger, so a rename or role change is
+                                    // reflected on historical entries.
+                                    const logger =
+                                      members.find((m: any) => m.userId === event.loggedBy) ||
+                                      members.find((m: any) => m.id === event.loggedBy);
+                                    const displayName = logger?.fullName || event.loggedByName;
+                                    const displayLabel = logger ? getMemberDisplayLabel({ role: logger.role, relationship: logger.relationship }) : '';
+                                    if (!displayName) return '';
+                                    return displayLabel
+                                      ? ` • ${displayName} (${displayLabel})`
+                                      : ` • ${displayName}`;
+                                  })()}
                                 </Text>
                               </View>
                               <View style={[styles.entryTypeBadge, { backgroundColor: `${cfg.color}12` }]}>
@@ -2705,6 +2720,7 @@ const growthStats = useMemo(() => {
                     }}
                     onEntryPress={handleEntryPress}
                     borderRadius={borderRadiusValue}
+                    members={members}
                   />
                 )}
               </View>

@@ -2419,10 +2419,16 @@ const getChatMessages = useCallback(
   );
 
   const getMemberChatInfo = useCallback(
-    (memberId: string): { name: string; avatar: string; role: string } | null => {
+    (memberId: string): { name: string; avatar: string; role: string; displayLabel: string } | null => {
       const member = members.find(m => m.id === memberId);
       if (!member) return null;
-      return { name: member.fullName, avatar: member.avatar || '👤', role: member.role };
+      const displayLabel =
+        (member.relationship && member.relationship.trim()) ||
+        (member.role === 'parent1' ? 'Primary Parent'
+          : member.role === 'parent2' ? 'Co-Parent'
+          : member.role === 'guardian' ? 'Guardian'
+          : 'Viewer');
+      return { name: member.fullName, avatar: member.avatar || '👤', role: member.role, displayLabel };
     },
     [members],
   );

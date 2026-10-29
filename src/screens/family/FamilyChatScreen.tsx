@@ -451,7 +451,9 @@ const UserBubble: React.FC<{ member: any; isDark: boolean; onPress: () => void }
           {member.fullName.split(' ')[0]}
         </Text>
         <Text style={[styles.userBubbleRole, { color: roleColor }]}>
-          {member.role === 'parent1' ? 'Primary' : member.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
+          {member.relationship && member.relationship.trim()
+            ? member.relationship
+            : member.role === 'parent1' ? 'Primary' : member.role === 'parent2' ? 'Co-Parent' : 'Guardian'}
         </Text>
       </View>
     </PressableScale>
@@ -1132,14 +1134,19 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
       return { name: chatInfo.name || 'Family Group', avatar: chatInfo.avatar || '👨‍👩‍👧‍👦', status: `${chatInfo.participants?.length || 0} members` };
     }
     const otherId = chatInfo.participants?.find((p: string) => p !== userProfile?.id);
-    // Prefer the *live* member from FamilyContext; fall back to route
-    // params or the chat snapshot if the member isn't in the family
-    // list (e.g. a viewer joining a direct chat).
     const member = otherId ? getMemberById(otherId) : undefined;
+    // Show the human relationship (Mother / Father / Grandma …), falling
+    // back to the role label only when no relationship was entered.
+    const status =
+      (member?.relationship && member.relationship.trim()) ||
+      (member?.role === 'parent1' ? 'Primary Parent'
+        : member?.role === 'parent2' ? 'Co-Parent'
+        : member?.role === 'guardian' ? 'Guardian'
+        : 'Family Member');
     return {
       name: member?.fullName || memberName || 'Unknown',
       avatar: member?.avatar || memberAvatar || '👤',
-      status: member?.role === 'parent1' ? 'Primary Parent' : member?.role === 'parent2' ? 'Co-Parent' : member?.role === 'guardian' ? 'Guardian' : 'Family Member',
+      status,
     };
   }, [chatInfo, memberName, memberAvatar, userProfile, members]);
 

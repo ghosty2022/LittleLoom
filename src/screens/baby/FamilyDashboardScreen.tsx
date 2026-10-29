@@ -903,12 +903,23 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
     const map = new Map<string, TodayContributor>();
     trackerEntries.forEach((e: any) => {
       if (e.isDeleted || e.timestamp < todayStart.getTime()) return;
+      // Prefer `loggedBy` (profile UUID) as the dedupe key — the
+      // same person can log with different display names, but the
+      // profile UUID is stable across role renames.
       const key = e.loggedBy || e.loggedByName || 'unknown';
       const existing = map.get(key);
       if (existing) existing.count += 1;
       else {
-        const memberMatch = members.find((m) => m.userId === e.loggedBy || m.id === e.loggedBy || m.fullName === e.loggedByName);
-        map.set(key, { id: key, name: e.loggedByName || memberMatch?.fullName || 'Someone', avatar: memberMatch?.avatar, count: 1 });
+        const memberMatch =
+          members.find((m: any) => m.userId === e.loggedBy) ||
+          members.find((m: any) => m.id === e.loggedBy) ||
+          members.find((m: any) => m.fullName === e.loggedByName);
+        map.set(key, {
+          id: key,
+          name: memberMatch?.fullName || e.loggedByName || 'Someone',
+          avatar: memberMatch?.avatar,
+          count: 1,
+        });
       }
     });
     return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 4);

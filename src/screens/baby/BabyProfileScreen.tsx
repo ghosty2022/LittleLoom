@@ -49,7 +49,7 @@ import { decode } from 'base64-arraybuffer';
 
 import type { RootStackParamList } from '../../types/navigation';
 import { useFamily } from '../../context/FamilyContext';
-import { UserRole } from '../../types/roles';
+import { UserRole, getMemberDisplayLabel } from '../../types/roles';
 import { useBaby } from '../../context/BabyContext';
 import type { Milestone } from '../../context/BabyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -590,7 +590,9 @@ const FamilyNode = React.memo<any>(({ member, roleKey, index, onPress, isDark, s
           </LinearGradient>
           <Text style={[styles.familyName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{member.fullName || 'Member'}</Text>
           <View style={[styles.familyBadge, { backgroundColor: `${meta.color}18` }]}>
-            <Text style={[styles.familyBadgeText, { color: meta.color }]}>{meta.label}</Text>
+            <Text style={[styles.familyBadgeText, { color: meta.color }]}>
+              {getMemberDisplayLabel({ role: member.role, relationship: member.relationship })}
+            </Text>
           </View>
         </View>
       </PressableScale>
@@ -1582,15 +1584,16 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                     <View style={styles.familyRow}>
                       {members.filter(m => m.role === UserRole.PARENT_1 || m.role === UserRole.PARENT_2).map((m, i) => {
                         const roleKey = m.role === UserRole.PARENT_1 ? 'parent1' : 'parent2';
+                        const displayLabel = getMemberDisplayLabel({ role: m.role, relationship: m.relationship });
                         return (
                           <FamilyNode
-                            key={`${m.id}_${m.role}`}
+                            key={`${m.id}_${m.role}_${i}`}
                             member={m}
                             roleKey={roleKey}
                             index={i}
                             onPress={() => sweetAlert.alert(
                               m.fullName,
-                              `${ROLE_PRESENTATION[roleKey]?.relationLabel || 'Family'}\n${m.email || 'No email'}`,
+                              `${displayLabel}\n${m.email || 'No email'}`,
                             )}
                             isDark={isDark}
                             size={FAMILY_NODE_SIZE * 0.55}

@@ -457,21 +457,30 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // ── 4. Normalize each row into the FamilyMember shape ──────
       const buildMember = (row: any): FamilyMember => {
+        // ── AUTHORITATIVE ROLE SOURCE ────────────────────────────────
+        // `family_members.role` is the SINGLE source of truth. The old
+        // code upgraded a `parent2` row to PARENT_1 whenever
+        // `babies.parent1_id === row.user_id` — that meant a demoted
+        // parent (still listed as babies.parent1_id until the DB is
+        // updated) always appeared as PARENT_1, and a freshly-
+        // promoted parent (family_members.role='parent1' but
+        // babies.parent1_id still on the old parent) never showed up
+        // as PARENT_1.
+        //
+        // We trust the row. If `babies.parent1_id` disagrees with the
+        // row, we fix the baby row *lazily* below (in loadFamily) so
+        // the two systems converge. That guarantees:
+        //   • Role upgrade  (family_members.role → parent1) is visible
+        //     immediately in the tree.
+        //   • Role demotion (parent1 → parent2/guardian) is visible
+        //     immediately too (they no longer appear in Primary Parent
+        //     group).
         const rawRole = (row.role || 'viewer').toString().toLowerCase();
-        let enumRole: UserRole =
+        const enumRole: UserRole =
           rawRole === 'parent1' ? UserRole.PARENT_1
           : rawRole === 'parent2' ? UserRole.PARENT_2
           : rawRole === 'guardian' ? UserRole.GUARDIAN
           : UserRole.VIEWER;
-
-        // Fallback inference: if role is viewer/parent2 but userId
-        // matches `currentBaby.parent2_id`, upgrade to PARENT_2.
-        if (row.user_id && currentBaby.parent2_id === row.user_id && enumRole === UserRole.VIEWER) {
-          enumRole = UserRole.PARENT_2;
-        }
-        if (row.user_id && currentBaby.parent1_id === row.user_id) {
-          enumRole = UserRole.PARENT_1;
-        }
 
         const profile = row.user_id ? profileMap[row.user_id] : null;
         const liveName =
@@ -539,6 +548,52 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const uniqueMembers = Array.from(byKey.values()).sort(
         (a, b) => (priority[a.role] ?? 4) - (priority[b.role] ?? 4),
       );
+
+      // ── RECONCILE babies.parent1_id / parent2_id WITH family_members ──
+      // The tree (and every downstream consumer) reads parent1/parent2
+      // from `babies`. If a role change in `family_members` desynced
+      // those columns, we heal them here so:
+      //   • A promoted parent shows under "Primary Parent" on next render.
+      //   • A demoted parent stops showing under "Primary Parent".
+      // Fire-and-forget — we don't block the UI on the write.
+      try {
+        const fmParent1 = uniqueMembers.find(m => m.role === UserRole.PARENT_1);
+        const fmParent2 = uniqueMembers.find(m => m.role === UserRole.PARENT_2);
+        const dbParent1Id = currentBaby?.parent1_id || null;
+        const dbParent2Id = currentBaby?.parent2_id || null;
+        const wantParent1Id = fmParent1?.userId || fmParent1?.id || null;
+        const wantParent2Id = fmParent2?.userId || fmParent2?.id || null;
+
+        const needParent1Fix = wantParent1Id && dbParent1Id !== wantParent1Id;
+        const needParent2Fix = wantParent2Id && dbParent2Id !== wantParent2Id;
+
+        if (needParent1Fix || needParent2Fix) {
+          const updates: Record<string, unknown> = {
+            updated_at: new Date().toISOString(),
+          };
+          if (needParent1Fix) updates.parent1_id = wantParent1Id;
+          if (needParent2Fix) updates.parent2_id = wantParent2Id;
+          // Clear the OTHER slot if it's now occupied by a non-parent.
+          if (dbParent2Id && wantParent1Id && dbParent2Id === wantParent1Id) {
+            updates.parent2_id = null;
+          }
+          if (dbParent1Id && wantParent2Id && dbParent1Id === wantParent2Id) {
+            updates.parent1_id = wantParent2Id;
+          }
+          supabase
+            .from('babies')
+            .update(updates)
+            .eq('id', currentBaby.id)
+            .then(() => {
+              if (__DEV__) console.log('[FamilyContext] ✅ Reconciled babies.parent1/2_id');
+            })
+            .catch((e) => {
+              if (__DEV__) console.warn('[FamilyContext] baby role reconcile failed:', e);
+            });
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[FamilyContext] role reconcile threw:', e);
+      }
 
       const nextParent1 = uniqueMembers.find(m => m.role === UserRole.PARENT_1) || null;
       const nextParent2 = uniqueMembers.find(m => m.role === UserRole.PARENT_2) || null;
@@ -718,6 +773,43 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
 
+    // ── UPGRADE PROTECTION for role changes ──────────────────────
+    // If I was promoted to parent1/parent2 by someone else, I must
+    // not be able to *demote* that person below parent1/parent2.
+    const me = state.members.find(
+      (m) => m.userId === authProfile?.id || m.id === authProfile?.id,
+    );
+    const target = state.members.find((m) => m.id === memberId);
+    if (me && target && updates.role !== undefined) {
+      const meAddedBy = (me as any).addedBy || null;
+      const targetUserId = (target as any).userId || target.id;
+      const targetWasParent =
+        target.role === UserRole.PARENT_1 || target.role === UserRole.PARENT_2;
+      const targetWillBeParent =
+        updates.role === UserRole.PARENT_1 || updates.role === UserRole.PARENT_2;
+
+      if (meAddedBy && meAddedBy === targetUserId && targetWasParent && !targetWillBeParent) {
+        showAlert(
+          'Cannot Demote',
+          'This person invited you to the family. Only another Primary Parent can change their role.',
+        );
+        return false;
+      }
+      // Never let anyone demote the original Primary Parent.
+      if (
+        target.role === UserRole.PARENT_1 &&
+        currentBaby.parent1_id === targetUserId &&
+        authProfile?.id !== targetUserId &&
+        !targetWillBeParent
+      ) {
+        showAlert(
+          'Cannot Demote',
+          'The original Primary Parent cannot be demoted. Transfer ownership first.',
+        );
+        return false;
+      }
+    }
+
     // Capture the member row BEFORE the async `loadFamily()` below so
     // the role-change broadcast targets the correct profile userId —
     // `state.members` is a stale closure once we `await`.
@@ -748,6 +840,46 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.error('Error updating guardian:', error);
         showAlert('Error', 'Failed to update guardian');
         return false;
+      }
+
+      // ── ROLE CHANGE → SYNC babies.parent1_id / parent2_id ──────
+      // `family_members.role` is the truth, but downstream consumers
+      // (BabyContext maps `currentBaby.parent1_id` → `isPrimaryParent`,
+      // and FamilyContext.loadFamily reads it back for display) rely on
+      // `babies.parent1_id`. Sync it here so a promotion is visible on
+      // the very next render — without waiting for loadFamily()'s lazy
+      // reconcile to fire.
+      if (updates.role !== undefined && currentBaby) {
+        try {
+          const targetUserId = linkedUserIdBefore;
+          if (updates.role === UserRole.PARENT_1 && targetUserId) {
+            const previousParent1 = currentBaby.parent1_id;
+            const updatesForBaby: Record<string, unknown> = {
+              parent1_id: targetUserId,
+              updated_at: new Date().toISOString(),
+            };
+            // If the previous parent1 is now a different role, they
+            // must be cleared out of parent1 slot. If they are still
+            // parent1 (only one parent1 allowed), the SQL will refuse.
+            await supabase.from('babies').update(updatesForBaby).eq('id', currentBaby.id);
+            if (__DEV__) {
+              console.log('[FamilyContext] ✅ Promoted parent1:', targetUserId, 'was:', previousParent1);
+            }
+          } else if (updates.role === UserRole.PARENT_2 && targetUserId) {
+            await supabase
+              .from('babies')
+              .update({ parent2_id: targetUserId, updated_at: new Date().toISOString() })
+              .eq('id', currentBaby.id);
+          } else if (updates.role && targetUserId && currentBaby.parent2_id === targetUserId) {
+            // Demoted from parent2 → guardian/viewer: clear parent2 slot
+            await supabase
+              .from('babies')
+              .update({ parent2_id: null, updated_at: new Date().toISOString() })
+              .eq('id', currentBaby.id);
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[FamilyContext] parent slot sync failed:', e);
+        }
       }
 
       await loadFamily();
@@ -871,6 +1003,40 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (authProfile?.id === memberId) {
       showAlert('Error', 'You cannot remove yourself from the family');
       return false;
+    }
+
+    // ── UPGRADE PROTECTION ────────────────────────────────────────
+    // If I am a promoted parent (my `addedBy` is the person I'm
+    // trying to remove), I cannot remove them. This prevents an
+    // upgraded parent from demoting/removing their inviter — which
+    // used to be possible because role upgrades only changed
+    // `family_members.role`, not the actual ownership graph.
+    const me = state.members.find(
+      (m) => m.userId === authProfile?.id || m.id === authProfile?.id,
+    );
+    const target = state.members.find((m) => m.id === memberId);
+    if (me && target) {
+      const meAddedBy = (me as any).addedBy || null;
+      const targetUserId = (target as any).userId || target.id;
+      if (meAddedBy && meAddedBy === targetUserId) {
+        showAlert(
+          'Cannot Remove',
+          'You were invited to this family by this person, so you cannot remove them. Ask another Primary Parent to do it.',
+        );
+        return false;
+      }
+      // Never allow removing the original Primary Parent unless the
+      // current user IS that original parent.
+      if (
+        target.role === UserRole.PARENT_1 &&
+        currentBaby.parent1_id !== authProfile?.id
+      ) {
+        showAlert(
+          'Cannot Remove',
+          'Only the Primary Parent can remove themselves. Promote someone else first.',
+        );
+        return false;
+      }
     }
 
     try {
