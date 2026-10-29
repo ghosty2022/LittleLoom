@@ -601,6 +601,10 @@ const { data: dbMembers, error: membersError } = await supabase
       return false;
     }
 
+    // Capture before any `await` — `state.members` becomes stale.
+    const parent2RowBefore = state.members.find(m => m.id === currentBaby.parent2_id);
+    const linkedUserIdBefore = (parent2RowBefore as any)?.userId || currentBaby.parent2_id;
+
     try {
       const dbUpdates: any = {};
       if (updates.fullName !== undefined) dbUpdates.full_name = updates.fullName;
@@ -654,8 +658,9 @@ const { data: dbMembers, error: membersError } = await supabase
 
       // ── ROLE CHANGE FAN-OUT ───────────────────────────────────────
       try {
-        const memberRow = state.members.find(m => m.id === currentBaby.parent2_id);
-        const linkedUserId = (memberRow as any)?.userId || currentBaby.parent2_id;
+        // Use the userId resolved BEFORE the `loadFamily()` await above.
+        // `state.members` is a stale closure here.
+        const linkedUserId = linkedUserIdBefore;
         if (linkedUserId) {
           const fields: Array<'fullName' | 'avatar' | 'phone' | 'email' | 'role'> = [];
           if (updates.fullName !== undefined) fields.push('fullName');
@@ -685,6 +690,12 @@ const { data: dbMembers, error: membersError } = await supabase
       showAlert('Error', 'Permission denied');
       return false;
     }
+
+    // Capture the member row BEFORE the async `loadFamily()` below so
+    // the role-change broadcast targets the correct profile userId —
+    // `state.members` is a stale closure once we `await`.
+    const memberRowBefore = state.members.find(m => m.id === memberId);
+    const linkedUserIdBefore = (memberRowBefore as any)?.userId || memberId;
 
     try {
       const dbUpdates: any = {};
@@ -719,8 +730,7 @@ const { data: dbMembers, error: membersError } = await supabase
       // header role badges) must re-hydrate the moment a member's
       // role, name, avatar, or contact info changes.
       try {
-        const linkedUserId = (state.members.find(m => m.id === memberId) as any)?.userId || memberId;
-        if (linkedUserId) {
+        if (linkedUserIdBefore) {
           const fields: Array<'fullName' | 'avatar' | 'phone' | 'email' | 'role'> = [];
           if (updates.fullName !== undefined) fields.push('fullName');
           if (updates.avatar !== undefined) fields.push('avatar');
@@ -729,7 +739,7 @@ const { data: dbMembers, error: membersError } = await supabase
           if (updates.role !== undefined) fields.push('role');
           if (fields.length > 0) {
             const { broadcastProfileChange } = require('./AuthContext');
-            await broadcastProfileChange({ userId: linkedUserId, fields });
+            await broadcastProfileChange({ userId: linkedUserIdBefore, fields });
           }
         }
       } catch {}

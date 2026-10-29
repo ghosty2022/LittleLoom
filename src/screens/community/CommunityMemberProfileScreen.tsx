@@ -186,7 +186,7 @@ const PressableScale = React.memo<any>(({ children, onPress, disabled, style, ac
 
 /* Identity Capsule — profile pulse replacing hero */
 const IdentityCapsule = React.memo(({
-  isDark, user, avatarSize, isFollowingUser, isBlocked, isOwnProfile, followerCount, followingCount, postCount, onAvatarPress, onFollowToggle, onMessage, onShare, onMore
+  isDark, user, avatarSize, isFollowingUser, isBlocked, isOwnProfile, followerCount, followingCount, postCount, roleMeta, onAvatarPress, onFollowToggle, onMessage, onShare, onMore
 }: any) => {
   const pulse = useSharedValue(1);
   const rotate = useSharedValue(0);
@@ -258,6 +258,19 @@ const IdentityCapsule = React.memo(({
             <Text style={[styles.capsuleHandle, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
               {user.handle || '@parent'}
             </Text>
+            {roleMeta && (
+              <View
+                style={[
+                  styles.roleBadge,
+                  { backgroundColor: `${roleMeta.color}18`, marginTop: 4 },
+                ]}
+              >
+                <Ionicons name={roleMeta.icon} size={10} color={roleMeta.color} />
+                <Text style={[styles.roleBadgeText, { color: roleMeta.color }]}>
+                  {roleMeta.label}
+                </Text>
+              </View>
+            )}
             <View style={styles.capsuleStats}>
               <View style={styles.capsuleStatItem}>
                 <Text style={[styles.capsuleStatValue, { color: DS.primary }]}>{postCount}</Text>
@@ -485,7 +498,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   const {
     currentUser, getUserById, getUserPosts, followUser, unfollowUser, isFollowing,
     blockUser, isUserBlocked, getFollowers, getFollowing, getAllUsers,
-    refreshFeed, syncUserProfileAcrossPosts,
+    refreshFeed, syncUserProfileAcrossPosts, getUserRole,
   } = useCommunity();
   const { communityProfile } = useUser();
   const { themeColors, fullThemeColors, darkMode, triggerHaptic } = useCustomization();
@@ -509,11 +522,24 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
   const [isBlocked, setIsBlocked] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [peerRole, setPeerRole] = useState<string>('');
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [showAvatarPreview, setShowAvatarPreview] = useState(false);
 
   const isOwnProfile = currentUser?.id === userId;
   const allUsers = useMemo(() => getAllUsers(), [getAllUsers]);
+
+  // Map the peer's role to a display badge, re-derived whenever
+  // `peerRole` changes (profile-change → loadUserData → setPeerRole).
+  const peerRoleMeta = useMemo(() => {
+    const map: Record<string, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
+      parent1: { label: 'Primary Parent', color: '#6366f1', icon: 'shield' },
+      parent2: { label: 'Co-Parent', color: '#ec4899', icon: 'heart' },
+      guardian: { label: 'Guardian', color: '#10b981', icon: 'shield-checkmark' },
+      viewer: { label: 'Viewer', color: '#94a3b8', icon: 'eye' },
+    };
+    return map[peerRole] || null;
+  }, [peerRole]);
 
   const isLoadingRef = useRef(false);
   const initialLoadDone = useRef(false);
@@ -694,8 +720,12 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     if (!userId) return;
     const unsub = subscribeToProfileChanges((payload) => {
       if (payload.userId === userId) {
-        // Small debounce so a save that updates 3 fields doesn't
-        // trigger 3 reloads.
+        // Role-change events are rare and important — clear the
+        // cached role so the next loadUserData re-reads it, even
+        // if the debounce fires before the DB write lands.
+        if (payload.fields?.includes('role')) {
+          setPeerRole('');
+        }
         if (profileReloadTimerRef.current) clearTimeout(profileReloadTimerRef.current);
         profileReloadTimerRef.current = setTimeout(() => {
           profileReloadTimerRef.current = null;
@@ -788,9 +818,29 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
         setIsBlocked(isUserBlocked(userId));
         const followers = await getFollowers(userId);
         const following = await getFollowing(userId);
+        // Fetch the peer's canonical role — this is the authoritative
+        // signal for whether they are Parent 1, Co-Parent, Guardian, or
+        // Viewer. Falls back to `profiles.role` if the community
+        // context cache misses.
+        let peerRole = '';
+        try {
+          if (typeof getUserRole === 'function') {
+            const r = await getUserRole(userId);
+            peerRole = r || '';
+          }
+          if (!peerRole) {
+            const { data: roleRow } = await supabase
+              .from('profiles')
+              .select('role')
+              .eq('id', userId)
+              .maybeSingle();
+            peerRole = roleRow?.role || '';
+          }
+        } catch {}
         if (isMountedRef.current) {
           setFollowerCount(followers.length);
           setFollowingCount(following.length);
+          setPeerRole(peerRole);
         }
       } else {
         sweetAlert.alert('Not Found', 'User not found', 'warning');
@@ -1352,6 +1402,7 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
               followerCount={followerCount}
               followingCount={followingCount}
               postCount={userPostList.length}
+              roleMeta={peerRoleMeta}
               onAvatarPress={() => setShowAvatarPreview(true)}
               onFollowToggle={handleFollowToggle}
               onMessage={handleMessage}
@@ -1467,6 +1518,12 @@ const styles = StyleSheet.create({
   capsuleName: { fontSize: 19, fontWeight: '800', letterSpacing: -0.3, maxWidth: '70%' },
   verifiedDot: { width: 18, height: 18, borderRadius: 9, backgroundColor: DS.primary, alignItems: 'center', justifyContent: 'center' },
   capsuleHandle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  roleBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+  },
+  roleBadgeText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
   capsuleStats: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   capsuleStatItem: { alignItems: 'center' },
   capsuleStatValue: { fontSize: 14, fontWeight: '800' },

@@ -465,11 +465,35 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   /* ─── Load Family Code ──────────────────────────────────────── */
   const loadFamilyCode = useCallback(async () => {
     try {
+      let userId = userProfileRef.current?.id;
+      if (!userId) {
+        // Auth hasn't hydrated yet — read it from the live session.
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          userId = session?.user?.id ?? null;
+        } catch {}
+      }
+      if (!userId) {
+        // Try AsyncStorage recovery (mirrors BabyContext behaviour).
+        try {
+          const keys = await AsyncStorage.getAllKeys();
+          const authKey = keys.find(k => k.includes('auth-token') || k.includes('supabase.auth'));
+          if (authKey) {
+            const stored = await AsyncStorage.getItem(authKey);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              userId = parsed?.user?.id || parsed?.session?.user?.id || null;
+            }
+          }
+        } catch {}
+      }
+      if (!userId) return;
+
       const { data } = await supabase
         .from('app_settings')
         .select('value, user_id')
         .eq('key', 'family_code')
-        .eq('user_id', userProfileRef.current?.id ?? '')
+        .eq('user_id', userId)
         .maybeSingle();
 
       if (data?.value) {
@@ -486,17 +510,22 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (babyContext) {
         const newCode = `FAM-${babyContext.id.slice(0, 6).toUpperCase()}`;
-        await supabase
-          .from('app_settings')
-          .upsert(
-            {
-              key: 'family_code',
-              value: newCode,
-              user_id: userProfileRef.current?.id ?? null,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'key,user_id' },
-          );
+        // Reuse the `userId` we resolved at the top — do NOT fall back
+        // to `userProfileRef.current?.id ?? null`, which writes an
+        // orphan `user_id = null` row that never hydrates.
+        if (userId) {
+          await supabase
+            .from('app_settings')
+            .upsert(
+              {
+                key: 'family_code',
+                value: newCode,
+                user_id: userId,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'key,user_id' },
+            );
+        }
         if (isMountedRef.current) {
           familyCodeRef.current = newCode;
           setState(prev => ({ ...prev, familyCode: newCode }));
@@ -919,12 +948,139 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      const { data: chatsData, error: chatsError } = await supabase
+      // `let` because the self-heal block below reassigns this
+      // with the freshly-seeded rows.
+      let { data: chatsData, error: chatsError } = await supabase
         .from('family_chats')
         .select('*')
         .eq('family_code', familyCode);
 
       if (chatsError) console.warn('[FamilyChat] Chats fetch error:', chatsError.message);
+
+      // ── Self-heal: if I have a family_code but no chats at all,
+      //    create the family group + at least one DM with my family
+      //    (the inviter). This guarantees a fresh invitee — who has
+      //    never had a chat created for them — still sees a chat
+      //    after signing in on any device.
+      const me = userProfileRef.current;
+      const hasChats = (chatsData ?? []).length > 0;
+      if (!hasChats && me?.id) {
+        try {
+          const { data: myBabySetting } = await supabase
+            .from('app_settings')
+            .select('value')
+            .eq('key', 'current_baby_id')
+            .eq('user_id', me.id)
+            .maybeSingle();
+          const myBabyId = myBabySetting?.value || babyContext?.id || null;
+
+          let seedFamilyMemberRows: any[] = [];
+          if (myBabyId) {
+            const { data: fms } = await supabase
+              .from('family_members')
+              .select('user_id, role, full_name, email')
+              .eq('baby_id', myBabyId)
+              .eq('status', 'active')
+              .is('deleted_at', null);
+            seedFamilyMemberRows = fms ?? [];
+          }
+
+          const otherIds = seedFamilyMemberRows
+            .map(r => r.user_id)
+            .filter((id: string | null): id is string => !!id && id !== me.id);
+
+          // Resolve profile info for everyone in the family.
+          const profileMap: Record<string, { name: string; avatar: string; role: string }> = {};
+          if (otherIds.length > 0) {
+            const { data: profs } = await supabase
+              .from('profiles')
+              .select('id, full_name, community_display_name, community_avatar, avatar_url, avatar, role')
+              .in('id', otherIds);
+            (profs || []).forEach((p: any) => {
+              profileMap[p.id] = {
+                name: p.community_display_name || p.full_name || 'Family Member',
+                avatar: p.community_avatar || p.avatar_url || p.avatar || '👤',
+                role: p.role || 'parent1',
+              };
+            });
+          }
+
+          const nowIso = new Date().toISOString();
+          const myName = me.fullName || 'Family Member';
+          const myAvatar = me.avatar || '👤';
+
+          // Group chat
+          const groupChatId = `family_group_${familyCode}`;
+          const groupParticipants = [me.id, ...otherIds];
+          const groupNames: Record<string, string> = { [me.id]: myName };
+          const groupRoles: Record<string, string> = { [me.id]: me.role || 'parent1' };
+          const groupAvatars: Record<string, string> = { [me.id]: myAvatar };
+          otherIds.forEach((uid) => {
+            const p = profileMap[uid];
+            if (!p) return;
+            groupNames[uid] = p.name;
+            groupRoles[uid] = p.role;
+            groupAvatars[uid] = p.avatar;
+          });
+
+          await supabase.from('family_chats').insert({
+            id: groupChatId,
+            type: 'group',
+            name: 'Family Group',
+            participants: groupParticipants,
+            participant_roles: groupRoles,
+            participant_names: groupNames,
+            participant_avatars: groupAvatars,
+            unread_count: 0,
+            created_at: nowIso,
+            updated_at: nowIso,
+            avatar: '👨‍👩‍👧‍👦',
+            is_muted: false,
+            family_code: familyCode,
+            is_pinned: true,
+          });
+
+          // DM with each other family member
+          for (const uid of otherIds) {
+            const p = profileMap[uid];
+            if (!p) continue;
+            const dmId = `direct_${[me.id, uid].sort().join('_')}`;
+            const { data: existingDm } = await supabase
+              .from('family_chats')
+              .select('id')
+              .eq('id', dmId)
+              .maybeSingle();
+            if (existingDm) continue;
+            await supabase.from('family_chats').insert({
+              id: dmId,
+              type: 'direct',
+              name: p.name,
+              participants: [me.id, uid],
+              participant_roles: { [me.id]: me.role || 'parent1', [uid]: p.role },
+              participant_names: { [me.id]: myName, [uid]: p.name },
+              participant_avatars: { [me.id]: myAvatar, [uid]: p.avatar },
+              unread_count: 0,
+              created_at: nowIso,
+              updated_at: nowIso,
+              avatar: p.avatar,
+              is_muted: false,
+              family_code: familyCode,
+              is_pinned: false,
+            });
+          }
+
+          // Re-fetch chats now that we've seeded.
+          const { data: reseeded } = await supabase
+            .from('family_chats')
+            .select('*')
+            .eq('family_code', familyCode);
+          if (reseeded && reseeded.length > 0) {
+            chatsData = reseeded;
+          }
+        } catch (seedErr) {
+          if (__DEV__) console.warn('[FamilyChat] self-heal chat seed failed:', seedErr);
+        }
+      }
 
       const chats: FamilyChat[] = [];
       const messages: Record<string, FamilyMessage[]> = {};
@@ -972,6 +1128,19 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               (fms || []).forEach((fm: any) => {
                 if (fm?.user_id && fm?.role) liveRoles[fm.user_id] = fm.role;
               });
+
+              // Write back if the DB JSONB is stale — so a cold-start
+              // on another device sees the correct role.
+              const staleJsonb =
+                JSON.stringify(liveRoles) !== JSON.stringify(chatRow.participant_roles || {});
+              if (staleJsonb) {
+                supabase
+                  .from('family_chats')
+                  .update({ participant_roles: liveRoles, updated_at: new Date().toISOString() })
+                  .eq('id', chatRow.id)
+                  .then(() => {})
+                  .catch(() => {});
+              }
             }
           } catch {}
         }

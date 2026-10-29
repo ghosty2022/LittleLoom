@@ -648,7 +648,7 @@ const DateSeparator = React.memo(({ date, isDark }: { date: string; isDark: bool
    ═══════════════════════════════════════════════════════════ */
 export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const otherUserId = (route.params as any)?.chatId ?? (route.params as any)?.userId;
-  const { getUserById, updateOnlineStatus } = useCommunity();
+  const { getUserById, getUserRole, updateOnlineStatus } = useCommunity();
   const {
     getOrCreateDirectChat,
     getChatMessages,
@@ -973,20 +973,25 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const handleReply = (message: FamilyMessage) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Prefer the LIVE peer name for reply previews of peer messages
-    // (falls back to the frozen snapshot if the peer left the family).
-    const livePeerName =
-      getUserById(message.senderId)?.displayName
-      ?? user?.displayName
-      ?? message.senderName
-      ?? 'User';
+    Haptics.impactAsync(ImpactFeedbackStyle.Light);
+    const isMe = message.senderId === userProfile?.id;
+    // For my own messages, always say "You" — never show the peer's
+    // name. For peer messages, prefer the LIVE name from
+    // `getUserById` (kept fresh by the profile-change subscription at
+    // the top of this component), and fall back to the frozen
+    // snapshot only if the peer's profile has been deleted.
+    const livePeerName = isMe
+      ? 'You'
+      : (getUserById(message.senderId)?.displayName
+        ?? user?.displayName
+        ?? message.senderName
+        ?? 'User');
     setReplyingTo({
       id: message.id,
       content:
         message.content ||
         (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
-      senderName: message.senderId === userProfile?.id ? 'You' : livePeerName,
+      senderName: livePeerName,
     });
   };
 
@@ -1077,6 +1082,36 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     const list = getTypingUsers(chatId) as any[];
     return list?.filter((t) => (t.userId ? t.userId !== userProfile?.id : t.chatId !== userProfile?.id)) ?? [];
   }, [getTypingUsers, chatId, userProfile?.id]);
+
+  // ── Live peer role label (Parent 1 / Co-Parent / Guardian / Viewer) ──
+  // Re-queried from `profiles.role` whenever the peer's profile changes,
+  // and invalidated by the CommunityContext role cache on every
+  // profile-change broadcast.
+  const [livePeerRoleLabel, setLivePeerRoleLabel] = useState<string>('');
+  useEffect(() => {
+    if (!otherUserId) return;
+    let cancelled = false;
+    const refresh = async () => {
+      const role = await getUserRole(otherUserId);
+      if (cancelled) return;
+      const label =
+        role === 'parent1' ? 'Primary Parent'
+        : role === 'parent2' ? 'Co-Parent'
+        : role === 'guardian' ? 'Guardian'
+        : role === 'viewer' ? 'Viewer'
+        : '';
+      setLivePeerRoleLabel(label);
+    };
+    refresh();
+    // Re-run when the peer's profile changes (role or otherwise).
+    const unsub = subscribeToProfileChanges((payload) => {
+      if (payload?.userId === otherUserId) refresh();
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [otherUserId, getUserRole]);
 
   const getStatusText = () => {
     if (!user) return '';
@@ -1347,6 +1382,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
               numberOfLines={1}
             >
               {getStatusText()}
+              {livePeerRoleLabel ? ` · ${livePeerRoleLabel}` : ''}
             </Text>
           </View>
         </TouchableOpacity>

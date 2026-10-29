@@ -77,6 +77,35 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     deleteChat,
     subscribeToChatMessages,
   } = useFamilyChat() as any;
+
+  // ── Live role badge cache (Parent 1 / Co-Parent / Guardian / Viewer) ──
+  // Re-queried from `profiles.role` on every profile-change event.
+  const roleLabelsRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const refreshRoles = async () => {
+      const unique = new Set<string>();
+      chats.forEach((c) => {
+        const other = c.participants.find((p) => p !== currentUserId);
+        if (other) unique.add(other);
+      });
+      const { getUserRole } = useCommunity() as any;
+      if (typeof getUserRole !== 'function') return;
+      for (const uid of unique) {
+        const role = await getUserRole(uid);
+        roleLabelsRef.current[uid] =
+          role === 'parent1' ? 'Primary Parent'
+          : role === 'parent2' ? 'Co-Parent'
+          : role === 'guardian' ? 'Guardian'
+          : role === 'viewer' ? 'Viewer'
+          : '';
+      }
+      requestAnimationFrame(() => setListTick((n) => n + 1));
+    };
+    refreshRoles();
+    const unsub = subscribeToProfileChanges(() => refreshRoles());
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatIdsKey]);
   // Community DMs live in the shared family_messages table keyed by
   // the direct chat id "direct_<idA>_<idB>". Build the list from
   // whatever direct chats the current user has.
@@ -207,6 +236,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     const participant = otherId ? getUserById(otherId) : null;
     const isMyMessage = lastMessage?.senderId === currentUserId;
     const isOnline = participant?.onlineStatus === 'online';
+    const liveRoleBadge = otherId ? (roleLabelsRef.current[otherId] || '') : '';
 
     return (
       <Animated.View entering={FadeInUp.delay(Math.min(index, 8) * 40).duration(320)}>
@@ -286,6 +316,35 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
               >
                 {participant?.displayName || item.name || 'Conversation'}
               </Text>
+              {!!liveRoleBadge && (
+                <View
+                  style={[
+                    styles.roleBadge,
+                    {
+                      backgroundColor:
+                        liveRoleBadge === 'Primary Parent' ? `${LL.primary}18`
+                        : liveRoleBadge === 'Co-Parent' ? `${LL.accent}18`
+                        : liveRoleBadge === 'Guardian' ? `${LL.success}18`
+                        : `${LL.gray400}18`,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.roleBadgeText,
+                      {
+                        color:
+                          liveRoleBadge === 'Primary Parent' ? LL.primary
+                          : liveRoleBadge === 'Co-Parent' ? LL.accent
+                          : liveRoleBadge === 'Guardian' ? LL.success
+                          : LL.gray400,
+                      },
+                    ]}
+                  >
+                    {liveRoleBadge}
+                  </Text>
+                </View>
+              )}
               <Text style={[styles.time, { color: isDark ? LL.gray500 : LL.gray500 }]}>
                 {formatTime(item.updatedAt)}
               </Text>
@@ -605,6 +664,8 @@ const styles = StyleSheet.create({
     marginBottom: LL.space.xs,
   },
   name: { fontSize: 15, fontWeight: '800', letterSpacing: -0.2, flexShrink: 1, flex: 1, marginRight: 8 },
+  roleBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginRight: 6 },
+  roleBadgeText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
   time: { fontSize: 11, fontWeight: '500' },
   messageRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   lastMessage: { fontSize: 13, flex: 1, marginRight: LL.space.sm, fontWeight: '500' },

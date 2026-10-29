@@ -29,7 +29,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useMedia } from '../../context/MediaContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, subscribeToProfileChanges } from '../../context/AuthContext';
 import { supabase } from '@/utils/supabase';
 
 type Props = NativeStackScreenProps<CommunityStackParamList, 'CommunityProfile'>;
@@ -184,7 +184,7 @@ const TabBar = React.memo(({ tabs, activeTab, onChange, isDark }: any) => (
 
 /* Identity Capsule for own profile */
 const OwnIdentityCapsule = React.memo<any>(({
-  isDark, currentUser, formData, avatarSize, followerCount, followingCount, postCount,
+  isDark, currentUser, formData, avatarSize, followerCount, followingCount, postCount, roleMeta,
   onAvatarPress, onEdit, isEditing, onSave, isSaving, isVerified, hasChanges, onVerify,
 }) => {
   const pulse = useSharedValue(1);
@@ -256,6 +256,19 @@ const OwnIdentityCapsule = React.memo<any>(({
             <Text style={[styles.capsuleHandle, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
               {formData.handle ? `@${formData.handle.replace(/^@/, '')}` : currentUser?.handle || '@you'}
             </Text>
+            {roleMeta && (
+              <View
+                style={[
+                  styles.roleBadge,
+                  { backgroundColor: `${roleMeta.color}18`, marginTop: 4 },
+                ]}
+              >
+                <Ionicons name={roleMeta.icon} size={10} color={roleMeta.color} />
+                <Text style={[styles.roleBadgeText, { color: roleMeta.color }]}>
+                  {roleMeta.label}
+                </Text>
+              </View>
+            )}
             <View style={styles.capsuleStats}>
               <View style={styles.capsuleStatItem}>
                 <Text style={[styles.capsuleStatValue, { color: DS.primary }]}>{postCount}</Text>
@@ -502,6 +515,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [isProfileDeactivated, setIsProfileDeactivated] = useState(false);
   const [activityLog, setActivityLog] = useState<any[]>([]);
+  const [myRole, setMyRole] = useState<string>('');
 
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -660,6 +674,52 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   }, [currentUserId]));
 
   useEffect(() => { loadActivityLog(); }, []);
+
+  // Re-read my role + verification from `profiles` whenever a profile
+  // change is broadcast. This is how "Parent 1 changed my role from
+  // Guardian → Viewer" lands on my own screen without a restart, and
+  // how `is_verified` propagates cross-device.
+  useEffect(() => {
+    const meId = currentUser?.id;
+    if (!meId) return;
+
+    const readMyRole = async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('role, is_verified')
+          .eq('id', meId)
+          .maybeSingle();
+        if (!data || !isMountedRef.current) return;
+        setMyRole(data.role || '');
+        if (typeof data.is_verified === 'boolean' && currentUser && data.is_verified !== currentUser.isVerified) {
+          try {
+            await updateCommunityProfile({ isVerified: data.is_verified });
+          } catch {}
+        }
+      } catch {}
+    };
+
+    readMyRole();
+
+    const unsub = subscribeToProfileChanges((payload) => {
+      if (payload.userId === meId) {
+        readMyRole();
+      }
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  const myRoleMeta = useMemo(() => {
+    const map: Record<string, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
+      parent1: { label: 'Primary Parent', color: '#6366f1', icon: 'shield' },
+      parent2: { label: 'Co-Parent', color: '#ec4899', icon: 'heart' },
+      guardian: { label: 'Guardian', color: '#10b981', icon: 'shield-checkmark' },
+      viewer: { label: 'Viewer', color: '#94a3b8', icon: 'eye' },
+    };
+    return map[myRole] || null;
+  }, [myRole]);
 
   const refreshUserData = useCallback(async () => {
     if (isLoadingRef.current || !currentUser) return;
@@ -1343,6 +1403,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
               followerCount={followerCount}
               followingCount={followingCount}
               postCount={userPostList.length}
+              roleMeta={myRoleMeta}
               onAvatarPress={() => setShowImagePicker(true)}
               onEdit={() => { setIsEditing(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               isEditing={isEditing}
@@ -1881,6 +1942,12 @@ const styles = StyleSheet.create({
   verifyTick: { width: 12, height: 12, borderRadius: 6, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   verifyPillText: { fontSize: 10, fontWeight: '700' },
   capsuleHandle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  roleBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+  },
+  roleBadgeText: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
   capsuleStats: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   capsuleStatItem: { alignItems: 'center' },
   capsuleStatValue: { fontSize: 14, fontWeight: '800' },

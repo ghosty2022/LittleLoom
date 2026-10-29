@@ -1052,6 +1052,10 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
         HAPTIC_SUCCESS();
         showToast('Invite code generated!');
         await loadActiveCodes();
+        // The invitee will be auto-added to the family group chat AND
+        // get a direct chat with you the moment they sign up.
+        // No extra action needed here — but if we want to surface that:
+        // (removed in favour of a permanent ribbon on the success card)
       } else {
         showToast(result.message || 'Failed to generate code', 'error');
       }
@@ -1369,6 +1373,33 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
               }}
               onDone={() => setGeneratedCode('')}
             />
+            {/* Clarify what happens on signup so inviters trust the flow */}
+            <Animated.View entering={FadeInUp.delay(200).springify()} style={{ marginTop: 10 }}>
+              <View style={[styles.whatHappens, {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.gray50,
+                borderColor: isDark ? DS.darkBorder : DS.gray200,
+              }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Ionicons name="sparkles" size={14} color={primary} />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: primary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    When they sign up
+                  </Text>
+                </View>
+                {[
+                  { icon: 'people', text: 'Auto-added to your family group chat' },
+                  { icon: 'chatbubble-ellipses', text: 'Direct chat with you created' },
+                  { icon: 'shield-checkmark', text: `Joined as ${ROLE_META[role].label}` },
+                  { icon: 'checkmark-done', text: 'Can log activities immediately' },
+                ].map((row, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 3 }}>
+                    <Ionicons name={row.icon as any} size={12} color={isDark ? DS.gray400 : DS.gray500} />
+                    <Text style={{ fontSize: 11, fontWeight: '500', color: isDark ? DS.gray400 : DS.gray500, flex: 1 }}>
+                      {row.text}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </Animated.View>
           </View>
         )}
 
@@ -1679,6 +1710,11 @@ const styles = StyleSheet.create({
   footerHint: { fontSize: 11, fontWeight: '500', textAlign: 'center', marginTop: DS.space.sm },
 
   footerText: { fontSize: 11, fontWeight: '500' },
+  whatHappens: {
+    padding: DS.space.md,
+    borderRadius: DS.radius.md,
+    borderWidth: 1,
+  },
 
   /* Modal */
   modalBackdrop: {

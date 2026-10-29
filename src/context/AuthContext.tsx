@@ -2152,6 +2152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
+        // ── Mark the invite code used ─────────────────────────────
         if (inviteData) {
           await supabase
             .from('invite_codes')
@@ -2193,6 +2194,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
           }
 
+          // ── Resolve the inviter's display info for the DM + chat ──
+          let creatorName = inviteData?.creator_name || 'Family';
+          let creatorAvatar = '👤';
+          let creatorRole = 'parent1';
+          try {
+            const { data: creatorProfile } = await supabase
+              .from('profiles')
+              .select('full_name, community_display_name, community_avatar, avatar_url, avatar, role')
+              .eq('id', creatorId)
+              .maybeSingle();
+            if (creatorProfile) {
+              creatorName =
+                creatorProfile.community_display_name ||
+                creatorProfile.full_name ||
+                creatorName;
+              creatorAvatar =
+                creatorProfile.community_avatar ||
+                creatorProfile.avatar_url ||
+                creatorProfile.avatar ||
+                '👤';
+              creatorRole = creatorProfile.role || 'parent1';
+            }
+          } catch {}
+
+          // ── 1. Create the family_members row ────────────────────
+          // Seed the canonical permission set for this role so
+          // `BabyContext.hasPermissionForBaby()` returns `true` on the
+          // invitee's very first render — not after `FamilyContext`
+          // normalizes the empty `{}` on the next load.
+          const ROLE_PERMISSION_TEMPLATES: Record<string, Record<string, boolean>> = {
+            parent1: {
+              canView: true, canAddEntry: true, canEditEntry: true,
+              canEditOthersEntries: true, canDeleteEntry: true,
+              canEditBaby: true, canInvite: true, canExport: true,
+              canManageFamily: true,
+            },
+            parent2: {
+              canView: true, canAddEntry: true, canEditEntry: true,
+              canEditOthersEntries: true, canDeleteEntry: true,
+              canEditBaby: true, canInvite: true, canExport: true,
+              canManageFamily: true,
+            },
+            guardian: {
+              canView: true, canAddEntry: true, canEditEntry: true,
+              canEditOthersEntries: false, canDeleteEntry: false,
+              canEditBaby: false, canInvite: false, canExport: false,
+              canManageFamily: false,
+            },
+            viewer: {
+              canView: true, canAddEntry: false, canEditEntry: false,
+              canEditOthersEntries: false, canDeleteEntry: false,
+              canEditBaby: false, canInvite: false, canExport: false,
+              canManageFamily: false,
+            },
+          };
+          const seededPermissions =
+            ROLE_PERMISSION_TEMPLATES[role] || ROLE_PERMISSION_TEMPLATES.viewer;
+
           const familyMemberData = {
             id: familyMemberId,
             baby_id: babyId,
@@ -2201,7 +2260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             full_name: fullName.trim(),
             role,
             relationship,
-            permissions: {},
+            permissions: seededPermissions,
             added_at: new Date().toISOString(),
             added_by: creatorId,
             can_be_removed: true,
@@ -2219,6 +2278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (__DEV__) console.error('[Auth] Failed to create family member:', familyError);
           }
 
+          // ── 2. Link parent2 on the baby row ─────────────────────
           if (role === 'parent2') {
             try {
               await supabase
@@ -2226,6 +2286,169 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 .update({ parent2_id: user.id, updated_at: new Date().toISOString() })
                 .eq('id', babyId);
             } catch {}
+          }
+
+          // ── 3. Resolve the family_code (canonical name used by
+          //    family_chats + family_messages). The inviter's
+          //    app_settings row stores it. Read it, then mirror it to
+          //    the invitee's app_settings so their FamilyChatProvider
+          //    can sync chats.
+          let familyCode: string | null = null;
+          try {
+            const { data: creatorFamilyCode } = await supabase
+              .from('app_settings')
+              .select('value')
+              .eq('key', 'family_code')
+              .eq('user_id', creatorId)
+              .maybeSingle();
+            familyCode = creatorFamilyCode?.value || null;
+          } catch {}
+
+          // Fallback: derive it from the baby id (matches loadFamilyCode()).
+          if (!familyCode) {
+            familyCode = `FAM-${babyId.slice(0, 6).toUpperCase()}`;
+          }
+
+          try {
+            await supabase
+              .from('app_settings')
+              .upsert(
+                {
+                  key: 'family_code',
+                  value: familyCode,
+                  user_id: user.id,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'key,user_id' },
+              );
+          } catch {}
+
+          try {
+            await supabase
+              .from('app_settings')
+              .upsert(
+                {
+                  key: 'current_baby_id',
+                  value: babyId,
+                  user_id: user.id,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'key,user_id' },
+              );
+          } catch {}
+
+          // ── 4. Add the invitee to the family group chat ────────
+          // The group chat id is `family_group_<familyCode>` (created by
+          // `createFamilyGroup()` in FamilyChatContext).
+          try {
+            const groupChatId = `family_group_${familyCode}`;
+            const { data: existingGroup } = await supabase
+              .from('family_chats')
+              .select('id, participants, participant_names, participant_roles, participant_avatars')
+              .eq('id', groupChatId)
+              .maybeSingle();
+
+            if (existingGroup) {
+              const participants: string[] = Array.isArray(existingGroup.participants)
+                ? existingGroup.participants
+                : [];
+              if (!participants.includes(user.id)) {
+                const names = { ...(existingGroup.participant_names || {}) };
+                const roles = { ...(existingGroup.participant_roles || {}) };
+                const avatars = { ...(existingGroup.participant_avatars || {}) };
+                names[user.id] = fullName.trim();
+                roles[user.id] = role;
+                avatars[user.id] = '👤';
+                await supabase
+                  .from('family_chats')
+                  .update({
+                    participants: [...participants, user.id],
+                    participant_names: names,
+                    participant_roles: roles,
+                    participant_avatars: avatars,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', groupChatId);
+              }
+            } else {
+              // Group chat doesn't exist yet — create it with both users.
+              const nowIso = new Date().toISOString();
+              await supabase.from('family_chats').insert({
+                id: groupChatId,
+                type: 'group',
+                name: 'Family Group',
+                participants: [creatorId, user.id],
+                participant_roles: { [creatorId]: creatorRole, [user.id]: role },
+                participant_names: { [creatorId]: creatorName, [user.id]: fullName.trim() },
+                participant_avatars: { [creatorId]: creatorAvatar, [user.id]: '👤' },
+                unread_count: 0,
+                created_at: nowIso,
+                updated_at: nowIso,
+                avatar: '👨‍👩‍👧‍👦',
+                is_muted: false,
+                family_code: familyCode,
+                is_pinned: true,
+              });
+            }
+          } catch (groupErr) {
+            if (__DEV__) console.warn('[Auth] group chat seed failed:', groupErr);
+          }
+
+          // ── 5. Create / join the direct chat with the inviter ──
+          // Canonical direct chat id: `direct_<a>_<b>` with sorted ids.
+          try {
+            const directChatId = `direct_${[creatorId, user.id].sort().join('_')}`;
+            const { data: existingDm } = await supabase
+              .from('family_chats')
+              .select('id, participants')
+              .eq('id', directChatId)
+              .maybeSingle();
+
+            if (!existingDm) {
+              const nowIso = new Date().toISOString();
+              await supabase.from('family_chats').insert({
+                id: directChatId,
+                type: 'direct',
+                name: creatorName || 'Family Member',
+                participants: [creatorId, user.id],
+                participant_roles: { [creatorId]: creatorRole, [user.id]: role },
+                participant_names: { [creatorId]: creatorName, [user.id]: fullName.trim() },
+                participant_avatars: { [creatorId]: creatorAvatar, [user.id]: '👤' },
+                unread_count: 0,
+                created_at: nowIso,
+                updated_at: nowIso,
+                avatar: creatorAvatar,
+                is_muted: false,
+                family_code: familyCode,
+                is_pinned: false,
+              });
+
+              // System welcome message in the DM so the conversation
+              // isn't empty.
+              const sysId = `sys_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+              const sysSyncId = `sys_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+              await supabase.from('family_messages').insert({
+                id: sysId,
+                sync_id: sysSyncId,
+                device_id: 'system',
+                version: 1,
+                chat_id: directChatId,
+                sender_id: creatorId,
+                sender_name: creatorName,
+                sender_role: creatorRole,
+                sender_avatar: creatorAvatar,
+                content: `👋 Welcome to the family, ${fullName.trim()}! Tap to say hello.`,
+                type: 'system',
+                timestamp: new Date().toISOString(),
+                read: false,
+                read_by: [creatorId],
+                family_code: familyCode,
+                reactions: JSON.stringify([]),
+                delivery_status: 'sent',
+              });
+            }
+          } catch (dmErr) {
+            if (__DEV__) console.warn('[Auth] direct chat seed failed:', dmErr);
           }
         } catch (familyInsertError) {
           if (__DEV__) console.error('[Auth] Family member insertion error:', familyInsertError);
@@ -2235,6 +2458,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const roleDisplay = inviteData?.role === 'parent2' ? 'Parent 2'
         : inviteData?.role === 'guardian' ? 'Guardian'
         : 'Viewer';
+
+      // Nudge BabyContext + FamilyChatContext to re-sync now that
+      // app_settings + family_members are written. Both providers
+      // already subscribe to profile changes and to auth events, but
+      // an explicit broadcast guarantees the invitee's *first* session
+      // shows the baby + chats without a cold restart.
+      try {
+        const { data: { user: freshUser } } = await supabase.auth.getUser();
+        if (freshUser?.id) {
+          await broadcastProfileChange({
+            userId: freshUser.id,
+            fields: ['fullName', 'role'],
+          });
+        }
+      } catch {}
 
       return {
         success: true,
