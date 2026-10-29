@@ -190,10 +190,17 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
       return;
     }
 
-    // Reject reuse of the last 3 passwords (checked inside resetPasswordWithPin,
-    // but we short-circuit here to give a cleaner message).
+    // Reject reuse of the last 3 passwords (mirrors the same check that
+    // resetPasswordWithPin performs on the server side, so we can give
+    // the user an immediate, friendly error without a round-trip).
+    // Note: `@littleloom_recent_pw_hashes` is not a valid SecureStore key
+    // (SecureStore rejects `@`), so the canonical key is
+    // `littleloom_recent_pw_hashes`.
     try {
-      const recent = await AsyncStorage.getItem('@littleloom_recent_pw_hashes');
+            const SecureStore = require('expo-secure-store');
+      // NOTE: SecureStore keys may only contain alphanumeric, ".", "-", "_".
+      // The "@" prefix is invalid and throws. Use the canonical key.
+      const recent = await SecureStore.getItemAsync('littleloom_recent_pw_hashes');
       if (recent) {
         const hashes: string[] = JSON.parse(recent);
         const Crypto = require('expo-crypto');

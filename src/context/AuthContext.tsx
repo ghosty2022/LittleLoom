@@ -19,6 +19,7 @@ const SECURE_KEYS = {
   BIOMETRIC_PASSWORD: 'littleloom_biometric_password',
   BIOMETRIC_LOGIN_ENABLED: 'littleloom_biometric_login_enabled',
   SOCIAL_PROVIDER: 'littleloom_social_provider',
+  RECENT_PW_HASHES: 'littleloom_recent_pw_hashes',
 } as const;
 
 const ASYNC_KEYS = {
@@ -153,8 +154,25 @@ interface AuthContextType extends AuthState {
   refreshSession: () => Promise<boolean>;
 }
 
+// SecureStore rejects keys containing characters outside [A-Za-z0-9._-].
+// Strip a leading "@" and any other illegal chars so callers can't blow up
+// LogBox if they pass the wrong thing. Non-conforming keys are logged once.
+const SECURE_KEY_RE = /^[A-Za-z0-9._-]+$/;
+const warnBadKey = (op: string, key: string) => {
+  if (__DEV__) {
+    console.warn(
+      `[secureStorage:${op}] Invalid SecureStore key "${key}". ` +
+        `Keys may only contain A-Z, a-z, 0-9, ".", "-", "_" — call ignored.`,
+    );
+  }
+};
+
 const secureStorage = {
   async getItem(key: string): Promise<string | null> {
+    if (!key || !SECURE_KEY_RE.test(key)) {
+      warnBadKey('getItem', key);
+      return null;
+    }
     try {
       return await SecureStore.getItemAsync(key);
     } catch (error) {
@@ -163,6 +181,10 @@ const secureStorage = {
     }
   },
   async setItem(key: string, value: string): Promise<boolean> {
+    if (!key || !SECURE_KEY_RE.test(key)) {
+      warnBadKey('setItem', key);
+      return false;
+    }
     try {
       await SecureStore.setItemAsync(key, value, {
         keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
@@ -174,6 +196,10 @@ const secureStorage = {
     }
   },
   async deleteItem(key: string): Promise<boolean> {
+    if (!key || !SECURE_KEY_RE.test(key)) {
+      warnBadKey('deleteItem', key);
+      return false;
+    }
     try {
       await SecureStore.deleteItemAsync(key);
       return true;
@@ -472,8 +498,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
           secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
-          secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
-          secureStorage.deleteItem('@littleloom_recent_pw_hashes'),
+          secureStorage.deleteItem(SECURE_KEYS.RECENT_PW_HASHES),
         ]);
 
         clearUserIdCache();
@@ -1021,6 +1046,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_EMAIL),
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_PASSWORD),
         secureStorage.deleteItem(SECURE_KEYS.BIOMETRIC_LOGIN_ENABLED),
+        secureStorage.deleteItem(SECURE_KEYS.RECENT_PW_HASHES),
       ]);
 
       await AsyncStorage.multiRemove([
@@ -1790,7 +1816,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           Crypto.CryptoDigestAlgorithm.SHA256,
           newPassword + 'littleloom_pw_salt_v1',
         );
-        const recentRaw = await secureStorage.getItem('@littleloom_recent_pw_hashes');
+        const recentRaw = await secureStorage.getItem(SECURE_KEYS.RECENT_PW_HASHES);
         const recentHashes: string[] = recentRaw ? JSON.parse(recentRaw) : [];
         if (recentHashes.includes(newHash)) {
           return {
@@ -1843,10 +1869,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             const pendingHash = (resetPasswordWithPin as any)._pendingHash as string | undefined;
             if (pendingHash) {
-              const recentRaw = await secureStorage.getItem('@littleloom_recent_pw_hashes');
+              const recentRaw = await secureStorage.getItem(SECURE_KEYS.RECENT_PW_HASHES);
               const recentHashes: string[] = recentRaw ? JSON.parse(recentRaw) : [];
               const next = [pendingHash, ...recentHashes.filter((h) => h !== pendingHash)].slice(0, 3);
-              await secureStorage.setItem('@littleloom_recent_pw_hashes', JSON.stringify(next));
+              await secureStorage.setItem(SECURE_KEYS.RECENT_PW_HASHES, JSON.stringify(next));
             }
           } catch {}
           return {
