@@ -405,6 +405,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     bookmarkPost,
     addComment,
     likeComment,
+    voteCommentHelpful,
     voteHelpful,
     votePoll,
     currentUser,
@@ -628,9 +629,9 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
       <View style={s.commentFooter}>
         <TouchableOpacity
           style={[s.commentActionBtn, comment.isLiked && s.commentActionBtnActive]}
-          onPress={() => {
-            likeComment(post!.id, comment.id);
-            refreshPost();
+          onPress={async () => {
+            triggerHaptic('light');
+            await likeComment(post!.id, comment.id);
           }}
         >
           <Ionicons
@@ -662,9 +663,34 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={s.commentActionBtn} onPress={handleVoteHelpful}>
-          <Ionicons name="thumbs-up-outline" size={15} color={isDark ? DS.gray400 : DS.gray500} />
-          <Text style={[s.commentActionText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+        <TouchableOpacity
+          style={s.commentActionBtn}
+          onPress={async () => {
+            triggerHaptic('light');
+            await voteCommentHelpful(post!.id, comment.id);
+          }}
+        >
+          <Ionicons
+            name={comment.votedHelpfulBy?.includes(currentUser?.id || '') ? 'thumbs-up' : 'thumbs-up-outline'}
+            size={15}
+            color={
+              comment.votedHelpfulBy?.includes(currentUser?.id || '')
+                ? DS.primary
+                : isDark
+                ? DS.gray400
+                : DS.gray500
+            }
+          />
+          <Text
+            style={[
+              s.commentActionText,
+              { color: isDark ? DS.gray400 : DS.gray500 },
+              comment.votedHelpfulBy?.includes(currentUser?.id || '') && {
+                color: DS.primary,
+                fontWeight: '700',
+              },
+            ]}
+          >
             {comment.helpfulVotes > 0 ? `${comment.helpfulVotes} Helpful` : 'Helpful'}
           </Text>
         </TouchableOpacity>
@@ -701,9 +727,9 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                 <View style={s.replyFooter}>
                   <TouchableOpacity
                     style={[s.replyActionBtn, reply.isLiked && s.replyActionBtnActive]}
-                    onPress={() => {
-                      likeComment(post!.id, reply.id);
-                      refreshPost();
+                    onPress={async () => {
+                      triggerHaptic('light');
+                      await likeComment(post!.id, reply.id);
                     }}
                   >
                     <Ionicons

@@ -1,6 +1,12 @@
-// src/context/CommunityContext.tsx  (REPLACE)
+// src/context/CommunityContext.tsx
 import React, {
-  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -10,52 +16,126 @@ import { useSweetAlert } from '../components/SweetAlert';
 import * as CommunityService from '../services/CommunityService';
 
 /* ─────────────────────────────────────────────────────────────
-   TYPES (unchanged public API — every consumer keeps compiling)
+   TYPES — unchanged public API
    ───────────────────────────────────────────────────────────── */
 export type OnlineStatus = 'online' | 'offline' | 'away';
 export type MessageType = 'text' | 'image';
 export type PostMood = 'celebrating' | 'support' | 'advice' | 'milestone' | 'venting';
 
-export interface PollOption { id: string; text: string; votes: number; }
+export interface PollOption {
+  id: string;
+  text: string;
+  votes: number;
+}
 export interface Poll {
-  question: string; options: PollOption[]; totalVotes: number;
-  hasVoted: boolean; votedOptionId?: string;
+  question: string;
+  options: PollOption[];
+  totalVotes: number;
+  hasVoted: boolean;
+  votedOptionId?: string;
 }
 
 export interface CommunityUser {
-  id: string; displayName: string; handle: string; avatar: string;
-  coverPhoto?: string; isVerified: boolean; bio?: string; location?: string;
-  country?: string; onlineStatus: OnlineStatus; lastActive: string;
-  stats: { posts: number; followers: number; following: number; helpful: number; streakDays: number; lastStreakDate: string; };
-  isFollowing?: boolean; achievements: string[]; selectedTopics?: string[];
-  followers?: string[]; following?: string[];
+  id: string;
+  displayName: string;
+  handle: string;
+  avatar: string;
+  coverPhoto?: string;
+  isVerified: boolean;
+  bio?: string;
+  location?: string;
+  country?: string;
+  onlineStatus: OnlineStatus;
+  lastActive: string;
+  stats: {
+    posts: number;
+    followers: number;
+    following: number;
+    helpful: number;
+    streakDays: number;
+    lastStreakDate: string;
+  };
+  isFollowing?: boolean;
+  achievements: string[];
+  selectedTopics?: string[];
+  followers?: string[];
+  following?: string[];
 }
 export interface Comment {
-  id: string; authorId: string; author: CommunityUser; content: string;
-  likes: number; likedBy: string[]; isLiked: boolean; time: string; timestamp: string;
-  replies?: Comment[]; helpfulVotes: number; votedHelpfulBy: string[];
+  id: string;
+  authorId: string;
+  author: CommunityUser;
+  content: string;
+  likes: number;
+  likedBy: string[];
+  isLiked: boolean;
+  time: string;
+  timestamp: string;
+  replies?: Comment[];
+  helpfulVotes: number;
+  votedHelpfulBy: string[];
 }
 export interface Post {
-  id: string; authorId: string; author: CommunityUser; topic: string; topicId: string;
-  content: string; images?: string[]; likes: number; likedBy: string[];
-  comments: Comment[]; commentsCount: number; reposts: number; repostedBy: string[];
-  shares: number; sharedBy: string[]; isLiked: boolean; isReposted: boolean;
-  isBookmarked: boolean; bookmarks: number; bookmarkedBy: string[]; time: string;
-  timestamp: string; isAnonymous?: boolean; helpfulVotes: number; votedHelpfulBy: string[];
-  popularityScore: number; viewCount: number; engagementRate: number;
-  lastEngagedAt: string; isTrending: boolean; mood?: PostMood; poll?: Poll;
+  id: string;
+  authorId: string;
+  author: CommunityUser;
+  topic: string;
+  topicId: string;
+  content: string;
+  images?: string[];
+  likes: number;
+  likedBy: string[];
+  comments: Comment[];
+  commentsCount: number;
+  reposts: number;
+  repostedBy: string[];
+  shares: number;
+  sharedBy: string[];
+  isLiked: boolean;
+  isReposted: boolean;
+  isBookmarked: boolean;
+  bookmarks: number;
+  bookmarkedBy: string[];
+  time: string;
+  timestamp: string;
+  isAnonymous?: boolean;
+  helpfulVotes: number;
+  votedHelpfulBy: string[];
+  popularityScore: number;
+  viewCount: number;
+  engagementRate: number;
+  lastEngagedAt: string;
+  isTrending: boolean;
+  mood?: PostMood;
+  poll?: Poll;
 }
 export interface Topic {
-  id: string; name: string; emoji: string; color: string; members: number;
-  posts: number; trending: boolean; description: string; isJoined: boolean;
-  joinedBy: string[]; engagementScore: number; weeklyGrowth: number;
-  category?: string; subcategory?: string;
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  members: number;
+  posts: number;
+  trending: boolean;
+  description: string;
+  isJoined: boolean;
+  joinedBy: string[];
+  engagementScore: number;
+  weeklyGrowth: number;
+  category?: string;
+  subcategory?: string;
 }
 export interface Notification {
   id: string;
   type: 'like' | 'comment' | 'repost' | 'mention' | 'follow' | 'message' | 'system' | 'helpful';
-  userId: string; user: CommunityUser; content: string; target?: string;
-  postId?: string; time: string; timestamp: string; read: boolean;
+  userId: string;
+  user: CommunityUser;
+  content: string;
+  target?: string;
+  postId?: string;
+  time: string;
+  timestamp: string;
+  read: boolean;
 }
 
 interface CommunityState {
@@ -71,7 +151,14 @@ interface CommunityState {
 }
 
 interface CommunityContextType extends CommunityState {
-  createPost: (content: string, topicId: string, images?: string[], isAnonymous?: boolean, mood?: PostMood, poll?: Poll) => Promise<void>;
+  createPost: (
+    content: string,
+    topicId: string,
+    images?: string[],
+    isAnonymous?: boolean,
+    mood?: PostMood,
+    poll?: Poll,
+  ) => Promise<void>;
   likePost: (postId: string) => Promise<void>;
   unlikePost: (postId: string) => Promise<void>;
   repostPost: (postId: string) => Promise<void>;
@@ -96,7 +183,9 @@ interface CommunityContextType extends CommunityState {
   isFollowing: (userId: string) => boolean;
   updateUserBio: (bio: string) => Promise<void>;
   updateUserLocation: (country: string) => Promise<void>;
-  updateCommunityProfile: (updates: Partial<CommunityUser> & { isVerified?: boolean; coverPhoto?: string }) => Promise<void>;
+  updateCommunityProfile: (
+    updates: Partial<CommunityUser> & { isVerified?: boolean; coverPhoto?: string },
+  ) => Promise<void>;
   updateOnlineStatus: (status: OnlineStatus) => Promise<void>;
   getUserStats: (userId: string) => CommunityUser['stats'] | undefined;
   markNotificationRead: (id: string) => Promise<void>;
@@ -115,14 +204,11 @@ interface CommunityContextType extends CommunityState {
   refreshFeed: () => Promise<void>;
   refreshTopics: () => Promise<Topic[]>;
   votePoll: (postId: string, optionId: string) => Promise<void>;
-  // chat methods kept but delegate to FamilyChatContext if present. For the
-  // community inbox we DO NOT store anything — see FamilyChat.
   isAuthenticated: () => boolean;
   getSelectedTopics: () => string[];
   updateSelectedTopics: (ids: string[]) => Promise<void>;
   checkOnboardingStatus: () => Promise<{ completed: boolean; hasTopics: boolean }>;
   refreshTopicsData: () => Promise<Topic[]>;
-  // stubs kept for consumers that call them
   syncUserProfileAcrossPosts: (userId: string, updates: Partial<CommunityUser>) => Promise<void>;
   loadMorePosts: () => Promise<void>;
 }
@@ -164,6 +250,43 @@ export const TOPIC_CATEGORIES = [
    ───────────────────────────────────────────────────────────── */
 const CommunityContext = createContext<CommunityContextType | null>(null);
 
+const findCommentInPost = (
+  post: Post | undefined,
+  commentId: string,
+): Comment | undefined => {
+  if (!post) return undefined;
+  const top = post.comments.find((c) => c.id === commentId);
+  if (top) return top;
+  for (const c of post.comments) {
+    const r = c.replies?.find((rep) => rep.id === commentId);
+    if (r) return r;
+  }
+  return undefined;
+};
+
+const patchCommentInPost = (
+  post: Post,
+  commentId: string,
+  patch: (c: Comment) => Comment,
+): Post => {
+  const updatedTop = post.comments.map((cm) => {
+    if (cm.id === commentId) return patch(cm);
+    if (cm.replies && cm.replies.length > 0) {
+      let hit = false;
+      const updatedReplies = cm.replies.map((rep) => {
+        if (rep.id === commentId) {
+          hit = true;
+          return patch(rep);
+        }
+        return rep;
+      });
+      if (hit) return { ...cm, replies: updatedReplies };
+    }
+    return cm;
+  });
+  return { ...post, comments: updatedTop };
+};
+
 export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile, isAuthenticated: authIsAuth } = useAuth();
   const sweetAlert = useSweetAlert();
@@ -181,32 +304,41 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const stateRef = useRef(state);
-  useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   const currentUserIdRef = useRef<string | null>(null);
   useEffect(() => {
     currentUserIdRef.current = userProfile?.id ?? null;
   }, [userProfile?.id]);
-  // Always-current snapshot of userProfile for callbacks that must not go stale.
-  const userProfileRef = useRef(userProfile);
-  useEffect(() => { userProfileRef.current = userProfile; }, [userProfile]);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /* ── Load / refresh ─────────────────────────────────────────── */
+  const userProfileRef = useRef(userProfile);
+  useEffect(() => {
+    userProfileRef.current = userProfile;
+  }, [userProfile]);
+
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightReactionsRef = useRef<Set<string>>(new Set());
+
+  // ── Follow set ────────────────────────────────────────────
+  const [followedSet, setFollowedSet] = useState<Set<string>>(new Set());
+
+  /* ── LOAD / REFRESH ─────────────────────────────────────── */
   const loadEverything = useCallback(async (opts: { silent?: boolean } = {}) => {
     const meId = currentUserIdRef.current;
     if (!meId) {
-      // DO NOT clear posts / isInitialized. We're just waiting for auth
-      // hydration — keep whatever we already have and stay in "loading".
       setState((p) => ({ ...p, isLoading: false }));
       return;
     }
     if (!opts.silent) setState((p) => ({ ...p, isLoading: true }));
 
-    const [posts, notifications, blocked, topics] = await Promise.all([
+    const [posts, notifications, blocked, topics, followed] = await Promise.all([
       CommunityService.fetchFeed(meId),
       CommunityService.fetchNotifications(meId),
       CommunityService.fetchBlockedIds(meId),
       CommunityService.fetchTopicStats(),
+      CommunityService.fetchFollowedIds(meId),
     ]);
 
     // enrich: load comments for top 20 posts that have any
@@ -218,11 +350,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }),
     );
 
-    // ── Hydrate selectedTopics from EVERY source and merge ──
-    // Priority: DB (profiles.community_selected_topics) > userProfile >
-    // scoped AsyncStorage > global AsyncStorage > onboarding blob.
-    // A source that returns [] must NEVER overwrite a non-empty value.
-    // NOTE: `meId` is already declared at the top of loadEverything — reuse it.
+    // ── Hydrate selectedTopics ──
     let persistedTopics: string[] = [];
     if (meId) {
       try {
@@ -239,9 +367,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (persistedTopics.length === 0) {
         try {
-          // Scoped reads ONLY. The global key is shared across accounts on the
-          // same device and is the root cause of "previous account's topics"
-          // bleeding into the new session.
           const [scopedRaw, onboardingRaw] = await Promise.all([
             AsyncStorage.getItem(`@community_selected_topics_v2_${meId}`),
             AsyncStorage.getItem(`@littleloom_community_onboarding_v3_${meId}`),
@@ -261,9 +386,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const blob = onboardingRaw ? JSON.parse(onboardingRaw) : null;
             if (Array.isArray(blob?.selectedTopics)) fromBlob = blob.selectedTopics;
           } catch {}
-          persistedTopics = scoped.length > 0 ? scoped
-            : fromBlob.length > 0 ? fromBlob
-            : [];
+          persistedTopics =
+            scoped.length > 0 ? scoped : fromBlob.length > 0 ? fromBlob : [];
         } catch {}
       }
     }
@@ -272,42 +396,50 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const me = liveProfile
       ? {
           id: liveProfile.id,
-          displayName: liveProfile.communityDisplayName || liveProfile.fullName || 'Parent',
+          displayName:
+            liveProfile.communityDisplayName || liveProfile.fullName || 'Parent',
           handle: liveProfile.communityHandle || '@parent',
           avatar: liveProfile.communityAvatar || liveProfile.avatar || '👤',
           isVerified: false,
           onlineStatus: 'online' as const,
           lastActive: new Date().toISOString(),
-          stats: liveProfile.communityStats || { posts: 0, followers: 0, following: 0, helpful: 0, streakDays: 0, lastStreakDate: new Date().toISOString() },
+          stats:
+            liveProfile.communityStats || {
+              posts: 0,
+              followers: 0,
+              following: 0,
+              helpful: 0,
+              streakDays: 0,
+              lastStreakDate: new Date().toISOString(),
+            },
           achievements: [],
-          // Merge: prefer persisted → userProfile → existing state.
-          // NEVER let an empty source clobber a non-empty one.
-          selectedTopics: persistedTopics.length > 0
-            ? persistedTopics
-            : (liveProfile.communitySelectedTopics && liveProfile.communitySelectedTopics.length > 0
-                ? liveProfile.communitySelectedTopics
-                : stateRef.current.selectedTopics),
+          selectedTopics:
+            persistedTopics.length > 0
+              ? persistedTopics
+              : liveProfile.communitySelectedTopics &&
+                liveProfile.communitySelectedTopics.length > 0
+              ? liveProfile.communitySelectedTopics
+              : stateRef.current.selectedTopics,
           isFollowing: undefined,
           bio: liveProfile.communityBio || '',
         }
       : null;
 
-    // Always hand React a brand-new array so downstream
-    // effects (`useEffect([posts,...])`) re-run even when contents look
-    // identical.
     const freshPosts = [...posts];
     const freshTopics = [...topics];
     const freshNotifications = [...notifications];
     const freshBlocked = [...blocked];
 
+    setFollowedSet(followed);
+
     if (me && me.id === currentUserIdRef.current) {
       setState((p) => {
-        // Merge: if DB/Async gave us nothing but state already has
-        // topics, keep them. Never downgrade a populated list to [].
         const mergedTopics =
-          (me.selectedTopics && me.selectedTopics.length > 0)
+          me.selectedTopics && me.selectedTopics.length > 0
             ? me.selectedTopics
-            : (p.selectedTopics.length > 0 ? p.selectedTopics : []);
+            : p.selectedTopics.length > 0
+            ? p.selectedTopics
+            : [];
         return {
           ...p,
           posts: freshPosts,
@@ -331,13 +463,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         isInitialized: true,
       }));
     }
-
-    // Also refresh the follow-set so `isFollowing(userId)` is not stale
-    // after a cross-device follow / unfollow.
-    try {
-      const followed = await CommunityService.fetchFollowedIds(meId);
-      setFollowedSet(followed);
-    } catch {}
   }, []);
 
   const scheduleRefresh = useCallback(() => {
@@ -348,13 +473,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }, 200);
   }, [loadEverything]);
 
-  /* ── Mount / auth ───────────────────────────────────────────── */
+  /* ── MOUNT / AUTH ───────────────────────────────────────── */
   useEffect(() => {
     loadEverything().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile?.id]);
 
-  /* ── REALTIME — one channel for everything ──────────────────── */
+  /* ── REALTIME ───────────────────────────────────────────── */
   useEffect(() => {
     const meId = currentUserIdRef.current;
     if (!meId) return;
@@ -383,7 +508,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         'postgres_changes',
         { event: '*', schema: 'public', table },
         () => {
-          // debounce rapid bursts into one refresh
           scheduleRefresh();
         },
       );
@@ -394,7 +518,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
+      try {
+        supabase.removeChannel(channel);
+      } catch {}
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
@@ -402,14 +528,14 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, [userProfile?.id, scheduleRefresh]);
 
-  /* ── Derived getters ────────────────────────────────────────── */
+  /* ── DERIVED GETTERS ────────────────────────────────────── */
   const getPostById = useCallback((postId: string) => {
     return stateRef.current.posts.find((p) => p.id === postId);
   }, []);
 
   const getUserById = useCallback((userId: string) => {
-    if (userId === stateRef.current.currentUser?.id) return stateRef.current.currentUser || undefined;
-    // check across posts
+    if (userId === stateRef.current.currentUser?.id)
+      return stateRef.current.currentUser || undefined;
     for (const p of stateRef.current.posts) {
       if (p.authorId === userId) return p.author;
     }
@@ -420,18 +546,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return stateRef.current.posts.filter((p) => p.authorId === userId);
   }, []);
 
-  const isFollowing = useCallback((userId: string) => {
-    return false; // recomputed below
-  }, []);
-
-  // follow set tracked separately
-  const [followedSet, setFollowedSet] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const meId = currentUserIdRef.current;
-    if (!meId) return;
-    CommunityService.fetchFollowedIds(meId).then(setFollowedSet).catch(() => {});
-  }, [userProfile?.id, state.posts.length]);
-
   const isFollowingFinal = useCallback(
     (userId: string) => followedSet.has(userId),
     [followedSet],
@@ -439,7 +553,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const getAllUsers = useCallback(() => {
     const map = new Map<string, CommunityUser>();
-    if (stateRef.current.currentUser) map.set(stateRef.current.currentUser.id, stateRef.current.currentUser);
+    if (stateRef.current.currentUser)
+      map.set(stateRef.current.currentUser.id, stateRef.current.currentUser);
     for (const p of stateRef.current.posts) {
       if (!map.has(p.authorId)) map.set(p.authorId, p.author);
     }
@@ -465,7 +580,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const getPostRank = useCallback((postId: string) => {
-    const sorted = [...stateRef.current.posts].sort((a, b) => b.popularityScore - a.popularityScore);
+    const sorted = [...stateRef.current.posts].sort(
+      (a, b) => b.popularityScore - a.popularityScore,
+    );
     return sorted.findIndex((p) => p.id === postId) + 1;
   }, []);
 
@@ -473,11 +590,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return stateRef.current.notifications.filter((n) => !n.read).length;
   }, []);
 
-  /* ── WRITE ACTIONS ──────────────────────────────────────────── */
+  /* ── WRITE ACTIONS ──────────────────────────────────────── */
+
   const createPost: CommunityContextType['createPost'] = useCallback(
     async (content, topicId, images, isAnonymous, mood, poll) => {
       const meId = currentUserIdRef.current;
-      if (!meId) { sweetAlert.alert('Sign In Required', 'Please sign in to post', 'warning'); return; }
+      if (!meId) {
+        sweetAlert.alert('Sign In Required', 'Please sign in to post', 'warning');
+        return;
+      }
       const p = await CommunityService.insertPost({
         authorId: meId,
         topicId,
@@ -487,11 +608,14 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         mood,
         poll,
       });
-      if (!p) { sweetAlert.error('Error', 'Failed to post'); return; }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      if (!p) {
+        sweetAlert.error('Error', 'Failed to post');
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => {},
+      );
 
-      // ── INSTANT INSERT: prepend the new post locally so it appears
-      // immediately — no network round-trip, no waiting for realtime.
       setState((prev) => {
         const exists = prev.posts.some((x) => x.id === p.id);
         if (exists) return prev;
@@ -501,34 +625,22 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return { ...prev, posts: next };
       });
 
-      // Then reconcile with the server (realtime will also patch).
       loadEverything({ silent: true }).catch(() => {});
     },
     [loadEverything, sweetAlert],
   );
-
-  // ── Per-post in-flight guards ────────────────────────────────
-  // A Set of "postId:action" strings that are currently being
-  // written to the DB. While a key is present, further taps for
-  // that post+action are ignored (no-op) — this is what stops a
-  // user from spamming +1 per tap.
-  //
-  // We ALSO compute the optimistic next-state from the CURRENT
-  // in-memory post first, so the UI flips instantly.
-  const inFlightReactionsRef = useRef<Set<string>>(new Set());
 
   const likePost = useCallback(async (postId: string) => {
     const meId = currentUserIdRef.current;
     if (!meId) return;
     if (inFlightReactionsRef.current.has(`like:${postId}`)) return;
     const cur = stateRef.current.posts.find((p) => p.id === postId);
-    // Already liked → treat as unlike, do NOT add another +1.
     if (cur?.isLiked) {
+      // already liked → treat as unlike
       return unlikePost(postId);
     }
     inFlightReactionsRef.current.add(`like:${postId}`);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    // Optimistic first: flip state immediately.
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
@@ -538,7 +650,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       await CommunityService.toggleLike(postId, meId, true);
     } catch {
-      // Roll back on failure.
       setState((p) => ({
         ...p,
         posts: p.posts.map((x) =>
@@ -550,6 +661,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       inFlightReactionsRef.current.delete(`like:${postId}`);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const unlikePost = useCallback(async (postId: string) => {
@@ -557,7 +669,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!meId) return;
     if (inFlightReactionsRef.current.has(`unlike:${postId}`)) return;
     const cur = stateRef.current.posts.find((p) => p.id === postId);
-    if (!cur?.isLiked) return; // nothing to remove
+    if (!cur?.isLiked) return;
     inFlightReactionsRef.current.add(`unlike:${postId}`);
     setState((p) => ({
       ...p,
@@ -592,7 +704,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
-        x.id === postId ? { ...x, isReposted: true, reposts: x.reposts + 1 } : x,
+        x.id === postId
+          ? { ...x, isReposted: true, reposts: x.reposts + 1 }
+          : x,
       ),
     }));
     try {
@@ -609,6 +723,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       inFlightReactionsRef.current.delete(`repost:${postId}`);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const unrepostPost = useCallback(async (postId: string) => {
@@ -632,7 +747,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setState((p) => ({
         ...p,
         posts: p.posts.map((x) =>
-          x.id === postId ? { ...x, isReposted: true, reposts: x.reposts + 1 } : x,
+          x.id === postId
+            ? { ...x, isReposted: true, reposts: x.reposts + 1 }
+            : x,
         ),
       }));
     } finally {
@@ -653,7 +770,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ...p,
       posts: p.posts.map((x) =>
         x.id === postId
-          ? { ...x, isBookmarked: next, bookmarks: Math.max(0, x.bookmarks + (next ? 1 : -1)) }
+          ? {
+              ...x,
+              isBookmarked: next,
+              bookmarks: Math.max(0, x.bookmarks + (next ? 1 : -1)),
+            }
           : x,
       ),
     }));
@@ -664,7 +785,11 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         ...p,
         posts: p.posts.map((x) =>
           x.id === postId
-            ? { ...x, isBookmarked: !next, bookmarks: Math.max(0, x.bookmarks + (next ? -1 : 1)) }
+            ? {
+                ...x,
+                isBookmarked: !next,
+                bookmarks: Math.max(0, x.bookmarks + (next ? -1 : 1)),
+              }
             : x,
         ),
       }));
@@ -674,16 +799,24 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const sharePost = useCallback(async (postId: string) => {
-    // no column for shares; increment view to keep the engagement graph healthy
-    const meId = currentUserIdRef.current; if (!meId) return;
-    await CommunityService.incrementViewRow(postId, meId);
+    // There is no `shares_count` column. We do NOT fake view counts.
+    // Track shares client-side so the UI reflects what the user just did.
+    if (!currentUserIdRef.current) return;
+    setState((p) => ({
+      ...p,
+      posts: p.posts.map((x) =>
+        x.id === postId ? { ...x, shares: (x.shares || 0) + 1 } : x,
+      ),
+    }));
   }, []);
 
   const deletePost = useCallback(async (postId: string) => {
     const ok = await CommunityService.deletePostRow(postId);
     if (ok) {
       setState((p) => ({ ...p, posts: p.posts.filter((x) => x.id !== postId) }));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => {},
+      );
     }
   }, []);
 
@@ -734,97 +867,221 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const addComment = useCallback(async (postId: string, content: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    await CommunityService.insertComment({ postId, authorId: meId, content });
-    // refresh comments on this post
-    const cmts = await CommunityService.fetchCommentsForPost(postId, meId);
-    setState((p) => ({
-      ...p,
-      posts: p.posts.map((x) =>
-        x.id === postId ? { ...x, comments: cmts, commentsCount: x.commentsCount + 1 } : x,
-      ),
-    }));
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    const trimmed = (content || '').trim();
+    if (!trimmed) return;
+    if (inFlightReactionsRef.current.has(`comment:${postId}`)) return;
+    inFlightReactionsRef.current.add(`comment:${postId}`);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+      () => {},
+    );
+    try {
+      const res = await CommunityService.insertComment({
+        postId,
+        authorId: meId,
+        content: trimmed,
+      });
+      if (!res.ok) return;
+      const cmts = await CommunityService.fetchCommentsForPost(postId, meId);
+      // Derive count from the source of truth — do NOT +1 blindly.
+      const freshCount = Array.isArray(cmts)
+        ? cmts.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0)
+        : undefined;
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id === postId
+            ? {
+                ...x,
+                comments: cmts,
+                commentsCount:
+                  freshCount !== undefined ? freshCount : x.commentsCount,
+              }
+            : x,
+        ),
+      }));
+    } finally {
+      inFlightReactionsRef.current.delete(`comment:${postId}`);
+    }
   }, []);
 
-  const replyToComment = useCallback(async (postId: string, commentId: string, content: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    await CommunityService.insertComment({ postId, authorId: meId, content, parentCommentId: commentId });
-    const cmts = await CommunityService.fetchCommentsForPost(postId, meId);
-    setState((p) => ({
-      ...p,
-      posts: p.posts.map((x) =>
-        x.id === postId ? { ...x, comments: cmts, commentsCount: x.commentsCount + 1 } : x,
-      ),
-    }));
-  }, []);
+  const replyToComment = useCallback(
+    async (postId: string, commentId: string, content: string) => {
+      const meId = currentUserIdRef.current;
+      if (!meId) return;
+      const trimmed = (content || '').trim();
+      if (!trimmed) return;
+      if (inFlightReactionsRef.current.has(`comment:${postId}`)) return;
+      inFlightReactionsRef.current.add(`comment:${postId}`);
+      try {
+        const res = await CommunityService.insertComment({
+          postId,
+          authorId: meId,
+          content: trimmed,
+          parentCommentId: commentId,
+        });
+        if (!res.ok) return;
+        const cmts = await CommunityService.fetchCommentsForPost(postId, meId);
+        const freshCount = Array.isArray(cmts)
+          ? cmts.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0)
+          : undefined;
+        setState((p) => ({
+          ...p,
+          posts: p.posts.map((x) =>
+            x.id === postId
+              ? {
+                  ...x,
+                  comments: cmts,
+                  commentsCount:
+                    freshCount !== undefined ? freshCount : x.commentsCount,
+                }
+              : x,
+          ),
+        }));
+      } finally {
+        inFlightReactionsRef.current.delete(`comment:${postId}`);
+      }
+    },
+    [],
+  );
 
-  const likeComment = useCallback(async (_postId: string, commentId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    const cur = stateRef.current.posts.find((p) => p.comments.some((c) => c.id === commentId));
-    if (!cur) return;
-    const c = cur.comments.find((x) => x.id === commentId);
-    if (!c) return;
-    const next = !c.isLiked;
-    await CommunityService.toggleCommentLike(commentId, meId, next);
+  const likeComment = useCallback(async (postId: string, commentId: string) => {
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    if (inFlightReactionsRef.current.has(`clike:${commentId}`)) return;
+    const freshPost = stateRef.current.posts.find((p) => p.id === postId);
+    const freshComment = findCommentInPost(freshPost, commentId);
+    if (!freshComment) return;
+    const next = !freshComment.isLiked;
+    inFlightReactionsRef.current.add(`clike:${commentId}`);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
-        x.id !== cur.id
+        x.id !== postId
           ? x
-          : {
-              ...x,
-              comments: x.comments.map((cm) =>
-                cm.id !== commentId
-                  ? cm
-                  : { ...cm, isLiked: next, likes: Math.max(0, cm.likes + (next ? 1 : -1)) },
-              ),
-            },
+          : patchCommentInPost(x, commentId, (cm) => ({
+              ...cm,
+              isLiked: next,
+              likes: Math.max(0, cm.likes + (next ? 1 : -1)),
+            })),
       ),
     }));
+    try {
+      await CommunityService.toggleCommentLike(commentId, meId, next);
+    } catch {
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id !== postId
+            ? x
+            : patchCommentInPost(x, commentId, (cm) => ({
+                ...cm,
+                isLiked: !next,
+                likes: Math.max(0, cm.likes + (next ? -1 : 1)),
+              })),
+        ),
+      }));
+    } finally {
+      inFlightReactionsRef.current.delete(`clike:${commentId}`);
+    }
   }, []);
 
-  const voteCommentHelpful = useCallback(async (_postId: string, commentId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    const cur = stateRef.current.posts.find((p) => p.comments.some((c) => c.id === commentId));
-    if (!cur) return;
-    const c = cur.comments.find((x) => x.id === commentId);
-    if (!c) return;
-    const wasVoted = c.votedHelpfulBy.includes(meId);
-    await CommunityService.toggleCommentHelpful(commentId, meId, !wasVoted);
-  }, []);
+  const voteCommentHelpful = useCallback(
+    async (postId: string, commentId: string) => {
+      const meId = currentUserIdRef.current;
+      if (!meId) return;
+      if (inFlightReactionsRef.current.has(`chelp:${commentId}`)) return;
+      const freshPost = stateRef.current.posts.find((p) => p.id === postId);
+      const freshComment = findCommentInPost(freshPost, commentId);
+      if (!freshComment) return;
+      const wasVoted = freshComment.votedHelpfulBy.includes(meId);
+      const next = !wasVoted;
+      inFlightReactionsRef.current.add(`chelp:${commentId}`);
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id !== postId
+            ? x
+            : patchCommentInPost(x, commentId, (cm) => ({
+                ...cm,
+                helpfulVotes: Math.max(0, cm.helpfulVotes + (next ? 1 : -1)),
+                votedHelpfulBy: next
+                  ? [...cm.votedHelpfulBy, meId]
+                  : cm.votedHelpfulBy.filter((u) => u !== meId),
+              })),
+        ),
+      }));
+      try {
+        await CommunityService.toggleCommentHelpful(commentId, meId, next);
+      } catch {
+        setState((p) => ({
+          ...p,
+          posts: p.posts.map((x) =>
+            x.id !== postId
+              ? x
+              : patchCommentInPost(x, commentId, (cm) => ({
+                  ...cm,
+                  helpfulVotes: Math.max(0, cm.helpfulVotes + (next ? -1 : 1)),
+                  votedHelpfulBy: next
+                    ? cm.votedHelpfulBy.filter((u) => u !== meId)
+                    : [...cm.votedHelpfulBy, meId],
+                })),
+          ),
+        }));
+      } finally {
+        inFlightReactionsRef.current.delete(`chelp:${commentId}`);
+      }
+    },
+    [],
+  );
 
   const followUser = useCallback(async (userId: string) => {
-    const meId = currentUserIdRef.current; if (!meId || meId === userId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId || meId === userId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     await CommunityService.followRow(meId, userId, true);
     setFollowedSet((s) => new Set(s).add(userId));
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
-        x.authorId === userId ? { ...x, author: { ...x.author, isFollowing: true } } : x,
+        x.authorId === userId
+          ? { ...x, author: { ...x.author, isFollowing: true } }
+          : x,
       ),
     }));
   }, []);
 
   const unfollowUser = useCallback(async (userId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
     await CommunityService.followRow(meId, userId, false);
-    setFollowedSet((s) => { const n = new Set(s); n.delete(userId); return n; });
+    setFollowedSet((s) => {
+      const n = new Set(s);
+      n.delete(userId);
+      return n;
+    });
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
-        x.authorId === userId ? { ...x, author: { ...x.author, isFollowing: false } } : x,
+        x.authorId === userId
+          ? { ...x, author: { ...x.author, isFollowing: false } }
+          : x,
       ),
     }));
   }, []);
 
   const blockUser = useCallback(async (userId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
     const already = stateRef.current.blockedUsers.includes(userId);
     await CommunityService.blockRow(meId, userId, !already);
     if (already) {
-      setState((p) => ({ ...p, blockedUsers: p.blockedUsers.filter((u) => u !== userId) }));
+      setState((p) => ({
+        ...p,
+        blockedUsers: p.blockedUsers.filter((u) => u !== userId),
+      }));
     } else {
       setState((p) => ({
         ...p,
@@ -840,148 +1097,208 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   /* Topic membership is stored in user_topics */
   const joinTopic = useCallback(async (topicId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    await supabase.from('user_topics').upsert({ user_id: meId, topic_id: topicId }, { onConflict: 'user_id,topic_id' });
-    setState((p) => ({
-      ...p,
-      topics: p.topics.map((t) => (t.id === topicId ? { ...t, isJoined: true, members: t.members + 1 } : t)),
-    }));
-  }, []);
-
-  const leaveTopic = useCallback(async (topicId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    await supabase.from('user_topics').delete().eq('user_id', meId).eq('topic_id', topicId);
-    setState((p) => ({
-      ...p,
-      topics: p.topics.map((t) => (t.id === topicId ? { ...t, isJoined: false, members: Math.max(0, t.members - 1) } : t)),
-    }));
-  }, []);
-
-  const getTopicById = useCallback((topicId: string) => stateRef.current.topics.find((t) => t.id === topicId), []);
-  const getPostsByTopic = useCallback((topicId: string) => stateRef.current.posts.filter((p) => p.topicId === topicId), []);
-
-  const updateUserBio = useCallback(async (bio: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    await supabase.from('profiles').update({ community_bio: bio, updated_at: new Date().toISOString() }).eq('id', meId);
-  }, []);
-
-  // NEW: mirrors what CommunityProfileScreen expects. Handles ONLY the fields
-  // that live on the community profile, and updates state optimistically.
-  const updateCommunityProfile = useCallback(async (
-    updates: Partial<CommunityUser> & { isVerified?: boolean; coverPhoto?: string },
-  ) => {
     const meId = currentUserIdRef.current;
     if (!meId) return;
-
-    const dbUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (updates.displayName !== undefined) dbUpdates.community_display_name = updates.displayName;
-    if (updates.handle !== undefined) dbUpdates.community_handle = updates.handle;
-    if (updates.bio !== undefined) dbUpdates.community_bio = updates.bio;
-    if (updates.avatar !== undefined) dbUpdates.community_avatar = updates.avatar;
-    if (updates.coverPhoto !== undefined) dbUpdates.community_cover = updates.coverPhoto;
-    if (updates.isVerified !== undefined) dbUpdates.is_verified = updates.isVerified;
-    if (updates.stats !== undefined) dbUpdates.community_stats = updates.stats;
-    // NOTE: `profiles` has NO `country` column. Country lives on
-    // `community_profiles.country`, which is a different table we don't
-    // use here. Do NOT add `country` to this update — Supabase rejects
-    // the entire UPDATE if any column doesn't exist, so a single invalid
-    // column rolls back ALL the other fields the caller was trying to save.
-
-    if (Object.keys(dbUpdates).length > 1) {
-      const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', meId);
-      if (error) {
-        if (__DEV__) console.warn('[Community] updateCommunityProfile DB error:', error.message);
-        // do NOT throw — the caller may be doing a best-effort background sync
-      }
-    }
-
-    // Country updates are a no-op on `profiles`. Record it only in the
-    // in-memory CommunityUser so the UI reflects what the user picked,
-    // without poisoning the profiles UPDATE.
-
-    // Optimistic in-memory patch so every consumer sees the change instantly.
-    setState((p) => {
-      if (!p.currentUser || p.currentUser.id !== meId) return p;
-      const merged: CommunityUser = {
-        ...p.currentUser,
-        displayName: updates.displayName ?? p.currentUser.displayName,
-        handle: updates.handle ?? p.currentUser.handle,
-        bio: updates.bio ?? p.currentUser.bio,
-        avatar: updates.avatar ?? p.currentUser.avatar,
-        coverPhoto: updates.coverPhoto ?? p.currentUser.coverPhoto,
-        country: updates.country ?? updates.location ?? p.currentUser.country,
-        isVerified: updates.isVerified ?? p.currentUser.isVerified,
-        stats: updates.stats ?? p.currentUser.stats,
-      };
-      return { ...p, currentUser: merged };
-    });
-
-    // Also patch every post authored by this user so the feed re-renders.
-        // Also patch every post authored by this user so the feed re-renders.
-    // Inlined (rather than calling `syncUserProfileAcrossPosts`) so this
-    // callback does not depend on a helper declared further down in the file.
+    await supabase
+      .from('user_topics')
+      .upsert({ user_id: meId, topic_id: topicId }, { onConflict: 'user_id,topic_id' });
     setState((p) => ({
       ...p,
-      posts: p.posts.map((post) =>
-        post.authorId === meId
-          ? {
-              ...post,
-              author: {
-                ...post.author,
-                displayName: updates.displayName ?? post.author.displayName,
-                handle: updates.handle ?? post.author.handle,
-                bio: updates.bio ?? post.author.bio,
-                avatar: updates.avatar ?? post.author.avatar,
-                coverPhoto: updates.coverPhoto ?? post.author.coverPhoto,
-                isVerified: updates.isVerified ?? post.author.isVerified,
-              },
-            }
-          : post,
+      topics: p.topics.map((t) =>
+        t.id === topicId
+          ? { ...t, isJoined: true, members: t.members + 1 }
+          : t,
       ),
     }));
   }, []);
 
+  const leaveTopic = useCallback(async (topicId: string) => {
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    await supabase.from('user_topics').delete().eq('user_id', meId).eq('topic_id', topicId);
+    setState((p) => ({
+      ...p,
+      topics: p.topics.map((t) =>
+        t.id === topicId
+          ? { ...t, isJoined: false, members: Math.max(0, t.members - 1) }
+          : t,
+      ),
+    }));
+  }, []);
+
+  const getTopicById = useCallback(
+    (topicId: string) => stateRef.current.topics.find((t) => t.id === topicId),
+    [],
+  );
+  const getPostsByTopic = useCallback(
+    (topicId: string) => stateRef.current.posts.filter((p) => p.topicId === topicId),
+    [],
+  );
+
+  const updateUserBio = useCallback(async (bio: string) => {
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    await supabase
+      .from('profiles')
+      .update({ community_bio: bio, updated_at: new Date().toISOString() })
+      .eq('id', meId);
+  }, []);
+
+  const updateCommunityProfile = useCallback(
+    async (
+      updates: Partial<CommunityUser> & { isVerified?: boolean; coverPhoto?: string },
+    ) => {
+      const meId = currentUserIdRef.current;
+      if (!meId) return;
+
+      const dbUpdates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.displayName !== undefined)
+        dbUpdates.community_display_name = updates.displayName;
+      if (updates.handle !== undefined)
+        dbUpdates.community_handle = updates.handle;
+      if (updates.bio !== undefined) dbUpdates.community_bio = updates.bio;
+      if (updates.avatar !== undefined)
+        dbUpdates.community_avatar = updates.avatar;
+      if (updates.coverPhoto !== undefined)
+        dbUpdates.community_cover = updates.coverPhoto;
+      if (updates.isVerified !== undefined)
+        dbUpdates.is_verified = updates.isVerified;
+      if (updates.stats !== undefined)
+        dbUpdates.community_stats = updates.stats;
+      // `profiles` has NO `country` column. Do not add it here.
+
+      if (Object.keys(dbUpdates).length > 1) {
+        const { error } = await supabase
+          .from('profiles')
+          .update(dbUpdates)
+          .eq('id', meId);
+        if (error) {
+          if (__DEV__)
+            console.warn(
+              '[Community] updateCommunityProfile DB error:',
+              error.message,
+            );
+        }
+      }
+
+      setState((p) => {
+        if (!p.currentUser || p.currentUser.id !== meId) return p;
+        const merged: CommunityUser = {
+          ...p.currentUser,
+          displayName: updates.displayName ?? p.currentUser.displayName,
+          handle: updates.handle ?? p.currentUser.handle,
+          bio: updates.bio ?? p.currentUser.bio,
+          avatar: updates.avatar ?? p.currentUser.avatar,
+          coverPhoto: updates.coverPhoto ?? p.currentUser.coverPhoto,
+          country: updates.country ?? updates.location ?? p.currentUser.country,
+          isVerified: updates.isVerified ?? p.currentUser.isVerified,
+          stats: updates.stats ?? p.currentUser.stats,
+        };
+        return { ...p, currentUser: merged };
+      });
+
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((post) =>
+          post.authorId === meId
+            ? {
+                ...post,
+                author: {
+                  ...post.author,
+                  displayName:
+                    updates.displayName ?? post.author.displayName,
+                  handle: updates.handle ?? post.author.handle,
+                  bio: updates.bio ?? post.author.bio,
+                  avatar: updates.avatar ?? post.author.avatar,
+                  coverPhoto: updates.coverPhoto ?? post.author.coverPhoto,
+                  isVerified: updates.isVerified ?? post.author.isVerified,
+                },
+              }
+            : post,
+        ),
+      }));
+    },
+    [],
+  );
+
   const updateUserLocation = useCallback(async (country: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    await supabase.from('profiles').update({ country, updated_at: new Date().toISOString() }).eq('id', meId);
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    await supabase
+      .from('profiles')
+      .update({ country, updated_at: new Date().toISOString() })
+      .eq('id', meId);
   }, []);
 
   const updateOnlineStatus = useCallback(async (status: OnlineStatus) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
     await supabase.from('user_activity').upsert(
-      { user_id: meId, status, last_active: new Date().toISOString(), updated_at: new Date().toISOString() },
+      {
+        user_id: meId,
+        status,
+        last_active: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: 'user_id' },
     );
   }, []);
 
-  const getUserStats = useCallback((userId: string) => getUserById(userId)?.stats, [getUserById]);
+  const getUserStats = useCallback(
+    (userId: string) => getUserById(userId)?.stats,
+    [getUserById],
+  );
 
   const markNotificationRead = useCallback(async (id: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
     await CommunityService.markNotificationReadRow(id, meId);
-    setState((p) => ({ ...p, notifications: p.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)) }));
+    setState((p) => ({
+      ...p,
+      notifications: p.notifications.map((n) =>
+        n.id === id ? { ...n, read: true } : n,
+      ),
+    }));
   }, []);
 
   const markAllNotificationsRead = useCallback(async () => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
     await CommunityService.markAllNotificationsReadRow(meId);
-    setState((p) => ({ ...p, notifications: p.notifications.map((n) => ({ ...n, read: true })) }));
+    setState((p) => ({
+      ...p,
+      notifications: p.notifications.map((n) => ({ ...n, read: true })),
+    }));
   }, []);
 
   const incrementViewCount = useCallback(async (postId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
     CommunityService.incrementViewRow(postId, meId).catch(() => {});
   }, []);
 
   const votePoll = useCallback(async (postId: string, optionId: string) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
     await CommunityService.votePollRow(postId, optionId, meId);
     const fresh = await CommunityService.fetchPostById(postId, meId);
-    if (fresh) setState((p) => ({ ...p, posts: p.posts.map((x) => (x.id === postId ? fresh : x)) }));
+    if (fresh)
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) => (x.id === postId ? fresh : x)),
+      }));
   }, []);
 
-  const getFollowers = useCallback(async (userId: string) => CommunityService.fetchFollowerIds(userId), []);
-  const getFollowing = useCallback(async (userId: string) => CommunityService.fetchFollowingIds(userId), []);
+  const getFollowers = useCallback(
+    async (userId: string) => CommunityService.fetchFollowerIds(userId),
+    [],
+  );
+  const getFollowing = useCallback(
+    async (userId: string) => CommunityService.fetchFollowingIds(userId),
+    [],
+  );
 
   const refreshFeed = useCallback(async () => {
     await loadEverything({ silent: false });
@@ -1000,11 +1317,8 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!meId) return;
     const cleanIds = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string') : [];
 
-    // 1. Optimistic — update in-memory state FIRST so every consumer
-    // (CommunityScreen, ProfileScreen, TopicScreen) sees it instantly.
     setState((p) => ({ ...p, selectedTopics: cleanIds }));
 
-    // 2. Write all persistent locations in parallel.
     const writes: Promise<any>[] = [];
 
     writes.push(
@@ -1015,28 +1329,32 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             community_selected_topics: cleanIds,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', meId)
+          .eq('id', meId),
       ).then(({ error }) => {
-        if (error) console.warn('[Community] DB topic save failed:', error.message);
+        if (error)
+          console.warn('[Community] DB topic save failed:', error.message);
       }),
     );
 
     writes.push(
-      AsyncStorage.setItem(`@community_selected_topics_v2_${meId}`, JSON.stringify(cleanIds))
-        .catch((e) => console.warn('[Community] scoped topic save failed:', e)),
+      AsyncStorage.setItem(
+        `@community_selected_topics_v2_${meId}`,
+        JSON.stringify(cleanIds),
+      ).catch((e) =>
+        console.warn('[Community] scoped topic save failed:', e),
+      ),
     );
-    // NOTE: we intentionally DO NOT write the global `@community_selected_topics_v2`
-    // key anymore. It is shared across accounts on the same device and leaks
-    // the previous account's selection into the next session.
 
-    // Onboarding blob keeps the "completed" flag so the navigator
-    // does not re-prompt.
     writes.push(
       (async () => {
         try {
-          const existingRaw = await AsyncStorage.getItem(`@littleloom_community_onboarding_v3_${meId}`);
+          const existingRaw = await AsyncStorage.getItem(
+            `@littleloom_community_onboarding_v3_${meId}`,
+          );
           let existing: any = {};
-          try { existing = existingRaw ? JSON.parse(existingRaw) : {}; } catch {}
+          try {
+            existing = existingRaw ? JSON.parse(existingRaw) : {};
+          } catch {}
           await AsyncStorage.setItem(
             `@littleloom_community_onboarding_v3_${meId}`,
             JSON.stringify({
@@ -1060,53 +1378,143 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return { completed: ids.length >= 3, hasTopics: ids.length > 0 };
   }, []);
 
-  const syncUserProfileAcrossPosts = useCallback(async (_userId: string, updates: Partial<CommunityUser>) => {
-    setState((p) => ({
-      ...p,
-      posts: p.posts.map((post) =>
-        post.authorId === _userId ? { ...post, author: { ...post.author, ...updates } } : post,
-      ),
-    }));
-  }, []);
+  const syncUserProfileAcrossPosts = useCallback(
+    async (_userId: string, updates: Partial<CommunityUser>) => {
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((post) =>
+          post.authorId === _userId
+            ? { ...post, author: { ...post.author, ...updates } }
+            : post,
+        ),
+      }));
+    },
+    [],
+  );
 
   const loadMorePosts = useCallback(async () => {
-    // basic pagination is handled by realtime + fetchFeed; no-op
+    // Pagination is handled by realtime + fetchFeed; no-op here.
   }, []);
 
-  const isAuthenticated = useCallback(() => authIsAuth && !!currentUserIdRef.current, [authIsAuth]);
+  const isAuthenticated = useCallback(
+    () => authIsAuth && !!currentUserIdRef.current,
+    [authIsAuth],
+  );
 
-  /* ── VALUE ──────────────────────────────────────────────────── */
-  const value = useMemo<CommunityContextType>(() => ({
-    ...state,
-    createPost,
-    likePost, unlikePost, repostPost, unrepostPost, bookmarkPost, sharePost, deletePost,
-    getPostById, voteHelpful, addComment, likeComment, voteCommentHelpful, replyToComment,
-    joinTopic, leaveTopic, getTopicById, getPostsByTopic,
-    followUser, unfollowUser, getUserById, getUserPosts, isFollowing: isFollowingFinal,
-    updateUserBio, updateUserLocation, updateOnlineStatus, updateCommunityProfile, getUserStats,
-    markNotificationRead, markAllNotificationsRead, getUnreadCount,
-    getFollowers, getFollowing, getAllUsers, getFeedPosts, getPopularPosts, getTrendingTopics,
-    incrementViewCount, getPostRank, isUserBlocked, blockUser,
-    refreshFeed, refreshTopics, votePoll,
-    isAuthenticated, getSelectedTopics, updateSelectedTopics, checkOnboardingStatus,
-    refreshTopicsData: refreshTopics,
-    syncUserProfileAcrossPosts, loadMorePosts,
-  }), [
-    state,
-    createPost, likePost, unlikePost, repostPost, unrepostPost, bookmarkPost, sharePost, deletePost,
-    getPostById, voteHelpful, addComment, likeComment, voteCommentHelpful, replyToComment,
-    joinTopic, leaveTopic, getTopicById, getPostsByTopic,
-    followUser, unfollowUser, getUserById, getUserPosts, isFollowingFinal,
-    updateUserBio, updateUserLocation, updateOnlineStatus, updateCommunityProfile, getUserStats,
-    markNotificationRead, markAllNotificationsRead, getUnreadCount,
-    getFollowers, getFollowing, getAllUsers, getFeedPosts, getPopularPosts, getTrendingTopics,
-    incrementViewCount, getPostRank, isUserBlocked, blockUser,
-    refreshFeed, refreshTopics, votePoll,
-    isAuthenticated, getSelectedTopics, updateSelectedTopics, checkOnboardingStatus,
-    syncUserProfileAcrossPosts, loadMorePosts,
-  ]);
+  /* ── VALUE ──────────────────────────────────────────────── */
+  const value = useMemo<CommunityContextType>(
+    () => ({
+      ...state,
+      createPost,
+      likePost,
+      unlikePost,
+      repostPost,
+      unrepostPost,
+      bookmarkPost,
+      sharePost,
+      deletePost,
+      getPostById,
+      voteHelpful,
+      addComment,
+      likeComment,
+      voteCommentHelpful,
+      replyToComment,
+      joinTopic,
+      leaveTopic,
+      getTopicById,
+      getPostsByTopic,
+      followUser,
+      unfollowUser,
+      getUserById,
+      getUserPosts,
+      isFollowing: isFollowingFinal,
+      updateUserBio,
+      updateUserLocation,
+      updateOnlineStatus,
+      updateCommunityProfile,
+      getUserStats,
+      markNotificationRead,
+      markAllNotificationsRead,
+      getUnreadCount,
+      getFollowers,
+      getFollowing,
+      getAllUsers,
+      getFeedPosts,
+      getPopularPosts,
+      getTrendingTopics,
+      incrementViewCount,
+      getPostRank,
+      isUserBlocked,
+      blockUser,
+      refreshFeed,
+      refreshTopics,
+      votePoll,
+      isAuthenticated,
+      getSelectedTopics,
+      updateSelectedTopics,
+      checkOnboardingStatus,
+      refreshTopicsData: refreshTopics,
+      syncUserProfileAcrossPosts,
+      loadMorePosts,
+    }),
+    [
+      state,
+      createPost,
+      likePost,
+      unlikePost,
+      repostPost,
+      unrepostPost,
+      bookmarkPost,
+      sharePost,
+      deletePost,
+      getPostById,
+      voteHelpful,
+      addComment,
+      likeComment,
+      voteCommentHelpful,
+      replyToComment,
+      joinTopic,
+      leaveTopic,
+      getTopicById,
+      getPostsByTopic,
+      followUser,
+      unfollowUser,
+      getUserById,
+      getUserPosts,
+      isFollowingFinal,
+      updateUserBio,
+      updateUserLocation,
+      updateOnlineStatus,
+      updateCommunityProfile,
+      getUserStats,
+      markNotificationRead,
+      markAllNotificationsRead,
+      getUnreadCount,
+      getFollowers,
+      getFollowing,
+      getAllUsers,
+      getFeedPosts,
+      getPopularPosts,
+      getTrendingTopics,
+      incrementViewCount,
+      getPostRank,
+      isUserBlocked,
+      blockUser,
+      refreshFeed,
+      refreshTopics,
+      votePoll,
+      isAuthenticated,
+      getSelectedTopics,
+      updateSelectedTopics,
+      checkOnboardingStatus,
+      syncUserProfileAcrossPosts,
+      loadMorePosts,
+    ],
+  );
 
-  return <CommunityContext.Provider value={value}>{children}</CommunityContext.Provider>;
+  return (
+    <CommunityContext.Provider value={value}>{children}</CommunityContext.Provider>
+  );
 };
 
 export const useCommunity = (): CommunityContextType => {

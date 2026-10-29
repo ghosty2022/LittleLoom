@@ -379,6 +379,9 @@ export default function CommunityScreen({ navigation }: Props) {
 
   const [refreshing, setRefreshing] = useState(false);
   const [activeTopic, setActiveTopic] = useState('all');
+  const [feedFilter, setFeedFilter] = useState<
+    'all' | 'saved' | 'reposts' | 'mine'
+  >('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
@@ -492,6 +495,13 @@ export default function CommunityScreen({ navigation }: Props) {
     filtered.sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
+    if (feedFilter === 'saved') {
+      filtered = filtered.filter((p) => p.isBookmarked);
+    } else if (feedFilter === 'reposts') {
+      filtered = filtered.filter((p) => p.isReposted);
+    } else if (feedFilter === 'mine') {
+      filtered = filtered.filter((p) => p.authorId === currentUser?.id);
+    }
     if (activeTopic !== 'all') {
       filtered = filtered.filter((p) => p.topicId === activeTopic);
     }
@@ -505,7 +515,7 @@ export default function CommunityScreen({ navigation }: Props) {
       );
     }
     return filtered;
-  }, [activeTopic, searchQuery, getFeedPosts]);
+  }, [feedFilter, activeTopic, searchQuery, getFeedPosts, currentUser?.id]);
 
   // Whenever `posts` changes (create, realtime insert, refresh, react),
   // re-derive the visible page. Reset to page 1 so a new post from the
@@ -524,7 +534,7 @@ export default function CommunityScreen({ navigation }: Props) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posts, activeTopic, searchQuery, topicRefreshKey]);
+  }, [posts, activeTopic, searchQuery, topicRefreshKey, feedFilter]);
 
   useEffect(() => {
     if (prevPostsRef.current.length > 0 && posts.length > prevPostsRef.current.length) {
@@ -703,10 +713,17 @@ export default function CommunityScreen({ navigation }: Props) {
     onRefresh();
   }, [onRefresh]);
 
+  // Track posts we've already counted *this screen session*. This is
+  // what stops "scroll up → down → up" from adding +N views.
+  const viewedPostsRef = useRef<Set<string>>(new Set());
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      viewableItems.forEach(v => {
-        if (v.item) incrementViewCount((v.item as Post).id);
+      viewableItems.forEach((v) => {
+        const post = v.item as Post | undefined;
+        if (!post) return;
+        if (viewedPostsRef.current.has(post.id)) return;
+        viewedPostsRef.current.add(post.id);
+        incrementViewCount(post.id);
       });
     },
     [incrementViewCount],
@@ -1326,6 +1343,71 @@ export default function CommunityScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* Feed filter chips — All / Saved / Reposts / Mine */}
+        <View
+          style={{
+            flexDirection: 'row',
+            paddingHorizontal: DS.space.lg,
+            gap: 8,
+            marginBottom: DS.space.sm,
+          }}
+        >
+          {(
+            [
+              { key: 'all', label: 'All', icon: 'home-outline' },
+              { key: 'saved', label: 'Saved', icon: 'bookmark-outline' },
+              { key: 'reposts', label: 'Reposts', icon: 'repeat-outline' },
+              { key: 'mine', label: 'Mine', icon: 'person-outline' },
+            ] as const
+          ).map((f) => {
+            const active = feedFilter === f.key;
+            return (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setFeedFilter(f.key);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: active
+                    ? DS.primary
+                    : isDark
+                    ? DS.darkBorder
+                    : DS.gray200,
+                  backgroundColor: active
+                    ? DS.primary
+                    : isDark
+                    ? 'rgba(255,255,255,0.04)'
+                    : DS.white,
+                }}
+                activeOpacity={0.85}
+              >
+                <Ionicons
+                  name={f.icon as any}
+                  size={13}
+                  color={active ? DS.white : isDark ? DS.gray300 : DS.gray600}
+                />
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: active ? DS.white : isDark ? DS.gray300 : DS.gray600,
+                  }}
+                >
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {/* Topic filter row */}
         <View style={styles.topicFilterRow}>
           <TouchableOpacity
@@ -1379,6 +1461,7 @@ export default function CommunityScreen({ navigation }: Props) {
     membersCount,
     canInteract,
     activeTopic,
+    feedFilter,
     hasTopics,
     userTopics,
     selectedTopicsList,
@@ -1412,7 +1495,15 @@ export default function CommunityScreen({ navigation }: Props) {
           <Ionicons name="chatbubbles-outline" size={40} color={DS.primary} />
         </LinearGradient>
         <Text style={[styles.emptyTitle, { color: isDark ? DS.white : DS.gray600 }]}>
-          {searchQuery ? 'No threads found' : 'The Loom is quiet'}
+          {searchQuery
+            ? 'No threads found'
+            : feedFilter === 'saved'
+            ? 'No saved threads yet'
+            : feedFilter === 'reposts'
+            ? 'No reposted threads yet'
+            : feedFilter === 'mine'
+            ? 'You haven’t posted yet'
+            : 'The Loom is quiet'}
         </Text>
         <Text style={[styles.emptyText, { color: isDark ? DS.gray400 : DS.gray400 }]}>
           {searchQuery ? 'Try different words or browse by topic' : 'Be the first to weave a story!'}

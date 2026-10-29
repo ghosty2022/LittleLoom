@@ -42,11 +42,17 @@ const mapProfileToCommunityUser = (row: any): CommunityUser => ({
   country: row.location || row.country || '',
   onlineStatus: (row.online_status as any) || 'offline',
   lastActive: row.last_active || new Date().toISOString(),
-  stats: row.community_stats || { posts: 0, followers: 0, following: 0, helpful: 0, streakDays: 0, lastStreakDate: new Date().toISOString() },
+  stats: row.community_stats || {
+    posts: 0,
+    followers: 0,
+    following: 0,
+    helpful: 0,
+    streakDays: 0,
+    lastStreakDate: new Date().toISOString(),
+  },
   // `profiles` has no `community_achievements` column — the achievements
   // array lives on `community_profiles.achievements`. Reads through plain
-  // `profiles` selects always fall back to an empty array. If you start
-  // joining `community_profiles`, map that column explicitly.
+  // `profiles` selects always fall back to an empty array.
   achievements: Array.isArray(row.community_achievements)
     ? row.community_achievements
     : [],
@@ -54,7 +60,11 @@ const mapProfileToCommunityUser = (row: any): CommunityUser => ({
   isFollowing: undefined,
 });
 
-const mapPostRow = (row: any, meId: string | null, followedIds: Set<string>): Post => {
+const mapPostRow = (
+  row: any,
+  meId: string | null,
+  followedIds: Set<string>,
+): Post => {
   const topic = INITIAL_TOPICS.find((t) => t.id === row.topic_id);
   const author = mapProfileToCommunityUser(row.author || {});
   return {
@@ -82,7 +92,7 @@ const mapPostRow = (row: any, meId: string | null, followedIds: Set<string>): Po
     timestamp: row.created_at,
     isAnonymous: !!row.is_anonymous,
     helpfulVotes: row.helpful_votes || 0,
-    votedHelpfulBy: [],
+    votedHelpfulBy: row.__is_helpful && meId ? [meId] : [],
     popularityScore: row.popularity_score || 0,
     viewCount: row.view_count || 0,
     engagementRate: 0,
@@ -107,7 +117,13 @@ const mapCommentRow = (row: any): Comment => ({
   timestamp: row.created_at,
   replies: [],
   helpfulVotes: row.helpful_votes || 0,
-  votedHelpfulBy: [],
+  // Hydrate from the DB so toggles are correct on first render.
+  // We don't have the full list of voters — we only need to know
+  // whether *I* voted, so the caller's own id is enough. The caller
+  // MUST pass `__me_id` alongside `__is_helpful` — see
+  // `fetchCommentsForPost`.
+  votedHelpfulBy:
+    row.__is_helpful && row.__me_id ? [row.__me_id as string] : [],
 });
 
 const relativeTime = (iso: string): string => {
@@ -127,13 +143,11 @@ const relativeTime = (iso: string): string => {
    READ HELPERS
    ───────────────────────────────────────────────────────────── */
 
-/**
- * Fetch the feed. Includes:
- *   • all non-deleted posts
- *   • author joined from `profiles`
- *   • per-user flags computed with a second small query
- * Respects blocks (both directions), so a blocked user's posts vanish.
- */
+const FEED_SELECT = `id, author_id, topic_id, content, images, is_anonymous, mood, poll_data,
+       likes_count, reposts_count, comments_count, bookmarks_count, helpful_votes,
+       popularity_score, view_count, is_trending, created_at, updated_at,
+       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics)`;
+
 export const fetchFeed = async (
   meId: string,
   opts: { limit?: number; before?: string; topicId?: string } = {},
@@ -153,12 +167,7 @@ export const fetchFeed = async (
   // 2) posts + author
   let q = supabase
     .from('community_posts')
-    .select(
-      `id, author_id, topic_id, content, images, is_anonymous, mood, poll_data,
-       likes_count, reposts_count, comments_count, bookmarks_count, helpful_votes,
-       popularity_score, view_count, is_trending, created_at, updated_at,
-       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics)`,
-    )
+    .select(FEED_SELECT)
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -180,22 +189,22 @@ export const fetchFeed = async (
     return [];
   }
 
-  const safeRows = (rows || []).filter(
-    (r: any) => !blockedIds.has(r.author_id),
-  );
+  const safeRows = (rows || []).filter((r: any) => !blockedIds.has(r.author_id));
 
-  // 3) which do I like / repost / bookmark?
+  // 3) which do I like / repost / bookmark / helpful?
   const ids = safeRows.map((r: any) => r.id);
   if (ids.length === 0) return [];
 
-  const [likes, reposts, bookmarks] = await Promise.all([
+  const [likes, reposts, bookmarks, helpfulRes] = await Promise.all([
     supabase.from('post_likes').select('post_id').eq('user_id', meId).in('post_id', ids),
     supabase.from('post_reposts').select('post_id').eq('user_id', meId).in('post_id', ids),
     supabase.from('post_bookmarks').select('post_id').eq('user_id', meId).in('post_id', ids),
+    supabase.from('post_helpful_votes').select('post_id').eq('user_id', meId).in('post_id', ids),
   ]);
   const likedSet = new Set((likes.data || []).map((r) => r.post_id));
   const repostedSet = new Set((reposts.data || []).map((r) => r.post_id));
   const bookmarkedSet = new Set((bookmarks.data || []).map((r) => r.post_id));
+  const helpfulSet = new Set((helpfulRes.data || []).map((r) => r.post_id));
 
   // 4) who do I follow?
   const { data: follows } = await supabase
@@ -211,14 +220,16 @@ export const fetchFeed = async (
         __is_liked: likedSet.has(r.id),
         __is_reposted: repostedSet.has(r.id),
         __is_bookmarked: bookmarkedSet.has(r.id),
+        __is_helpful: helpfulSet.has(r.id),
       },
       meId,
       followedSet,
     ),
   );
 
-  // cache for cold start
-  AsyncStorage.setItem(FEED_CACHE_KEY, JSON.stringify({ ts: Date.now(), posts })).catch(() => {});
+  AsyncStorage.setItem(FEED_CACHE_KEY, JSON.stringify({ ts: Date.now(), posts })).catch(
+    () => {},
+  );
 
   return posts;
 };
@@ -226,21 +237,17 @@ export const fetchFeed = async (
 export const fetchPostById = async (postId: string, meId: string): Promise<Post | null> => {
   const { data, error } = await supabase
     .from('community_posts')
-    .select(
-      `id, author_id, topic_id, content, images, is_anonymous, mood, poll_data,
-       likes_count, reposts_count, comments_count, bookmarks_count, helpful_votes,
-       popularity_score, view_count, is_trending, created_at, updated_at,
-       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics)`,
-    )
+    .select(FEED_SELECT)
     .eq('id', postId)
     .eq('is_deleted', false)
     .maybeSingle();
   if (error || !data) return null;
 
-  const [likes, reposts, bookmarks, follows] = await Promise.all([
+  const [likes, reposts, bookmarks, helpful, follows] = await Promise.all([
     supabase.from('post_likes').select('post_id').eq('user_id', meId).eq('post_id', postId).maybeSingle(),
     supabase.from('post_reposts').select('post_id').eq('user_id', meId).eq('post_id', postId).maybeSingle(),
     supabase.from('post_bookmarks').select('post_id').eq('user_id', meId).eq('post_id', postId).maybeSingle(),
+    supabase.from('post_helpful_votes').select('post_id').eq('user_id', meId).eq('post_id', postId).maybeSingle(),
     supabase.from('user_follows').select('following_id').eq('follower_id', meId),
   ]);
   const followedSet = new Set((follows.data || []).map((f) => f.following_id));
@@ -251,13 +258,17 @@ export const fetchPostById = async (postId: string, meId: string): Promise<Post 
       __is_liked: !!likes.data,
       __is_reposted: !!reposts.data,
       __is_bookmarked: !!bookmarks.data,
+      __is_helpful: !!helpful.data,
     },
     meId,
     followedSet,
   );
 };
 
-export const fetchCommentsForPost = async (postId: string, meId: string): Promise<Comment[]> => {
+export const fetchCommentsForPost = async (
+  postId: string,
+  meId: string,
+): Promise<Comment[]> => {
   const { data, error } = await supabase
     .from('community_comments')
     .select(
@@ -276,17 +287,30 @@ export const fetchCommentsForPost = async (postId: string, meId: string): Promis
   const ids = (data || []).map((r: any) => r.id);
   if (ids.length === 0) return [];
 
-  const liked = await supabase
-    .from('comment_likes')
-    .select('comment_id')
-    .eq('user_id', meId)
-    .in('comment_id', ids);
-  const likedSet = new Set((liked.data || []).map((r) => r.comment_id));
+  const [likedRes, helpfulRes] = await Promise.all([
+    supabase
+      .from('comment_likes')
+      .select('comment_id')
+      .eq('user_id', meId)
+      .in('comment_id', ids),
+    supabase
+      .from('comment_helpful_votes')
+      .select('comment_id')
+      .eq('user_id', meId)
+      .in('comment_id', ids),
+  ]);
+  const likedSet = new Set((likedRes.data || []).map((r) => r.comment_id));
+  const helpfulSet = new Set((helpfulRes.data || []).map((r) => r.comment_id));
 
   const topLevel: Comment[] = [];
   const byId = new Map<string, Comment>();
   (data || []).forEach((r: any) => {
-    const c = mapCommentRow({ ...r, __is_liked: likedSet.has(r.id) });
+    const c = mapCommentRow({
+      ...r,
+      __is_liked: likedSet.has(r.id),
+      __is_helpful: helpfulSet.has(r.id),
+      __me_id: meId,
+    });
     byId.set(c.id, c);
     if (!r.parent_comment_id) topLevel.push(c);
   });
@@ -382,7 +406,9 @@ export const deletePostRow = async (postId: string): Promise<boolean> => {
 
 export const toggleLike = async (postId: string, meId: string, like: boolean): Promise<void> => {
   if (like) {
-    await supabase.from('post_likes').upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
+    await supabase
+      .from('post_likes')
+      .upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
   } else {
     await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', meId);
   }
@@ -390,7 +416,9 @@ export const toggleLike = async (postId: string, meId: string, like: boolean): P
 
 export const toggleRepost = async (postId: string, meId: string, repost: boolean): Promise<void> => {
   if (repost) {
-    await supabase.from('post_reposts').upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
+    await supabase
+      .from('post_reposts')
+      .upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
   } else {
     await supabase.from('post_reposts').delete().eq('post_id', postId).eq('user_id', meId);
   }
@@ -398,7 +426,9 @@ export const toggleRepost = async (postId: string, meId: string, repost: boolean
 
 export const toggleBookmark = async (postId: string, meId: string, bookmarked: boolean): Promise<void> => {
   if (bookmarked) {
-    await supabase.from('post_bookmarks').upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
+    await supabase
+      .from('post_bookmarks')
+      .upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
   } else {
     await supabase.from('post_bookmarks').delete().eq('post_id', postId).eq('user_id', meId);
   }
@@ -406,7 +436,9 @@ export const toggleBookmark = async (postId: string, meId: string, bookmarked: b
 
 export const toggleHelpful = async (postId: string, meId: string, helpful: boolean): Promise<void> => {
   if (helpful) {
-    await supabase.from('post_helpful_votes').upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
+    await supabase
+      .from('post_helpful_votes')
+      .upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
   } else {
     await supabase.from('post_helpful_votes').delete().eq('post_id', postId).eq('user_id', meId);
   }
@@ -417,20 +449,39 @@ export const insertComment = async (params: {
   authorId: string;
   content: string;
   parentCommentId?: string;
-}): Promise<void> => {
+}): Promise<{ ok: boolean; error?: string }> => {
+  // ── HARD GUARD ────────────────────────────────────────────────
+  // Never insert an empty/whitespace comment. This is the last line
+  // of defence; callers should also guard, but this prevents a
+  // mis-wired button from polluting the table.
+  const trimmed = (params.content || '').trim();
+  if (!trimmed) {
+    if (__DEV__) console.warn('[CommunityService] Refusing to insert empty comment');
+    return { ok: false, error: 'empty_content' };
+  }
+  if (!params.postId || !params.authorId) {
+    return { ok: false, error: 'missing_ids' };
+  }
   const id = `cmt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-  await supabase.from('community_comments').insert({
+  const { error } = await supabase.from('community_comments').insert({
     id,
     post_id: params.postId,
     author_id: params.authorId,
     parent_comment_id: params.parentCommentId || null,
-    content: params.content,
+    content: trimmed,
   });
+  if (error) {
+    if (__DEV__) console.warn('[CommunityService] insertComment:', error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
 };
 
 export const toggleCommentLike = async (commentId: string, meId: string, like: boolean): Promise<void> => {
   if (like) {
-    await supabase.from('comment_likes').upsert({ comment_id: commentId, user_id: meId }, { onConflict: 'comment_id,user_id' });
+    await supabase
+      .from('comment_likes')
+      .upsert({ comment_id: commentId, user_id: meId }, { onConflict: 'comment_id,user_id' });
   } else {
     await supabase.from('comment_likes').delete().eq('comment_id', commentId).eq('user_id', meId);
   }
@@ -438,16 +489,24 @@ export const toggleCommentLike = async (commentId: string, meId: string, like: b
 
 export const toggleCommentHelpful = async (commentId: string, meId: string, helpful: boolean): Promise<void> => {
   if (helpful) {
-    await supabase.from('comment_helpful_votes').upsert({ comment_id: commentId, user_id: meId }, { onConflict: 'comment_id,user_id' });
+    await supabase
+      .from('comment_helpful_votes')
+      .upsert({ comment_id: commentId, user_id: meId }, { onConflict: 'comment_id,user_id' });
   } else {
-    await supabase.from('comment_helpful_votes').delete().eq('comment_id', commentId).eq('user_id', meId);
+    await supabase
+      .from('comment_helpful_votes')
+      .delete()
+      .eq('comment_id', commentId)
+      .eq('user_id', meId);
   }
 };
 
 export const followRow = async (meId: string, targetId: string, follow: boolean): Promise<void> => {
   if (meId === targetId) return;
   if (follow) {
-    await supabase.from('user_follows').upsert({ follower_id: meId, following_id: targetId }, { onConflict: 'follower_id,following_id' });
+    await supabase
+      .from('user_follows')
+      .upsert({ follower_id: meId, following_id: targetId }, { onConflict: 'follower_id,following_id' });
   } else {
     await supabase.from('user_follows').delete().eq('follower_id', meId).eq('following_id', targetId);
   }
@@ -455,7 +514,9 @@ export const followRow = async (meId: string, targetId: string, follow: boolean)
 
 export const blockRow = async (meId: string, targetId: string, block: boolean): Promise<void> => {
   if (block) {
-    await supabase.from('user_blocks').upsert({ blocker_id: meId, blocked_id: targetId }, { onConflict: 'blocker_id,blocked_id' });
+    await supabase
+      .from('user_blocks')
+      .upsert({ blocker_id: meId, blocked_id: targetId }, { onConflict: 'blocker_id,blocked_id' });
     // also unfollow both directions
     await followRow(meId, targetId, false);
     await supabase.from('user_follows').delete().eq('follower_id', targetId).eq('following_id', meId);
@@ -470,15 +531,22 @@ export const fetchBlockedIds = async (meId: string): Promise<string[]> => {
 };
 
 export const markNotificationReadRow = async (notifId: string, meId: string): Promise<void> => {
-  await supabase.from('community_notifications').update({ is_read: true }).eq('id', notifId).eq('user_id', meId);
+  await supabase
+    .from('community_notifications')
+    .update({ is_read: true })
+    .eq('id', notifId)
+    .eq('user_id', meId);
 };
 
 export const markAllNotificationsReadRow = async (meId: string): Promise<void> => {
-  await supabase.from('community_notifications').update({ is_read: true }).eq('user_id', meId).eq('is_read', false);
+  await supabase
+    .from('community_notifications')
+    .update({ is_read: true })
+    .eq('user_id', meId)
+    .eq('is_read', false);
 };
 
 export const votePollRow = async (postId: string, optionId: string, meId: string): Promise<void> => {
-  // one vote per user
   const { data: existing } = await supabase
     .from('poll_votes')
     .select('option_id')
@@ -490,13 +558,15 @@ export const votePollRow = async (postId: string, optionId: string, meId: string
 };
 
 export const incrementViewRow = async (postId: string, meId: string): Promise<void> => {
+  // The caller (`incrementViewCount`) already dedupes per screen session.
+  // `upsert` + `onConflict` is idempotent at the DB level: it will only
+  // INSERT the first time this user views this post.
   await supabase
     .from('post_views')
     .upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
 };
 
 export const fetchTopicStats = async (): Promise<Topic[]> => {
-  // 1) Try the RPC (fast, single round-trip, aggregates in the DB).
   const { data, error } = await supabase.rpc('get_topic_stats');
   if (!error && data && data.length > 0) {
     const postMap = new Map<string, number>();
@@ -512,18 +582,10 @@ export const fetchTopicStats = async (): Promise<Topic[]> => {
     }));
   }
 
-  // 2) Fallback: compute counts client-side from actual rows. This is
-  // fine because the topic list is small (17 topics) and the post count
-  // query returns only the topic_id column.
   try {
     const [postsRes, topicsRes] = await Promise.all([
-      supabase
-        .from('community_posts')
-        .select('topic_id')
-        .eq('is_deleted', false),
-      supabase
-        .from('user_topics')
-        .select('topic_id'),
+      supabase.from('community_posts').select('topic_id').eq('is_deleted', false),
+      supabase.from('user_topics').select('topic_id'),
     ]);
     const postCounts = new Map<string, number>();
     (postsRes.data || []).forEach((r: any) => {
@@ -546,7 +608,9 @@ export const fetchTopicStats = async (): Promise<Topic[]> => {
 export const fetchUserProfileById = async (userId: string): Promise<CommunityUser | null> => {
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics')
+    .select(
+      'id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics',
+    )
     .eq('id', userId)
     .maybeSingle();
   return data ? mapProfileToCommunityUser(data) : null;
@@ -555,12 +619,7 @@ export const fetchUserProfileById = async (userId: string): Promise<CommunityUse
 export const fetchUserPosts = async (userId: string, meId: string): Promise<Post[]> => {
   const { data } = await supabase
     .from('community_posts')
-    .select(
-      `id, author_id, topic_id, content, images, is_anonymous, mood, poll_data,
-       likes_count, reposts_count, comments_count, bookmarks_count, helpful_votes,
-       popularity_score, view_count, is_trending, created_at, updated_at,
-       author:profiles!community_posts_author_id_fkey(id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics)`,
-    )
+    .select(FEED_SELECT)
     .eq('author_id', userId)
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
@@ -570,16 +629,17 @@ export const fetchUserPosts = async (userId: string, meId: string): Promise<Post
   return data.map((r: any) => mapPostRow(r, meId, followedSet));
 };
 
-/* ─────────────────────────────────────────────────────────────
-   SEARCH (users) — used by Followers / Following / Search screens
-   ───────────────────────────────────────────────────────────── */
 export const searchUsers = async (query: string, meId: string): Promise<CommunityUser[]> => {
   const q = query.trim();
   if (!q) return [];
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics')
-    .or(`community_handle.ilike.%${q}%,community_display_name.ilike.%${q}%,full_name.ilike.%${q}%,username.ilike.%${q}%`)
+    .select(
+      'id, full_name, community_display_name, community_handle, username, community_avatar, avatar_url, community_bio, community_cover, is_verified, community_stats, community_selected_topics',
+    )
+    .or(
+      `community_handle.ilike.%${q}%,community_display_name.ilike.%${q}%,full_name.ilike.%${q}%,username.ilike.%${q}%`,
+    )
     .neq('id', meId)
     .limit(30);
   return (data || []).map(mapProfileToCommunityUser);
