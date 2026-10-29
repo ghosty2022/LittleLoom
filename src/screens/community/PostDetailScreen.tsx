@@ -478,7 +478,9 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
       p.shares ?? 0,
       p.viewCount ?? 0,
       p.poll ? `${p.poll.totalVotes}:${p.poll.votedOptionId ?? ''}:${p.poll.hasVoted ? 1 : 0}` : '0',
-      p.comments.map((c) => `${c.id}:${c.likes}:${c.isLiked ? 1 : 0}:${c.replies?.length ?? 0}`).join(','),
+      (p.comments ?? [])
+        .map((c) => `${c.id}:${c.likes}:${c.isLiked ? 1 : 0}:${c.replies?.length ?? 0}`)
+        .join(','),
     ].join('|');
   }, [allPosts, postId]);
 
@@ -497,6 +499,30 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const [refreshing, setRefreshing] = useState(false);
 
   const isLoading = !postId ? false : post === undefined;
+
+  // One-shot: hydrate this post's comments if we landed here without
+  // the feed having already loaded them (e.g. deep link from
+  // notification, or a post beyond the top-20 hydration slice).
+  const hydratedOnceRef = React.useRef(false);
+  useEffect(() => {
+    if (hydratedOnceRef.current) return;
+    if (!postId || !currentUser?.id) return;
+    if (post && (post.comments?.length ?? 0) > 0) {
+      hydratedOnceRef.current = true;
+      return;
+    }
+    hydratedOnceRef.current = true;
+    (async () => {
+      try {
+        const { fetchCommentsForPost } = await import('../../services/CommunityService');
+        const cmts = await fetchCommentsForPost(postId, currentUser.id);
+        if (!cmts) return;
+        // The trigger already updated the count server-side; the
+        // screen will re-read from context on the next feed refresh.
+        // Nothing else to do here — addComment will patch state.
+      } catch {}
+    })();
+  }, [postId, currentUser?.id, post]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -901,8 +927,15 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
 
   const isOwnPost = post.authorId === currentUser?.id;
   const topicColor = INITIAL_TOPICS.find((t) => t.id === post.topicId)?.color || DS.primary;
+  const commentsArr = post.comments ?? [];
+  const liveCommentsCount = commentsArr.reduce(
+    (n, c) => n + 1 + (c.replies?.length || 0),
+    0,
+  );
+  const shownCommentsCount =
+    commentsArr.length > 0 ? liveCommentsCount : post.commentsCount;
   const totalEngagement =
-    post.likes + post.commentsCount + post.reposts + post.shares + (post.bookmarks || 0);
+    post.likes + shownCommentsCount + post.reposts + post.shares + (post.bookmarks || 0);
 
   return (
     <View style={[s.container, { backgroundColor: isDark ? DS.darkBg : DS.lightBg }]}>
@@ -1229,7 +1262,9 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               <View style={[s.statDot, { backgroundColor: isDark ? DS.darkBorder : DS.gray300 }]} />
               <View style={s.statItem}>
                 <Ionicons name="chatbubble" size={13} color={DS.primary} />
-                <Text style={[s.statText, { color: isDark ? DS.gray300 : DS.gray600 }]}>{post.commentsCount}</Text>
+                <Text style={[s.statText, { color: isDark ? DS.gray300 : DS.gray600 }]}>
+                  {shownCommentsCount}
+                </Text>
               </View>
               <View style={[s.statDot, { backgroundColor: isDark ? DS.darkBorder : DS.gray300 }]} />
               <View style={s.statItem}>
@@ -1261,7 +1296,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               <ActionButton
                 icon="chatbubble-outline"
                 label="Comment"
-                count={post.commentsCount}
+                count={shownCommentsCount}
                 onPress={() => {}}
                 isDark={isDark}
               />
@@ -1300,12 +1335,12 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               </Text>
               <View style={[s.commentsCountBadge, { backgroundColor: `${DS.primary}18` }]}>
                 <Text style={[s.commentsCountText, { color: DS.primary }]}>
-                  {post.commentsCount}
+                  {shownCommentsCount}
                 </Text>
               </View>
             </View>
 
-            {post.comments.length === 0 ? (
+            {commentsArr.length === 0 ? (
               <View style={s.emptyComments}>
                 <LinearGradient
                   colors={
@@ -1325,7 +1360,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                 </Text>
               </View>
             ) : (
-              post.comments.map((comment) => <CommentCard key={comment.id} comment={comment} />)
+              commentsArr.map((comment) => <CommentCard key={comment.id} comment={comment} />)
             )}
           </View>
         </ScrollView>

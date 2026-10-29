@@ -155,6 +155,81 @@ const KEYWORD_MAP: Record<string, string[]> = {
   topic_community_support: ['support', 'help'],
 };
 
+/* ── Safe media helpers ───────────────────────────────────────
+   Camera assets can arrive as `content://`, `ph://`, or
+   `assets-library://` URIs. `ImageManipulator.manipulateAsync` and
+   `FileSystem.*` can throw natively on those — which crashes the
+   app before our try/catch can run. So we (a) detect non-file URIs
+   and skip manipulation entirely, (b) wrap every media step in a
+   function that never throws, mirroring SmartPhotoField's strategy.
+   ─────────────────────────────────────────────────────────── */
+
+const isFileUri = (uri: string): boolean =>
+  !!uri && (uri.startsWith('file://') || uri.startsWith('/'));
+
+const isContentUri = (uri: string): boolean =>
+  !!uri && (uri.startsWith('content://') || uri.startsWith('ph://') || uri.startsWith('assets-library://'));
+
+/** Normalize a picker/camera URI to something both RN <Image> and
+ *  FileSystem/ImageManipulator can safely consume. On Android,
+ *  `content://` is fine for <Image> but NOT for FileSystem on all
+ *  ROMs — so we transcode it via ImagePicker's built-in copy first. */
+const normalizePickerUri = async (uri: string): Promise<string> => {
+  if (!uri) return '';
+  if (isFileUri(uri)) return uri;
+  // content:// or ph:// — try to have the picker hand us a file:// copy.
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: (ImagePicker as any).MediaType?.Images ?? 'Images',
+      allowsEditing: false,
+      quality: 1,
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      const picked = result.assets[0].uri;
+      if (isFileUri(picked)) return picked;
+    }
+  } catch {
+    /* fall through */
+  }
+  return uri; // fall back to whatever we got
+};
+
+/** Never-throwing compress. On content/ph URIs we skip manipulation
+ *  entirely and return the original — a slightly bigger image is
+ *  better than a crash. */
+const safeCompress = async (
+  uri: string,
+  compress: (u: string, q?: number) => Promise<string>,
+  quality: number,
+): Promise<string> => {
+  if (!uri) return '';
+  if (isContentUri(uri)) {
+    // ImageManipulator will crash on these on many Android devices.
+    return uri;
+  }
+  try {
+    const out = await compress(uri, quality);
+    return out || uri;
+  } catch {
+    return uri;
+  }
+};
+
+/** Never-throwing cache step. If the copy fails we just keep the
+ *  original URI — the post will still render. */
+const safeCache = async (
+  uri: string,
+  cache: (u: string) => Promise<string>,
+): Promise<string> => {
+  if (!uri) return '';
+  try {
+    const out = await cache(uri);
+    return out || uri;
+  } catch {
+    return uri;
+  }
+};
+
 /* ── Image grid ───────────────────────────────────────────── */
 const ImageGrid = ({
   images,
@@ -168,7 +243,14 @@ const ImageGrid = ({
     <View style={s.imageGridWrapper}>
       {images.length === 1 ? (
         <View style={s.singleImageContainer}>
-          <Image source={{ uri: images[0] }} style={s.singleImage} resizeMode="cover" />
+          <Image
+            source={{ uri: images[0] }}
+            style={s.singleImage}
+            resizeMode="cover"
+            onError={() => {
+              if (__DEV__) console.warn('[ImageGrid] failed to load image:', images[0]);
+            }}
+          />
           <TouchableOpacity style={s.imageRemoveBtn} onPress={() => onRemove(0)}>
             <View style={s.imageRemoveInner}>
               <Ionicons name="close" size={16} color={DS.white} />
@@ -179,7 +261,14 @@ const ImageGrid = ({
         <View style={s.multiImageGrid}>
           {images.slice(0, 4).map((uri, index) => (
             <View key={index} style={s.gridImageItem}>
-              <Image source={{ uri }} style={s.gridImage} resizeMode="cover" />
+              <Image
+                source={{ uri }}
+                style={s.gridImage}
+                resizeMode="cover"
+                onError={() => {
+                  if (__DEV__) console.warn('[ImageGrid] failed to load grid image:', uri);
+                }}
+              />
               <TouchableOpacity style={s.imageRemoveBtn} onPress={() => onRemove(index)}>
                 <View style={s.imageRemoveInner}>
                   <Ionicons name="close" size={14} color={DS.white} />
@@ -407,13 +496,16 @@ export default function CreatePostScreen({ navigation, route }: Props) {
       const picked = await pickMultipleImages(4);
       if (picked && picked.length > 0) {
         const processed: string[] = [];
-        for (const uri of picked) {
-          try {
-            const compressed = await compressImage(uri, 0.8);
-            const cached = await cacheImage(compressed);
+        for (const rawUri of picked) {
+          // Normalize first — content:// and ph:// can't be trusted
+          // with FileSystem / ImageManipulator on all devices.
+          const uri = await normalizePickerUri(rawUri);
+          const compressed = await safeCompress(uri, compressImage, 0.8);
+          const cached = await safeCache(compressed, cacheImage);
+          if (cached && isValidImageUri(cached)) {
             processed.push(cached);
-          } catch {
-            if (isValidImageUri(uri)) processed.push(uri);
+          } else if (isValidImageUri(uri)) {
+            processed.push(uri);
           }
         }
         setImages((prev) => [...prev, ...processed].slice(0, 4));
@@ -435,17 +527,32 @@ export default function CreatePostScreen({ navigation, route }: Props) {
       }
       setIsProcessingImages(true);
       const photoUri = await mediaTakePhoto();
-      if (photoUri) {
-        try {
-          const compressed = await compressImage(photoUri, 0.8);
-          const cached = await cacheImage(compressed);
-          setImages((prev) => [...prev, cached].slice(0, 4));
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        } catch {
-          if (isValidImageUri(photoUri)) setImages((prev) => [...prev, photoUri].slice(0, 4));
-        }
+      if (!photoUri) return;
+
+      // Camera URIs on Android are often `content://…` which the native
+      // FileSystem / ImageManipulator modules can crash on. Skip
+      // manipulation for those — only compress/cache when it's a real
+      // file:// URI (iOS `ph://` is also unsafe).
+      const uri = await normalizePickerUri(photoUri);
+      const compressed = await safeCompress(uri, compressImage, 0.8);
+      const cached = await safeCache(compressed, cacheImage);
+      const finalUri =
+        cached && isValidImageUri(cached)
+          ? cached
+          : isValidImageUri(uri)
+          ? uri
+          : isValidImageUri(photoUri)
+          ? photoUri
+          : null;
+
+      if (finalUri) {
+        setImages((prev) => [...prev, finalUri].slice(0, 4));
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } else {
+        sweetAlert.error('Camera Error', 'Could not read the photo. Please try again.');
       }
-    } catch {
+    } catch (err) {
+      if (__DEV__) console.warn('[CreatePost] takePhoto error:', err);
       sweetAlert.error('Camera Error', 'Failed to take photo. Please try again.');
     } finally {
       setIsProcessingImages(false);
