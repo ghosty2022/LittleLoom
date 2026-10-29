@@ -267,8 +267,8 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
   const sweetAlert = useSweetAlert();
   const { darkMode, triggerHaptic } = useCustomization();
   const isDark = darkMode ?? false;
+  const { currentUser, updateSelectedTopics: updateContextSelectedTopics } = useCommunity() as any;
   const { updateSelectedTopics: updateUserTopics } = useUser();
-  const { currentUser } = useCommunity();
   const insets = useSafeAreaInsets();
 
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
@@ -431,6 +431,15 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         AsyncStorage.setItem(scopedKey, JSON.stringify(topicsToSave)),
       ]);
 
+      // ── Context is the single source of truth used by every screen.
+      //    Write to it FIRST so the feed updates even if UserContext fails.
+      try {
+        if (typeof updateContextSelectedTopics === 'function') {
+          await updateContextSelectedTopics(topicsToSave);
+        }
+      } catch (err) {
+        console.warn('[CommunityOnboarding] context updateSelectedTopics:', err);
+      }
       try {
         await updateUserTopics(topicsToSave);
       } catch (err) {
@@ -448,7 +457,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         console.warn('[CommunityOnboarding] refreshTopics:', err);
       }
     },
-    [currentUser?.id, updateUserTopics],
+    [currentUser?.id, updateUserTopics, updateContextSelectedTopics],
   );
 
   const handleComplete = useCallback(async () => {

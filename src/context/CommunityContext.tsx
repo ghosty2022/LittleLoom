@@ -214,6 +214,56 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }),
     );
 
+    // ── Hydrate selectedTopics from EVERY source and merge ──
+    // Priority: DB (profiles.community_selected_topics) > userProfile >
+    // scoped AsyncStorage > global AsyncStorage > onboarding blob.
+    // A source that returns [] must NEVER overwrite a non-empty value.
+    // NOTE: `meId` is already declared at the top of loadEverything — reuse it.
+    let persistedTopics: string[] = [];
+    if (meId) {
+      try {
+        const { data: row } = await supabase
+          .from('profiles')
+          .select('community_selected_topics')
+          .eq('id', meId)
+          .maybeSingle();
+        const dbTopics = Array.isArray(row?.community_selected_topics)
+          ? (row!.community_selected_topics as string[])
+          : [];
+        if (dbTopics.length > 0) persistedTopics = dbTopics;
+      } catch {}
+
+      if (persistedTopics.length === 0) {
+        try {
+          const [scopedRaw, globalRaw, onboardingRaw] = await Promise.all([
+            AsyncStorage.getItem(`@community_selected_topics_v2_${meId}`),
+            AsyncStorage.getItem('@community_selected_topics_v2'),
+            AsyncStorage.getItem('@littleloom_community_onboarding_v3'),
+          ]);
+          const parse = (raw: string | null): string[] => {
+            if (!raw) return [];
+            try {
+              const v = JSON.parse(raw);
+              return Array.isArray(v) ? v : [];
+            } catch {
+              return [];
+            }
+          };
+          const scoped = parse(scopedRaw);
+          const global = parse(globalRaw);
+          let fromBlob: string[] = [];
+          try {
+            const blob = onboardingRaw ? JSON.parse(onboardingRaw) : null;
+            if (Array.isArray(blob?.selectedTopics)) fromBlob = blob.selectedTopics;
+          } catch {}
+          persistedTopics = scoped.length > 0 ? scoped
+            : global.length > 0 ? global
+            : fromBlob.length > 0 ? fromBlob
+            : [];
+        } catch {}
+      }
+    }
+
     const me = userProfile
       ? {
           id: userProfile.id,
@@ -225,7 +275,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           lastActive: new Date().toISOString(),
           stats: userProfile.communityStats || { posts: 0, followers: 0, following: 0, helpful: 0, streakDays: 0, lastStreakDate: new Date().toISOString() },
           achievements: [],
-          selectedTopics: userProfile.communitySelectedTopics || [],
+          // Merge: prefer persisted → userProfile → existing state.
+          // NEVER let an empty source clobber a non-empty one.
+          selectedTopics: persistedTopics.length > 0
+            ? persistedTopics
+            : (userProfile.communitySelectedTopics && userProfile.communitySelectedTopics.length > 0
+                ? userProfile.communitySelectedTopics
+                : stateRef.current.selectedTopics),
           isFollowing: undefined,
           bio: userProfile.communityBio || '',
         }
@@ -240,17 +296,25 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const freshBlocked = [...blocked];
 
     if (me && me.id === currentUserIdRef.current) {
-      setState((p) => ({
-        ...p,
-        posts: freshPosts,
-        topics: freshTopics,
-        notifications: freshNotifications,
-        blockedUsers: freshBlocked,
-        selectedTopics: me.selectedTopics || p.selectedTopics,
-        currentUser: me,
-        isLoading: false,
-        isInitialized: true,
-      }));
+      setState((p) => {
+        // Merge: if DB/Async gave us nothing but state already has
+        // topics, keep them. Never downgrade a populated list to [].
+        const mergedTopics =
+          (me.selectedTopics && me.selectedTopics.length > 0)
+            ? me.selectedTopics
+            : (p.selectedTopics.length > 0 ? p.selectedTopics : []);
+        return {
+          ...p,
+          posts: freshPosts,
+          topics: freshTopics,
+          notifications: freshNotifications,
+          blockedUsers: freshBlocked,
+          selectedTopics: mergedTopics,
+          currentUser: me,
+          isLoading: false,
+          isInitialized: true,
+        };
+      });
     } else {
       setState((p) => ({
         ...p,
@@ -718,13 +782,64 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const getSelectedTopics = useCallback(() => stateRef.current.selectedTopics, []);
 
   const updateSelectedTopics = useCallback(async (ids: string[]) => {
-    const meId = currentUserIdRef.current; if (!meId) return;
-    await supabase.from('profiles').update({
-      community_selected_topics: ids,
-      updated_at: new Date().toISOString(),
-    }).eq('id', meId);
-    await AsyncStorage.setItem(`@community_selected_topics_v2_${meId}`, JSON.stringify(ids));
-    setState((p) => ({ ...p, selectedTopics: ids }));
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    const cleanIds = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string') : [];
+
+    // 1. Optimistic — update in-memory state FIRST so every consumer
+    // (CommunityScreen, ProfileScreen, TopicScreen) sees it instantly.
+    setState((p) => ({ ...p, selectedTopics: cleanIds }));
+
+    // 2. Write all persistent locations in parallel.
+    const writes: Promise<any>[] = [];
+
+    writes.push(
+      Promise.resolve(
+        supabase
+          .from('profiles')
+          .update({
+            community_selected_topics: cleanIds,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', meId)
+      ).then(({ error }) => {
+        if (error) console.warn('[Community] DB topic save failed:', error.message);
+      }),
+    );
+
+    writes.push(
+      AsyncStorage.setItem(`@community_selected_topics_v2_${meId}`, JSON.stringify(cleanIds))
+        .catch((e) => console.warn('[Community] scoped topic save failed:', e)),
+    );
+    writes.push(
+      AsyncStorage.setItem(`@community_selected_topics_v2`, JSON.stringify(cleanIds))
+        .catch((e) => console.warn('[Community] global topic save failed:', e)),
+    );
+
+    // Onboarding blob keeps the "completed" flag so the navigator
+    // does not re-prompt.
+    writes.push(
+      (async () => {
+        try {
+          const existingRaw = await AsyncStorage.getItem('@littleloom_community_onboarding_v3');
+          let existing: any = {};
+          try { existing = existingRaw ? JSON.parse(existingRaw) : {}; } catch {}
+          await AsyncStorage.setItem(
+            '@littleloom_community_onboarding_v3',
+            JSON.stringify({
+              ...existing,
+              completed: true,
+              selectedTopics: cleanIds,
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        } catch (e) {
+          console.warn('[Community] onboarding blob save failed:', e);
+        }
+      })(),
+    );
+
+    await Promise.all(writes);
   }, []);
 
   const checkOnboardingStatus = useCallback(async () => {

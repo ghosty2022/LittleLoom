@@ -473,7 +473,8 @@ export default function CommunityProfileScreen({ navigation }: Props) {
   const {
     currentUser, updateCommunityProfile, syncUserProfileAcrossPosts, getUserPosts, getSelectedTopics,
     getFollowers, getFollowing, checkAndAwardAchievements, getAllUsers, refreshFeed, refreshTopics: refreshTopicsData, getUserProfile,
-  } = useCommunity();
+    selectedTopics: contextSelectedTopics,
+  } = useCommunity() as any;
   const { profile, updateCommunityProfile: updateUserContextProfile, checkUsernameAvailable, updateUsername } = useUser();
   const { themeColors, fullThemeColors, darkMode, triggerHaptic } = useCustomization();
   const { compressImage } = useMedia();
@@ -643,6 +644,14 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     return () => { isMountedRef.current = false; };
   }, [currentUser]);
 
+  // Re-hydrate topics whenever context updates (e.g. user came back from
+  // onboarding and context now has fresh selectedTopics).
+  useEffect(() => {
+    if (!Array.isArray(contextSelectedTopics)) return;
+    if (contextSelectedTopics.length === 0) return;
+    setSelectedTopics(contextSelectedTopics);
+  }, [contextSelectedTopics]);
+
   useFocusEffect(useCallback(() => {
     if (currentUser && !isLoadingRef.current) refreshUserData();
     return () => {};
@@ -654,7 +663,23 @@ export default function CommunityProfileScreen({ navigation }: Props) {
     if (isLoadingRef.current || !currentUser) return;
     isLoadingRef.current = true;
     try {
-      const topics = getSelectedTopics();
+      let topics: string[] =
+        Array.isArray(contextSelectedTopics) && contextSelectedTopics.length > 0
+          ? contextSelectedTopics
+          : (typeof getSelectedTopics === 'function' ? getSelectedTopics() : []);
+      if (topics.length === 0 && currentUser.id) {
+        try {
+          const [scopedRaw, globalRaw] = await Promise.all([
+            AsyncStorage.getItem(`@community_selected_topics_v2_${currentUser.id}`),
+            AsyncStorage.getItem('@community_selected_topics_v2'),
+          ]);
+          const parse = (r: string | null) => {
+            if (!r) return [] as string[];
+            try { const v = JSON.parse(r); return Array.isArray(v) ? v : []; } catch { return []; }
+          };
+          topics = parse(scopedRaw).length > 0 ? parse(scopedRaw) : parse(globalRaw);
+        } catch {}
+      }
       const followers = await getFollowers(currentUser.id);
       const following = await getFollowing(currentUser.id);
       if (isMountedRef.current) {
@@ -664,7 +689,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       }
     } catch (e) { console.error('Error refreshing user data:', e); }
     finally { isLoadingRef.current = false; }
-  }, [currentUser, getSelectedTopics, getFollowers, getFollowing]);
+  }, [currentUser, getSelectedTopics, getFollowers, getFollowing, contextSelectedTopics]);
 
   const loadActivityLog = async () => {
     try {
@@ -763,7 +788,26 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           }
         } catch (e) { if (__DEV__) console.warn('[Profile] profile sync failed:', e); }
 
-        const topics = getSelectedTopics();
+        // Merge all topic sources — context may hydrate late.
+        let topics: string[] =
+          Array.isArray(contextSelectedTopics) && contextSelectedTopics.length > 0
+            ? contextSelectedTopics
+            : (typeof getSelectedTopics === 'function' ? getSelectedTopics() : []);
+        if (topics.length === 0 && currentUser.id) {
+          try {
+            const [scopedRaw, globalRaw] = await Promise.all([
+              AsyncStorage.getItem(`@community_selected_topics_v2_${currentUser.id}`),
+              AsyncStorage.getItem('@community_selected_topics_v2'),
+            ]);
+            const parse = (r: string | null) => {
+              if (!r) return [] as string[];
+              try { const v = JSON.parse(r); return Array.isArray(v) ? v : []; } catch { return []; }
+            };
+            const scoped = parse(scopedRaw);
+            const global = parse(globalRaw);
+            topics = scoped.length > 0 ? scoped : global;
+          } catch {}
+        }
         const followers = await getFollowers(currentUser.id);
         const following = await getFollowing(currentUser.id);
         if (isMountedRef.current) {
@@ -1059,6 +1103,9 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       await updateUserContextProfile(updates);
       await updateCommunityProfile(updates);
       await syncUserProfileAcrossPosts(currentUser.id, { displayName: updates.displayName, handle: updates.handle, avatar: updates.avatar });
+      // Keep formData.handle in the canonical bare form so `hasChanges`
+      // compares like-with-like and the Save button disables on success.
+      setFormData(prev => ({ ...prev, handle: cleanHandle }));
       if (formData.avatar && formData.avatar !== originalData.avatar && !formData.avatar.startsWith('file://')) {
         try { await supabase.from('profiles').update({ community_avatar: formData.avatar, avatar_url: formData.avatar }).eq('id', currentUser.id); await supabase.from('family_members').update({ avatar: formData.avatar }).eq('user_id', currentUser.id); } catch {}
       }
@@ -1066,7 +1113,7 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       if (newAchievements.length > 0) sweetAlert.success('Achievement Unlocked!', `You earned ${newAchievements.length} new badge${newAchievements.length > 1 ? 's' : ''}!`);
       triggerHaptic('success');
       setIsEditing(false);
-      setOriginalData({ ...formData });
+      setOriginalData({ ...formData, handle: cleanHandle });
       sweetAlert.success('Profile Updated', 'Your community profile has been saved');
     } catch (error: any) {
       triggerHaptic('error');
@@ -1781,7 +1828,4 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
   modalClose: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   pickerOption: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, marginBottom: 6 },
-  pickerIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  pickerLabel: { fontSize: 15, fontWeight: '600', flex: 1 },
-  emojiBtn: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-});
+  pickerIcon: { width: 44, height: 44, borderRadius: 12, align

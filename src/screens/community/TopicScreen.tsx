@@ -348,7 +348,8 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
     getSelectedTopics,
     updateSelectedTopics,
     refreshTopics: refreshTopicsFn,
-  } = useCommunity();
+    selectedTopics: contextSelectedTopics,
+  } = useCommunity() as any;
   const { communityProfile } = useUser();
 
   const { themeColors, darkMode, triggerHaptic } = useSafeCustomization() as any;
@@ -366,7 +367,11 @@ export default function TopicScreen({ navigation, route }: TopicScreenProps) {
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const listRef = useRef<FlatList<Post>>(null);
 
-  const userTopics = useMemo(() => getSelectedTopics(), [getSelectedTopics]);
+  const userTopics = useMemo(() => {
+    const ctx = Array.isArray(contextSelectedTopics) ? contextSelectedTopics : [];
+    const fn = typeof getSelectedTopics === 'function' ? getSelectedTopics() : [];
+    return ctx.length > 0 ? ctx : fn;
+  }, [getSelectedTopics, contextSelectedTopics]);
   const isTopicSelected = useMemo(() => userTopics.includes(topicId), [userTopics, topicId]);
 
   const scrollY = useSharedValue(0);

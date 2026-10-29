@@ -444,10 +444,9 @@ export const UniversalSpinner = memo<UniversalSpinnerProps>(({
   const dimensions = SIZE_MAP[size];
   const SpinnerComponent = SPINNER_COMPONENTS[variant];
 
-  const progressWidth = progressAnim.current!.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
-  });
+  const progressWidth = progressAnim.current
+    ? progressAnim.current.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] })
+    : '0%';
 
   const darkOverlay = isDark
     ? ['rgba(50,50,50,0.8)', 'rgba(30,30,30,0.6)']

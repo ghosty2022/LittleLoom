@@ -1431,13 +1431,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentProfile = stateRef.current.userProfile;
     if (!currentProfile) return false;
 
+    const clean = Array.isArray(topics) ? topics.filter((x) => typeof x === 'string') : [];
+
     try {
-      const updatedProfile = { ...currentProfile, communitySelectedTopics: topics };
+      // 1. Update in-memory + SecureStore profile
+      const updatedProfile = { ...currentProfile, communitySelectedTopics: clean };
       await secureStorage.setItem(SECURE_KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
-      await AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(topics));
+
+      // 2. Write to ALL AsyncStorage keys the CommunityContext + Navigator read
+      await Promise.all([
+        AsyncStorage.setItem(ASYNC_KEYS.COMMUNITY_SELECTED_TOPICS, JSON.stringify(clean)),
+        AsyncStorage.setItem(
+          `@community_selected_topics_v2_${currentProfile.id}`,
+          JSON.stringify(clean),
+        ),
+        AsyncStorage.setItem('@community_selected_topics_v2', JSON.stringify(clean)),
+      ]);
+
+      // 3. Persist to the DB so cold starts hydrate correctly
+      try {
+        await supabase
+          .from('profiles')
+          .update({
+            community_selected_topics: clean,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', currentProfile.id);
+      } catch (dbErr) {
+        if (__DEV__) console.warn('[Auth] DB topics write failed:', dbErr);
+      }
 
       if (isMounted.current) {
-        setState(prev => ({ ...prev, userProfile: updatedProfile }));
+        setState((prev) => ({ ...prev, userProfile: updatedProfile }));
       }
       return true;
     } catch (error) {
@@ -2070,7 +2095,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (liveUserId) {
               const { data: liveProfile } = await supabase
                 .from('profiles')
-                .select('full_name, email, avatar, avatar_url, phone_number')
+                .select('full_name, email, avatar, avatar_url, phone_number, community_selected_topics')
                 .eq('id', liveUserId)
                 .maybeSingle();
 
@@ -2082,6 +2107,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   avatar: liveProfile.avatar || liveProfile.avatar_url || userProfile.avatar || '👤',
                   phoneNumber: liveProfile.phone_number || userProfile.phoneNumber,
                 };
+
+                // Hydrate topics from DB — the authoritative source.
+                const dbTopics = Array.isArray(liveProfile.community_selected_topics)
+                  ? (liveProfile.community_selected_topics as string[])
+                  : [];
+                if (dbTopics.length > 0) {
+                  (userProfile as any).communitySelectedTopics = dbTopics;
+                }
               }
             }
           } catch (e) {
@@ -2101,6 +2134,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const baseName = userProfile.fullName || 'Parent';
           const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
 
+          // Merge topics: keep any DB value we just hydrated above; otherwise
+          // fall back to AsyncStorage; otherwise to the existing in-memory list.
+          const asyncTopics = commTopics ? JSON.parse(commTopics) : [];
+          const existingTopics = Array.isArray(userProfile.communitySelectedTopics)
+            ? userProfile.communitySelectedTopics
+            : [];
+          const mergedTopics =
+            existingTopics.length > 0
+              ? existingTopics
+              : Array.isArray(asyncTopics) && asyncTopics.length > 0
+                ? asyncTopics
+                : [];
+
           userProfile = {
             ...userProfile,
             communityUsername: commUsername || baseName,
@@ -2109,7 +2155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             communityAvatar: commAvatar || userProfile.avatar || '👤',
             communityDisplayName: commDisplayName || baseName,
             communityStats: commStats ? JSON.parse(commStats) : { posts: 0, followers: 0, following: 0, helpful: 0 },
-            communitySelectedTopics: commTopics ? JSON.parse(commTopics) : [],
+            communitySelectedTopics: mergedTopics,
           };
 
           try {

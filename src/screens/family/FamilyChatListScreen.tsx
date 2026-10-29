@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import UniversalSpinner from '../../components/UniversalSpinner';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -681,8 +682,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
 
   const totalUnread = useMemo(
     () => chats.reduce((sum, c) => sum + (c.isMuted ? 0 : c.unreadCount), 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chats, realtimeTick],
+    [chats],
   );
 
   const showSweetAlert = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
@@ -911,6 +911,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   return (
     <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+            <UniversalSpinner visible={refreshing} section="main" size="small" overlay={true} blur={true} text="Refreshing..." variant="aurora" />
       <LinearGradient colors={isDark ? ['#0c0a09', '#12121e', '#0c0a09'] : ['#f8faff', '#eef0f5', '#e4e8f0']} style={StyleSheet.absoluteFill} />
 
       <SweetAlert visible={alert.visible} type={alert.type} title={alert.title} message={alert.message} onClose={() => setAlert((p) => ({ ...p, visible: false }))} />
@@ -941,7 +942,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
         scrollEventThrottle={16}
         contentContainerStyle={{ paddingTop: HEADER_TOP_PADDING + 8, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={DS.primary} colors={[DS.primary, DS.accent]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}
       >
         {/* Pulse header */}
         <PulseHeader

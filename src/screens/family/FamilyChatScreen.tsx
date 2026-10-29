@@ -878,28 +878,28 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
 
   // ── Instant message sync via context subscription (no polling) ──
   const { subscribeToChatMessages } = useFamilyChat();
+  const lastMarkedCountRef = useRef<number>(-1);
   useEffect(() => {
     if (!chatId) return;
     const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
       setMessages(msgs);
-      // mark as read the instant a message lands
-      markChatRead(chatId);
+      // Only mark read when there are actually unread messages
+      const meId = userProfile?.id;
+      const hasUnread = !!meId && msgs.some((m) => !m.readBy?.includes(meId));
+      if (hasUnread && lastMarkedCountRef.current !== msgs.length) {
+        lastMarkedCountRef.current = msgs.length;
+        markChatRead(chatId);
+      }
       // auto-scroll on new message
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 30);
     });
     return unsub;
-  }, [chatId, subscribeToChatMessages, markChatRead]);
+  }, [chatId, subscribeToChatMessages, markChatRead, userProfile?.id]);
 
   useEffect(() => { initializeChat(); }, [initialChatId, memberId]);
 
-const liveMessages = useFamilyChat().messages[chatId] || [];
-useEffect(() => {
-  if (!chatId) return;
-  markChatRead(chatId);
-  setMessages(liveMessages);
-  const t = setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-  return () => clearTimeout(t);
-}, [chatId, liveMessages.length]);
+// (removed duplicate polling effect — subscribeToChatMessages already
+// delivers live messages instantly and handles markChatRead below)
 
   const initializeChat = async () => {
     setIsLoading(true);
@@ -954,13 +954,23 @@ useEffect(() => {
     HAPTIC_SUCCESS();
   }, [inputText, chatId, userProfile, editingMessage, replyingTo, sendMessage, editMessage, setTypingStatus, chatInfo, isUserBlocked]);
 
+  const lastTypingSentRef = useRef<number>(0);
   const handleInputChange = (text: string) => {
     setInputText(text);
     if (text.length > 0) {
-      setTypingStatus(chatId, true);
+      const now = Date.now();
+      // Throttle typing broadcasts to at most once per 1.5s
+      if (now - lastTypingSentRef.current > 1500) {
+        lastTypingSentRef.current = now;
+        setTypingStatus(chatId, true);
+      }
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => setTypingStatus(chatId, false), 3000);
+      typingTimeoutRef.current = setTimeout(() => {
+        lastTypingSentRef.current = 0;
+        setTypingStatus(chatId, false);
+      }, 3000);
     } else {
+      lastTypingSentRef.current = 0;
       setTypingStatus(chatId, false);
     }
   };
@@ -1117,8 +1127,8 @@ useEffect(() => {
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: isDark ? DS.darkBg : DS.gray50, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={DS.primary} />
+      <View style={{ flex: 1, backgroundColor: isDark ? DS.darkBg : DS.gray50 }}>
+        <UniversalSpinner visible section="main" size="large" overlay={false} text="Opening chat..." variant="aurora" />
       </View>
     );
   }

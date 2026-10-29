@@ -466,6 +466,9 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
       const scopedKey = userId
         ? `@community_selected_topics_v2_${userId}`
         : '@community_selected_topics_v2';
+      // Also check the context's in-memory list — it may have hydrated
+      // from DB after this effect started.
+      const inMemoryTopics = getSelectedTopics() || [];
       const [rawScoped, rawGlobal, rawOnboarding] = await Promise.all([
         AsyncStorage.getItem(scopedKey),
         AsyncStorage.getItem('@community_selected_topics_v2'),
@@ -487,7 +490,11 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         const blob = rawOnboarding ? JSON.parse(rawOnboarding) : null;
         if (Array.isArray(blob?.selectedTopics)) fromBlob = blob.selectedTopics;
       } catch {}
-      const anyStored = scoped.length || global.length || fromBlob.length;
+      const anyStored =
+        scoped.length > 0 ||
+        global.length > 0 ||
+        fromBlob.length > 0 ||
+        inMemoryTopics.length > 0;
       if (!anyStored) {
         if (__DEV__) console.log('[CommunityNavigator] → onboarding (truly no topics stored)');
         setPhase('onboarding');

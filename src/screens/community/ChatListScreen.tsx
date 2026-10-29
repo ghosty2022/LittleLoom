@@ -368,6 +368,11 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        updateCellsBatchingPeriod={40}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

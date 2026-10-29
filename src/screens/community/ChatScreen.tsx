@@ -700,6 +700,19 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     };
   }, [otherUserId]);
 
+  // Live-update messages once chatId is known
+  const { subscribeToChatMessages } = useFamilyChat();
+  useEffect(() => {
+    if (!chatId || !subscribeToChatMessages) return;
+    const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
+      setMessages(msgs);
+      const meId = userProfile?.id;
+      const hasUnread = !!meId && msgs.some((m) => !m.readBy?.includes(meId));
+      if (hasUnread) markChatRead(chatId);
+    });
+    return unsub;
+  }, [chatId, subscribeToChatMessages, markChatRead, userProfile?.id]);
+
   /* ── Refresh loop ────────────────────────────────────────── */
   // ── Clear typing when leaving the chat ───────────────────────
   useEffect(() => {

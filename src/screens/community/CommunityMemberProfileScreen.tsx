@@ -680,6 +680,24 @@ export default function CommunityMemberProfileScreen({ navigation, route }: Prop
     }, [userId])
   );
 
+  // Re-sync topics when the context's cached user changes (e.g. that
+  // user just edited their topics on another screen / device).
+  const contextUserTopics = useMemo(
+    () => getUserById(userId)?.selectedTopics,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [userId, user],
+  );
+  useEffect(() => {
+    if (!contextUserTopics || contextUserTopics.length === 0) return;
+    setUser((prev) => {
+      if (!prev) return prev;
+      const prevKey = (prev.selectedTopics || []).join('|');
+      const nextKey = contextUserTopics.join('|');
+      if (prevKey === nextKey) return prev;
+      return { ...prev, selectedTopics: contextUserTopics };
+    });
+  }, [contextUserTopics]);
+
   const loadUserData = async () => {
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;

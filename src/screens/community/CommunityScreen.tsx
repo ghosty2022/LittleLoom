@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
+import UniversalSpinner from '../../components/UniversalSpinner';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
@@ -36,6 +37,7 @@ import type { CommunityStackParamList } from '../../types/navigation';
 import type { Post, Poll } from '../../context/CommunityContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useAuth } from '../../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouteBasedNavVisibility } from '../../hooks/useRouteBasedNavVisibility';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -366,6 +368,7 @@ export default function CommunityScreen({ navigation }: Props) {
     refreshTopics,
     getFollowers,
     getFollowing,
+    selectedTopics: contextSelectedTopics,
   } = community as any;
 
   const { isAuthenticated: authIsAuth } = useAuth();
@@ -403,15 +406,23 @@ export default function CommunityScreen({ navigation }: Props) {
   const unreadCount = getUnreadCount();
   const canInteract = useMemo(() => checkIsAuth() || authIsAuth, [checkIsAuth, authIsAuth]);
   const allUsers = useMemo(() => getAllUsers(), [getAllUsers, posts.length]);
-  const userTopics = useMemo(() => getSelectedTopics(), [getSelectedTopics, topicRefreshKey]);
-  const hasTopics = useMemo(() => userTopics.length > 0, [userTopics]);
+  const userTopics = useMemo(
+    () => {
+      const ctx = Array.isArray(contextSelectedTopics) ? contextSelectedTopics : [];
+      const fromFn = typeof getSelectedTopics === 'function' ? getSelectedTopics() : [];
+      // Prefer whichever list is non-empty — context may hydrate late.
+      return ctx.length > 0 ? ctx : (fromFn.length > 0 ? fromFn : []);
+    },
+    [getSelectedTopics, contextSelectedTopics, topicRefreshKey],
+  );
+  const hasTopics = userTopics.length > 0;
 
   const postsCount = posts.length;
   const membersCount = allUsers.length;
 
   useEffect(() => {
     setSelectedTopicsList(userTopics.slice(0, 20));
-  }, [userTopics]);
+  }, [userTopics, contextSelectedTopics]);
 
   /* Load the current user's follower / following counts once */
   useEffect(() => {
@@ -525,20 +536,33 @@ export default function CommunityScreen({ navigation }: Props) {
   }, [posts]);
 
   useEffect(() => {
-    if (!isHydrating && !hasTopics && canInteract) {
-      const timer = setTimeout(() => {
-        sweetAlert.confirm(
-          'Personalize Your Feed',
-          "Select topics you're interested in to see relevant content in your feed.",
-          () => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never),
-          () => {},
-          'Choose Topics',
-          'Later',
+    if (isHydrating || hasTopics || !canInteract) return;
+    // Guard against firing before context hydration completes.
+    if (!currentUser?.id) return;
+    const timer = setTimeout(async () => {
+      // Final disk check — never prompt if topics exist anywhere.
+      try {
+        const scopedRaw = await AsyncStorage.getItem(
+          `@community_selected_topics_v2_${currentUser.id}`,
         );
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [isHydrating, hasTopics, canInteract, navigation, sweetAlert]);
+        const globalRaw = await AsyncStorage.getItem('@community_selected_topics_v2');
+        const parse = (r: string | null) => {
+          if (!r) return [] as string[];
+          try { const v = JSON.parse(r); return Array.isArray(v) ? v : []; } catch { return []; }
+        };
+        if (parse(scopedRaw).length > 0 || parse(globalRaw).length > 0) return;
+      } catch {}
+      sweetAlert.confirm(
+        'Personalize Your Feed',
+        "Select topics you're interested in to see relevant content in your feed.",
+        () => navigation.navigate(ROUTES.ONBOARDING as never, { editing: true } as never),
+        () => {},
+        'Choose Topics',
+        'Later',
+      );
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [isHydrating, hasTopics, canInteract, navigation, sweetAlert, currentUser?.id]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1413,7 +1437,15 @@ export default function CommunityScreen({ navigation }: Props) {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
-
+        <UniversalSpinner
+          visible={refreshing}
+          section="community"
+          size="small"
+          overlay={true}
+          blur={true}
+          text="Refreshing..."
+          variant="aurora"
+        />
         {/* Header */}
         <View
           style={[
@@ -1600,9 +1632,9 @@ export default function CommunityScreen({ navigation }: Props) {
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={onRefresh}
-                tintColor={DS.primary}
-                colors={[DS.primary]}
-                progressBackgroundColor={isDark ? DS.darkSurface : DS.white}
+                tintColor="transparent"
+                colors={['transparent']}
+                progressBackgroundColor="transparent"
                 progressViewOffset={Platform.OS === 'ios' ? HEADER_TOTAL_HEIGHT : HEADER_TOTAL_HEIGHT - 20}
               />
             }
