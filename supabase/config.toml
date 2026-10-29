@@ -9,3 +9,11 @@ entrypoint = "./functions/send-invite-sms/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-invite-sms/*.html" ]
+
+[functions.reset-password-with-pin]
+enabled = true
+# The user is signed OUT when they hit "Forgot PIN?" — they don't have a
+# valid JWT. Auth is provided by the pinHash bearer secret instead, so the
+# gateway must not reject the request. verify_jwt = false is required.
+verify_jwt = false
+entrypoint = "./functions/reset-password-with-pin/index.ts"

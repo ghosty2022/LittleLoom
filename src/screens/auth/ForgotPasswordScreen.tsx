@@ -236,10 +236,20 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
         setSent(true);
         showSuccess('Password Reset', result.message);
       } else {
-        showError('Recovery Failed', result.message);
+        // result.message is now the REAL server message:
+        // "Incorrect PIN. Please try again."
+        // "You can't reuse one of your last 3 passwords..."
+        // "No PIN is set up for this account..."
+        // etc.
+        showError('Recovery Failed', result.message || 'Password reset failed. Please try again.');
+        triggerHaptic('error');
       }
-    } catch {
-      showError('Recovery Failed', 'Could not reset password. Please try again.');
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Could not reset password. Please try again.';
+      showError('Recovery Failed', msg);
     } finally {
       setIsLoading(false);
     }

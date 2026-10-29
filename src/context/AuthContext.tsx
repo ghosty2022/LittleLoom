@@ -1856,6 +1856,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (error) {
           if (__DEV__) console.warn('[Auth] resetPasswordWithPin function error:', error);
+
+          // FunctionsHttpError hides the response body. Read it so the
+          // real server message ("Incorrect PIN", "User not found",
+          // "Password recently used", etc.) reaches the user.
+          let serverMessage: string | null = null;
+          try {
+            const ctx: any = (error as any).context;
+            if (ctx?.json) {
+              const body = await ctx.json();
+              serverMessage =
+                (body && (body.message || body.error)) || null;
+            } else if (ctx?.text) {
+              const text = await ctx.text();
+              if (text) {
+                try {
+                  const parsed = JSON.parse(text);
+                  serverMessage = parsed?.message || parsed?.error || null;
+                } catch {
+                  serverMessage = text;
+                }
+              }
+            } else if (typeof (error as any).message === 'string' && (error as any).message.length > 0) {
+              // Some SDK versions put the body in `.message`.
+              const m = (error as any).message as string;
+              if (!m.toLowerCase().includes('non-2xx')) serverMessage = m;
+            }
+          } catch {
+            /* body unreadable — fall through */
+          }
+
+          if (serverMessage) {
+            return { success: false, message: serverMessage };
+          }
+
           return {
             success: false,
             message:
@@ -1889,9 +1923,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       } catch (err) {
         if (__DEV__) console.error('[Auth] resetPasswordWithPin invoke failed:', err);
+        // Try to recover a message from the thrown value too.
+        let msg: string | null = null;
+        try {
+          const anyErr: any = err;
+          const ctx = anyErr?.context;
+          if (ctx?.json) {
+            const body = await ctx.json();
+            msg = body?.message || body?.error || null;
+          } else if (typeof anyErr?.message === 'string' && !anyErr.message.toLowerCase().includes('non-2xx')) {
+            msg = anyErr.message;
+          }
+        } catch {}
         return {
           success: false,
-          message: 'Password reset failed. Please try again.',
+          message: msg || 'Password reset failed. Please try again.',
         };
       }
     } catch (error) {
