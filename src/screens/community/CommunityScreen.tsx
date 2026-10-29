@@ -269,44 +269,128 @@ const CategoryBadge = React.memo(({ categoryId, isDark }: { categoryId?: string;
   );
 });
 
+const POLL_ACCENTS = ['#6366f1', '#ec4899', '#10b981', '#f59e0b'];
+
 const PollWidget = React.memo(
-  ({ poll, postId, onVote, isDark }: { poll: Poll; postId: string; onVote: (postId: string, optionId: string) => void; isDark: boolean }) => (
-    <View style={[styles.pollWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.gray50 }]}>
-      <Text style={[styles.pollQuestion, { color: isDark ? DS.white : DS.gray800 }]}>{poll.question}</Text>
-      {poll.options.map(option => {
-        const percentage = poll.totalVotes > 0 ? Math.round((option.votes / poll.totalVotes) * 100) : 0;
-        const isSelected = poll.votedOptionId === option.id;
-        return (
-          <Pressable key={option.id} onPress={() => !poll.hasVoted && onVote(postId, option.id)} style={styles.pollOption}>
-            <View style={styles.pollTrack}>
-              {poll.hasVoted && (
-                <Animated.View
-                  entering={FadeIn.duration(600)}
-                  style={[
-                    styles.pollFill,
-                    {
-                      width: `${percentage}%`,
-                      backgroundColor: isSelected ? DS.primary : `${DS.primary}25`,
-                    },
-                  ]}
-                />
-              )}
-              <View style={styles.pollOptionContent}>
-                <Text style={[styles.pollOptionText, { color: isDark ? DS.gray200 : DS.gray700 }]}>{option.text}</Text>
-                {poll.hasVoted && (
-                  <Text style={[styles.pollPercent, { color: isSelected ? DS.primary : DS.gray400 }]}>{percentage}%</Text>
+  ({ poll, postId, onVote, isDark }: { poll: Poll; postId: string; onVote: (postId: string, optionId: string) => void; isDark: boolean }) => {
+    const [local, setLocal] = useState(poll);
+    useEffect(() => { setLocal(poll); }, [poll]);
+
+    const handle = (optionId: string) => {
+      if (local.hasVoted) return;
+      setLocal(p => ({
+        ...p,
+        hasVoted: true,
+        votedOptionId: optionId,
+        totalVotes: p.totalVotes + 1,
+        options: p.options.map(o => o.id === optionId ? { ...o, votes: o.votes + 1 } : o),
+      }));
+      onVote(postId, optionId);
+    };
+
+    return (
+      <View
+        style={[
+          styles.pollWrap,
+          {
+            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.gray50,
+            borderColor: isDark ? DS.darkBorder : DS.gray200,
+            borderWidth: 1,
+          },
+        ]}
+      >
+        <View style={styles.pollHeader}>
+          <Ionicons name="stats-chart" size={14} color={DS.primary} />
+          <Text style={[styles.pollQuestion, { color: isDark ? DS.white : DS.gray800, flex: 1 }]}>
+            {local.question}
+          </Text>
+        </View>
+
+        {local.options.map((option, idx) => {
+          const pct = local.totalVotes > 0
+            ? Math.round((option.votes / local.totalVotes) * 100)
+            : 0;
+          const isSelected = local.votedOptionId === option.id;
+          const accent = POLL_ACCENTS[idx % POLL_ACCENTS.length];
+          return (
+            <Pressable
+              key={option.id}
+              onPress={() => handle(option.id)}
+              disabled={local.hasVoted}
+              style={styles.pollOption}
+            >
+              <View
+                style={[
+                  styles.pollTrack,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : `${accent}12`,
+                    borderColor: isSelected ? accent : 'transparent',
+                    borderWidth: isSelected ? 1.5 : 0,
+                  },
+                ]}
+              >
+                {local.hasVoted && (
+                  <LinearGradient
+                    colors={
+                      isSelected
+                        ? [accent, `${accent}CC`]
+                        : [`${accent}55`, `${accent}22`]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.pollFill, { width: `${pct}%` }]}
+                  />
                 )}
+                <View style={styles.pollOptionContent}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                    {local.hasVoted && (
+                      <Ionicons
+                        name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                        size={14}
+                        color={isSelected ? DS.white : accent}
+                      />
+                    )}
+                    <Text
+                      style={[
+                        styles.pollOptionText,
+                        {
+                          color: local.hasVoted && isSelected
+                            ? DS.white
+                            : isDark ? DS.gray200 : DS.gray700,
+                          fontWeight: isSelected ? '800' : '600',
+                        },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {option.text}
+                    </Text>
+                  </View>
+                  {local.hasVoted && (
+                    <Text
+                      style={[
+                        styles.pollPercent,
+                        { color: isSelected ? DS.white : accent },
+                      ]}
+                    >
+                      {pct}%
+                    </Text>
+                  )}
+                </View>
               </View>
-            </View>
-          </Pressable>
-        );
-      })}
-      <Text style={[styles.pollMeta, { color: isDark ? DS.gray500 : DS.gray400 }]}>
-        {poll.totalVotes} vote{poll.totalVotes !== 1 ? 's' : ''}
-        {!poll.hasVoted && ' · Tap to vote'}
-      </Text>
-    </View>
-  ),
+            </Pressable>
+          );
+        })}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+          <Ionicons name="people-outline" size={11} color={isDark ? DS.gray500 : DS.gray500} />
+          <Text style={[styles.pollMeta, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+            {local.totalVotes} vote{local.totalVotes !== 1 ? 's' : ''}
+            {!local.hasVoted ? ' · Tap to vote' : ' · You voted'}
+          </Text>
+        </View>
+      </View>
+    );
+  },
 );
 
 const PostSkeleton = React.memo(({ isDark }: { isDark: boolean }) => (
@@ -2092,11 +2176,10 @@ const styles = StyleSheet.create({
   topicFilterText: { fontSize: DS.text.xs.size, fontWeight: '600' },
 
   postCard: {
-    borderRadius: DS.radius['2xl'],
+    borderRadius: DS.radius.xl,
     overflow: 'hidden',
     marginHorizontal: DS.space.lg,
-    marginBottom: DS.space.lg,
-    ...DS.shadow.md,
+    marginBottom: DS.space.md,
   },
   postHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: DS.space.lg },
   authorRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },

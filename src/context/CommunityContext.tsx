@@ -1276,19 +1276,82 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const incrementViewCount = useCallback(async (postId: string) => {
     const meId = currentUserIdRef.current;
     if (!meId) return;
-    CommunityService.incrementViewRow(postId, meId).catch(() => {});
+    setState((p) => ({
+      ...p,
+      posts: p.posts.map((x) =>
+        x.id === postId ? { ...x, viewCount: (x.viewCount || 0) + 1 } : x,
+      ),
+    }));
+    const ok = await CommunityService.incrementViewRow(postId, meId);
+    if (!ok) {
+      setState((p) => ({
+        ...p,
+        posts: p.posts.map((x) =>
+          x.id === postId
+            ? { ...x, viewCount: Math.max(0, (x.viewCount || 0) - 1) }
+            : x,
+        ),
+      }));
+    }
   }, []);
 
   const votePoll = useCallback(async (postId: string, optionId: string) => {
     const meId = currentUserIdRef.current;
     if (!meId) return;
-    await CommunityService.votePollRow(postId, optionId, meId);
-    const fresh = await CommunityService.fetchPostById(postId, meId);
-    if (fresh)
+
+    const cur = stateRef.current.posts.find((p) => p.id === postId);
+    if (!cur?.poll || cur.poll.hasVoted) return;
+
+    setState((p) => ({
+      ...p,
+      posts: p.posts.map((x) => {
+        if (x.id !== postId || !x.poll) return x;
+        return {
+          ...x,
+          poll: {
+            ...x.poll,
+            hasVoted: true,
+            votedOptionId: optionId,
+            totalVotes: x.poll.totalVotes + 1,
+            options: x.poll.options.map((o) =>
+              o.id === optionId ? { ...o, votes: o.votes + 1 } : o,
+            ),
+          },
+        };
+      }),
+    }));
+
+    try {
+      await CommunityService.votePollRow(postId, optionId, meId);
+      const fresh = await CommunityService.fetchPostById(postId, meId);
+      if (fresh) {
+        setState((p) => ({
+          ...p,
+          posts: p.posts.map((x) => (x.id === postId ? fresh : x)),
+        }));
+      }
+    } catch {
       setState((p) => ({
         ...p,
-        posts: p.posts.map((x) => (x.id === postId ? fresh : x)),
+        posts: p.posts.map((x) => {
+          if (x.id !== postId || !x.poll) return x;
+          return {
+            ...x,
+            poll: {
+              ...x.poll,
+              hasVoted: false,
+              votedOptionId: undefined,
+              totalVotes: Math.max(0, x.poll.totalVotes - 1),
+              options: x.poll.options.map((o) =>
+                o.id === optionId
+                  ? { ...o, votes: Math.max(0, o.votes - 1) }
+                  : o,
+              ),
+            },
+          };
+        }),
       }));
+    }
   }, []);
 
   const getFollowers = useCallback(

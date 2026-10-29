@@ -1523,7 +1523,7 @@ const s = StyleSheet.create({
   toolText: { fontSize: 11.5, fontWeight: '700' },
 
   /* Tips */
-  tipsContainer: { marginHorizontal: 16, marginBottom: 24, borderRadius: DS.radius.xl, overflow: 'hidden', ...DS.shadow.sm },
+  tipsContainer: { marginHorizontal: 16, marginBottom: 24, borderRadius: DS.radius.xl, overflow: 'hidden' },
   tipsGradient: { padding: 20 },
   tipsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
   tipsTitle: { fontSize: 14, fontWeight: '800' },

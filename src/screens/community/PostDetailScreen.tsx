@@ -16,7 +16,7 @@ import {
   View,
   RefreshControl,
 } from 'react-native';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,7 +28,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { CommunityStackParamList } from '../../types/navigation';
 
-import { Comment, Post, useCommunity, INITIAL_TOPICS } from '../../context/CommunityContext';
+import {
+  Comment,
+  Post,
+  useCommunity,
+  INITIAL_TOPICS,
+} from '../../context/CommunityContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -113,23 +118,7 @@ const LinkifyText = ({
   );
 };
 
-/* ── Sensitive image (tap-to-reveal) ──────────────────────── */
-/**
- * Deterministic client-side sensitivity classifier.
- *
- * We do NOT blur everything. We only blur images that match one of
- * these signals:
- *   1. The caller explicitly passed `isSensitive` (e.g. a post marked
- *      with `is_anonymous` or a `venting` mood).
- *   2. The image URL contains sensitive-content keywords in the path
- *      (uploader tagged it).
- *   3. The image was uploaded to the `community_avatars` bucket with a
- *      "sensitive/" prefix (poster explicitly marked it private).
- *
- * Baby / family photos are NOT auto-blurred — only explicit signals
- * hide them. That matches what users expect: their own baby pictures
- * should show, not be blurred by default.
- */
+/* ── Sensitive image ──────────────────────────────────────── */
 const SUSPICIOUS_PATH_KEYWORDS = [
   'sensitive',
   'private',
@@ -158,7 +147,6 @@ const SensitiveImage = ({
   uri: string;
   style?: any;
   resizeMode?: any;
-  /** Caller-supplied override. `undefined` → auto-detect from URL. */
   isSensitive?: boolean;
 }) => {
   const [revealed, setRevealed] = useState(false);
@@ -221,7 +209,6 @@ const ImageGrid = ({
   isSensitive,
 }: {
   images: string[];
-  /** Explicit sensitivity override for ALL images (e.g. anonymous post). */
   isSensitive?: boolean;
 }) => {
   if (!images || images.length === 0) return null;
@@ -259,7 +246,9 @@ const ImageGrid = ({
   );
 };
 
-/* ── Poll widget (theme-aware) ────────────────────────────── */
+/* ── Poll widget ──────────────────────────────────────────── */
+const POLL_ACCENTS = ['#6366f1', '#ec4899', '#10b981', '#f59e0b'];
+
 const PollWidgetDetail = ({
   poll,
   postId,
@@ -272,19 +261,11 @@ const PollWidgetDetail = ({
   isDark: boolean;
 }) => {
   const [localPoll, setLocalPoll] = useState(poll);
+  useEffect(() => { setLocalPoll(poll); }, [poll]);
 
   const handleVote = async (optionId: string) => {
     if (localPoll.hasVoted) return;
     await onVote(postId, optionId);
-    setLocalPoll((prev: any) => ({
-      ...prev,
-      hasVoted: true,
-      votedOptionId: optionId,
-      totalVotes: prev.totalVotes + 1,
-      options: prev.options.map((o: any) =>
-        o.id === optionId ? { ...o, votes: o.votes + 1 } : o,
-      ),
-    }));
   };
 
   return (
@@ -304,9 +285,10 @@ const PollWidgetDetail = ({
         </Text>
       </View>
 
-      {localPoll.options.map((option: any) => {
+      {localPoll.options.map((option: any, idx: number) => {
         const pct = localPoll.totalVotes > 0 ? Math.round((option.votes / localPoll.totalVotes) * 100) : 0;
         const isSelected = localPoll.votedOptionId === option.id;
+        const accent = POLL_ACCENTS[idx % POLL_ACCENTS.length];
         return (
           <TouchableOpacity
             key={option.id}
@@ -318,17 +300,19 @@ const PollWidgetDetail = ({
             <View
               style={[
                 s.pollTrack,
-                { backgroundColor: isDark ? 'rgba(99,102,241,0.14)' : 'rgba(99,102,241,0.10)' },
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : `${accent}12`,
+                  borderColor: isSelected ? accent : 'transparent',
+                  borderWidth: isSelected ? 1.5 : 0,
+                },
               ]}
             >
               {localPoll.hasVoted && (
                 <LinearGradient
                   colors={
                     isSelected
-                      ? [DS.primary, DS.primaryDark]
-                      : isDark
-                      ? ['rgba(99,102,241,0.45)', 'rgba(99,102,241,0.30)']
-                      : ['rgba(99,102,241,0.35)', 'rgba(99,102,241,0.20)']
+                      ? [accent, `${accent}CC`]
+                      : [`${accent}55`, `${accent}22`]
                   }
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
@@ -341,7 +325,7 @@ const PollWidgetDetail = ({
                     <Ionicons
                       name={isSelected ? 'radio-button-on' : 'radio-button-off'}
                       size={14}
-                      color={isSelected ? (isDark ? DS.white : DS.primaryDark) : isDark ? DS.gray400 : DS.gray500}
+                      color={isSelected ? DS.white : accent}
                     />
                   )}
                   <Text
@@ -349,14 +333,8 @@ const PollWidgetDetail = ({
                       s.pollOptionText,
                       {
                         color: localPoll.hasVoted
-                          ? isSelected
-                            ? DS.white
-                            : isDark
-                            ? DS.gray300
-                            : DS.gray700
-                          : isDark
-                          ? DS.gray200
-                          : DS.gray800,
+                          ? isSelected ? DS.white : isDark ? DS.gray300 : DS.gray700
+                          : isDark ? DS.gray200 : DS.gray800,
                         fontWeight: isSelected ? '800' : '600',
                       },
                     ]}
@@ -368,13 +346,7 @@ const PollWidgetDetail = ({
                   <Text
                     style={[
                       s.pollPct,
-                      {
-                        color: isSelected
-                          ? DS.white
-                          : isDark
-                          ? DS.primaryLight
-                          : DS.primaryDark,
-                      },
+                      { color: isSelected ? DS.white : accent },
                     ]}
                   >
                     {pct}%
@@ -389,14 +361,14 @@ const PollWidgetDetail = ({
         <Ionicons name="people-outline" size={11} color={isDark ? DS.gray500 : DS.gray500} />
         <Text style={[s.pollMeta, { color: isDark ? DS.gray400 : DS.gray500 }]}>
           {localPoll.totalVotes} vote{localPoll.totalVotes !== 1 ? 's' : ''}
-          {!localPoll.hasVoted ? ' · Tap to vote' : ''}
+          {!localPoll.hasVoted ? ' · Tap to vote' : ' · You voted'}
         </Text>
       </View>
     </View>
   );
 };
 
-/* ── Action button (icon + label/count) ──────────────────── */
+/* ── Action button ────────────────────────────────────────── */
 const ActionButton = ({
   icon,
   label,
@@ -461,6 +433,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
   const postId = routeParams?.postId;
 
   const {
+    posts: allPosts,           // ← re-renders on ANY post change
     getPostById,
     likePost,
     unlikePost,
@@ -484,78 +457,84 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     refreshFeed,
   } = useCommunity();
 
-  const { darkMode, fullThemeColors, triggerHaptic, spinnerColor } = useCustomization();
+  const { darkMode, triggerHaptic, spinnerColor } = useCustomization();
   const isDark = darkMode ?? false;
   const sweetAlert = useSweetAlert();
 
-  const [post, setPost] = useState<Post | undefined>(undefined);
+  // Fingerprint the target post so `post` recomputes on every mutation
+  // (like, comment, etc.) but NOT when unrelated posts change.
+  const targetPostFingerprint = useMemo(() => {
+    const p = allPosts.find((x) => x.id === postId);
+    if (!p) return '';
+    return [
+      p.likes,
+      p.isLiked ? '1' : '0',
+      p.reposts,
+      p.isReposted ? '1' : '0',
+      p.bookmarks ?? 0,
+      p.isBookmarked ? '1' : '0',
+      p.commentsCount,
+      p.helpfulVotes,
+      p.shares ?? 0,
+      p.viewCount ?? 0,
+      p.poll ? `${p.poll.totalVotes}:${p.poll.votedOptionId ?? ''}:${p.poll.hasVoted ? 1 : 0}` : '0',
+      p.comments.map((c) => `${c.id}:${c.likes}:${c.isLiked ? 1 : 0}:${c.replies?.length ?? 0}`).join(','),
+    ].join('|');
+  }, [allPosts, postId]);
+
+  // Derive `post` from context. This makes every optimistic update
+  // (like, comment, bookmark, etc.) reflect on the very next render
+  // — no manual refresh, no lag.
+  const post = useMemo<Post | undefined>(() => {
+    if (!postId) return undefined;
+    return getPostById(postId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postId, getPostById, targetPostFingerprint]);
+
   const [commentText, setCommentText] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ commentId: string; authorName: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    if (!postId) {
-      setIsLoading(false);
-      return;
-    }
-    loadPost();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [postId]);
-
-  const loadPost = useCallback(() => {
-    const foundPost = getPostById(postId);
-    setPost(foundPost);
-    setIsLoading(false);
-  }, [postId, getPostById]);
-
-  const refreshPost = useCallback(() => {
-    if (!postId) return;
-    const updated = getPostById(postId);
-    if (updated) setPost(updated);
-  }, [postId, getPostById]);
+  const isLoading = !postId ? false : post === undefined;
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refreshFeed();
-    refreshPost();
-    setRefreshing(false);
-  }, [refreshFeed, refreshPost]);
+    try {
+      await refreshFeed();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshFeed]);
 
   const handleLike = useCallback(async () => {
     if (!post) return;
     triggerHaptic('light');
     post.isLiked ? await unlikePost(post.id) : await likePost(post.id);
-    refreshPost();
-  }, [post, likePost, unlikePost, refreshPost, triggerHaptic]);
+  }, [post, likePost, unlikePost, triggerHaptic]);
 
   const handleRepost = useCallback(async () => {
     if (!post) return;
     triggerHaptic('medium');
     post.isReposted ? await unrepostPost(post.id) : await repostPost(post.id);
-    refreshPost();
-  }, [post, repostPost, unrepostPost, refreshPost, triggerHaptic]);
+  }, [post, repostPost, unrepostPost, triggerHaptic]);
 
   const handleBookmark = useCallback(async () => {
     if (!post) return;
     triggerHaptic('light');
     await bookmarkPost(post.id);
-    refreshPost();
-  }, [post, bookmarkPost, refreshPost, triggerHaptic]);
+  }, [post, bookmarkPost, triggerHaptic]);
 
   const handleVoteHelpful = useCallback(async () => {
     if (!post) return;
     await voteHelpful(post.id);
-    refreshPost();
-  }, [post, voteHelpful, refreshPost]);
+  }, [post, voteHelpful]);
 
   const handleVotePoll = useCallback(
     async (id: string, optionId: string) => {
       await votePoll(id, optionId);
-      refreshPost();
     },
-    [votePoll, refreshPost],
+    [votePoll],
   );
 
   const handleSubmitComment = useCallback(async () => {
@@ -575,15 +554,12 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
       } else {
         await addComment(post.id, content);
       }
-
-      // Give React one microtask to flush the context setState so
-      // `stateRef.current.posts` is up to date before we read it.
-      await new Promise((r) => setTimeout(r, 0));
-      refreshPost();
+      // The `post` memo above re-derives from context automatically
+      // on the next render — no manual refresh needed.
     } catch (e) {
       if (__DEV__) console.warn('[PostDetail] comment submit failed:', e);
     }
-  }, [post, commentText, addComment, replyToComment, replyingTo, refreshPost, triggerHaptic]);
+  }, [post, commentText, addComment, replyToComment, replyingTo, triggerHaptic]);
 
   const handleFollow = useCallback(async () => {
     if (!post) return;
@@ -591,8 +567,7 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     isFollowing(post.authorId)
       ? await unfollowUser(post.authorId)
       : await followUser(post.authorId);
-    refreshPost();
-  }, [post, followUser, unfollowUser, isFollowing, refreshPost, triggerHaptic]);
+  }, [post, followUser, unfollowUser, isFollowing, triggerHaptic]);
 
   const handleShare = useCallback(async () => {
     if (!post) return;
@@ -601,11 +576,10 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
         message: `${post.author.displayName} on LittleLoom: "${post.content.substring(0, 100)}..."`,
       });
       await sharePost(post.id);
-      refreshPost();
     } catch (error) {
       console.error('Share error:', error);
     }
-  }, [post, sharePost, refreshPost]);
+  }, [post, sharePost]);
 
   const navigateToUserProfile = useCallback(
     (userId: string) => {
@@ -715,7 +689,8 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
           style={[s.commentActionBtn, comment.isLiked && s.commentActionBtnActive]}
           onPress={async () => {
             triggerHaptic('light');
-            await likeComment(post!.id, comment.id);
+            if (!post) return;
+            await likeComment(post.id, comment.id);
           }}
         >
           <Ionicons
@@ -751,7 +726,8 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
           style={s.commentActionBtn}
           onPress={async () => {
             triggerHaptic('light');
-            await voteCommentHelpful(post!.id, comment.id);
+            if (!post) return;
+            await voteCommentHelpful(post.id, comment.id);
           }}
         >
           <Ionicons
@@ -782,7 +758,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
 
       {comment.replies && comment.replies.length > 0 && (
         <View style={s.repliesContainer}>
-          {/* Thread connector line */}
           <View style={[s.replyThreadLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(99,102,241,0.15)' }]} />
           {comment.replies.map((reply) => (
             <View key={reply.id} style={s.replyCard}>
@@ -815,7 +790,8 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
                     style={[s.replyActionBtn, reply.isLiked && s.replyActionBtnActive]}
                     onPress={async () => {
                       triggerHaptic('light');
-                      await likeComment(post!.id, reply.id);
+                      if (!post) return;
+                      await likeComment(post.id, reply.id);
                     }}
                   >
                     <Ionicons
@@ -923,7 +899,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     <View style={[s.container, { backgroundColor: isDark ? DS.darkBg : DS.lightBg }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
-      {/* ── Aura background ── */}
       <LinearGradient
         colors={
           isDark
@@ -936,7 +911,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
         pointerEvents="none"
       />
 
-      {/* ── More menu ── */}
       <Modal
         visible={showMoreMenu}
         transparent
@@ -1007,7 +981,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
             />
           }
         >
-          {/* Header */}
           <View style={[s.header, { paddingTop: insets.top + 12 }]}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={[s.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.white }]}>
               <Ionicons name="arrow-back" size={22} color={isDark ? DS.white : DS.gray900} />
@@ -1024,7 +997,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
             </TouchableOpacity>
           </View>
 
-          {/* Post card */}
           <Animated.View
             entering={FadeInUp.duration(340).springify()}
             style={[
@@ -1035,7 +1007,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               },
             ]}
           >
-            {/* Aura glow on card */}
             <LinearGradient
               colors={[`${topicColor}${isDark ? '18' : '10'}`, 'transparent']}
               style={s.cardAuraTop}
@@ -1051,7 +1022,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               pointerEvents="none"
             />
 
-            {/* Topic badge */}
             <View style={s.topicBadgeRow}>
               <View style={[s.topicBadge, { backgroundColor: `${topicColor}18` }]}>
                 <View style={[s.topicBadgeDot, { backgroundColor: topicColor }]} />
@@ -1065,14 +1035,12 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               </View>
             </View>
 
-            {/* Author row */}
             <View style={s.postAuthorRow}>
               <TouchableOpacity
                 style={s.postAuthorLeft}
                 onPress={() => navigateToUserProfile(post.authorId)}
                 activeOpacity={0.8}
               >
-                {/* Aura avatar */}
                 <View style={s.avatarAuraWrap}>
                   <LinearGradient
                     colors={
@@ -1173,7 +1141,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               )}
             </View>
 
-            {/* Mood */}
             {post.mood && (
               <View style={s.moodBadgeContainer}>
                 <View
@@ -1203,13 +1170,11 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               </View>
             )}
 
-            {/* Content */}
             <LinkifyText
               text={post.content}
               style={[s.postContent, { color: isDark ? DS.gray200 : DS.gray800 }]}
             />
 
-            {/* Poll */}
             {post.poll && (
               <PollWidgetDetail
                 poll={post.poll}
@@ -1219,14 +1184,9 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               />
             )}
 
-            {/* Images */}
             {post.images && post.images.length > 0 && (
               <ImageGrid
                 images={post.images}
-                // Only explicit signals hide content:
-                //  • anonymous posts are hidden by default
-                //  • "venting" mood posts are hidden by default
-                // Baby photos and normal threads stay visible.
                 isSensitive={
                   post.isAnonymous === true ||
                   post.mood === 'venting'
@@ -1234,7 +1194,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               />
             )}
 
-            {/* Helpful votes */}
             {post.helpfulVotes > 0 && (
               <View style={s.helpfulWrap}>
                 <TouchableOpacity
@@ -1253,7 +1212,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               </View>
             )}
 
-            {/* Stats bar */}
             <View style={[s.statsBar, { borderTopColor: isDark ? DS.darkBorder : DS.lightBorder, borderBottomColor: isDark ? DS.darkBorder : DS.lightBorder }]}>
               <View style={s.statItem}>
                 <Ionicons name="heart" size={13} color={DS.heart} />
@@ -1281,7 +1239,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
               </View>
             </View>
 
-            {/* Actions */}
             <View style={s.actionBar}>
               <ActionButton
                 icon="heart-outline"
@@ -1327,7 +1284,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
             </View>
           </Animated.View>
 
-          {/* Comments */}
           <View style={s.commentsSection}>
             <View style={s.commentsHeader}>
               <Text style={[s.commentsTitle, { color: isDark ? DS.white : DS.gray900 }]}>
@@ -1365,7 +1321,6 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
           </View>
         </ScrollView>
 
-        {/* Comment input bar */}
         <View
           style={[
             s.commentInputWrap,
@@ -1482,7 +1437,6 @@ const s = StyleSheet.create({
   backButtonGradient: { paddingHorizontal: 24, paddingVertical: 12 },
   backButtonText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 
-  /* Header */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1500,7 +1454,6 @@ const s = StyleSheet.create({
   },
   headerTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },
 
-  /* Post card */
   postCard: {
     borderRadius: DS.radius['2xl'],
     padding: DS.space.lg,
@@ -1641,7 +1594,6 @@ const s = StyleSheet.create({
 
   postContent: { fontSize: 15.5, lineHeight: 25, marginBottom: DS.space.md },
 
-  /* Images */
   imageGridWrapper: {
     marginBottom: DS.space.md,
     borderRadius: DS.radius.lg,
@@ -1671,7 +1623,6 @@ const s = StyleSheet.create({
   },
   gridMoreText: { color: '#fff', fontSize: 22, fontWeight: '800' },
 
-  /* Helpful */
   helpfulWrap: { marginBottom: DS.space.sm },
   helpfulBadgeInner: {
     flexDirection: 'row',
@@ -1684,7 +1635,6 @@ const s = StyleSheet.create({
   },
   helpfulBadgeText: { fontSize: 12, fontWeight: '800' },
 
-  /* Poll */
   pollWrap: {
     marginBottom: DS.space.md,
     borderRadius: DS.radius.lg,
@@ -1719,7 +1669,6 @@ const s = StyleSheet.create({
   pollMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   pollMeta: { fontSize: 11, fontWeight: '500' },
 
-  /* Stats bar */
   statsBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1735,7 +1684,6 @@ const s = StyleSheet.create({
   statText: { fontSize: 12, fontWeight: '700' },
   statDot: { width: 3, height: 3, borderRadius: 1.5 },
 
-  /* Action bar */
   actionBar: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -1751,7 +1699,6 @@ const s = StyleSheet.create({
   },
   actionBtnText: { fontSize: 11.5, fontWeight: '600' },
 
-  /* Comments */
   commentsSection: { marginTop: DS.space.sm, paddingHorizontal: DS.space.lg },
   commentsHeader: {
     flexDirection: 'row',
@@ -1788,6 +1735,8 @@ const s = StyleSheet.create({
   commentAuthorName: { fontSize: 14, fontWeight: '800' },
   commentTime: { fontSize: 11.5, fontWeight: '500', marginTop: 1 },
   commentBody: { fontSize: 14, lineHeight: 21, marginBottom: 12 },
+  replyCountRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
+  replyCountText: { fontSize: 11, fontWeight: '700' },
   commentFooter: { flexDirection: 'row', gap: 8 },
   commentActionBtn: {
     flexDirection: 'row',
@@ -1819,7 +1768,6 @@ const s = StyleSheet.create({
   replyActionBtnActive: { backgroundColor: `${DS.heart}10` },
   replyActionText: { fontSize: 11, fontWeight: '600' },
 
-  /* Comment input */
   commentInputWrap: {
     position: 'absolute',
     bottom: 0,
@@ -1861,7 +1809,6 @@ const s = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.4 },
   sendBtnGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  /* More menu */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1878,9 +1825,6 @@ const s = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(120,120,120,0.15)',
   },
-    replyCountRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
-  replyCountText: { fontSize: 11, fontWeight: '700' },
-
   moreMenuItemLast: { borderBottomWidth: 0 },
   moreMenuIconWrap: {
     width: 36,

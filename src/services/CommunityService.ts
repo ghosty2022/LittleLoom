@@ -100,7 +100,16 @@ const mapPostRow = (
     isTrending: !!row.is_trending,
     mood: row.mood as PostMood | undefined,
     poll: row.poll_data
-      ? { ...row.poll_data, totalVotes: row.poll_data.totalVotes || 0 }
+      ? (() => {
+          const votedId: string | null = row.__my_poll_option ?? null;
+          return {
+            question: row.poll_data.question,
+            options: row.poll_data.options || [],
+            totalVotes: row.poll_data.totalVotes || 0,
+            hasVoted: !!votedId,
+            votedOptionId: votedId || undefined,
+          } as Poll;
+        })()
       : undefined,
   };
 };
@@ -213,6 +222,19 @@ export const fetchFeed = async (
     .eq('follower_id', meId);
   const followedSet = new Set((follows || []).map((f) => f.following_id));
 
+  const pollPostIds = safeRows
+    .filter((r: any) => !!r.poll_data)
+    .map((r: any) => r.id);
+  const myVotes = new Map<string, string>();
+  if (pollPostIds.length > 0) {
+    const { data: pv } = await supabase
+      .from('poll_votes')
+      .select('post_id, option_id')
+      .eq('user_id', meId)
+      .in('post_id', pollPostIds);
+    (pv || []).forEach((r: any) => myVotes.set(r.post_id, r.option_id));
+  }
+
   const posts = safeRows.map((r: any) =>
     mapPostRow(
       {
@@ -221,6 +243,7 @@ export const fetchFeed = async (
         __is_reposted: repostedSet.has(r.id),
         __is_bookmarked: bookmarkedSet.has(r.id),
         __is_helpful: helpfulSet.has(r.id),
+        __my_poll_option: myVotes.get(r.id) ?? null,
       },
       meId,
       followedSet,
@@ -547,23 +570,19 @@ export const markAllNotificationsReadRow = async (meId: string): Promise<void> =
 };
 
 export const votePollRow = async (postId: string, optionId: string, meId: string): Promise<void> => {
-  const { data: existing } = await supabase
+  const { error } = await supabase
     .from('poll_votes')
-    .select('option_id')
-    .eq('post_id', postId)
-    .eq('user_id', meId)
-    .maybeSingle();
-  if (existing) return;
-  await supabase.from('poll_votes').insert({ post_id: postId, user_id: meId, option_id: optionId });
+    .insert({ post_id: postId, user_id: meId, option_id: optionId });
+  if (error && !/duplicate|unique/i.test(error.message)) {
+    if (__DEV__) console.warn('[CommunityService] votePollRow:', error.message);
+  }
 };
 
-export const incrementViewRow = async (postId: string, meId: string): Promise<void> => {
-  // The caller (`incrementViewCount`) already dedupes per screen session.
-  // `upsert` + `onConflict` is idempotent at the DB level: it will only
-  // INSERT the first time this user views this post.
-  await supabase
+export const incrementViewRow = async (postId: string, meId: string): Promise<boolean> => {
+  const { error } = await supabase
     .from('post_views')
     .upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
+  return !error;
 };
 
 export const fetchTopicStats = async (): Promise<Topic[]> => {
