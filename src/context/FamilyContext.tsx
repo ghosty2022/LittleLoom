@@ -5,7 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
-import { useAuth } from './AuthContext';
+import { useAuth, subscribeToProfileChanges } from './AuthContext';
 import { useBaby } from './BabyContext';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
@@ -544,6 +544,17 @@ const { data: dbMembers, error: membersError } = await supabase
   useEffect(() => {
     loadFamilyRef.current = loadFamily;
   }, [loadFamily]);
+
+  // ── Realtime profile-change subscription ──────────────────────
+  // Any member editing their name / avatar / bio re-loads the family
+  // so the member card, EditGuardian, and chat headers stay fresh.
+  useEffect(() => {
+    if (!currentBaby?.id) return;
+    const unsub = subscribeToProfileChanges(() => {
+      loadFamilyRef.current?.().catch(() => {});
+    });
+    return unsub;
+  }, [currentBaby?.id]);
 
   useEffect(() => {
     if (babyLoading || !authProfile) return;

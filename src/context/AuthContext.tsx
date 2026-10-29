@@ -152,6 +152,12 @@ interface AuthContextType extends AuthState {
   deleteAccount: (password: string) => Promise<{ success: boolean; message: string }>;
   deleteAccountWithConfirmation: () => Promise<{ success: boolean; message: string }>;
   refreshSession: () => Promise<boolean>;
+  /** Fan out a profile change to every context + every signed-in device. */
+  broadcastProfileChange: (
+    fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email'>,
+  ) => Promise<void>;
+  /** Subscribe to profile-change events. Returns unsubscribe. */
+  subscribeToProfileChanges: (listener: ProfileChangeListener) => () => void;
 }
 
 // SecureStore rejects keys containing characters outside [A-Za-z0-9._-].
@@ -249,6 +255,86 @@ const hashPinForRecovery = async (pin: string): Promise<string> => {
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
+
+// ─────────────────────────────────────────────────────────────────────
+// Cross-context profile-change bus
+// ─────────────────────────────────────────────────────────────────────
+// Any code that mutates the `profiles` table (or the in-memory profile
+// in AuthContext/UserContext) should call this so every listener
+// re-hydrates. It does three things:
+//   1) Fires a synchronous in-memory event to all local subscribers.
+//   2) Broadcasts on the `littleloom-profile-changes` Supabase channel
+//      so OTHER devices signed into the same account update live.
+//   3) Optionally persists a `profile_change_ts` in AsyncStorage so
+//      listeners can invalidate stale caches on next mount.
+//
+// `userId` is required — this is a per-account event, not global.
+// ─────────────────────────────────────────────────────────────────────
+type ProfileChangePayload = {
+  userId: string;
+  fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email'>;
+  at: number;
+};
+
+type ProfileChangeListener = (payload: ProfileChangePayload) => void;
+const _profileChangeListeners = new Set<ProfileChangeListener>();
+let _profileChannel: any = null;
+
+const getProfileChangeChannel = () => {
+  if (_profileChannel) return _profileChannel;
+  try {
+    _profileChannel = supabase.channel('littleloom-profile-changes', {
+      config: { broadcast: { self: false } },
+    });
+    _profileChannel.on(
+      'broadcast',
+      { event: 'profile-changed' },
+      (msg: { payload?: ProfileChangePayload }) => {
+        const p = msg?.payload;
+        if (!p?.userId) return;
+        _profileChangeListeners.forEach((fn) => {
+          try { fn(p); } catch {}
+        });
+      },
+    );
+    _profileChannel.subscribe();
+  } catch {}
+  return _profileChannel;
+};
+
+export const subscribeToProfileChanges = (
+  listener: ProfileChangeListener,
+): (() => void) => {
+  _profileChangeListeners.add(listener);
+  getProfileChangeChannel();
+  return () => { _profileChangeListeners.delete(listener); };
+};
+
+export const broadcastProfileChange = async (
+  payload: Omit<ProfileChangePayload, 'at'>,
+): Promise<void> => {
+  const full: ProfileChangePayload = { ...payload, at: Date.now() };
+  // Fire local listeners synchronously first (zero-latency UX).
+  _profileChangeListeners.forEach((fn) => {
+    try { fn(full); } catch {}
+  });
+  // Then broadcast cross-device.
+  try {
+    const ch = getProfileChangeChannel();
+    await ch?.send?.({
+      type: 'broadcast',
+      event: 'profile-changed',
+      payload: full,
+    });
+  } catch {}
+  // Record the timestamp so caches can invalidate.
+  try {
+    await AsyncStorage.setItem(
+      `littleloom_profile_change_ts_${payload.userId}`,
+      String(full.at),
+    );
+  } catch {}
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AuthState>({
@@ -1368,6 +1454,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
       }
 
+      // Fan out so every other context (UserContext, CommunityContext,
+      // FamilyContext, tracker screens, chat avatars) re-hydrates.
+      const changed: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email'> = [];
+      if (updates.fullName !== undefined) changed.push('fullName');
+      if (updates.avatar !== undefined) changed.push('avatar');
+      if (updates.communityBio !== undefined) changed.push('bio');
+      if (updates.communityDisplayName !== undefined) changed.push('displayName');
+      if (updates.communityHandle !== undefined) changed.push('handle');
+      if (updates.phoneNumber !== undefined) changed.push('phone');
+      if (updates.email !== undefined) changed.push('email');
+      if (changed.length > 0) {
+        await broadcastProfileChange({
+          userId: currentProfile.id,
+          fields: changed,
+        });
+      }
+
       return true;
     } catch (error) {
       if (__DEV__) console.error('Update user profile error:', error);
@@ -1423,6 +1526,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isMounted.current) {
         setState(prev => ({ ...prev, userProfile: updatedProfile }));
       }
+
+      const changed: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email'> = [];
+      if (updates.displayName !== undefined) changed.push('displayName');
+      if (updates.avatar !== undefined) changed.push('avatar');
+      if (updates.bio !== undefined) changed.push('bio');
+      if (updates.handle !== undefined) changed.push('handle');
+      if (changed.length > 0) {
+        await broadcastProfileChange({
+          userId: currentProfile.id,
+          fields: changed,
+        });
+      }
+
       return true;
     } catch (error) {
       if (__DEV__) console.error('Update community profile error:', error);
@@ -2432,8 +2548,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
+    // ── Realtime `profiles` listener ───────────────────────────────
+    // Any UPDATE to our own row (from this device, another device, or
+    // a webhook) refreshes the in-memory userProfile and fans out to
+    // every ProfileChange subscriber. This is what makes avatar / name
+    // / bio changes reflect *instantly* across every screen.
+    let profilesChannel: any = null;
+    try {
+      const meId = stateRef.current.userProfile?.id;
+      profilesChannel = supabase
+        .channel('auth-profiles-self')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'profiles',
+          },
+          async (payload: any) => {
+            const row = payload?.new;
+            if (!row?.id) return;
+            const current = stateRef.current.userProfile;
+            if (!current || current.id !== row.id) return;
+
+            const updated: UserProfile = {
+              ...current,
+              fullName: row.full_name || current.fullName,
+              email: row.email || current.email,
+              phoneNumber: row.phone_number || current.phoneNumber,
+              avatar: row.community_avatar || row.avatar_url || row.avatar || current.avatar,
+              communityAvatar: row.community_avatar || current.communityAvatar,
+              communityDisplayName: row.community_display_name || current.communityDisplayName,
+              communityBio: row.community_bio || current.communityBio,
+              communityHandle: row.community_handle || current.communityHandle,
+              communityUsername: row.community_username || current.communityUsername,
+              isVerified: row.is_verified ?? (current as any).isVerified,
+              communityStats: row.community_stats || current.communityStats,
+              communitySelectedTopics:
+                row.community_selected_topics || current.communitySelectedTopics,
+            };
+
+            await secureStorage.setItem(
+              SECURE_KEYS.USER_PROFILE,
+              JSON.stringify(updated),
+            );
+
+            if (isMounted.current) {
+              setState((prev) => ({ ...prev, userProfile: updated }));
+            }
+
+            // Fan out to every context/screen.
+            broadcastProfileChange({
+              userId: row.id,
+              fields: ['fullName', 'avatar', 'bio', 'handle', 'displayName', 'coverPhoto'],
+            }).catch(() => {});
+          },
+        )
+        .subscribe();
+    } catch (err) {
+      if (__DEV__) console.warn('[Auth] profiles realtime subscribe failed:', err);
+    }
+
     return () => {
       authListener?.subscription.unsubscribe();
+      try { if (profilesChannel) supabase.removeChannel(profilesChannel); } catch {}
     };
   }, []);
 
@@ -2524,6 +2702,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteAccount,
     deleteAccountWithConfirmation,
     refreshSession,
+    // Profile-change fan-out
+    broadcastProfileChange: async (
+      fields: ProfileChangePayload['fields'],
+    ) => {
+      const id = stateRef.current.userProfile?.id;
+      if (!id) return;
+      await broadcastProfileChange({ userId: id, fields });
+    },
+    subscribeToProfileChanges,
   }), [
     state,
     signIn,

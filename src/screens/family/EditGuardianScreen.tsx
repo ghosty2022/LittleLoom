@@ -1070,6 +1070,24 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         setIsEditing(false);
         setMember(prev => prev ? { ...prev, ...updates } : null);
         setOriginalData({ ...formData });
+
+        // Fan out so chat avatars, family list, community feed, and
+        // any other screen showing this member re-render immediately.
+        try {
+          const { broadcastProfileChange } = require('../../context/AuthContext');
+          const linkedUserId = (member as any).userId || member.id;
+          if (linkedUserId) {
+            const fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'phone' | 'email'> = [];
+            if (updates.fullName !== undefined) fields.push('fullName');
+            if (updates.avatar !== undefined) fields.push('avatar');
+            if (updates.phoneNumber !== undefined) fields.push('phone');
+            if (updates.email !== undefined) fields.push('email');
+            if (fields.length > 0) {
+              await broadcastProfileChange({ userId: linkedUserId, fields });
+            }
+          }
+        } catch {}
+
         sweetAlert.success('Profile Updated', 'All changes saved successfully');
         await refreshMemberData();
       } else { triggerHaptic('error'); sweetAlert.error('Save Failed', 'Please try again.'); }
@@ -1152,6 +1170,13 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         setMember(prev => prev ? { ...prev, avatar: localUri } : null);
         setOriginalData(prev => ({ ...prev, avatar: localUri }));
         triggerHaptic('success');
+        try {
+          const { broadcastProfileChange } = require('../../context/AuthContext');
+          const linkedUserId = (member as any).userId || member.id;
+          if (linkedUserId) {
+            await broadcastProfileChange({ userId: linkedUserId, fields: ['avatar'] });
+          }
+        } catch {}
         sweetAlert.success('Photo Updated', 'Profile picture saved');
         await refreshMemberData();
       }

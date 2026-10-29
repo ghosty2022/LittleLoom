@@ -47,7 +47,7 @@ import type { CommunityStackParamList } from '../../types/navigation';
 import { showConfirmModal } from '../../utils/modal';
 import { useApp } from '../../context/AppContext';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, subscribeToProfileChanges } from '../../context/AuthContext';
 
 type ChatScreenProps = NativeStackScreenProps<CommunityStackParamList, 'Chat'>;
 
@@ -699,6 +699,24 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [otherUserId]);
+
+  /* ── Realtime profile-change: refresh `user` ─────────────── */
+  // When the peer updates their avatar / name / bio (or I do), the
+  // header avatar + status text must refresh instantly. `getUserById`
+  // returns the freshest snapshot from CommunityContext.
+  useEffect(() => {
+    if (!otherUserId) return;
+    const unsub = subscribeToProfileChanges((payload) => {
+      // Peer's profile changed → swap in the new snapshot.
+      if (payload.userId === otherUserId) {
+        const fresh = getUserById(otherUserId);
+        if (fresh) setUser(fresh);
+      }
+      // My own profile changed → community context already broadcast;
+      // my own messages will re-render from message stream, no action.
+    });
+    return unsub;
+  }, [otherUserId, getUserById]);
 
   // Live-update messages once chatId is known
   const { subscribeToChatMessages } = useFamilyChat();

@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/utils/supabase';
-import { useAuth } from './AuthContext';
+import { useAuth, subscribeToProfileChanges } from './AuthContext';
 import { useSweetAlert } from '@/components/SweetAlert';
 import { UserRole, Permission, ROLE_PERMISSIONS } from '../types/roles';
 import { decode } from 'base64-arraybuffer';
@@ -159,6 +159,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isReady, setIsReady] = useState(false);
   const initRef = useRef(false);
   const usernameLockRef = useRef(false);
+  const loadUserDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadingRef = useRef(false);
   // Always-current snapshot of state for callbacks that must not go stale.
   const stateRef = useRef(state);
@@ -328,6 +329,29 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     initialize();
   }, [authLoading, loadUser]);
+
+  // ── Realtime profile-change subscription ───────────────────────
+  // Whenever *any* screen updates the profile (avatar, name, bio,
+  // handle, display name), re-hydrate `profile` and `communityProfile`
+  // from Supabase. This is what makes the change visible on every
+  // other screen instantly without needing a full app reload.
+  useEffect(() => {
+    const meId = authProfile?.id;
+    if (!meId) return;
+
+    const unsub = subscribeToProfileChanges((payload) => {
+      if (payload.userId !== meId) return;
+      // Debounce: multiple fields in one save fire once, but a burst
+      // of updates (avatar then name) shouldn't trigger N reloads.
+      if (loadUserDebounce.current) clearTimeout(loadUserDebounce.current);
+      loadUserDebounce.current = setTimeout(() => {
+        loadUserDebounce.current = null;
+        loadUser().catch(() => {});
+      }, 120);
+    });
+
+    return unsub;
+  }, [authProfile?.id, loadUser]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -779,6 +803,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         console.error('Update community profile error:', error.message);
+        Alert.alert('Error', 'Failed to update community profile');
+        return;
       }
 
       await AsyncStorage.setItem(
@@ -786,6 +812,23 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         JSON.stringify(newProfile),
       );
       setState(prev => ({ ...prev, communityProfile: newProfile }));
+
+      // Broadcast so every other context (Auth, Community, Family,
+      // chat avatars, guardian lists) picks up the change instantly.
+      try {
+        const auth = require('./AuthContext');
+        const changed: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto'> = [];
+        if (updates.displayName !== undefined) changed.push('displayName');
+        if (updates.avatar !== undefined) changed.push('avatar');
+        if (updates.bio !== undefined) changed.push('bio');
+        if (updates.handle !== undefined) changed.push('handle');
+        if (changed.length > 0) {
+          await auth.broadcastProfileChange({
+            userId: newProfile.userId,
+            fields: changed,
+          });
+        }
+      } catch {}
     } catch (error) {
       console.error('updateCommunityProfile error:', error);
       Alert.alert('Error', 'Failed to update community profile');

@@ -1083,6 +1083,21 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
       setIsEditing(false);
       if (avatarUpdated) setBabyPhoto(avatarUrl);
       await refreshBabyDataLight();
+
+      // If the avatar changed, fan out so family/chat/baby lists
+      // that show the baby avatar re-render. We broadcast against
+      // the baby's parent1 (the authoritative user id for the baby
+      // scope) so subscribers can invalidate the right caches.
+      if (avatarUpdated) {
+        try {
+          const { broadcastProfileChange } = require('../../context/AuthContext');
+          const broadcasterId = currentBabyData.parent1Id || userProfile?.id;
+          if (broadcasterId) {
+            await broadcastProfileChange({ userId: broadcasterId, fields: ['avatar'] });
+          }
+        } catch {}
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       sweetAlert.success('Profile Saved!', `${babyName}'s profile has been updated.`);
     } catch (error) { if (__DEV__) console.warn('[BabyProfile] Save error:', error); sweetAlert.error('Error', 'Failed to update profile'); }

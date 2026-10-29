@@ -896,6 +896,17 @@ export default function CommunityProfileScreen({ navigation }: Props) {
       if (type === 'avatar' && publicUrl) {
         try { await supabase.from('family_members').update({ avatar: publicUrl }).eq('user_id', userId); } catch {}
       }
+
+      // Broadcast the avatar/cover change right away so every context
+      // (community feed, family list, chat headers) updates live.
+      try {
+        const { broadcastProfileChange } = require('../../context/AuthContext');
+        await broadcastProfileChange({
+          userId,
+          fields: type === 'avatar' ? ['avatar'] : ['coverPhoto'],
+        });
+      } catch {}
+
       if (type === 'avatar') setAvatarUploading(false); else setCoverUploading(false);
       return publicUrl;
     } catch (e) {
@@ -1202,6 +1213,19 @@ export default function CommunityProfileScreen({ navigation }: Props) {
           if (__DEV__) console.warn('[Profile] achievement check failed:', e);
         }
       }
+      // Fan out so every context (Auth, User, Family, Chat) reflects
+      // the new avatar / name / bio instantly — including other
+      // devices signed into the same account.
+      try {
+        const { broadcastProfileChange } = require('../../context/AuthContext');
+        await broadcastProfileChange({
+          userId: currentUser.id,
+          fields: ['displayName', 'avatar', 'bio', 'handle', 'coverPhoto'],
+        });
+      } catch (e) {
+        if (__DEV__) console.warn('[CommunityProfile] broadcastProfileChange failed:', e);
+      }
+
       triggerHaptic('success');
       setIsEditing(false);
       setOriginalData({ ...formData, handle: cleanHandle });

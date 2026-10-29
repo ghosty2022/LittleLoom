@@ -20,7 +20,7 @@ import {
   RealtimePostgresChangesPayload,
 } from '@supabase/supabase-js';
 
-import { useAuth } from './AuthContext';
+import { useAuth, subscribeToProfileChanges } from './AuthContext';
 import { useBaby } from './BabyContext';
 import { useFamily } from './FamilyContext';
 import type { FamilyMember } from './FamilyContext';
@@ -793,14 +793,39 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const messages: Record<string, FamilyMessage[]> = {};
 
       for (const chatRow of chatsData ?? []) {
+        // ── Hydrate participant_names / participant_avatars from
+        //    the CURRENT `profiles` rows. The JSONB snapshot on the
+        //    chat row is only written at creation time, so without
+        //    this hydration, a user who changes their avatar never
+        //    sees it in the chat header.
+        const participantIds: string[] = Array.isArray(chatRow.participants)
+          ? chatRow.participants.filter((id: any) => typeof id === 'string')
+          : [];
+        let liveNames: Record<string, string> = { ...(chatRow.participant_names || {}) };
+        let liveAvatars: Record<string, string> = { ...(chatRow.participant_avatars || {}) };
+        if (participantIds.length > 0) {
+          try {
+            const { data: profs } = await supabase
+              .from('profiles')
+              .select('id, full_name, community_display_name, community_avatar, avatar_url, avatar')
+              .in('id', participantIds);
+            (profs || []).forEach((p: any) => {
+              const name = p.community_display_name || p.full_name;
+              const av = p.community_avatar || p.avatar_url || p.avatar;
+              if (name) liveNames[p.id] = name;
+              if (av) liveAvatars[p.id] = av;
+            });
+          } catch {}
+        }
+
         const chat: FamilyChat = {
           id: chatRow.id,
           type: chatRow.type,
           name: chatRow.name,
           participants: chatRow.participants ?? [],
           participantRoles: chatRow.participant_roles || {},
-          participantNames: chatRow.participant_names || {},
-          participantAvatars: chatRow.participant_avatars || {},
+          participantNames: liveNames,
+          participantAvatars: liveAvatars,
           unreadCount: chatRow.unread_count || 0,
           createdAt: chatRow.created_at,
           updatedAt: chatRow.updated_at,
@@ -880,6 +905,20 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (isInitializedRef.current) return;
 
     performInitialSync();
+  }, [state.familyCode, performInitialSync]);
+
+  /* ─── Realtime profile-change: refresh chat participant data ── */
+  // A member editing their avatar / name must update chat headers
+  // and any `participantAvatars` display. We re-sync the chat list
+  // (which re-hydrates names + avatars from `profiles`).
+  useEffect(() => {
+    if (!state.familyCode) return;
+    const unsub = subscribeToProfileChanges(() => {
+      // Clear the "initialised" flag so performInitialSync re-runs.
+      isInitializedRef.current = false;
+      performInitialSync().catch(() => {});
+    });
+    return unsub;
   }, [state.familyCode, performInitialSync]);
 
   /* ─── Setters ────────────────────────────────────────────────── */

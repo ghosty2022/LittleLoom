@@ -11,7 +11,7 @@ import React, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/utils/supabase';
-import { useAuth } from './AuthContext';
+import { useAuth, subscribeToProfileChanges } from './AuthContext';
 import { useSweetAlert } from '../components/SweetAlert';
 import * as CommunityService from '../services/CommunityService';
 
@@ -499,6 +499,23 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile?.id]);
 
+  // ── Realtime profile-change fan-out ────────────────────────────
+  // Any profile edit (own, or someone else's via realtime) triggers a
+  // silent feed refresh. That patches `currentUser` and every
+  // `posts[].author` in place, so avatars / names / bios change live
+  // — even on a different device signed into the same account.
+  useEffect(() => {
+    const meId = currentUserIdRef.current;
+    if (!meId) return;
+    const unsub = subscribeToProfileChanges((payload) => {
+      // Refresh feed regardless of whose profile changed — a different
+      // user's avatar update must reflect too (they may be an author
+      // in the current feed).
+      loadEverything({ silent: true }).catch(() => {});
+    });
+    return unsub;
+  }, [loadEverything, userProfile?.id]);
+
   // If we started while signed-out but auth settled signed-in, retry.
   const authWasUnsettledRef = useRef(false);
   useEffect(() => {
@@ -534,6 +551,9 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       'user_follows',
       'user_blocks',
       'community_notifications',
+      // Any profile change (name, avatar, bio, handle, verified) must
+      // propagate into posts[].author and currentUser in real time.
+      'profiles',
     ];
 
     tables.forEach((table) => {
@@ -1253,6 +1273,22 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             : post,
         ),
       }));
+
+      // Fan out to AuthContext, UserContext, FamilyContext, and every
+      // other listener so avatars / names / bios update everywhere —
+      // including cross-device.
+      try {
+        const { broadcastProfileChange } = require('./AuthContext');
+        const fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto'> = [];
+        if (updates.displayName !== undefined) fields.push('displayName');
+        if (updates.avatar !== undefined) fields.push('avatar');
+        if (updates.bio !== undefined) fields.push('bio');
+        if (updates.handle !== undefined) fields.push('handle');
+        if (updates.coverPhoto !== undefined) fields.push('coverPhoto');
+        if (fields.length > 0) {
+          await broadcastProfileChange({ userId: meId, fields });
+        }
+      } catch {}
     },
     [],
   );
