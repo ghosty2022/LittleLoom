@@ -40,6 +40,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import type { RootStackParamList } from '../../types/navigation';
+import UniversalSpinner from '../../components/UniversalSpinner';
 import { FamilyMessage, FileMetadata, useFamilyChat } from '../../context/FamilyChatContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
