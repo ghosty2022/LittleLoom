@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
+  Platform,
   RefreshControl,
   StatusBar,
   StyleSheet,
@@ -16,7 +17,7 @@ import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import { useCommunity } from '../../context/CommunityContext';
-import { useFamilyChat, FamilyChat } from '../../context/FamilyChatContext';
+import { useFamilyChat, FamilyChat, FamilyMessage } from '../../context/FamilyChatContext';
 import { useAuth, subscribeToProfileChanges } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { SafeAvatar } from '../../components/SafeAvatar';

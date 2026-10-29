@@ -282,11 +282,15 @@ interface PulseHeaderProps {
   onBack: () => void;
   onShareCode: () => void;
   onNewGroup: () => void;
+  /** Cross-link to the Community chat list. Provided by the parent screen
+   *  so `PulseHeader` doesn't need to reach into navigation itself. */
+  onOpenCommunityChat: () => void;
 }
 
 const PulseHeader = React.memo<PulseHeaderProps>(({
   isDark, chatCount, unreadCount, onlineCount, showSearch, searchQuery,
   onSearchChange, onToggleSearch, onBack, onShareCode, onNewGroup,
+  onOpenCommunityChat,
 }) => {
   const pulse = useSharedValue(1);
   const rotate = useSharedValue(0);
@@ -412,8 +416,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
               <PressableScale
                 onPress={() => {
                   HAPTIC_LIGHT();
-                  const rootNav = (navigation as any).getParent?.()?.getParent?.() ?? navigation;
-                  rootNav.navigate('ChatList');
+                  onOpenCommunityChat?.();
                 }}
                 activeScale={0.96}
               >
@@ -806,12 +809,21 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     HAPTIC_LIGHT();
     if (chat.type === 'direct') {
       const otherId = chat.participants.find((p) => p !== userProfile?.id);
-      const member = otherId ? members.find((m) => m.id === otherId) : undefined;
+      // `chat.participants` holds *user ids* (profiles.id), but
+      // `members[].id` is usually the `family_members.id` row id —
+      // which is different. Match either column so parent1 and
+      // invite-added members resolve correctly.
+      const member =
+        (otherId && members.find((m: any) => m.id === otherId)) ||
+        (otherId && members.find((m: any) => m.userId === otherId)) ||
+        undefined;
       navigation.navigate('FamilyChat', {
-        chatId: chat.id, memberId: otherId,
+        chatId: chat.id,
+        memberId: member?.id || otherId,
         memberName: member?.fullName || chat.name,
         memberAvatar: member?.avatar || chat.avatar,
-        memberRole: member?.role, familyCode: chat.familyCode,
+        memberRole: member?.role,
+        familyCode: chat.familyCode,
       });
     } else {
       navigation.navigate('FamilyChat', { chatId: chat.id, familyCode: chat.familyCode });
@@ -819,18 +831,25 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   };
 
   const handleMemberPress = async (member: FamilyMember) => {
-    const memberUserId = member.userId || member.id;
+    const memberUserId = (member as any).userId || member.id;
     if (memberUserId === userProfile?.id || member.id === userProfile?.id) {
       showSweetAlert('warning', 'Cannot Chat', 'You cannot start a chat with yourself!');
       HAPTIC_WARNING();
       return;
     }
     HAPTIC_LIGHT();
-    const chatId = await getOrCreateDirectChat(member.id, member);
+    // Pass the *stable, canonical* id — prefer `member.id` (family_members
+    // row) since `getOrCreateDirectChat` will fall back to matching on
+    // that; the returned chat will reference the profiles.userId on the
+    // participant list either way.
+    const chatId = await getOrCreateDirectChat(member.id || memberUserId, member);
     if (chatId) {
       navigation.navigate('FamilyChat', {
-        chatId, memberId: member.id, memberName: member.fullName,
-        memberAvatar: member.avatar, memberRole: member.role,
+        chatId,
+        memberId: member.id || memberUserId,
+        memberName: member.fullName,
+        memberAvatar: member.avatar,
+        memberRole: member.role,
       });
     } else {
       showSweetAlert('error', 'Error', 'Failed to create chat. Please try again.');
@@ -905,8 +924,14 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     setSelectedMembers((prev) => prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]);
   };
 
+  const findMemberByAnyId = (anyId: string) =>
+    members.find((m: any) => m.id === anyId) ||
+    members.find((m: any) => m.userId === anyId);
+
   const getOnlineStatus = (memberId: string): 'online' | 'away' | 'offline' => {
-    const lastActive = members.find((m) => m.id === memberId)?.lastActive;
+    // `memberId` here is a profiles.userId (from `chat.participants`),
+    // which may or may not equal `family_members.id`.
+    const lastActive = findMemberByAnyId(memberId)?.lastActive;
     if (!lastActive) return 'offline';
     const mins = (Date.now() - new Date(lastActive).getTime()) / 60000;
     if (mins < 5) return 'online';
@@ -1021,6 +1046,27 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
           onBack={() => navigation.goBack()}
           onShareCode={handleShareCode}
           onNewGroup={() => setShowNewChatModal(true)}
+          onOpenCommunityChat={() => {
+            // FamilyChatList lives in RootStack; ChatList lives in
+            // CommunityStack. Walk up to the root navigator and, if it
+            // supports the Community tab flow, jump there.
+            try {
+              const rootNav: any =
+                (navigation as any).getParent?.()?.getParent?.() ?? navigation;
+              // Prefer navigating through the tab navigator if present.
+              rootNav.navigate('Main' as never, {
+                screen: 'Connect',
+                params: { screen: 'ChatList' },
+              } as never);
+            } catch {
+              // Fallback: best-effort flat navigate.
+              try {
+                (navigation as any).navigate('ChatList');
+              } catch {
+                // Swallow — cross-link is a convenience, not critical.
+              }
+            }
+          }}
         />
 
         {/* Members row */}

@@ -290,6 +290,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const isInitializedRef = useRef(false);
   const isSubscribedRef = useRef(false);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Prevents two overlapping `performInitialSync()` runs — each would
+  // otherwise call `setupRealtimeListeners()` and orphan the previous
+  // channel (still subscribed server-side).
+  const initialSyncInFlightRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
   const currentChatIdRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
@@ -383,8 +387,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       isMountedRef.current = false;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (realtimeChannelRef.current) {
-        try { realtimeChannelRef.current.unsubscribe(); } catch {}
+        const old = realtimeChannelRef.current;
         realtimeChannelRef.current = null;
+        isSubscribedRef.current = false;
+        try { supabase.removeChannel(old); } catch {
+          try { old.unsubscribe(); } catch {}
+        }
       }
       Object.values(typingTimeoutRef.current).forEach(t => clearTimeout(t));
       typingTimeoutRef.current = {};
@@ -494,23 +502,46 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const familyCode = familyCodeRef.current;
     if (!familyCode) return;
 
-    // Tear down existing channel
+    // ── Tear down any previous channel SYNCHRONOUSLY ───────────
+    // The Supabase JS SDK's `.on()` throws if called on a channel
+    // that has already been `.subscribe()`'d. `.unsubscribe()` is
+    // async, so a rapid re-setup can collide on the same topic
+    // name (`family-chat-${familyCode}`) and re-use the *old*
+    // subscribed instance, causing:
+    //   "cannot add 'postgres_changes' callbacks ... after subscribe()"
+    // To avoid this we:
+    //   1. removeChannel() to fully release the topic slot, AND
+    //   2. append a unique suffix so even a lingering instance
+    //      can never be reused by the SDK.
     if (realtimeChannelRef.current) {
-      try { realtimeChannelRef.current.unsubscribe(); } catch {}
+      const old = realtimeChannelRef.current;
       realtimeChannelRef.current = null;
       isSubscribedRef.current = false;
+      try { supabase.removeChannel(old); } catch {
+        try { old.unsubscribe(); } catch {}
+      }
     }
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
 
-    const channel = supabase.channel(`family-chat-${familyCode}`, {
-      config: {
-        broadcast: { ack: true, self: true },
-        presence: { key: deviceIdRef.current },
+    // Unique suffix guarantees a fresh topic every time — the SDK
+    // cannot hand us back a previously-subscribed channel.
+    const uniqueSuffix =
+      typeof (global as any).crypto?.randomUUID === 'function'
+        ? (global as any).crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+    const channel = supabase.channel(
+      `family-chat-${familyCode}-${uniqueSuffix}`,
+      {
+        config: {
+          broadcast: { ack: true, self: true },
+          presence: { key: deviceIdRef.current },
+        },
       },
-    });
+    );
 
     /* ─── INSERT ─────────────────────────────────────────────── */
     channel.on(
@@ -778,6 +809,23 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const familyCode = familyCodeRef.current;
     if (!familyCode) return;
 
+    // ── Concurrency guard ────────────────────────────────────────
+    // Multiple callers can hit this within the same tick:
+    //   • the "kick off sync" effect when familyCode arrives
+    //   • the profile-change subscription
+    //   • joinFamilyByCode
+    //   • forceSync / syncFamilyData
+    // Without this guard each call would run `setupRealtimeListeners()`
+    // and orphan the previous channel. The 2nd caller would then try
+    // to add `.on()` handlers to a channel the SDK is still tearing
+    // down → the "cannot add postgres_changes callbacks after
+    // subscribe()" error.
+    if (initialSyncInFlightRef.current) {
+      if (__DEV__) console.log('[FamilyChat] performInitialSync already in flight — skipping');
+      return;
+    }
+    initialSyncInFlightRef.current = true;
+
     isInitializedRef.current = true;
     setState(prev => ({ ...prev, isLoading: true }));
 
@@ -894,7 +942,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setupRealtimeListeners();
     } catch (error) {
       console.error('[FamilyChat] Initial sync error:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      if (isMountedRef.current) {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
+    } finally {
+      initialSyncInFlightRef.current = false;
     }
   }, [setupRealtimeListeners]);
 
@@ -911,14 +963,29 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // A member editing their avatar / name must update chat headers
   // and any `participantAvatars` display. We re-sync the chat list
   // (which re-hydrates names + avatars from `profiles`).
+  //
+  // A profile-change burst (e.g. auth bootstrap hydrating several
+  // rows on cold start) fires many events within a few hundred ms.
+  // Coalesce them into one re-sync via a debounce.
   useEffect(() => {
     if (!state.familyCode) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     const unsub = subscribeToProfileChanges(() => {
-      // Clear the "initialised" flag so performInitialSync re-runs.
-      isInitializedRef.current = false;
-      performInitialSync().catch(() => {});
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        if (!isMountedRef.current) return;
+        // Clear the "initialised" flag so performInitialSync re-runs.
+        isInitializedRef.current = false;
+        performInitialSync().catch(() => {});
+      }, 350);
     });
-    return unsub;
+
+    return () => {
+      unsub();
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
   }, [state.familyCode, performInitialSync]);
 
   /* ─── Setters ────────────────────────────────────────────────── */
