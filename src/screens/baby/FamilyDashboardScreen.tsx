@@ -36,6 +36,7 @@ import Animated, {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -654,14 +655,14 @@ const FamilyStack = React.memo(({ members, isDark, onPress }: {
     <PressableScale onPress={onPress} activeScale={0.98}>
       <View style={[styles.familyStackCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
         <View style={styles.familyStackRow}>
-          {members.slice(0, 5).map((m, i) => {
-            const roleCfg = ROLE_CONFIG[m.role] || ROLE_CONFIG[UserRole.VIEWER];
-            return (
-              <View key={m.id + i} style={[styles.stackAvatar, { marginLeft: i > 0 ? -12 : 0, zIndex: 10 - i, borderColor: isDark ? DS.darkCard : DS.white }]}>
-                <SafeAvatar avatar={m.avatar} size={44} fallbackColor={roleCfg.color} />
-              </View>
-            );
-          })}
+                      {members.slice(0, 5).map((m, i) => {
+              const roleCfg = ROLE_CONFIG[m.role] || ROLE_CONFIG[UserRole.VIEWER];
+              return (
+                <View key={`${m.id}_${m.role}_${i}`} style={[styles.stackAvatar, { marginLeft: i > 0 ? -12 : 0, zIndex: 10 - i, borderColor: isDark ? DS.darkCard : DS.white }]}>
+                  <SafeAvatar avatar={m.avatar} size={44} fallbackColor={roleCfg.color} />
+                </View>
+              );
+            })}
           {members.length > 5 && (
             <View style={[styles.stackAvatarMore, { marginLeft: -12, backgroundColor: isDark ? DS.darkSurface : DS.gray100, borderColor: isDark ? DS.darkCard : DS.white }]}>
               <Text style={[styles.stackAvatarMoreText, { color: isDark ? DS.gray300 : DS.gray600 }]}>+{members.length - 5}</Text>
@@ -825,7 +826,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     InteractionManager.runAfterInteractions(async () => {
-      await Promise.all([loadBabies(), loadFamily()]);
+      await Promise.all([loadBabies(true), loadFamily()]);
       setRefreshing(false);
     });
   }, [loadBabies, loadFamily]);
@@ -850,6 +851,16 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
   const handleNavigateGallery = useCallback(() => navigation.navigate('Gallery'), [navigation]);
 
   const { entries: trackerEntries } = useTracker();
+
+  // Re-read family whenever this screen gains focus. Without this,
+  // the tree shows stale member cards after the user changes a role
+  // in EditGuardian or FamilySharing and navigates back.
+  useFocusEffect(
+    useCallback(() => {
+      loadFamily().catch(() => {});
+      return () => {};
+    }, [loadFamily]),
+  );
 
   const todayStats = useMemo<TodayGlanceStat[]>(() => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);

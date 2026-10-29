@@ -571,12 +571,22 @@ const ActivityRow = React.memo<any>(({ activity, index, isDark }) => {
 /* ─── Family Node ─── */
 const FamilyNode = React.memo<any>(({ member, roleKey, index, onPress, isDark, size }) => {
   const meta = ROLE_PRESENTATION[roleKey] || ROLE_PRESENTATION.viewer;
+  const avatarSrc: string | undefined = member?.avatar;
+  const isUrl = avatarSrc && (avatarSrc.startsWith('http') || avatarSrc.startsWith('file://'));
+  const isEmoji = avatarSrc && avatarSrc.length <= 4 && /\p{Emoji}/u.test(avatarSrc);
+
   return (
     <Animated.View entering={FadeInUp.delay(index * 50).springify()}>
       <PressableScale onPress={onPress} activeScale={0.94}>
         <View style={[styles.familyNode, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
           <LinearGradient colors={meta.gradient} style={[styles.familyAvatar, { width: size, height: size, borderRadius: size / 2 }]}>
-            <Ionicons name={meta.icon} size={size * 0.55} color={DS.white} />
+            {isUrl ? (
+              <Image source={{ uri: avatarSrc! }} style={{ width: '100%', height: '100%' }} />
+            ) : isEmoji ? (
+              <Text style={{ fontSize: size * 0.45 }}>{avatarSrc}</Text>
+            ) : (
+              <Ionicons name={meta.icon} size={size * 0.55} color={DS.white} />
+            )}
           </LinearGradient>
           <Text style={[styles.familyName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{member.fullName || 'Member'}</Text>
           <View style={[styles.familyBadge, { backgroundColor: `${meta.color}18` }]}>
@@ -902,10 +912,16 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
   useFocusEffect(useCallback(() => {
     if (currentBabyData && !isLoadingRef.current) {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = setTimeout(() => refreshBabyDataLight(), 300);
+      refreshTimerRef.current = setTimeout(() => {
+        refreshBabyDataLight().catch(() => {});
+        // Family members also need a refresh on focus so a role
+        // change made in FamilySharing/EditGuardian is reflected
+        // immediately in the tree.
+        loadFamily().catch(() => {});
+      }, 300);
     }
     return () => { if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current); };
-  }, [currentBabyData, refreshBabyDataLight]));
+  }, [currentBabyData, refreshBabyDataLight, loadFamily]));
 
   const ensureDirExists = async () => {
     const dir = FileSystem.documentDirectory + 'baby_images/';
@@ -1564,9 +1580,23 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                     </View>
 
                     <View style={styles.familyRow}>
-                      {members.filter(m => m.role === UserRole.PARENT_1 || m.role === UserRole.PARENT_2).map((m, i) => (
-                        <FamilyNode key={m.id} member={m} roleKey={m.role === UserRole.PARENT_1 ? 'parent1' : 'parent2'} index={i} onPress={() => sweetAlert.alert(m.fullName, `${ROLE_PRESENTATION[m.role === UserRole.PARENT_1 ? 'parent1' : 'parent2'].relationLabel}\n${m.email || 'No email'}`)} isDark={isDark} size={FAMILY_NODE_SIZE * 0.55} />
-                      ))}
+                      {members.filter(m => m.role === UserRole.PARENT_1 || m.role === UserRole.PARENT_2).map((m, i) => {
+                        const roleKey = m.role === UserRole.PARENT_1 ? 'parent1' : 'parent2';
+                        return (
+                          <FamilyNode
+                            key={`${m.id}_${m.role}`}
+                            member={m}
+                            roleKey={roleKey}
+                            index={i}
+                            onPress={() => sweetAlert.alert(
+                              m.fullName,
+                              `${ROLE_PRESENTATION[roleKey]?.relationLabel || 'Family'}\n${m.email || 'No email'}`,
+                            )}
+                            isDark={isDark}
+                            size={FAMILY_NODE_SIZE * 0.55}
+                          />
+                        );
+                      })}
                       <Animated.View entering={FadeInUp.delay(150).springify()}>
                         <View style={[styles.familyNode, styles.familyNodeHighlight, { backgroundColor: isDark ? 'rgba(245,158,11,0.08)' : 'rgba(245,158,11,0.05)', borderColor: DS.warning }]}>
                           <LinearGradient colors={ROLE_PRESENTATION.baby.gradient} style={[styles.familyAvatar, { width: FAMILY_NODE_SIZE * 0.55, height: FAMILY_NODE_SIZE * 0.55, borderRadius: FAMILY_NODE_SIZE * 0.275 }]}>
@@ -1578,9 +1608,23 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                           </View>
                         </View>
                       </Animated.View>
-                      {members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER).map((m, i) => (
-                        <FamilyNode key={m.id} member={m} roleKey={m.role === UserRole.GUARDIAN ? 'guardian' : 'viewer'} index={i + 2} onPress={() => sweetAlert.alert(m.fullName, `${ROLE_PRESENTATION[m.role === UserRole.GUARDIAN ? 'guardian' : 'viewer'].relationLabel}\n${m.email || 'No email'}`)} isDark={isDark} size={FAMILY_NODE_SIZE * 0.55} />
-                      ))}
+                      {members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER).map((m, i) => {
+                        const roleKey = m.role === UserRole.GUARDIAN ? 'guardian' : 'viewer';
+                        return (
+                          <FamilyNode
+                            key={`${m.id}_${m.role}`}
+                            member={m}
+                            roleKey={roleKey}
+                            index={i + 2}
+                            onPress={() => sweetAlert.alert(
+                              m.fullName,
+                              `${ROLE_PRESENTATION[roleKey]?.relationLabel || 'Family'}\n${m.email || 'No email'}`,
+                            )}
+                            isDark={isDark}
+                            size={FAMILY_NODE_SIZE * 0.55}
+                          />
+                        );
+                      })}
                     </View>
                   </View>
                 </GlassCard>

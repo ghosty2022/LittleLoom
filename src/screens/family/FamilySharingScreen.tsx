@@ -41,6 +41,7 @@ import * as FileSystem from 'expo-file-system';
 import { differenceInMonths, formatDistanceToNow, format } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
 import { UserRole, FamilyMember } from '../../types/roles';
@@ -1097,6 +1098,15 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   /* ─── Effects ───────────────────────────────────────────────────── */
   useEffect(() => { loadFamily(); }, [loadFamily]);
 
+  // Re-read family on every focus so role changes made via
+  // EditGuardian / another device reflect immediately.
+  useFocusEffect(
+    useCallback(() => {
+      loadFamily().catch(() => {});
+      return () => {};
+    }, [loadFamily]),
+  );
+
   const loadActiveCodes = useCallback(async () => {
     if (!currentBaby) return;
     try {
@@ -1137,7 +1147,10 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       triggerHaptic('success');
       setShowEditModal(false);
       sweetAlert.alert('Success', 'Member updated', 'success');
-      loadFamily();
+      // loadFamily() now returns a *fresh* array (see FamilyContext
+      // refreshFamily change), so `members` and everything that
+      // derives from it re-renders.
+      await loadFamily();
     } else {
       triggerHaptic('error');
       sweetAlert.alert('Error', 'Failed to update member', 'warning');
