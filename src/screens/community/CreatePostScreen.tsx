@@ -953,7 +953,10 @@ export default function CreatePostScreen({ navigation, route }: Props) {
                       key={topic.id}
                       style={[
                         s.topicPill,
-                        { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.white, borderColor: 'transparent' },
+                        {
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.white,
+                          borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                        },
                         active && { backgroundColor: `${topic.color}20`, borderColor: topic.color },
                       ]}
                       onPress={() => {
@@ -1146,8 +1149,15 @@ export default function CreatePostScreen({ navigation, route }: Props) {
                       key={topic.id}
                       style={[
                         s.topicGridItem,
-                        { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.white, borderColor: 'transparent' },
-                        isSelected && { borderColor: topic.color, backgroundColor: `${topic.color}15` },
+                        {
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.white,
+                          borderColor: isSelected
+                            ? topic.color
+                            : isDark
+                            ? 'rgba(255,255,255,0.08)'
+                            : 'rgba(0,0,0,0.06)',
+                        },
+                        isSelected && { backgroundColor: `${topic.color}15` },
                         isMaxReached && { opacity: 0.4 },
                       ]}
                       onPress={() => {
@@ -1379,7 +1389,7 @@ const s = StyleSheet.create({
 
   /* Images */
   imageGridWrapper: { marginHorizontal: 16, marginBottom: 16, borderRadius: DS.radius.xl, overflow: 'hidden' },
-  singleImageContainer: { position: 'relative', borderRadius: DS.radius.xl, overflow: 'hidden', ...DS.shadow.md },
+  singleImageContainer: { position: 'relative', borderRadius: DS.radius.xl, overflow: 'hidden' },
   singleImage: { width: '100%', height: 240, borderRadius: DS.radius.xl },
   multiImageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   gridImageItem: {
@@ -1388,7 +1398,6 @@ const s = StyleSheet.create({
     borderRadius: DS.radius.lg,
     overflow: 'hidden',
     position: 'relative',
-    ...DS.shadow.sm,
   },
   gridImage: { width: '100%', height: '100%' },
   imageRemoveBtn: { position: 'absolute', top: 8, right: 8, zIndex: 10 },
@@ -1484,13 +1493,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: DS.radius.full,
-    borderWidth: 1.5,
+    borderWidth: 1,
     gap: 6,
-    ...DS.shadow.sm,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
   topicPillEmoji: { fontSize: 15 },
   topicPillName: { fontSize: 12.5, fontWeight: '700' },
-  noTopicsBanner: { marginHorizontal: 16, marginBottom: 16, borderRadius: DS.radius.xl, overflow: 'hidden', ...DS.shadow.md },
+  noTopicsBanner: { marginHorizontal: 16, marginBottom: 16, borderRadius: DS.radius.xl, overflow: 'hidden' },
   noTopicsGradient: { padding: 20, alignItems: 'center', gap: 6 },
   noTopicsTitle: { fontSize: 14, fontWeight: '800' },
   noTopicsSubtext: { fontSize: 12, textAlign: 'center' },
@@ -1566,10 +1575,9 @@ const s = StyleSheet.create({
     width: (SCREEN_W - 72) / 2,
     padding: 16,
     borderRadius: DS.radius.xl,
-    borderWidth: 2,
+    borderWidth: 1.5,
     alignItems: 'center',
     gap: 8,
-    ...DS.shadow.sm,
   },
   topicGridEmoji: { fontSize: 28 },
   topicGridName: { fontSize: 13, fontWeight: '700', textAlign: 'center' },

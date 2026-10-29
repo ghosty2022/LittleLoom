@@ -341,14 +341,31 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       CommunityService.fetchFollowedIds(meId),
     ]);
 
-    // enrich: load comments for top 20 posts that have any
+    // enrich: load comments for top 20 posts that have any.
+    // IMPORTANT: after hydrating, we overwrite commentsCount with the
+    // authoritative length so a stale denormalised counter on the row
+    // can never show "15" while the array has 3 items.
     const needComments = posts.filter((p) => p.commentsCount > 0).slice(0, 20);
     await Promise.all(
       needComments.map(async (p) => {
         const cmts = await CommunityService.fetchCommentsForPost(p.id, meId);
         p.comments = cmts;
+        // Top-level + replies == what a user counts as "comments".
+        const liveCount = cmts.reduce(
+          (acc, c) => acc + 1 + (c.replies?.length || 0),
+          0,
+        );
+        // Keep DB row truth in the local object so the UI is instant.
+        p.commentsCount = liveCount;
       }),
     );
+    // For posts NOT in the top-20 enrichment slice, we can't know the
+    // live count without another query — trust the DB column but ensure
+    // we don't keep a higher-than-possible value than `comments.length`
+    // would justify. (Those posts have `comments.length === 0`, so we
+    // leave their `commentsCount` alone — the counter is authoritative
+    // for them until the user opens the post detail, where
+    // `addComment`/`fetchCommentsForPost` will reconcile.)
 
     // ── Hydrate selectedTopics ──
     let persistedTopics: string[] = [];
@@ -474,9 +491,25 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [loadEverything]);
 
   /* ── MOUNT / AUTH ───────────────────────────────────────── */
+  // Auth may still be resolving on cold start. We must retry when the
+  // profile arrives so the very first paint isn't a permanent empty feed.
   useEffect(() => {
+    if (!userProfile?.id) return;
     loadEverything().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile?.id]);
+
+  // If we started while signed-out but auth settled signed-in, retry.
+  const authWasUnsettledRef = useRef(false);
+  useEffect(() => {
+    if (!userProfile?.id) {
+      authWasUnsettledRef.current = true;
+      return;
+    }
+    if (authWasUnsettledRef.current && stateRef.current.posts.length === 0) {
+      authWasUnsettledRef.current = false;
+      loadEverything().catch(() => {});
+    }
   }, [userProfile?.id]);
 
   /* ── REALTIME ───────────────────────────────────────────── */
@@ -636,17 +669,17 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (inFlightReactionsRef.current.has(`like:${postId}`)) return;
     const cur = stateRef.current.posts.find((p) => p.id === postId);
     if (cur?.isLiked) {
-      // already liked → treat as unlike
       return unlikePost(postId);
     }
     inFlightReactionsRef.current.add(`like:${postId}`);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    // INSTANT: state first, haptics fire-and-forget
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
         x.id === postId ? { ...x, isLiked: true, likes: x.likes + 1 } : x,
       ),
     }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
       await CommunityService.toggleLike(postId, meId, true);
     } catch {
@@ -679,6 +712,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           : x,
       ),
     }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
       await CommunityService.toggleLike(postId, meId, false);
     } catch {
@@ -700,7 +734,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const cur = stateRef.current.posts.find((p) => p.id === postId);
     if (cur?.isReposted) return unrepostPost(postId);
     inFlightReactionsRef.current.add(`repost:${postId}`);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
@@ -709,6 +742,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           : x,
       ),
     }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     try {
       await CommunityService.toggleRepost(postId, meId, true);
     } catch {
@@ -765,7 +799,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!cur) return;
     const next = !cur.isBookmarked;
     inFlightReactionsRef.current.add(`bookmark:${postId}`);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
@@ -778,6 +811,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           : x,
       ),
     }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
       await CommunityService.toggleBookmark(postId, meId, next);
     } catch {
@@ -829,7 +863,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const wasVoted = cur.votedHelpfulBy.includes(meId);
     const next = !wasVoted;
     inFlightReactionsRef.current.add(`helpful:${postId}`);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
@@ -844,6 +877,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           : x,
       ),
     }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
       await CommunityService.toggleHelpful(postId, meId, next);
     } catch {
@@ -955,7 +989,6 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!freshComment) return;
     const next = !freshComment.isLiked;
     inFlightReactionsRef.current.add(`clike:${commentId}`);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setState((p) => ({
       ...p,
       posts: p.posts.map((x) =>
@@ -968,6 +1001,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             })),
       ),
     }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
       await CommunityService.toggleCommentLike(commentId, meId, next);
     } catch {

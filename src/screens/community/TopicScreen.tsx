@@ -1325,7 +1325,6 @@ const s = StyleSheet.create({
     borderRadius: DS.radius.xl,
     overflow: 'hidden',
     borderWidth: 1,
-    ...DS.shadow.sm,
   },
   glassBorder: {
     position: 'absolute',
@@ -1467,7 +1466,6 @@ const s = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
     overflow: 'hidden',
-    ...DS.shadow.sm,
   },
   createBtnText: { fontSize: 13, fontWeight: '800', color: DS.white },
 
@@ -1584,7 +1582,7 @@ const s = StyleSheet.create({
   },
   emptyText: { fontSize: 16, marginTop: 4, fontWeight: '800' },
   emptySubtext: { fontSize: 13, marginTop: 4, fontWeight: '500' },
-  emptyPostBtn: { marginTop: 16, borderRadius: 14, overflow: 'hidden', ...DS.shadow.sm },
+  emptyPostBtn: { marginTop: 16, borderRadius: 14, overflow: 'hidden' },
   emptyPostGradient: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1604,7 +1602,7 @@ const s = StyleSheet.create({
   },
   errorText: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
   errorSubtext: { fontSize: 14, marginBottom: 20 },
-  goBackButton: { borderRadius: 14, overflow: 'hidden', ...DS.shadow.sm },
+  goBackButton: { borderRadius: 14, overflow: 'hidden' },
   goBackGradient: { paddingHorizontal: 24, paddingVertical: 12 },
   goBackText: { color: DS.white, fontSize: 15, fontWeight: '800' },
 });

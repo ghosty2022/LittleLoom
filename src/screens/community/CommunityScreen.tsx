@@ -431,6 +431,8 @@ export default function CommunityScreen({ navigation }: Props) {
     posts,
     topics,
     currentUser,
+    isLoading: ctxLoading,
+    isInitialized: ctxInitialized,
     likePost,
     unlikePost,
     repostPost,
@@ -483,7 +485,6 @@ export default function CommunityScreen({ navigation }: Props) {
   const [showBanner, setShowBanner] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [isHydrating, setIsHydrating] = useState(true);
   const [showNotificationChooser, setShowNotificationChooser] = useState(false);
   const [pinnedPostId, setPinnedPostId] = useState<string | null>(null);
   const [topicRefreshKey, setTopicRefreshKey] = useState(0);
@@ -573,10 +574,7 @@ export default function CommunityScreen({ navigation }: Props) {
       .catch(console.warn);
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setIsHydrating(false), 300);
-    return () => clearTimeout(timer);
-  }, []);
+  // (removed — isHydrating is now derived above)
 
   // Twitter-style feed: pure chronological DESC. Newest first, always.
   const getFilteredPosts = useCallback(() => {
@@ -615,6 +613,14 @@ export default function CommunityScreen({ navigation }: Props) {
     return getFilteredPosts().slice(0, page * POSTS_PER_PAGE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getFilteredPosts, page, posts]);
+
+  // MUST come AFTER `displayedPosts` — deriving from it.
+  // (Placing it above threw "Cannot read property 'length' of undefined"
+  //  because `displayedPosts` is a `const` below its declaration.)
+  const isHydrating = useMemo(
+    () => ctxLoading || (!ctxInitialized && displayedPosts.length === 0),
+    [ctxLoading, ctxInitialized, displayedPosts.length],
+  );
 
   // Reset pagination when the user changes a filter.
   useEffect(() => {
@@ -860,6 +866,20 @@ export default function CommunityScreen({ navigation }: Props) {
       const summary = item.content.length > 100 ? ThreadSummarizer.summarize(item.content) : null;
       const moodMeta = item.mood ? DS.mood[item.mood] : null;
 
+      // Authoritative comment count: prefer what's actually hydrated,
+      // fall back to the denormalised counter only when we have no
+      // comments loaded yet (e.g. posts beyond the top-20 slice).
+      // `item.comments` may be missing on posts rehydrated from an
+      // older AsyncStorage cache — guard against that.
+      const commentsArr = item.comments ?? [];
+      const liveCommentsCount =
+        commentsArr.length > 0
+          ? commentsArr.reduce(
+              (n, c) => n + 1 + (c.replies?.length || 0),
+              0,
+            )
+          : item.commentsCount;
+
       return (
         <View
           style={[
@@ -1096,13 +1116,13 @@ export default function CommunityScreen({ navigation }: Props) {
             )}
           </TouchableOpacity>
 
-          {(item.likes > 0 || item.commentsCount > 0 || item.reposts > 0) && (
+          {(item.likes > 0 || liveCommentsCount > 0 || item.reposts > 0) && (
             <View style={[styles.engagementBar, { paddingHorizontal: DS.space.lg, paddingBottom: DS.space.sm }]}>
               <Text style={[styles.engagementText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                 {item.likes > 0 ? `${item.likes} like${item.likes !== 1 ? 's' : ''}` : ''}
-                {item.likes > 0 && item.commentsCount > 0 ? ' · ' : ''}
-                {item.commentsCount > 0 ? `${item.commentsCount} comment${item.commentsCount !== 1 ? 's' : ''}` : ''}
-                {(item.likes > 0 || item.commentsCount > 0) && item.reposts > 0 ? ' · ' : ''}
+                {item.likes > 0 && liveCommentsCount > 0 ? ' · ' : ''}
+                {liveCommentsCount > 0 ? `${liveCommentsCount} comment${liveCommentsCount !== 1 ? 's' : ''}` : ''}
+                {(item.likes > 0 || liveCommentsCount > 0) && item.reposts > 0 ? ' · ' : ''}
                 {item.reposts > 0 ? `${item.reposts} repost${item.reposts !== 1 ? 's' : ''}` : ''}
               </Text>
             </View>
@@ -1118,7 +1138,7 @@ export default function CommunityScreen({ navigation }: Props) {
 
             <Pressable onPress={() => setExpandedPostId(expandedPostId === item.id ? null : item.id)} style={styles.reactionBtn}>
               <Ionicons name="chatbubble-outline" size={20} color={DS.gray400} />
-              <Text style={styles.reactionCount}>{item.commentsCount > 0 ? item.commentsCount : 'Comment'}</Text>
+              <Text style={styles.reactionCount}>{liveCommentsCount > 0 ? liveCommentsCount : 'Comment'}</Text>
             </Pressable>
 
             <Pressable onPress={() => handleRepost(item.id)} style={styles.reactionBtn}>
@@ -1139,7 +1159,7 @@ export default function CommunityScreen({ navigation }: Props) {
 
           {expandedPostId === item.id && (
             <View style={[styles.commentsBox, { borderTopColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-              {item.comments.slice(0, 3).map(c => (
+              {(item.comments ?? []).slice(0, 2).map(c => (
                 <View key={c.id} style={styles.inlineComment}>
                   <SafeAvatar avatar={c.author.avatar} size={28} fallbackIcon="person" fallbackColor={DS.primary} fallbackBgColor={`${DS.primary}15`} />
                   <View style={styles.inlineCommentContent}>
@@ -1160,9 +1180,9 @@ export default function CommunityScreen({ navigation }: Props) {
                 </View>
               ))}
 
-              {item.commentsCount > 3 && (
+              {liveCommentsCount > 2 && (
                 <TouchableOpacity onPress={() => navigation.navigate(ROUTES.POST_DETAIL, { postId: item.id })} style={styles.viewAllComments}>
-                  <Text style={styles.viewAllCommentsText}>View all {item.commentsCount} comments</Text>
+                  <Text style={styles.viewAllCommentsText}>View all {liveCommentsCount} comments</Text>
                   <Ionicons name="chevron-forward" size={12} color={DS.primary} />
                 </TouchableOpacity>
               )}
@@ -1634,7 +1654,7 @@ export default function CommunityScreen({ navigation }: Props) {
         )}
       </View>
     ),
-    [isDark, searchQuery, canInteract, navigation, sweetAlert],
+    [isDark, searchQuery, canInteract, navigation, sweetAlert, feedFilter],
   );
 
   /* ── Main render ────────────────────────────────────────────── */

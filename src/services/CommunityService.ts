@@ -64,6 +64,7 @@ const mapPostRow = (
   row: any,
   meId: string | null,
   followedIds: Set<string>,
+  opts: { commentsCountOverride?: number } = {},
 ): Post => {
   const topic = INITIAL_TOPICS.find((t) => t.id === row.topic_id);
   const author = mapProfileToCommunityUser(row.author || {});
@@ -78,7 +79,10 @@ const mapPostRow = (
     likes: row.likes_count || 0,
     likedBy: [],
     comments: [],
-    commentsCount: row.comments_count || 0,
+    commentsCount:
+      typeof opts.commentsCountOverride === 'number'
+        ? opts.commentsCountOverride
+        : row.comments_count || 0,
     reposts: row.reposts_count || 0,
     repostedBy: [],
     shares: 0,
@@ -429,11 +433,17 @@ export const deletePostRow = async (postId: string): Promise<boolean> => {
 
 export const toggleLike = async (postId: string, meId: string, like: boolean): Promise<void> => {
   if (like) {
-    await supabase
+    const { error } = await supabase
       .from('post_likes')
       .upsert({ post_id: postId, user_id: meId }, { onConflict: 'post_id,user_id' });
+    if (error && __DEV__) console.warn('[CommunityService] toggleLike+:', error.message);
   } else {
-    await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', meId);
+    const { error } = await supabase
+      .from('post_likes')
+      .delete()
+      .eq('post_id', postId)
+      .eq('user_id', meId);
+    if (error && __DEV__) console.warn('[CommunityService] toggleLike-:', error.message);
   }
 };
 

@@ -502,10 +502,19 @@ export default function PostDetailScreen({ navigation, route }: PostDetailScreen
     setRefreshing(true);
     try {
       await refreshFeed();
+      // Ensure this post's comments are fully hydrated even if it
+      // wasn't in the top-20 hydrated on the feed.
+      if (postId) {
+        const { fetchCommentsForPost } = await import('../../services/CommunityService');
+        const meId = currentUser?.id;
+        if (meId) {
+          await fetchCommentsForPost(postId, meId);
+        }
+      }
     } finally {
       setRefreshing(false);
     }
-  }, [refreshFeed]);
+  }, [refreshFeed, postId, currentUser?.id]);
 
   const handleLike = useCallback(async () => {
     if (!post) return;
