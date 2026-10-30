@@ -1,212 +1,596 @@
-/**
- * FamilyDashboardScreen  →  "Family Overview"   (route: 'Profile')
- *
- * PURPOSE: a quick, READ-ONLY snapshot of how the family is doing.
- *   ✅ Who is in the family, how engaged they are, what happened today
- *   ✅ Active baby card (switch / edit baby)
- *   ✅ Growth summary
- *   ❌ No member management, roles, invites, backup, leaving  → "Manage Family"
- *
- * One "Manage" button in the header is the only bridge to FamilySharing.
- */
-import React, { memo, useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  InteractionManager,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useColorScheme,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+// FamilyTree import removed — this screen now uses the compact
+// FamilyStack preview. The full tree lives in FamilySharing only.
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { differenceInMonths, format, formatDistanceToNow } from 'date-fns';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  FadeInRight,
+  FadeInUp,
+  interpolate,
+  Extrapolation,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+  Layout,
+} from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
-import { useFamily } from '../../context/FamilyContext';
-import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { useTracker } from '../../hooks/useTrackerContext';
 import { useSweetAlert } from '../../components/SweetAlert';
+import { useFamily } from '../../context/FamilyContext';
+import { useUser } from '../../context/UserContext';
+import { UserRole, getMemberDisplayLabel, normalizeRole } from '../../types/roles';
+import { useBaby } from '../../context/BabyContext';
+import { useTracker } from '../../hooks/useTrackerContext';
+import OptimizedImage from '../../components/OptimizedImage';
+// `FamilyStack` was extracted into a shared component so HomeScreen
+// and FamilyDashboardScreen render the same member row.
+// See `src/components/FamilyStack.tsx`.
 import FamilyStack from '../../components/FamilyStack';
-import {
-  Card,
-  DS,
-  EmptyState,
-  HEADER_TOTAL_HEIGHT,
-  HeaderButton,
-  IconName,
-  PressableScale,
-  SafeAvatar,
-  ScreenHeader,
-  SectionHeader,
-  SheetModal,
-  TabBar,
-  formatRelative,
-  isActiveWithin,
-  isPendingMember,
-  memberEditParams,
-  theme,
-} from '../../components/FamilyUI';
-import { UserRole } from '../../types/roles';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
-type TabKey = 'overview' | 'growth';
+const AnimatedScrollView = Animated.ScrollView;
+const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
+const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
+const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 
-const ACTIVITY_ICONS: Record<string, string> = {
-  feed: '🍼', sleep: '😴', potty: '🚽', diaper: '🧷',
-  growth: '📏', medication: '💊', milestone: '🏆', note: '📝',
+type FamilyDashboardScreenProps = NativeStackScreenProps<RootStackParamList, 'Profile'>;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Aura (aligned with Home / Community / More / Timeline / Hub)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const DS = {
+  primary: '#6366f1',
+  primaryLight: '#818cf8',
+  primaryDark: '#4f46e5',
+  primaryGhost: 'rgba(99,102,241,0.08)',
+  accent: '#ec4899',
+  accentLight: '#f472b6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#0ea5e9',
+  danger: '#ef4444',
+  white: '#ffffff',
+  gray50: '#fafaf9',
+  gray100: '#f5f5f4',
+  gray200: '#e7e5e4',
+  gray300: '#d6d3d1',
+  gray400: '#a8a29e',
+  gray500: '#78716c',
+  gray600: '#57534e',
+  gray700: '#44403c',
+  gray800: '#292524',
+  gray900: '#1c1917',
+  darkBg: '#0c0a09',
+  darkSurface: '#1c1917',
+  darkCard: '#292524',
+  darkBorder: 'rgba(255,255,255,0.06)',
+  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  radius: { sm: 10, md: 14, lg: 18, xl: 24, '2xl': 28, full: 999 },
+  shadow: {
+    sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+    md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+    lg: { shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.12, shadowRadius: 40, elevation: 12 },
+  },
 };
 
-/* ═══════════════════════════ Baby card ═══════════════════════════ */
-const BabyCard = memo(({ isDark, baby, streak, canSwitch, onSwitch, onEdit, onGrowth, onAdd }: {
-  isDark: boolean; baby: any; streak: number; canSwitch: boolean;
-  onSwitch: () => void; onEdit: () => void; onGrowth: () => void; onAdd: () => void;
+const HAPTIC_LIGHT = () => {
+  try {
+    const Haptics = require('expo-haptics');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  } catch {}
+};
+const HAPTIC_MEDIUM = () => {
+  try {
+    const Haptics = require('expo-haptics');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  } catch {}
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ROLE CONFIG
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ROLE_CONFIG: Record<UserRole, {
+  label: string; color: string; gradient: [string, string];
+  icon: keyof typeof Ionicons.glyphMap; badge: string;
+}> = {
+  [UserRole.PARENT_1]: { label: 'Primary Parent', color: '#667eea', gradient: ['#667eea', '#764ba2'], icon: 'shield', badge: 'Owner' },
+  [UserRole.PARENT_2]: { label: 'Co-Parent', color: '#fa709a', gradient: ['#fa709a', '#f5576c'], icon: 'heart', badge: 'Co-Parent' },
+  [UserRole.GUARDIAN]: { label: 'Guardian', color: '#11998e', gradient: ['#11998e', '#38ef7d'], icon: 'shield-checkmark', badge: 'Guardian' },
+  [UserRole.VIEWER]: { label: 'Viewer', color: '#64748b', gradient: ['#64748b', '#94a3b8'], icon: 'eye', badge: 'Viewer' },
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SAFE HELPERS
+   ═══════════════════════════════════════════════════════════════════════════ */
+const isImageUri = (v: string | undefined | null): boolean => {
+  if (!v || typeof v !== 'string') return false;
+  return v.startsWith('http') || v.startsWith('file://') || v.startsWith('data:');
+};
+const isEmoji = (v: string | undefined | null): boolean => {
+  if (!v || typeof v !== 'string') return false;
+  if (v.length > 4) return false;
+  return /\p{Emoji}/u.test(v);
+};
+const safeStr = (v: unknown, fallback = ''): string => (v == null ? fallback : String(v));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GRADIENT TEXT
+   ═══════════════════════════════════════════════════════════════════════════ */
+const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: {
+  children: React.ReactNode; style?: any; colors?: string[];
 }) => {
-  const t = theme(isDark);
-  if (!baby) {
-    return (
-      <EmptyState
-        isDark={isDark}
-        icon="happy-outline"
-        title="Add your baby"
-        text="Create a baby profile to start tracking and sharing with your family."
-        ctaLabel="Create baby profile"
-        onCta={onAdd}
-      />
-    );
-  }
-  const birth = baby.birthDate || baby.dateOfBirth;
-  const age = baby.age || (birth ? formatDistanceToNow(new Date(birth)) : '');
-  const gender = baby.gender ? String(baby.gender).charAt(0).toUpperCase() + String(baby.gender).slice(1) : '';
+  const raw = typeof children === 'string' ? children : String(children ?? '');
+  const letters = raw.split('');
+  const interp = (c1: string, c2: string, t: number) => {
+    const r1 = parseInt(c1.slice(1, 3), 16), g1 = parseInt(c1.slice(3, 5), 16), b1 = parseInt(c1.slice(5, 7), 16);
+    const r2 = parseInt(c2.slice(1, 3), 16), g2 = parseInt(c2.slice(3, 5), 16), b2 = parseInt(c2.slice(5, 7), 16);
+    return `rgb(${Math.round(r1 + (r2 - r1) * t)}, ${Math.round(g1 + (g2 - g1) * t)}, ${Math.round(b1 + (b2 - b1) * t)})`;
+  };
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+      {letters.map((l, i) => {
+        const p = i / Math.max(letters.length - 1, 1);
+        const ci = p * (colors.length - 1);
+        const lo = Math.floor(ci), hi = Math.min(lo + 1, colors.length - 1);
+        const color = interp(colors[lo] || colors[0], colors[hi] || colors[colors.length - 1], ci - lo);
+        return <Text key={i} style={[style, { color }]}>{l}</Text>;
+      })}
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRESSABLE SCALE
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const PressableScale = React.memo<{
+  children: React.ReactNode; onPress?: () => void; disabled?: boolean;
+  style?: any; activeScale?: number; haptic?: 'light' | 'medium';
+}>(({ children, onPress, disabled, style, activeScale = 0.96, haptic = 'light' }) => {
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const handlePress = () => {
+    if (disabled) return;
+    if (haptic === 'light') HAPTIC_LIGHT();
+    else HAPTIC_MEDIUM();
+    onPress?.();
+  };
+  return (
+    <AnimatedTouchable
+      style={[style, anim]}
+      onPress={handlePress}
+      onPressIn={() => { scale.value = withTiming(activeScale, { duration: 80 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15, stiffness: 400 }); }}
+      activeOpacity={disabled ? 1 : 0.85}
+      disabled={disabled}
+    >
+      {children}
+    </AnimatedTouchable>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PULSING DOT
+   ═══════════════════════════════════════════════════════════════════════════ */
+const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
+  const pulse = useSharedValue(1);
+  const halo = useSharedValue(1);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.15, { duration: 900 }), withTiming(1, { duration: 900 })), -1, true);
+    halo.value = withRepeat(withSequence(withTiming(1.8, { duration: 1400 }), withTiming(1, { duration: 1400 })), -1, true);
+  }, [pulse, halo]);
+  const dotStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+  const haloStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: halo.value }],
+    opacity: interpolate(halo.value, [1, 1.8], [0.35, 0]),
+  }));
+  return (
+    <View style={{ width: size * 2, height: size * 2, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={[{ position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: color }, haloStyle]} />
+      <Animated.View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }, dotStyle]} />
+    </View>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SAFE AVATAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SafeAvatar = memo<{
+  avatar?: string | null; gender?: string; size?: number;
+  showEditButton?: boolean; onEdit?: () => void;
+  fallbackIcon?: keyof typeof Ionicons.glyphMap; fallbackColor?: string;
+}>(({ avatar, gender = 'other', size = 56, showEditButton, onEdit, fallbackIcon, fallbackColor }) => {
+  const [imageError, setImageError] = useState(false);
+  const hasImage = isImageUri(avatar) && !imageError;
+  const hasEmoji = isEmoji(avatar);
+  const gradientColors = gender === 'boy' ? ['#667eea', '#764ba2']
+    : gender === 'girl' ? ['#fa709a', '#fee140'] : ['#11998e', '#38ef7d'];
+  const iconName = fallbackIcon || (gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'person');
+  const color = fallbackColor || (gender === 'boy' ? '#667eea' : gender === 'girl' ? '#fa709a' : '#11998e');
 
   return (
-    <Card isDark={isDark} tint={DS.accent}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={60} />
-        <View style={{ flex: 1, marginLeft: DS.space.md }}>
-          <TouchableOpacity
-            disabled={!canSwitch}
-            onPress={onSwitch}
-            activeOpacity={0.7}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-          >
-            <Text style={[s.babyName, { color: t.title }]} numberOfLines={1}>{baby.name}</Text>
-            {canSwitch ? <Ionicons name="chevron-down" size={16} color={t.muted} /> : null}
-          </TouchableOpacity>
-          <Text style={[s.babyMeta, { color: t.muted }]} numberOfLines={1}>
-            {[age, gender].filter(Boolean).join(' • ')}
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
-            {streak > 0 ? (
-              <View style={[s.tag, { backgroundColor: `${DS.accent}18` }]}>
-                <Ionicons name="flame" size={11} color={DS.accent} />
-                <Text style={[s.tagText, { color: DS.accent }]}>{streak}d streak</Text>
+    <View style={{ width: size, height: size, position: 'relative' }}>
+      <LinearGradient
+        colors={hasImage ? ['#f0f0f0', '#e0e0e0'] : gradientColors}
+        style={{ width: size, height: size, borderRadius: size / 2.8, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+      >
+        {hasImage && avatar ? (
+          <OptimizedImage
+            source={{ uri: avatar }}
+            style={{ width: size, height: size }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            onError={() => setImageError(true)}
+            transition={200}
+          />
+        ) : hasEmoji ? (
+          <Text style={{ fontSize: size * 0.5 }}>{avatar}</Text>
+        ) : (
+          <Ionicons name={iconName as any} size={size * 0.4} color={color} />
+        )}
+      </LinearGradient>
+      {showEditButton && onEdit && (
+        <TouchableOpacity
+          style={{ position: 'absolute', bottom: -4, right: -4, width: 28, height: 28, borderRadius: 14, overflow: 'hidden', borderWidth: 2, borderColor: '#fff' }}
+          onPress={onEdit}
+          activeOpacity={0.8}
+        >
+          <LinearGradient colors={['#667eea', '#764ba2']} style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="camera" size={14} color="#fff" />
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION HEADER
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SectionHeader = React.memo(({ title, subtitle, icon, color = DS.primary, action, actionLabel }: {
+  title: string; subtitle?: string; icon?: keyof typeof Ionicons.glyphMap; color?: string;
+  action?: () => void; actionLabel?: string;
+}) => (
+  <View style={styles.sectionHeader}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.sm }}>
+      {icon && (
+        <View style={[styles.sectionIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={15} color={color} />
+        </View>
+      )}
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+    {action && (
+      <TouchableOpacity onPress={action} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+        <Text style={[styles.sectionAction, { color }]}>{actionLabel || 'See All'}</Text>
+        <Ionicons name="chevron-forward" size={13} color={color} />
+      </TouchableOpacity>
+    )}
+  </View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PULSE HEADER — Brilliant, modern, swift (NO heavy hero card)
+   Compact glass capsule: animated baby avatar + live family counts + actions
+   ═══════════════════════════════════════════════════════════════════════════ */
+interface PulseHeaderProps {
+  isDark: boolean;
+  currentBaby: any;
+  babies: any[];
+  members: any[];
+  todayCount: number;
+  streak: number;
+  onBack: () => void;
+  onBabyPress: () => void;
+  onAddPress: () => void;
+  onFamilyPress: () => void;
+}
+
+const PulseHeader = React.memo<PulseHeaderProps>(({
+  isDark, currentBaby, babies, members, todayCount, streak,
+  onBack, onBabyPress, onAddPress, onFamilyPress,
+}) => {
+  const pulse = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const glow = useSharedValue(0.4);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.08, { duration: 1600 }), withTiming(1, { duration: 1600 })), -1, true);
+    rotate.value = withRepeat(withTiming(360, { duration: 12000 }), -1, false);
+    glow.value = withRepeat(withSequence(withTiming(0.9, { duration: 2000 }), withTiming(0.4, { duration: 2000 })), -1, true);
+  }, [pulse, rotate, glow]);
+
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotate.value}deg` }] }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
+
+  const avatarStack = members.slice(0, 4);
+  const extra = Math.max(0, members.length - 4);
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <View style={[styles.pulseWrap, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient
+          colors={isDark
+            ? ['rgba(99,102,241,0.22)', 'rgba(236,72,153,0.12)', 'rgba(139,92,246,0.06)']
+            : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.06)', 'rgba(139,92,246,0.03)']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+        <LinearGradient colors={[`${DS.primary}${isDark ? '45' : '28'}`, 'transparent']} style={styles.pulseGlowL} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} pointerEvents="none" />
+        <LinearGradient colors={[`${DS.accent}${isDark ? '38' : '22'}`, 'transparent']} style={styles.pulseGlowR} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} pointerEvents="none" />
+
+        {/* Back button */}
+        <PressableScale onPress={onBack} activeScale={0.9}>
+          <View style={[styles.pulseBackBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : DS.gray100 }]}>
+            <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+          </View>
+        </PressableScale>
+
+        {/* Main row */}
+        <View style={styles.pulseRow}>
+          <PressableScale onPress={onBabyPress} activeScale={0.94}>
+            <View style={styles.pulseAvatarWrap}>
+              <Animated.View style={[styles.pulseAvatarGlow, glowStyle]} />
+              <Animated.View style={[styles.pulseAvatarRing, ringStyle]}>
+                <LinearGradient colors={[DS.primary, DS.accent, DS.warning, DS.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+              </Animated.View>
+              <View style={[styles.pulseAvatarInner, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
+                {currentBaby ? (
+                  <SafeAvatar avatar={currentBaby.avatar} gender={currentBaby.gender} size={46} />
+                ) : (
+                  <Ionicons name="add-circle" size={26} color={DS.primary} />
+                )}
               </View>
-            ) : null}
-            <PressableScale onPress={onGrowth} activeScale={0.94}>
-              <View style={[s.tag, { backgroundColor: `${DS.success}18` }]}>
-                <Ionicons name="trending-up" size={11} color={DS.success} />
-                <Text style={[s.tagText, { color: DS.success }]}>Growth</Text>
+            </View>
+          </PressableScale>
+
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.pulseTitle}>
+                FAMILY
+              </GradientText>
+              <View style={[styles.pulseLivePill, { backgroundColor: `${DS.success}18` }]}>
+                <PulsingDot color={DS.success} size={6} />
+                <Text style={[styles.pulseLiveText, { color: DS.success }]}>{members.length} here</Text>
               </View>
+            </View>
+            <TouchableOpacity onPress={onBabyPress} activeOpacity={0.7} style={styles.pulseSubRow}>
+              <Text style={[styles.pulseBabyName, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={1}>
+                {currentBaby?.name || 'Add a baby profile'}
+              </Text>
+              {babies.length > 1 && <Ionicons name="chevron-down" size={12} color={isDark ? DS.gray500 : DS.gray400} />}
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <PressableScale onPress={onFamilyPress} activeScale={0.9}>
+              <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}12` }]}>
+                <Ionicons name="people-outline" size={18} color={DS.primary} />
+              </View>
+            </PressableScale>
+            <PressableScale onPress={onAddPress} activeScale={0.9} haptic="medium">
+              <LinearGradient colors={[DS.primary, DS.accent]} style={styles.pulseAddBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                <Ionicons name="add" size={22} color={DS.white} />
+              </LinearGradient>
             </PressableScale>
           </View>
         </View>
-        <HeaderButton icon="create-outline" onPress={onEdit} isDark={isDark} color={DS.primary} label="Edit baby profile" />
-      </View>
-    </Card>
-  );
-});
 
-/* ═══════════════════════════ Snapshot strip ═══════════════════════════ */
-const Snapshot = memo(({ isDark, items }: {
-  isDark: boolean; items: { label: string; value: number; color: string }[];
-}) => {
-  const t = theme(isDark);
-  return (
-    <Animated.View entering={FadeInUp.delay(40).springify()}>
-      <Card isDark={isDark} tint={DS.primary} style={{ paddingVertical: DS.space.md, flexDirection: 'row', alignItems: 'center' }}>
-        {items.map((it, i) => (
-          <React.Fragment key={it.label}>
-            {i > 0 ? <View style={[s.vDiv, { backgroundColor: t.border }]} /> : null}
-            <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={[s.snapVal, { color: it.color }]}>{it.value}</Text>
-              <Text style={[s.snapLbl, { color: t.muted }]}>{it.label}</Text>
-            </View>
-          </React.Fragment>
-        ))}
-      </Card>
+        {/* Avatar stack + stats strip */}
+        <View style={[styles.pulseStats, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.06)' }]}>
+          <View style={styles.avatarStack}>
+            {avatarStack.map((m, i) => (
+              <View key={m.id + i} style={[styles.avatarStackItem, { marginLeft: i === 0 ? 0 : -10, zIndex: 10 - i, borderColor: isDark ? DS.darkCard : DS.white }]}>
+                <SafeAvatar avatar={m.avatar} size={28} />
+              </View>
+            ))}
+            {extra > 0 && (
+              <View style={[styles.avatarExtra, { marginLeft: -10, backgroundColor: isDark ? DS.darkSurface : DS.gray100, borderColor: isDark ? DS.darkCard : DS.white }]}>
+                <Text style={[styles.avatarExtraText, { color: isDark ? DS.gray300 : DS.gray600 }]}>+{extra}</Text>
+              </View>
+            )}
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.primary }]}>{todayCount}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>today</Text>
+          </View>
+          <View style={[styles.pulseStatDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+          <View style={styles.pulseStat}>
+            <Text style={[styles.pulseStatVal, { color: DS.warning }]}>{streak}</Text>
+            <Text style={[styles.pulseStatLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>streak</Text>
+          </View>
+        </View>
+      </View>
     </Animated.View>
   );
 });
 
-/* ═══════════════════════════ Engagement ═══════════════════════════ */
-const Engagement = memo(({ isDark, members }: { isDark: boolean; members: any[] }) => {
-  const t = theme(isDark);
-  const DAY = 86400000;
-  const stats = useMemo(() => {
+/* ═══════════════════════════════════════════════════════════════════════════
+   AURA RIBBON
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AuraRibbon = React.memo<{
+  isDark: boolean; icon: keyof typeof Ionicons.glyphMap; color: string;
+  label: string; text: string; onPress?: () => void;
+}>(({ isDark, icon, color, label, text, onPress }) => (
+  <Animated.View entering={FadeInUp.delay(120).springify()}>
+    <PressableScale onPress={onPress} activeScale={0.98}>
+      <View style={[styles.ribbon, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <View style={[styles.ribbonIcon, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.ribbonLabel, { color }]}>{label}</Text>
+          <Text style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]} numberOfLines={1}>{text}</Text>
+        </View>
+        {onPress && <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />}
+      </View>
+    </PressableScale>
+  </Animated.View>
+));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TAB BAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TabBar = ({ tabs, activeTab, onChange, isDark }: {
+  tabs: { key: 'overview' | 'growth'; label: string; icon: keyof typeof Ionicons.glyphMap }[];
+  activeTab: 'overview' | 'growth';
+  onChange: (t: 'overview' | 'growth') => void;
+  isDark: boolean;
+}) => (
+  <View style={[styles.tabBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(99,102,241,0.06)' }]}>
+    {tabs.map((tab) => {
+      const isActive = activeTab === tab.key;
+      return (
+        <TouchableOpacity
+          key={tab.key}
+          onPress={() => onChange(tab.key)}
+          style={[styles.tabItem, isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : DS.white, ...DS.shadow.sm }]}
+          activeOpacity={0.8}
+        >
+          <Ionicons name={tab.icon} size={14} color={isActive ? DS.primary : isDark ? DS.gray400 : DS.gray500} />
+          <Text style={[styles.tabLabel, { color: isActive ? DS.primary : isDark ? DS.gray400 : DS.gray500 }, isActive && { fontWeight: '700' }]}>
+            {tab.label}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+);
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY HEALTH CARD
+   ═══════════════════════════════════════════════════════════════════════════
+   Restored from FamilySharing's old Members tab. This is an OVERVIEW
+   metric — "how healthy is our family engagement?" — so it belongs here
+   on the FamilyDashboard, not on the management screen.
+*/
+const FamilyHealthCard = React.memo(({ members, isDark }: { members: any[]; isDark: boolean }) => {
+  const score = useMemo(() => {
+    const active = members.filter((m) => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 86400000).length;
     const total = members.length || 1;
-    const today = members.filter((m) => isActiveWithin(m, DAY)).length;
-    const week = members.filter((m) => isActiveWithin(m, 7 * DAY)).length;
-    const pending = members.filter(isPendingMember).length;
-    const score = Math.round(Math.round((week / total) * 100) * 0.6 + Math.min(100, members.length * 15) * 0.4);
-    return { today, week, pending, score };
+    const activityScore = Math.round((active / total) * 100);
+    const engagementScore = Math.min(100, members.length * 15);
+    return Math.round(activityScore * 0.6 + engagementScore * 0.4);
   }, [members]);
 
-  const color = stats.score >= 80 ? DS.success : stats.score >= 50 ? DS.warning : DS.danger;
-  const label = stats.score >= 80 ? 'Thriving' : stats.score >= 50 ? 'Active' : 'Needs attention';
+  const color = score >= 80 ? DS.success : score >= 50 ? DS.warning : DS.danger;
+  const label = score >= 80 ? 'Thriving' : score >= 50 ? 'Active' : 'Needs Attention';
 
   return (
-    <Animated.View entering={FadeInUp.delay(80).springify()}>
-      <SectionHeader isDark={isDark} title="Family Engagement" subtitle="How involved everyone has been" icon="heart-circle-outline" color={color} />
-      <Card isDark={isDark} tint={color}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
-            <Text style={[s.scoreVal, { color }]}>{stats.score}</Text>
-            <Text style={[s.scoreMax, { color: t.faint }]}>/100</Text>
-          </View>
-          <View style={[s.scorePill, { backgroundColor: `${color}1c` }]}>
-            <Text style={[s.scorePillText, { color }]}>{label}</Text>
-          </View>
-        </View>
-        <View style={[s.barBg, { backgroundColor: `${color}1c` }]}>
-          <View style={[s.barFill, { width: `${Math.max(4, stats.score)}%`, backgroundColor: color }]} />
-        </View>
-        <View style={{ flexDirection: 'row', marginTop: DS.space.md }}>
-          {[
-            { l: 'Active today', v: stats.today, c: DS.success },
-            { l: 'This week', v: stats.week, c: DS.warning },
-            { l: 'Pending invites', v: stats.pending, c: stats.pending ? DS.danger : t.faint },
-          ].map((x) => (
-            <View key={x.l} style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={[s.miniVal, { color: x.c }]}>{x.v}</Text>
-              <Text style={[s.miniLbl, { color: t.muted }]}>{x.l}</Text>
+    <Animated.View entering={FadeInUp.delay(60).springify()}>
+      <View style={[styles.healthCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient colors={[`${color}10`, `${color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.lg }}>
+          <View style={[styles.healthRing, { borderColor: `${color}30` }]}>
+            <View style={[styles.healthRingFill, { borderColor: color, transform: [{ rotate: `${-90 + (score / 100) * 360}deg` }] }]} />
+            <View style={styles.healthRingInner}>
+              <Text style={[styles.healthRingValue, { color }]}>{score}</Text>
+              <Text style={[styles.healthRingMax, { color: isDark ? DS.gray500 : DS.gray400 }]}>/100</Text>
             </View>
-          ))}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.healthTitle, { color: isDark ? DS.white : DS.gray900 }]}>Family Health</Text>
+            <Text style={[styles.healthLabel, { color }]}>{label}</Text>
+            <View style={styles.healthStatsRow}>
+              {[
+                { label: 'Active', value: members.filter((m) => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 86400000).length, color: DS.success },
+                { label: 'Week', value: members.filter((m) => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 86400000).length, color: DS.warning },
+                { label: 'Pending', value: members.filter((m) => !m.lastActive || m.status === 'pending').length, color: DS.danger },
+              ].map((stat, i) => (
+                <View key={i} style={styles.healthStat}>
+                  <Text style={[styles.healthStatVal, { color: stat.color }]}>{stat.value}</Text>
+                  <Text style={[styles.healthStatLbl, { color: isDark ? DS.gray500 : DS.gray400 }]}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
-      </Card>
+      </View>
     </Animated.View>
   );
 });
 
-/* ═══════════════════════════ Today at a glance ═══════════════════════════ */
-interface GlanceStat { key: string; icon: string; label: string; count: number; color: string }
+/* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY STATS STRIP
+   ═══════════════════════════════════════════════════════════════════════════ */
+const FamilyStatsStrip = React.memo(({ members, babies, activities, milestones, isDark }: {
+  members: number; babies: number; activities: number; milestones: number; isDark: boolean;
+}) => (
+  <Animated.View entering={FadeInUp.delay(60).springify()}>
+    <View style={[styles.statsStrip, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+      <LinearGradient colors={[`${DS.primary}10`, `${DS.accent}06`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+      {[
+        { value: members, label: 'Members', color: DS.primary },
+        { value: babies, label: 'Babies', color: DS.accent },
+        { value: activities, label: 'Activities', color: DS.success },
+        { value: milestones, label: 'Wins', color: DS.warning },
+      ].map((stat, i) => (
+        <React.Fragment key={stat.label}>
+          {i > 0 && <View style={[styles.statsDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />}
+          <View style={styles.statsItem}>
+            <Text style={[styles.statsVal, { color: stat.color }]}>{stat.value}</Text>
+            <Text style={[styles.statsLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>{stat.label}</Text>
+          </View>
+        </React.Fragment>
+      ))}
+    </View>
+  </Animated.View>
+));
 
-const TodayGlance = memo(({ isDark, stats, onPress }: {
-  isDark: boolean; stats: GlanceStat[]; onPress: (key: string) => void;
+/* ═══════════════════════════════════════════════════════════════════════════
+   TODAY AT A GLANCE
+   ═══════════════════════════════════════════════════════════════════════════ */
+interface TodayGlanceStat {
+  key: string; icon: string; label: string; count: number; color: string;
+}
+
+const TodayAtGlance = React.memo(({ stats, isDark, onPress }: {
+  stats: TodayGlanceStat[]; isDark: boolean; onPress: (key: string) => void;
 }) => {
-  const t = theme(isDark);
+  if (!stats.length) return null;
   return (
-    <Animated.View entering={FadeInUp.delay(120).springify()}>
-      <SectionHeader isDark={isDark} title="Today at a Glance" subtitle={format(new Date(), 'EEEE, MMM d')} icon="today-outline" color={DS.info} />
+    <Animated.View entering={FadeInUp.delay(100).springify()}>
+      <SectionHeader title="Today at a Glance" subtitle={format(new Date(), 'EEEE, MMM d')} icon="today-outline" color={DS.info} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
-        {stats.map((st) => (
-          <PressableScale key={st.key} onPress={() => onPress(st.key)} activeScale={0.94}>
-            <View style={[s.glanceCard, { backgroundColor: t.card, borderColor: isDark ? t.border : `${st.color}30` }]}>
-              <LinearGradient colors={[`${st.color}12`, `${st.color}03`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-              <View style={[s.glanceIconBg, { backgroundColor: `${st.color}1c` }]}>
-                <Text style={{ fontSize: 20 }}>{st.icon}</Text>
+        {stats.map((stat) => (
+          <PressableScale key={stat.key} onPress={() => onPress(stat.key)} activeScale={0.94}>
+            <View style={[styles.glanceCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : `${stat.color}30` }]}>
+              <LinearGradient colors={[`${stat.color}10`, `${stat.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+              <View style={[styles.glanceIconBg, { backgroundColor: `${stat.color}18` }]}>
+                <Text style={styles.glanceIcon}>{stat.icon}</Text>
               </View>
-              <Text style={[s.glanceCount, { color: st.color }]}>{st.count}</Text>
-              <Text style={[s.glanceLabel, { color: t.muted }]}>{st.label}</Text>
+              <Text style={[styles.glanceCount, { color: stat.color }]}>{stat.count}</Text>
+              <Text style={[styles.glanceLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{stat.label}</Text>
             </View>
           </PressableScale>
         ))}
@@ -215,130 +599,243 @@ const TodayGlance = memo(({ isDark, stats, onPress }: {
   );
 });
 
-/* ═══════════════════════════ Family activity (who + what) ═══════════════════════════ */
-interface Contributor { id: string; name: string; avatar?: string; count: number }
-interface FeedEvent { id: string; type: string; title: string; timestamp: number; actorName: string }
-
-const FamilyActivity = memo(({ isDark, contributors, events, onSeeAll, onLog }: {
-  isDark: boolean; contributors: Contributor[]; events: FeedEvent[]; onSeeAll: () => void; onLog: () => void;
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUGGESTION OF THE DAY
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SuggestionCard = React.memo(({ isDark, suggestion, onAction }: {
+  isDark: boolean;
+  suggestion: { icon: string; title: string; description: string; color: string; actionLabel: string } | null;
+  onAction: () => void;
 }) => {
-  const t = theme(isDark);
-  if (events.length === 0) {
-    return (
-      <Animated.View entering={FadeInUp.delay(160).springify()}>
-        <SectionHeader isDark={isDark} title="Family Activity" icon="pulse-outline" color={DS.success} />
-        <EmptyState
-          isDark={isDark}
-          icon="time-outline"
-          color={DS.success}
-          title="Nothing logged yet"
-          text="Entries from everyone in the family will show up here."
-          ctaLabel="Log first entry"
-          onCta={onLog}
-        />
-      </Animated.View>
-    );
-  }
+  if (!suggestion) return null;
   return (
-    <Animated.View entering={FadeInUp.delay(160).springify()}>
+    <Animated.View entering={FadeInUp.delay(140).springify()}>
+      <View style={[styles.suggestionCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient colors={[`${suggestion.color}10`, `${suggestion.color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={styles.suggestionRow}>
+          <LinearGradient colors={[suggestion.color, suggestion.color + 'AA']} style={styles.suggestionIconBg}>
+            <Text style={styles.suggestionIcon}>{suggestion.icon}</Text>
+          </LinearGradient>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.suggestionKicker, { color: suggestion.color }]}>SUGGESTION OF THE DAY</Text>
+            <Text style={[styles.suggestionTitle, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={2}>{suggestion.title}</Text>
+            <Text style={[styles.suggestionDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={2}>{suggestion.description}</Text>
+          </View>
+        </View>
+        <PressableScale onPress={onAction} activeScale={0.96}>
+          <View style={[styles.suggestionActionBtn, { backgroundColor: `${suggestion.color}15` }]}>
+            <Text style={[styles.suggestionActionText, { color: suggestion.color }]}>{suggestion.actionLabel}</Text>
+            <Ionicons name="arrow-forward" size={14} color={suggestion.color} />
+          </View>
+        </PressableScale>
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTIVE TODAY
+   ═══════════════════════════════════════════════════════════════════════════ */
+interface TodayContributor { id: string; name: string; avatar?: string; count: number; }
+
+const ActiveToday = React.memo(({ contributors, isDark, onSeeAll }: {
+  contributors: TodayContributor[]; isDark: boolean; onSeeAll: () => void;
+}) => {
+  if (!contributors.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(180).springify()}>
+      <SectionHeader title="Active Today" subtitle={`${contributors.length} contributor${contributors.length !== 1 ? 's' : ''}`} icon="pulse-outline" color={DS.success} action={onSeeAll} actionLabel="Timeline" />
+      <View style={[styles.contribCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        {contributors.map((c, i) => (
+          <View key={c.id} style={[styles.contribRow, i > 0 && { borderTopWidth: 1, borderTopColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+            <SafeAvatar avatar={c.avatar} size={32} />
+            <Text style={[styles.contribName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{c.name}</Text>
+            <View style={[styles.contribBadge, { backgroundColor: `${DS.primary}15` }]}>
+              <Text style={[styles.contribBadgeText, { color: DS.primary }]}>{c.count} {c.count === 1 ? 'entry' : 'entries'}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY ACTIVITY FEED — compact list of recent family events
+   ═══════════════════════════════════════════════════════════════════════════
+   Restored from the old FamilySharing Activity tab. This is an OVERVIEW
+   feed — "what did the family do lately?" — so it belongs on the
+   dashboard, not on the management screen.
+*/
+interface FamilyActivityEvent {
+  id: string;
+  type: string;
+  title: string;
+  timestamp: number;
+  actorName: string;
+}
+
+const FAMILY_ACTIVITY_ICONS: Record<string, string> = {
+  feed: '🍼',
+  sleep: '😴',
+  potty: '🚽',
+  diaper: '🧷',
+  growth: '📏',
+  medication: '💊',
+  milestone: '🏆',
+  note: '📝',
+};
+
+const formatRelative = (ts: number): string => {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return format(new Date(ts), 'MMM d');
+};
+
+const FamilyActivityFeed = React.memo(({ events, isDark, onSeeAll }: {
+  events: FamilyActivityEvent[];
+  isDark: boolean;
+  onSeeAll: () => void;
+}) => {
+  if (!events.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(200).springify()}>
       <SectionHeader
-        isDark={isDark}
-        title="Family Activity"
-        subtitle={contributors.length ? `${contributors.length} logging today` : 'Latest entries'}
+        title="Recent Family Activity"
+        subtitle={`${events.length} event${events.length !== 1 ? 's' : ''}`}
         icon="pulse-outline"
-        color={DS.success}
+        color={DS.info}
         action={onSeeAll}
-        actionLabel="Timeline"
+        actionLabel="See All"
       />
-      <Card isDark={isDark} style={{ padding: 0 }}>
-        {contributors.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.contribRow}>
-            {contributors.map((c) => (
-              <View key={c.id} style={[s.contribChip, { backgroundColor: t.chip }]}>
-                <SafeAvatar avatar={c.avatar} size={24} />
-                <Text style={[s.contribName, { color: t.title }]} numberOfLines={1}>{c.name.split(' ')[0]}</Text>
-                <View style={[s.contribCount, { backgroundColor: `${DS.primary}20` }]}>
-                  <Text style={[s.contribCountText, { color: DS.primary }]}>{c.count}</Text>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        ) : null}
+      <View
+        style={[
+          styles.activityCard,
+          {
+            backgroundColor: isDark ? DS.darkCard : DS.white,
+            borderColor: isDark ? DS.darkBorder : DS.gray200,
+          },
+        ]}
+      >
         {events.map((e, i) => (
           <View
             key={e.id}
             style={[
-              s.feedRow,
-              (i > 0 || contributors.length > 0) && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border },
+              styles.activityRow,
+              i > 0 && {
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: isDark ? DS.darkBorder : DS.gray200,
+              },
             ]}
           >
-            <View style={[s.feedIcon, { backgroundColor: t.chip }]}>
-              <Text style={{ fontSize: 16 }}>{ACTIVITY_ICONS[e.type] || '📝'}</Text>
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100,
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>
+                {FAMILY_ACTIVITY_ICONS[e.type] || '📝'}
+              </Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[s.feedTitle, { color: t.title }]} numberOfLines={1}>{e.title}</Text>
-              <Text style={[s.feedMeta, { color: t.muted }]} numberOfLines={1}>
+              <Text
+                style={[styles.activityTitle, { color: isDark ? DS.white : DS.gray900 }]}
+                numberOfLines={1}
+              >
+                {e.title}
+              </Text>
+              <Text
+                style={[styles.activityMeta, { color: isDark ? DS.gray400 : DS.gray500 }]}
+                numberOfLines={1}
+              >
                 by {e.actorName} · {formatRelative(e.timestamp)}
               </Text>
             </View>
           </View>
         ))}
-      </Card>
+      </View>
     </Animated.View>
   );
 });
 
-/* ═══════════════════════════ Suggestion ═══════════════════════════ */
-interface Suggestion { icon: string; title: string; description: string; color: string; actionLabel: string; target: string }
-
-const SuggestionCard = memo(({ isDark, suggestion, onAction }: {
-  isDark: boolean; suggestion: Suggestion; onAction: () => void;
+/* ═══════════════════════════════════════════════════════════════════════════
+   BABY CARD — compact info card (replaces hero card)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const BabyCard = React.memo(({ isDark, baby, streak, onEdit, onGrowth }: {
+  isDark: boolean; baby: any; streak: number; onEdit: () => void; onGrowth: () => void;
 }) => {
-  const t = theme(isDark);
+  if (!baby) return null;
   return (
     <Animated.View entering={FadeInUp.delay(200).springify()}>
-      <Card isDark={isDark} tint={suggestion.color}>
-        <View style={{ flexDirection: 'row', gap: DS.space.md }}>
-          <LinearGradient colors={[suggestion.color, `${suggestion.color}aa`]} style={s.sugIcon}>
-            <Text style={{ fontSize: 24 }}>{suggestion.icon}</Text>
-          </LinearGradient>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.sugKicker, { color: suggestion.color }]}>TIP FOR TODAY</Text>
-            <Text style={[s.sugTitle, { color: t.title }]} numberOfLines={2}>{suggestion.title}</Text>
-            <Text style={[s.sugDesc, { color: t.muted }]} numberOfLines={3}>{suggestion.description}</Text>
+      <View style={[styles.babyCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient colors={[`${DS.accent}08`, `${DS.primary}04`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={styles.babyRow}>
+          <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={56} showEditButton onEdit={onEdit} />
+          <View style={{ flex: 1, marginLeft: DS.space.md }}>
+            <Text style={[styles.babyName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{baby.name}</Text>
+            <Text style={[styles.babyMeta, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+              {baby.age} • {baby.gender}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+              {streak > 0 && (
+                <View style={[styles.babyTag, { backgroundColor: `${DS.accent}15` }]}>
+                  <Ionicons name="flame" size={10} color={DS.accent} />
+                  <Text style={[styles.babyTagText, { color: DS.accent }]}>{streak}d streak</Text>
+                </View>
+              )}
+              <PressableScale onPress={onGrowth} activeScale={0.94}>
+                <View style={[styles.babyTag, { backgroundColor: `${DS.success}15` }]}>
+                  <Ionicons name="trending-up" size={10} color={DS.success} />
+                  <Text style={[styles.babyTagText, { color: DS.success }]}>Growth</Text>
+                </View>
+              </PressableScale>
+            </View>
           </View>
+          <PressableScale onPress={onEdit} activeScale={0.9}>
+            <View style={[styles.babyEditBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+              <Ionicons name="create-outline" size={18} color={DS.primary} />
+            </View>
+          </PressableScale>
         </View>
-        <PressableScale onPress={onAction} activeScale={0.96}>
-          <View style={[s.sugBtn, { backgroundColor: `${suggestion.color}18` }]}>
-            <Text style={[s.sugBtnText, { color: suggestion.color }]}>{suggestion.actionLabel}</Text>
-            <Ionicons name="arrow-forward" size={14} color={suggestion.color} />
-          </View>
-        </PressableScale>
-      </Card>
+      </View>
     </Animated.View>
   );
 });
 
-/* ═══════════════════════════ Explore links ═══════════════════════════ */
-const Explore = memo(({ isDark, onNavigate }: { isDark: boolean; onNavigate: (screen: string) => void }) => {
-  const t = theme(isDark);
-  const links: { id: string; label: string; icon: IconName; color: string; screen: string }[] = [
-    { id: 'timeline', label: 'Timeline', icon: 'time-outline', color: DS.success, screen: 'Timeline' },
-    { id: 'milestones', label: 'Milestones', icon: 'trophy-outline', color: DS.warning, screen: 'Achievements' },
-    { id: 'gallery', label: 'Gallery', icon: 'images-outline', color: DS.accent, screen: 'Gallery' },
-    { id: 'insights', label: 'Insights', icon: 'bar-chart-outline', color: DS.primary, screen: 'Insights' },
+/* ═══════════════════════════════════════════════════════════════════════════
+   QUICK ACTIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+const QuickActions = React.memo(({ isDark, onNavigate }: {
+  isDark: boolean; onNavigate: (screen: string) => void;
+}) => {
+  const actions = [
+    { id: 'timeline', label: 'Timeline', icon: 'time-outline' as const, color: DS.success, screen: 'Timeline' },
+    { id: 'achievements', label: 'Milestones', icon: 'trophy-outline' as const, color: DS.warning, screen: 'Achievements' },
+    { id: 'growth', label: 'Growth', icon: 'trending-up-outline' as const, color: DS.primary, screen: 'GrowthDashboard' },
+    { id: 'family', label: 'Family', icon: 'people-outline' as const, color: '#8b5cf6', screen: 'FamilySharing' },
   ];
   return (
-    <Animated.View entering={FadeInUp.delay(280).springify()}>
-      <SectionHeader isDark={isDark} title="Explore" icon="compass-outline" color={DS.primary} />
-      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: DS.space.lg }}>
-        {links.map((l) => (
-          <PressableScale key={l.id} onPress={() => onNavigate(l.screen)} activeScale={0.94} style={{ flex: 1 }}>
-            <View style={[s.exploreCard, { backgroundColor: t.card, borderColor: t.border }]}>
-              <View style={[s.exploreIcon, { backgroundColor: `${l.color}1c` }]}>
-                <Ionicons name={l.icon} size={20} color={l.color} />
+    <Animated.View entering={FadeInUp.delay(300).springify()}>
+      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: DS.space.lg, marginTop: DS.space.sm }}>
+        {actions.map((a) => (
+          <PressableScale key={a.id} onPress={() => onNavigate(a.screen)} activeScale={0.94} style={{ flex: 1 }}>
+            <View style={[styles.quickAction, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+              <LinearGradient colors={[`${a.color}12`, `${a.color}03`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+              <View style={[styles.quickActionIcon, { backgroundColor: `${a.color}18` }]}>
+                <Ionicons name={a.icon} size={20} color={a.color} />
               </View>
-              <Text style={[s.exploreLabel, { color: t.body }]} numberOfLines={1}>{l.label}</Text>
+              <Text style={[styles.quickActionLabel, { color: isDark ? DS.gray300 : DS.gray700 }]}>{a.label}</Text>
             </View>
           </PressableScale>
         ))}
@@ -347,71 +844,52 @@ const Explore = memo(({ isDark, onNavigate }: { isDark: boolean; onNavigate: (sc
   );
 });
 
-/* ═══════════════════════════ Growth tab ═══════════════════════════ */
-const GrowthTab = memo(({ isDark, growthData, milestoneCount, onFullChart, onMilestones }: {
-  isDark: boolean; growthData: any[]; milestoneCount: number; onFullChart: () => void; onMilestones: () => void;
+/* ═══════════════════════════════════════════════════════════════════════════
+   GROWTH TAB
+   ═══════════════════════════════════════════════════════════════════════════ */
+const GrowthTab = React.memo(({ isDark, growthData, onFullChart, onMilestones }: {
+  isDark: boolean; growthData: any[]; onFullChart: () => void; onMilestones: () => void;
 }) => {
-  const t = theme(isDark);
-  const latest = (type: string) => {
-    const rows = growthData.filter((g) => g.type === type);
-    return rows[rows.length - 1];
-  };
-  const h = latest('height');
-  const w = latest('weight');
-  const items = [
-    { icon: 'resize-outline' as IconName, color: '#667eea', value: h ? `${h.value}${h.unit || 'cm'}` : '--', label: 'Height' },
-    { icon: 'scale-outline' as IconName, color: '#fa709a', value: w ? `${w.value}${w.unit || 'kg'}` : '--', label: 'Weight' },
-    { icon: 'analytics-outline' as IconName, color: '#11998e', value: String(growthData.length), label: 'Records' },
-  ];
-
-  if (growthData.length === 0) {
-    return (
-      <View style={{ gap: 12 }}>
-        <EmptyState
-          isDark={isDark}
-          icon="trending-up-outline"
-          color={DS.success}
-          title="No growth records yet"
-          text="Add height and weight to see charts and percentiles."
-          ctaLabel="Open growth charts"
-          onCta={onFullChart}
-        />
-      </View>
-    );
-  }
+  const heightData = growthData.filter((g) => g.type === 'height');
+  const weightData = growthData.filter((g) => g.type === 'weight');
+  const latestHeight = heightData[heightData.length - 1];
+  const latestWeight = weightData[weightData.length - 1];
 
   return (
     <View style={{ gap: 12 }}>
-      <Animated.View entering={FadeInUp.delay(60).springify()}>
-        <Card isDark={isDark} tint={DS.primary}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-            {items.map((it) => (
-              <View key={it.label} style={{ alignItems: 'center', gap: 6 }}>
-                <View style={[s.growthIcon, { backgroundColor: `${it.color}1c` }]}>
-                  <Ionicons name={it.icon} size={22} color={it.color} />
-                </View>
-                <Text style={[s.growthVal, { color: t.title }]} numberOfLines={1}>{it.value}</Text>
-                <Text style={[s.growthLbl, { color: t.muted }]}>{it.label}</Text>
+      <Animated.View entering={FadeInUp.delay(80).springify()}>
+        <View style={[styles.growthCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+          <LinearGradient colors={[`${DS.primary}10`, `${DS.accent}06`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+          <View style={styles.growthRow}>
+            {[
+              { icon: 'resize-outline' as const, gradient: ['#667eea', '#764ba2'] as [string, string], value: latestHeight ? `${latestHeight.value}${latestHeight.unit || 'cm'}` : '--', label: 'Height' },
+              { icon: 'scale-outline' as const, gradient: ['#fa709a', '#fee140'] as [string, string], value: latestWeight ? `${latestWeight.value}${latestWeight.unit || 'kg'}` : '--', label: 'Weight' },
+              { icon: 'analytics-outline' as const, gradient: ['#11998e', '#38ef7d'] as [string, string], value: `${growthData.length}`, label: 'Records' },
+            ].map((stat) => (
+              <View key={stat.label} style={styles.growthItem}>
+                <LinearGradient colors={stat.gradient} style={styles.growthIcon}>
+                  <Ionicons name={stat.icon} size={20} color={DS.white} />
+                </LinearGradient>
+                <Text style={[styles.growthVal, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{stat.value}</Text>
+                <Text style={[styles.growthLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>{stat.label}</Text>
               </View>
             ))}
           </View>
-        </Card>
+        </View>
       </Animated.View>
 
-      <PressableScale onPress={onFullChart} activeScale={0.97} style={{ marginHorizontal: DS.space.lg }}>
-        <LinearGradient colors={[DS.primary, DS.accent]} style={s.ctaPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+      <PressableScale onPress={onFullChart} activeScale={0.97}>
+        <LinearGradient colors={[DS.primary, DS.accent]} style={styles.growthCta} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <Ionicons name="trending-up" size={20} color={DS.white} />
-          <Text style={s.ctaPrimaryText}>Full growth charts</Text>
+          <Text style={styles.growthCtaText}>Full Growth Charts</Text>
           <Ionicons name="arrow-forward" size={18} color={DS.white} />
         </LinearGradient>
       </PressableScale>
 
-      <PressableScale onPress={onMilestones} activeScale={0.97} style={{ marginHorizontal: DS.space.lg }}>
-        <View style={[s.ctaSecondary, { borderColor: `${DS.primary}35`, backgroundColor: `${DS.primary}0d` }]}>
+      <PressableScale onPress={onMilestones} activeScale={0.97}>
+        <View style={[styles.growthSecondary, { borderColor: `${DS.primary}30`, backgroundColor: `${DS.primary}08` }]}>
           <Ionicons name="trophy-outline" size={20} color={DS.primary} />
-          <Text style={[s.ctaSecondaryText, { color: DS.primary }]}>
-            Milestones{milestoneCount ? ` (${milestoneCount})` : ''}
-          </Text>
+          <Text style={[styles.growthSecondaryText, { color: DS.primary }]}>View All Milestones</Text>
           <Ionicons name="chevron-forward" size={18} color={DS.primary} />
         </View>
       </PressableScale>
@@ -419,407 +897,622 @@ const GrowthTab = memo(({ isDark, growthData, milestoneCount, onFullChart, onMil
   );
 });
 
-/* ═══════════════════════════ MAIN SCREEN ═══════════════════════════ */
-export default function FamilyDashboardScreen({ navigation }: Props) {
-  const nav = navigation as any;
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTION MODAL (for baby selector)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ActionModal = ({ visible, onClose, title, children, isDark }: {
+  visible: boolean; onClose: () => void; title: string; children: React.ReactNode; isDark: boolean;
+}) => {
+  const scale = useSharedValue(0.95);
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    if (visible) { scale.value = withSpring(1, { damping: 15, stiffness: 300 }); opacity.value = withTiming(1, { duration: 250 }); }
+    else { scale.value = withTiming(0.95); opacity.value = withTiming(0); }
+  }, [visible]);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
+  if (!visible) return null;
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.modalBackdrop}>
+        <BlurView intensity={isDark ? 60 : 90} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <Animated.View style={[styles.modalCard, anim, { backgroundColor: isDark ? DS.darkCard : DS.white }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: isDark ? DS.white : DS.gray900 }]}>{title}</Text>
+            <TouchableOpacity onPress={onClose} style={[styles.modalClose, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+              <Ionicons name="close" size={20} color={isDark ? DS.white : DS.gray800} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: DS.space.lg }}>
+            {children}
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN SCREEN
+   ═══════════════════════════════════════════════════════════════════════════ */
+export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScreenProps) {
   const systemDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
+  const scrollY = useSharedValue(0);
+
+  const { userProfile } = useAuth();
+  const { profile } = useUser();
+  const { babies, currentBaby, currentBabyId, switchBaby, growthData, milestones, activities, loadBabies, getPottyStreak } = useBaby();
+  const { members, loadFamily } = useFamily();
   const sweetAlert = useSweetAlert();
   const { darkMode, triggerHaptic } = useCustomization();
   const isDark = darkMode ?? systemDark;
-  const t = theme(isDark);
-
-  useAuth(); // keeps auth subscription alive for member resolution
-  const { babies, currentBaby, currentBabyId, switchBaby, growthData, milestones, loadBabies, getPottyStreak } = useBaby();
-  const { members, loadFamily } = useFamily();
-  const { entries: trackerEntries } = useTracker();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'growth'>('overview');
   const [showBabySelector, setShowBabySelector] = useState(false);
 
-  /* ── Refresh ── */
-  useFocusEffect(
-    useCallback(() => {
-      loadFamily().catch(() => {});
-    }, [loadFamily]),
-  );
+  const effectiveUser = useMemo(() => userProfile || profile, [userProfile, profile]);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => { 'worklet'; scrollY.value = event.contentOffset.y; },
+  });
+  const headerAnim = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
+  }));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
+    InteractionManager.runAfterInteractions(async () => {
       await Promise.all([loadBabies(true), loadFamily()]);
-    } catch {
-      sweetAlert.toast('Refresh failed', 'Check your connection and try again.', 'info');
-    } finally {
       setRefreshing(false);
-    }
-  }, [loadBabies, loadFamily, sweetAlert]);
+    });
+  }, [loadBabies, loadFamily]);
 
-  /* ── Navigation helpers ── */
-  const go = useCallback((screen: string, params?: any) => nav.navigate(screen, params), [nav]);
-  const editBaby = useCallback((id: string) => nav.navigate('EditProfile', { mode: 'baby', babyId: id }), [nav]);
-  const openMember = useCallback((member: any) => {
-    if (!(member?.userId || member?.id)) {
-      sweetAlert.toast('Cannot open', 'This member has no linked profile yet.', 'info');
-      return;
-    }
+  const handleSwitchBaby = useCallback((babyId: string) => {
+    if (babyId === currentBabyId) return;
     triggerHaptic('light');
-    nav.navigate('EditGuardian', memberEditParams(member));
-  }, [nav, sweetAlert, triggerHaptic]);
+    switchBaby(babyId);
+  }, [currentBabyId, switchBaby, triggerHaptic]);
 
-  /* ── Derived data (computed once, reused) ── */
-  const todayEntries = useMemo(() => {
+  const handleBabyEdit = useCallback((babyId: string) => {
+    navigation.navigate('EditProfile', { mode: 'baby', babyId });
+  }, [navigation]);
+
+  // Single source of truth for "tap a person" across this screen.
+  // Routes to EditGuardianScreen for THAT person — never back into
+  // FamilySharing (that's the management hub, not a profile viewer).
+  const handleMemberTap = useCallback(
+    (member: any) => {
+      const targetId = member?.userId || member?.id;
+      if (!targetId) {
+        triggerHaptic('error');
+        sweetAlert.toast('Cannot Open', 'This member has no linked profile.', 'info');
+        return;
+      }
+      triggerHaptic('light');
+      navigation.navigate('EditGuardian' as never, {
+        guardianId: targetId,
+        mode:
+          member.role === UserRole.PARENT_2
+            ? 'parent2'
+            : member.role === UserRole.VIEWER
+            ? 'viewer'
+            : 'guardian',
+        fromChat: false,
+        fromFamily: true,
+      } as never);
+    },
+    [navigation, sweetAlert, triggerHaptic],
+  );
+
+  const handleNavigateFamily = useCallback(() => navigation.navigate('FamilySharing'), [navigation]);
+  const handleNavigateTimeline = useCallback(() => navigation.navigate('Timeline'), [navigation]);
+  const handleNavigateAchievements = useCallback(() => navigation.navigate('Achievements'), [navigation]);
+  const handleNavigateGrowthChart = useCallback(() => navigation.navigate('GrowthDashboard'), [navigation]);
+  const handleNavigateCreateBaby = useCallback(() => navigation.navigate('CreateBabyProfile'), [navigation]);
+  const handleNavigateInvite = useCallback(() => navigation.navigate('CoParentInviteScreen'), [navigation]);
+  const handleNavigateInsights = useCallback(() => navigation.navigate('Insights'), [navigation]);
+  const handleNavigateGallery = useCallback(() => navigation.navigate('Gallery'), [navigation]);
+
+  const { entries: trackerEntries } = useTracker();
+
+  // Re-read family whenever this screen gains focus. Without this,
+  // the tree shows stale member cards after the user changes a role
+  // in EditGuardian or FamilySharing and navigates back.
+  useFocusEffect(
+    useCallback(() => {
+      loadFamily().catch(() => {});
+      return () => {};
+    }, [loadFamily]),
+  );
+
+  const todayStats = useMemo<TodayGlanceStat[]>(() => {
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEntries = trackerEntries.filter((e: any) => e.timestamp >= todayStart.getTime() && !e.isDeleted);
+    const countBy = (id: string) => todayEntries.filter((e: any) => e.trackerId === id).length;
+    return [
+      { key: 'feed', icon: '🍼', label: 'Feeds', count: countBy('feed'), color: '#f59e0b' },
+      { key: 'sleep', icon: '😴', label: 'Sleeps', count: countBy('sleep'), color: '#8b5cf6' },
+      { key: 'diaper', icon: '🧷', label: 'Diapers', count: countBy('diaper'), color: '#06b6d4' },
+      { key: 'potty', icon: '🚽', label: 'Potty', count: countBy('potty'), color: '#10b981' },
+      { key: 'medication', icon: '💊', label: 'Meds', count: countBy('medication'), color: '#ef4444' },
+    ].filter(s => s.count > 0 || ['feed', 'sleep', 'diaper'].includes(s.key));
+  }, [trackerEntries]);
+
+  const todayCount = useMemo(() => {
     const start = new Date(); start.setHours(0, 0, 0, 0);
-    return (trackerEntries || []).filter((e: any) => e?.timestamp >= start.getTime() && !e.isDeleted);
+    return trackerEntries.filter((e: any) => e.timestamp >= start.getTime() && !e.isDeleted).length;
   }, [trackerEntries]);
 
   const streak = useMemo(() => getPottyStreak(), [getPottyStreak]);
 
-  const findActor = useCallback((e: any) =>
-    members.find((m: any) => m.userId === e.loggedBy) ||
-    members.find((m: any) => m.id === e.loggedBy) ||
-    members.find((m: any) => m.fullName === e.loggedByName), [members]);
-
-  const glanceStats = useMemo<GlanceStat[]>(() => {
-    const count = (id: string) => todayEntries.filter((e: any) => e.trackerId === id).length;
-    return [
-      { key: 'feed', icon: '🍼', label: 'Feeds', count: count('feed'), color: '#f59e0b' },
-      { key: 'sleep', icon: '😴', label: 'Sleeps', count: count('sleep'), color: '#8b5cf6' },
-      { key: 'diaper', icon: '🧷', label: 'Diapers', count: count('diaper'), color: '#06b6d4' },
-      { key: 'potty', icon: '🚽', label: 'Potty', count: count('potty'), color: '#10b981' },
-      { key: 'medication', icon: '💊', label: 'Meds', count: count('medication'), color: '#ef4444' },
-    ].filter((x) => x.count > 0 || ['feed', 'sleep', 'diaper'].includes(x.key));
-  }, [todayEntries]);
-
-  const contributors = useMemo<Contributor[]>(() => {
-    const map = new Map<string, Contributor>();
-    todayEntries.forEach((e: any) => {
-      const key = e.loggedBy || e.loggedByName || 'unknown';
-      const hit = map.get(key);
-      if (hit) { hit.count += 1; return; }
-      const actor: any = findActor(e);
-      map.set(key, { id: key, name: actor?.fullName || e.loggedByName || 'Someone', avatar: actor?.avatar, count: 1 });
-    });
-    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 6);
-  }, [todayEntries, findActor]);
-
-  const recentEvents = useMemo<FeedEvent[]>(() => {
-    return (trackerEntries || [])
-      .filter((e: any) => e?.timestamp && !e.isDeleted)
-      .sort((a: any, b: any) => b.timestamp - a.timestamp)
-      .slice(0, 6)
-      .map((e: any, i: number) => {
-        const type = e.trackerId || e.type || 'note';
-        const actor: any = findActor(e);
-        return {
-          id: e.id || `evt-${i}`,
-          type,
-          title: e.title || `${type.charAt(0).toUpperCase()}${type.slice(1)} logged`,
-          timestamp: e.timestamp,
-          actorName: actor?.fullName || e.loggedByName || 'Someone',
-        };
-      });
-  }, [trackerEntries, findActor]);
-
-  const suggestion = useMemo<Suggestion>(() => {
+  const suggestionOfTheDay = useMemo(() => {
     if (currentBaby) {
-      const birth = currentBaby.birthDate || currentBaby.dateOfBirth;
-      if (birth) {
-        const m = differenceInMonths(new Date(), new Date(birth));
-        if (m >= 0 && m < 3) return { icon: '📸', title: 'Capture this stage', description: "Newborn weeks fly by — a quick photo today becomes tomorrow's treasure.", color: '#ec4899', actionLabel: 'Open gallery', target: 'Gallery' };
-        if (m >= 4 && m <= 8) return { icon: '👶', title: 'Tummy time matters', description: `At ${m} months, aim for 3 short tummy-time sessions a day, then log them.`, color: '#10b981', actionLabel: 'Log an entry', target: 'AddEntry' };
-        if (m >= 10 && m <= 14) return { icon: '🗣️', title: 'First words approaching', description: 'Narrate your day to encourage speech, and record the big moments.', color: '#f59e0b', actionLabel: 'See milestones', target: 'Achievements' };
+      const ageMonths = differenceInMonths(new Date(), new Date(currentBaby.birthDate || currentBaby.dateOfBirth || new Date()));
+      if (ageMonths >= 4 && ageMonths <= 8) {
+        return { icon: '👶', title: 'Tummy time matters', description: `At ${ageMonths} months, aim for 3 short tummy-time sessions daily to build core strength.`, color: '#10b981', actionLabel: 'Learn More' };
+      }
+      if (ageMonths >= 10 && ageMonths <= 14) {
+        return { icon: '🗣️', title: 'First words approaching', description: 'Baby is near the age where first words typically emerge. Narrate your day to encourage speech.', color: '#f59e0b', actionLabel: 'Explore Milestones' };
+      }
+      if (ageMonths < 3) {
+        return { icon: '📸', title: 'Capture this stage', description: "Newborn weeks fly by — a quick photo today becomes tomorrow's treasure.", color: '#ec4899', actionLabel: 'Open Gallery' };
       }
     }
-    return { icon: '📊', title: 'Check your weekly insights', description: 'See patterns in feeding, sleep and growth this week.', color: DS.primary, actionLabel: 'View insights', target: 'Insights' };
+    return { icon: '📊', title: 'Check your weekly insights', description: 'See patterns in feeding, sleep, and growth this week.', color: DS.primary, actionLabel: 'View Insights' };
   }, [currentBaby]);
 
-  const ribbon = useMemo(() => {
-    if (contributors.length > 1) return { icon: 'people-outline' as IconName, color: DS.success, label: 'Teamwork', text: `${contributors.length} family members logged today`, screen: 'Timeline' };
-    if (streak > 0) return { icon: 'flame' as IconName, color: DS.warning, label: 'Streak', text: `${streak}-day tracking streak going strong`, screen: 'Achievements' };
-    return null;
-  }, [contributors.length, streak]);
+  const todayContributors = useMemo<TodayContributor[]>(() => {
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const map = new Map<string, TodayContributor>();
+    trackerEntries.forEach((e: any) => {
+      if (e.isDeleted || e.timestamp < todayStart.getTime()) return;
+      // Prefer `loggedBy` (profile UUID) as the dedupe key — the
+      // same person can log with different display names, but the
+      // profile UUID is stable across role renames.
+      const key = e.loggedBy || e.loggedByName || 'unknown';
+      const existing = map.get(key);
+      if (existing) existing.count += 1;
+      else {
+        const memberMatch =
+          members.find((m: any) => m.userId === e.loggedBy) ||
+          members.find((m: any) => m.id === e.loggedBy) ||
+          members.find((m: any) => m.fullName === e.loggedByName);
+        map.set(key, {
+          id: key,
+          name: memberMatch?.fullName || e.loggedByName || 'Someone',
+          avatar: memberMatch?.avatar,
+          count: 1,
+        });
+      }
+    });
+    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 4);
+  }, [trackerEntries, members]);
 
-  const familyStackMembers = useMemo(() => {
-    if (!currentBaby) return members;
-    return [
-      {
-        id: `baby_${currentBaby.id}`, userId: `baby_${currentBaby.id}`, babyId: currentBaby.id,
-        role: 'baby' as any, fullName: currentBaby.name || 'Baby', email: '', avatar: currentBaby.avatar,
-        relationship: 'Baby',
-        permissions: { read: true, write: false, delete: false, manageFamily: false, manageSecurity: false, exportData: false },
-        joinedAt: currentBaby.createdAt || new Date().toISOString(), isActive: true,
-        __isBaby: true, __baby: currentBaby,
-      } as any,
-      ...members,
-    ];
-  }, [currentBaby, members]);
+  // Family activity feed — the last 10 entries across the current
+  // baby, with actor names resolved from members. Restored from the
+  // old FamilySharing Activity tab.
+  const recentFamilyActivity = useMemo<FamilyActivityEvent[]>(() => {
+    if (!trackerEntries) return [];
+    return trackerEntries
+      .filter((e: any) => e?.timestamp && !e.isDeleted)
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 10)
+      .map((e: any, i: number) => {
+        const trackerId = e.trackerId || e.type || 'note';
+        const memberMatch =
+          members.find((m: any) => m.userId === e.loggedBy) ||
+          members.find((m: any) => m.id === e.loggedBy);
+        return {
+          id: e.id || `family-event-${i}`,
+          type: trackerId,
+          title:
+            e.title ||
+            `${trackerId.charAt(0).toUpperCase()}${trackerId.slice(1)} logged`,
+          timestamp: e.timestamp,
+          actorName: memberMatch?.fullName || e.loggedByName || 'Someone',
+        };
+      });
+  }, [trackerEntries, members]);
+
+  const handleSuggestionAction = useCallback(() => {
+    triggerHaptic('medium');
+    if (suggestionOfTheDay.actionLabel === 'View Insights') handleNavigateInsights();
+    else if (suggestionOfTheDay.actionLabel === 'Explore Milestones') handleNavigateAchievements();
+    else if (suggestionOfTheDay.actionLabel === 'Open Gallery') handleNavigateGallery();
+    else sweetAlert.toast('Coming Soon', 'This tip will be actionable soon', 'info');
+  }, [suggestionOfTheDay, sweetAlert, triggerHaptic, handleNavigateInsights, handleNavigateAchievements, handleNavigateGallery]);
+
+  const handleTodayStatPress = useCallback((key: string) => {
+    triggerHaptic('light');
+    navigation.navigate('Timeline', { trackerId: key, filter: 'today' });
+  }, [navigation, triggerHaptic]);
+
+  const handleBabyPress = useCallback(() => {
+    // Tapping the baby chip opens THIS baby's profile. The "switch
+    // babies" flow stays on the dedicated SwitchBaby button inside
+    // the selector modal (and on the sticky header avatar).
+    if (currentBaby) handleBabyEdit(currentBaby.id);
+    else handleNavigateCreateBaby();
+  }, [currentBaby, handleBabyEdit, handleNavigateCreateBaby]);
+
+  const topRibbon = useMemo(() => {
+    if (todayContributors.length > 1) return { icon: 'people-outline' as const, color: DS.success, label: 'Teamwork', text: `${todayContributors.length} family members logged today`, onPress: handleNavigateTimeline };
+    if (streak > 0) return { icon: 'flame' as const, color: DS.warning, label: 'Streak', text: `${streak}-day tracking streak going strong`, onPress: handleNavigateAchievements };
+    return { icon: 'sparkles' as const, color: DS.primary, label: 'Tip', text: 'Log with your family to build better patterns', onPress: handleNavigateTimeline };
+  }, [todayContributors.length, streak, handleNavigateTimeline, handleNavigateAchievements]);
 
   const tabs = [
-    { key: 'overview' as TabKey, label: 'Overview', icon: 'grid-outline' as IconName },
-    { key: 'growth' as TabKey, label: 'Growth', icon: 'trending-up-outline' as IconName },
+    { key: 'overview' as const, label: 'Overview', icon: 'grid-outline' as const },
+    { key: 'growth' as const, label: 'Growth', icon: 'trending-up-outline' as const },
   ];
 
-  /* ── Render ── */
   return (
-    <View style={{ flex: 1, backgroundColor: isDark ? DS.darkBg : DS.gray50 }}>
+    <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
-      <LinearGradient colors={t.screenGradient} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={isDark ? ['#0c0a09', '#12121e', '#0c0a09'] : ['#f8faff', '#eef0f5', '#e4e8f0']} style={StyleSheet.absoluteFill} />
 
-      <ScreenHeader
-        isDark={isDark}
-        title="Family Overview"
-        subtitle={currentBaby?.name ? `${currentBaby.name}'s family · ${members.length} member${members.length === 1 ? '' : 's'}` : 'No baby yet'}
-        onBack={() => (navigation.canGoBack() ? navigation.goBack() : go('Home'))}
-        right={
-          <PressableScale onPress={() => go('FamilySharing')} activeScale={0.94}>
-            <View style={s.manageBtn}>
-              <Ionicons name="settings-outline" size={15} color={DS.white} />
-              <Text style={s.manageText}>Manage</Text>
-            </View>
-          </PressableScale>
-        }
-      />
+      {/* Sticky header (on scroll) */}
+      <Animated.View style={[styles.stickyHeader, { paddingTop: HEADER_TOP_PADDING, backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)', borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }, headerAnim]}>
+        <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <View style={styles.headerInner}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+            <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>FAMILY</GradientText>
+            <Text style={[styles.headerSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              {members.length} member{members.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={handleNavigateInvite} style={[styles.headerIconBtn, { backgroundColor: DS.primary }]}>
+            <Ionicons name="person-add" size={18} color={DS.white} />
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
-      <ScrollView
-        contentContainerStyle={{ paddingTop: HEADER_TOTAL_HEIGHT + 12, paddingBottom: insets.bottom + 120 }}
+      <AnimatedScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingTop: HEADER_TOP_PADDING + 8, paddingBottom: insets.bottom + 120 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={DS.primary} colors={[DS.primary, DS.accent]} progressViewOffset={HEADER_TOTAL_HEIGHT} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={DS.primary} colors={[DS.primary, DS.accent]} />}
       >
-        <BabyCard
+        {/* Pulse Header — NO hero card */}
+        <PulseHeader
           isDark={isDark}
-          baby={currentBaby}
+          currentBaby={currentBaby}
+          babies={babies}
+          members={members}
+          todayCount={todayCount}
           streak={streak}
-          canSwitch={babies.length > 1}
-          onSwitch={() => setShowBabySelector(true)}
-          onEdit={() => currentBaby && editBaby(currentBaby.id)}
-          onGrowth={() => go('GrowthDashboard')}
-          onAdd={() => go('CreateBabyProfile')}
+          onBack={() => navigation.goBack()}
+          onBabyPress={handleBabyPress}
+          onAddPress={() => navigation.navigate('AddEntry' as never)}
+          onFamilyPress={handleNavigateFamily}
         />
 
-        {ribbon ? (
-          <Animated.View entering={FadeInUp.delay(60).springify()} style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
-            <PressableScale onPress={() => go(ribbon.screen)} activeScale={0.98}>
-              <View style={[s.ribbon, { backgroundColor: t.card, borderColor: t.border }]}>
-                <View style={[s.ribbonIcon, { backgroundColor: `${ribbon.color}1c` }]}>
-                  <Ionicons name={ribbon.icon} size={16} color={ribbon.color} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.ribbonLabel, { color: ribbon.color }]}>{ribbon.label}</Text>
-                  <Text style={[s.ribbonText, { color: t.body }]} numberOfLines={1}>{ribbon.text}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={t.faint} />
-              </View>
-            </PressableScale>
-          </Animated.View>
-        ) : null}
-
-        <View style={{ marginTop: DS.space.md }}>
-          <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} isDark={isDark} />
+        {/* Ribbon */}
+        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+          <AuraRibbon isDark={isDark} {...topRibbon} />
         </View>
 
-        {activeTab === 'overview' ? (
-          <View style={{ paddingTop: DS.space.lg, gap: DS.space.lg }}>
-            <Snapshot
-              isDark={isDark}
-              items={[
-                { label: 'Members', value: members.length, color: DS.primary },
-                { label: 'Babies', value: babies.length, color: DS.accent },
-                { label: 'Logs today', value: todayEntries.length, color: DS.success },
-                { label: 'Milestones', value: milestones.length, color: DS.warning },
-              ]}
-            />
+        {/* Tab bar */}
+        <View style={{ marginTop: DS.space.md }}>
+          <TabBar tabs={tabs} activeTab={activeTab} onChange={(t) => { triggerHaptic('light'); setActiveTab(t); }} isDark={isDark} />
+        </View>
 
-            {members.length > 0 ? <Engagement isDark={isDark} members={members} /> : null}
+        {/* ═══ OVERVIEW TAB ═══ */}
+        {activeTab === 'overview' && (
+          <View style={{ paddingTop: DS.space.md }}>
+            <FamilyStatsStrip members={members.length} babies={babies.length} activities={activities.length} milestones={milestones.length} isDark={isDark} />
 
-            <TodayGlance isDark={isDark} stats={glanceStats} onPress={(key) => { triggerHaptic('light'); go('Timeline', { trackerId: key, filter: 'today' }); }} />
+            {/* Family Health — engagement score ring. Restored from
+                the old FamilySharing Members tab. */}
+            {members.length > 0 && (
+              <View style={{ marginTop: DS.space.md }}>
+                <FamilyHealthCard members={members} isDark={isDark} />
+              </View>
+            )}
 
-            <FamilyActivity
-              isDark={isDark}
-              contributors={contributors}
-              events={recentEvents}
-              onSeeAll={() => go('Timeline')}
-              onLog={() => go('AddEntry')}
-            />
+            <View style={{ marginTop: DS.space.lg }}>
+              <TodayAtGlance stats={todayStats} isDark={isDark} onPress={handleTodayStatPress} />
+            </View>
 
-            <SuggestionCard
-              isDark={isDark}
-              suggestion={suggestion}
-              onAction={() => { triggerHaptic('medium'); go(suggestion.target); }}
-            />
+            <View style={{ marginTop: DS.space.lg }}>
+              <SuggestionCard isDark={isDark} suggestion={suggestionOfTheDay} onAction={handleSuggestionAction} />
+            </View>
 
-            <Animated.View entering={FadeInUp.delay(240).springify()}>
+            <View style={{ marginTop: DS.space.lg }}>
+              <BabyCard isDark={isDark} baby={currentBaby} streak={streak} onEdit={() => currentBaby && handleBabyEdit(currentBaby.id)} onGrowth={handleNavigateGrowthChart} />
+            </View>
+
+            <View style={{ marginTop: DS.space.lg }}>
+              <ActiveToday contributors={todayContributors} isDark={isDark} onSeeAll={handleNavigateTimeline} />
+            </View>
+
+            {/* Family Activity Feed — restored from the old
+                FamilySharing Activity tab. Shows the last 5 events
+                across the whole family. Rendered exactly ONCE. */}
+            {recentFamilyActivity.length > 0 && (
+              <View style={{ marginTop: DS.space.lg }}>
+                <FamilyActivityFeed
+                  events={recentFamilyActivity}
+                  isDark={isDark}
+                  onSeeAll={handleNavigateTimeline}
+                />
+              </View>
+            )}
+
+            {/* Family preview — this screen is the OVERVIEW.
+                A full FamilyTree here duplicated FamilySharing and made
+                the two screens feel identical. FamilyStack shows the
+                current baby + every member as a compact scroll, with a
+                "Manage →" tap that opens FamilySharing.
+
+                Tap a member → EditGuardian (their profile).
+                Tap "Manage" → FamilySharing (management hub).
+                Tap the baby → EditProfile (this baby's profile). */}
+            <Animated.View entering={FadeInUp.delay(220).springify()}>
               <SectionHeader
-                isDark={isDark}
                 title="Your Family"
-                subtitle={`${members.length} member${members.length === 1 ? '' : 's'} · tap anyone to open their profile`}
+                subtitle={`${members.length} member${members.length !== 1 ? 's' : ''}`}
                 icon="people-outline"
                 color={DS.primary}
+                action={handleNavigateFamily}
+                actionLabel="Manage"
               />
               <FamilyStack
-                members={familyStackMembers}
+                members={
+                  currentBaby
+                    ? [
+                        {
+                          id: `baby_${currentBaby.id}`,
+                          userId: `baby_${currentBaby.id}`,
+                          babyId: currentBaby.id,
+                          role: 'baby' as any,
+                          fullName: currentBaby.name || 'Baby',
+                          email: '',
+                          avatar: currentBaby.avatar,
+                          relationship: 'Baby',
+                          permissions: {
+                            read: true, write: false, delete: false,
+                            manageFamily: false, manageSecurity: false, exportData: false,
+                          },
+                          joinedAt: currentBaby.createdAt || new Date().toISOString(),
+                          isActive: true,
+                          __isBaby: true,
+                          __baby: currentBaby,
+                        } as any,
+                        ...members,
+                      ]
+                    : members
+                }
                 isDark={isDark}
-                onPress={() => go('FamilySharing')}
+                onPress={handleNavigateFamily}
                 onMemberPress={(m: any) => {
+                  // Baby chip → baby profile editor.
                   if (m?.__isBaby || String(m?.id || '').startsWith('baby_')) {
                     const baby = m?.__baby || currentBaby;
-                    if (baby?.id) editBaby(baby.id);
+                    if (baby?.id) handleBabyEdit(baby.id);
                     return;
                   }
-                  openMember(m);
+                  // Every real member → their EditGuardian profile.
+                  handleMemberTap(m);
                 }}
               />
             </Animated.View>
 
-            <Explore isDark={isDark} onNavigate={(screen) => go(screen)} />
-          </View>
-        ) : (
-          <View style={{ paddingTop: DS.space.lg }}>
-            <GrowthTab
-              isDark={isDark}
-              growthData={growthData}
-              milestoneCount={milestones.length}
-              onFullChart={() => go('GrowthDashboard')}
-              onMilestones={() => go('Achievements')}
-            />
+            <View style={{ marginTop: DS.space.lg }}>
+              <QuickActions isDark={isDark} onNavigate={(screen) => navigation.navigate(screen as never)} />
+            </View>
           </View>
         )}
-      </ScrollView>
 
-      {/* Floating quick-log button */}
-      <PressableScale
-        onPress={() => go('AddEntry')}
-        activeScale={0.92}
-        haptic="medium"
-        style={[s.fab, { bottom: insets.bottom + 24 }]}
-      >
-        <LinearGradient colors={[DS.primary, DS.accent]} style={s.fabInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-          <Ionicons name="add" size={22} color={DS.white} />
-          <Text style={s.fabText}>Log entry</Text>
-        </LinearGradient>
-      </PressableScale>
+        {/* ═══ GROWTH TAB ═══ */}
+        {activeTab === 'growth' && (
+          <View style={{ paddingTop: DS.space.md }}>
+            <GrowthTab isDark={isDark} growthData={growthData} onFullChart={handleNavigateGrowthChart} onMilestones={handleNavigateAchievements} />
+          </View>
+        )}
 
-      {/* Baby switcher */}
-      <SheetModal
-        visible={showBabySelector}
-        onClose={() => setShowBabySelector(false)}
-        title="Switch baby"
-        subtitle="Everything on this screen follows the selected baby"
-        isDark={isDark}
-      >
+        <View style={{ height: 40 }} />
+      </AnimatedScrollView>
+
+      {/* Baby Selector Modal */}
+      <ActionModal visible={showBabySelector} onClose={() => setShowBabySelector(false)} title="Select Baby" isDark={isDark}>
         <View style={{ gap: 8 }}>
-          {babies.map((baby: any) => {
-            const active = baby.id === currentBabyId || baby.id === currentBaby?.id;
-            const birth = baby.birthDate || baby.dateOfBirth;
+          {babies.map((baby) => {
+            const isActive = currentBaby?.id === baby.id;
             return (
-              <PressableScale
-                key={baby.id}
-                onPress={() => {
-                  if (!active) { triggerHaptic('light'); switchBaby(baby.id); }
-                  setShowBabySelector(false);
-                }}
-                activeScale={0.98}
-              >
-                <View style={[s.babyOption, {
-                  backgroundColor: active ? `${DS.primary}12` : t.chip,
-                  borderColor: active ? DS.primary : t.border,
-                  borderWidth: active ? 2 : 1,
+              <PressableScale key={baby.id} onPress={() => { handleSwitchBaby(baby.id); setShowBabySelector(false); }} activeScale={0.98}>
+                <View style={[styles.babyOption, {
+                  backgroundColor: isActive ? `${DS.primary}10` : isDark ? 'rgba(255,255,255,0.03)' : DS.gray50,
+                  borderColor: isActive ? DS.primary : isDark ? DS.darkBorder : DS.gray200,
+                  borderWidth: isActive ? 2 : 1,
                 }]}>
-                  <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={40} />
+                  <View style={[styles.babyOptionIcon, { backgroundColor: isActive ? DS.primary : isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                    <SafeAvatar avatar={baby.avatar} gender={baby.gender} size={36} />
+                  </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[s.babyOptionName, { color: t.title }]}>{baby.name}</Text>
-                    <Text style={[s.babyOptionMeta, { color: t.muted }]}>
-                      {birth ? new Date(birth).toLocaleDateString() : 'Baby'}{baby.gender ? ` • ${baby.gender}` : ''}
+                    <Text style={[styles.babyOptionName, { color: isDark ? DS.white : DS.gray900 }]}>{baby.name}</Text>
+                    <Text style={[styles.babyOptionMeta, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                      {baby.dateOfBirth ? new Date(baby.dateOfBirth).toLocaleDateString() : 'Baby'} • {baby.gender || 'Baby'}
                     </Text>
                   </View>
-                  {active ? <Ionicons name="checkmark-circle" size={22} color={DS.primary} /> : null}
+                  {isActive && <Ionicons name="checkmark-circle" size={22} color={DS.primary} />}
                 </View>
               </PressableScale>
             );
           })}
-          <PressableScale onPress={() => { setShowBabySelector(false); go('CreateBabyProfile'); }} activeScale={0.98}>
-            <View style={[s.babyOption, { borderWidth: 1.5, borderStyle: 'dashed', borderColor: t.border }]}>
-              <View style={[s.addBabyIcon, { backgroundColor: `${DS.primary}18` }]}>
+          <PressableScale onPress={() => { setShowBabySelector(false); handleNavigateCreateBaby(); }} activeScale={0.98}>
+            <View style={[styles.babyOptionAdd, { borderColor: isDark ? DS.darkBorder : DS.gray300 }]}>
+              <View style={[styles.babyOptionIcon, { backgroundColor: `${DS.primary}15` }]}>
                 <Ionicons name="add" size={22} color={DS.primary} />
               </View>
-              <Text style={[s.babyOptionName, { color: DS.primary }]}>Add new baby</Text>
+              <Text style={[styles.babyOptionName, { color: DS.primary }]}>Add New Baby</Text>
             </View>
           </PressableScale>
         </View>
-      </SheetModal>
+      </ActionModal>
     </View>
   );
 }
 
-/* ═══════════════════════════ Styles ═══════════════════════════ */
-const s = StyleSheet.create({
-  manageBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: DS.primary, paddingHorizontal: 12, height: 36, borderRadius: 18 },
-  manageText: { color: DS.white, fontSize: 12, fontWeight: '800' },
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+const styles = StyleSheet.create({
+  container: { flex: 1 },
 
-  babyName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, flexShrink: 1 },
-  babyMeta: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  tag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
-  tagText: { fontSize: 10, fontWeight: '700' },
+  /* Sticky header */
+  stickyHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, paddingBottom: DS.space.md, borderBottomWidth: StyleSheet.hairlineWidth },
+  headerInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: DS.space.lg, height: 48 },
+  headerIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
+  headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
 
-  ribbon: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
+  /* Pulse header */
+  pulseWrap: { marginHorizontal: DS.space.lg, marginTop: DS.space.md, borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden', borderWidth: 1, ...DS.shadow.md, position: 'relative' },
+  pulseGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
+  pulseGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
+  pulseBackBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
+  pulseAvatarWrap: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseAvatarGlow: { position: 'absolute', width: 66, height: 66, borderRadius: 33, backgroundColor: `${DS.primary}35` },
+  pulseAvatarRing: { position: 'absolute', width: 62, height: 62, borderRadius: 31, overflow: 'hidden' },
+  pulseAvatarInner: { width: 54, height: 54, borderRadius: 27, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  pulseTitle: { fontSize: 20, fontWeight: '800', letterSpacing: 0.5 },
+  pulseLivePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  pulseLiveText: { fontSize: 10, fontWeight: '700' },
+  pulseSubRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  pulseBabyName: { fontSize: 13, fontWeight: '600' },
+  pulseIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  pulseAddBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  pulseStats: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: DS.space.md, paddingVertical: DS.space.sm, borderRadius: DS.radius.lg, marginTop: DS.space.md, gap: DS.space.sm },
+  avatarStack: { flexDirection: 'row', alignItems: 'center' },
+  avatarStackItem: { borderRadius: 14, borderWidth: 2, overflow: 'hidden', position: 'relative' },
+  avatarExtra: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  avatarExtraText: { fontSize: 10, fontWeight: '800' },
+  pulseStatDiv: { width: 1, height: 18 },
+  pulseStat: { alignItems: 'center' },
+  pulseStatVal: { fontSize: 14, fontWeight: '800' },
+  pulseStatLbl: { fontSize: 9, fontWeight: '600', marginTop: 1 },
+
+  /* Ribbon */
+  ribbon: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, paddingVertical: DS.space.md, paddingHorizontal: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, ...DS.shadow.sm },
   ribbonIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   ribbonLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
   ribbonText: { fontSize: 12, fontWeight: '600', marginTop: 1 },
 
-  vDiv: { width: 1, height: 28 },
-  snapVal: { fontSize: 21, fontWeight: '800', letterSpacing: -0.3 },
-  snapLbl: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+  /* Tab bar */
+  tabBar: { flexDirection: 'row', marginHorizontal: DS.space.lg, padding: 4, borderRadius: DS.radius.full, gap: 2 },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 9, borderRadius: DS.radius.full },
+  tabLabel: { fontSize: 11, fontWeight: '600' },
 
-  scoreVal: { fontSize: 38, fontWeight: '800', letterSpacing: -1 },
-  scoreMax: { fontSize: 13, fontWeight: '600' },
-  scorePill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, marginBottom: 6 },
-  scorePillText: { fontSize: 11, fontWeight: '800' },
-  barBg: { height: 8, borderRadius: 4, overflow: 'hidden', marginTop: DS.space.sm },
-  barFill: { height: '100%', borderRadius: 4 },
-  miniVal: { fontSize: 17, fontWeight: '800' },
-  miniLbl: { fontSize: 10, fontWeight: '600', marginTop: 1 },
+  /* Section */
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: DS.space.lg, marginBottom: DS.space.md, marginTop: DS.space.sm },
+  sectionIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
+  sectionAction: { fontSize: 12, fontWeight: '700' },
 
+  /* Stats strip */
+  statsStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', marginHorizontal: DS.space.lg, paddingVertical: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  statsItem: { alignItems: 'center', flex: 1 },
+  statsVal: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  statsLbl: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+  statsDiv: { width: 1, height: 26 },
+
+  /* Family health card */
+  healthCard: { marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg, padding: DS.space.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  healthRing: { width: 72, height: 72, borderRadius: 36, borderWidth: 5, alignItems: 'center', justifyContent: 'center' },
+  healthRingFill: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 5, borderTopColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: 'transparent' },
+  healthRingInner: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center' },
+  healthRingValue: { fontSize: 20, fontWeight: '800' },
+  healthRingMax: { fontSize: 9, fontWeight: '600' },
+  healthTitle: { fontSize: 15, fontWeight: '800' },
+  healthLabel: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  healthStatsRow: { flexDirection: 'row', gap: 16, marginTop: 8 },
+  healthStat: { alignItems: 'center' },
+  healthStatVal: { fontSize: 14, fontWeight: '800' },
+  healthStatLbl: { fontSize: 9, fontWeight: '600' },
+
+  /* Family activity feed */
+  activityCard: { marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  activityRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md },
+  activityTitle: { fontSize: 13, fontWeight: '700' },
+  activityMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+
+  /* Glance */
   glanceCard: { width: 96, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, alignItems: 'center', gap: 4, overflow: 'hidden' },
   glanceIconBg: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  glanceIcon: { fontSize: 20 },
   glanceCount: { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
   glanceLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
 
-  contribRow: { paddingHorizontal: DS.space.md, paddingVertical: DS.space.md, gap: 8 },
-  contribChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 6, paddingRight: 8, paddingVertical: 5, borderRadius: DS.radius.full },
-  contribName: { fontSize: 12, fontWeight: '700', maxWidth: 80 },
-  contribCount: { minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  contribCountText: { fontSize: 10, fontWeight: '800' },
-  feedRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md },
-  feedIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  feedTitle: { fontSize: 13, fontWeight: '700' },
-  feedMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  /* Suggestion */
+  suggestionCard: { marginHorizontal: DS.space.lg, padding: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  suggestionRow: { flexDirection: 'row', gap: DS.space.md, marginBottom: DS.space.md },
+  suggestionIconBg: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  suggestionIcon: { fontSize: 26 },
+  suggestionKicker: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, marginBottom: 3 },
+  suggestionTitle: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2, marginBottom: 2 },
+  suggestionDesc: { fontSize: 12, fontWeight: '500', lineHeight: 17 },
+  suggestionActionBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  suggestionActionText: { fontSize: 12, fontWeight: '700' },
 
-  sugIcon: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  sugKicker: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, marginBottom: 3 },
-  sugTitle: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2, marginBottom: 2 },
-  sugDesc: { fontSize: 12, fontWeight: '500', lineHeight: 17 },
-  sugBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, marginTop: DS.space.md },
-  sugBtnText: { fontSize: 12, fontWeight: '700' },
+  /* Baby card */
+  babyCard: { marginHorizontal: DS.space.lg, padding: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  babyRow: { flexDirection: 'row', alignItems: 'center' },
+  babyName: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  babyMeta: { fontSize: 12, fontWeight: '500', marginTop: 1 },
+  babyTag: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  babyTagText: { fontSize: 10, fontWeight: '700' },
+  babyEditBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
 
-  exploreCard: { padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, alignItems: 'center', gap: 6 },
-  exploreIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  exploreLabel: { fontSize: 11, fontWeight: '700' },
+  /* Active today */
+  contribCard: { marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  contribRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md },
+  contribName: { flex: 1, fontSize: 13, fontWeight: '700' },
+  contribBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  contribBadgeText: { fontSize: 11, fontWeight: '700' },
 
-  growthIcon: { width: 48, height: 48, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  /* Family stack */
+  familyStackCard: { marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  familyStackRow: { flexDirection: 'row', alignItems: 'center', padding: DS.space.lg },
+  stackAvatar: { borderRadius: 22, overflow: 'hidden', borderWidth: 2 },
+  stackAvatarMore: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  stackAvatarMoreText: { fontSize: 13, fontWeight: '800' },
+
+  /* Quick actions */
+  quickAction: { padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, alignItems: 'center', gap: 6, overflow: 'hidden' },
+  quickActionIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  quickActionLabel: { fontSize: 11, fontWeight: '700' },
+
+  /* Growth */
+  growthCard: { marginHorizontal: DS.space.lg, padding: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  growthRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  growthItem: { alignItems: 'center', gap: 8 },
+  growthIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   growthVal: { fontSize: 17, fontWeight: '800', textAlign: 'center' },
   growthLbl: { fontSize: 11, fontWeight: '600' },
-  ctaPrimary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 15, borderRadius: DS.radius.md, gap: 10 },
-  ctaPrimaryText: { color: DS.white, fontSize: 14, fontWeight: '700' },
-  ctaSecondary: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 16, borderRadius: DS.radius.md, borderWidth: 1 },
-  ctaSecondaryText: { flex: 1, fontSize: 14, fontWeight: '700' },
+  growthCta: { marginHorizontal: DS.space.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 15, borderRadius: DS.radius.md, gap: 10 },
+  growthCtaText: { color: DS.white, fontSize: 14, fontWeight: '700' },
+  growthSecondary: { marginHorizontal: DS.space.lg, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 16, borderRadius: DS.radius.md, borderWidth: 1 },
+  growthSecondaryText: { flex: 1, fontSize: 14, fontWeight: '700' },
 
-  fab: { position: 'absolute', right: DS.space.lg, borderRadius: 28, ...DS.shadow.lg },
-  fabInner: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 14, paddingRight: 18, height: 52, borderRadius: 26 },
-  fabText: { color: DS.white, fontSize: 14, fontWeight: '800' },
+  /* Modal */
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalCard: { width: '100%', maxWidth: 400, maxHeight: '85%', borderRadius: DS.radius['2xl'], overflow: 'hidden', ...DS.shadow.lg },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: DS.space.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  modalTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, flex: 1 },
+  modalClose: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 
+  /* Baby option */
   babyOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: DS.radius.md, gap: DS.space.md },
+  babyOptionAdd: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: DS.radius.md, borderWidth: 1.5, borderStyle: 'dashed', gap: DS.space.md },
+  babyOptionIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   babyOptionName: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
   babyOptionMeta: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-  addBabyIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
 });

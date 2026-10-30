@@ -270,6 +270,10 @@ export type RootStackParamList = {
     memberId?: string;
     mode?: 'guardian' | 'parent2' | 'viewer';
     fromChat?: boolean;
+    /** Renders a "Family → Name" breadcrumb when arriving from
+     *  FamilyDashboard / FamilySharing. Optional — omitted for
+     *  chat-initiated taps. */
+    fromFamily?: boolean;
   } | undefined;
 
   
