@@ -1365,15 +1365,14 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
 
   const handleBabyPress = useCallback(() => {
     if (hapticFeedback) triggerHaptic('light').catch(() => {});
-    if (safeBabies.length > 1) {
-      // Prefer the switcher — user gets to pick before editing.
-      navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Settings' });
-      return;
-    }
-    // Single baby (or fallback to the first element) — edit it.
-    const onlyBaby = safeBabies.length === 1 ? safeBabies[0] : currentBaby;
-    if (onlyBaby?.id) {
-      navigation.navigate('EditProfile', { mode: 'baby', babyId: onlyBaby.id });
+    // Tap on the baby chip = "show me THIS baby's profile", not
+    // "switch babies". The SwitchBaby affordance lives on the
+    // dedicated "Switch Active Baby" row below and in the sticky
+    // header avatar. Baby chips always open the editor for the
+    // current baby so the interaction is predictable.
+    const targetBaby = currentBaby || (safeBabies.length > 0 ? safeBabies[0] : null);
+    if (targetBaby?.id) {
+      navigation.navigate('EditProfile', { mode: 'baby', babyId: targetBaby.id });
       return;
     }
     navigation.navigate('CreateBabyProfile');
@@ -1404,11 +1403,19 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
         ? 'parent2'
         : 'guardian');
 
-    const editMode: 'parent2' | 'guardian' =
+    // Three-way edit mode so viewers/guardians land in the right
+    // guard level in EditGuardianScreen (which distinguishes
+    // 'guardian' and 'viewer' internally).
+    const editMode: 'parent2' | 'guardian' | 'viewer' =
       myRoleForBaby === 'parent1' || myRoleForBaby === 'parent2'
         ? 'parent2'
+        : myRoleForBaby === 'viewer'
+        ? 'viewer'
         : 'guardian';
 
+    // Always open YOUR OWN profile — pass the profile UUID so the
+    // guard logic inside EditGuardianScreen recognises it's the
+    // current user and enables self-editing.
     navigation.navigate('EditGuardian', {
       guardianId: meId,
       mode: editMode,
@@ -1427,8 +1434,13 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
   const handleParent2Press = useCallback(() => {
     if (hapticFeedback) triggerHaptic('light').catch(() => {});
     if (parent2Profile) {
+      // Prefer `userId` (profile UUID) over `id` (family_members row id)
+      // because EditGuardianScreen resolves members by `userId` first.
+      // Falling back to `id` keeps legacy / orphaned rows reachable.
+      const targetId =
+        (parent2Profile as any).userId || parent2Profile.id;
       navigation.navigate('EditGuardian', {
-        guardianId: parent2Profile.id,
+        guardianId: targetId,
         mode: 'parent2',
         fromChat: false,
       });
@@ -1440,8 +1452,18 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
   const handleGuardianPress = useCallback(
     (guardian: FamilyMember) => {
       if (hapticFeedback) triggerHaptic('light').catch(() => {});
+      // `EditGuardianScreen` looks members up by `userId` first, then
+      // `id`. Pass `userId` when available so the profile screen
+      // always resolves to the correct person, even if their
+      // `family_members.id` has been re-created by a re-invite.
+      const targetId = (guardian as any).userId || guardian.id;
+      if (!targetId) {
+        // No identifier at all — fall back to the family view.
+        navigation.navigate('FamilySharing');
+        return;
+      }
       navigation.navigate('EditGuardian', {
-        guardianId: guardian.id,
+        guardianId: targetId,
         mode: 'guardian',
         fromChat: false,
       });

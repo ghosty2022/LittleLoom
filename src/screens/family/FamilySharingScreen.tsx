@@ -53,6 +53,7 @@ import { useFamily } from '../../context/FamilyContext';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useTracker } from '../../hooks';
 import { useSafeUser } from '../../hooks/useSafeContexts';
+import FamilyStack from '../../components/FamilyStack';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
@@ -61,7 +62,17 @@ const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 const FAMILY_IMAGES_DIR = FileSystem.documentDirectory + 'family_images/';
 
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
-type TabKey = 'tree' | 'members' | 'activity' | 'access' | 'settings';
+// ── FamilySharing owns THREE jobs only: ────────────────────────
+//   tree     → visual family hierarchy + manage members
+//   members  → list + invites + add
+//   access   → roles, permissions, transfer, leave
+//
+// Activity + Settings tabs were REMOVED:
+//   • Per-person activity lives in EditGuardian → Activity.
+//   • Family-wide settings (backup, notifications) live in MoreScreen.
+//   Keeping them here created 4 different "family screens" and
+//   confused every navigation path. Do not re-add them.
+type TabKey = 'tree' | 'members' | 'access';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    DESIGN SYSTEM — Aura (aligned with Home / Community / More / Timeline)
@@ -1035,13 +1046,12 @@ const ActionModal = ({ visible, onClose, title, children, isDark }: {
 export default function FamilySharingScreen({ navigation }: FamilySharingScreenProps) {
   const sweetAlert = useSweetAlert();
   const {
-    members, guardians, parent1, parent2, loadFamily,
-    removeMember, updateGuardianProfile, updateParent2Profile,
+    members, parent1, parent2, loadFamily,
     getActiveInviteCodes, revokeInviteCode, getPartialSignupInfo,
     transferOwnership,
   } = useFamily();
 
-  const { profile, updateProfile } = useSafeUser();
+  const { profile } = useSafeUser();
   const { currentBaby, babies } = useBaby();
   const { userProfile, resetPasswordForUser } = useAuth();
   const insets = useSafeAreaInsets();
@@ -1051,14 +1061,12 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const scrollY = useSharedValue(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<FamilyMember | null>(null);
-  const [showMemberModal, setShowMemberModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  // NOTE: selectedMember / showMemberModal / showEditModal / editForm
+  // were removed. Every member tap now routes to EditGuardianScreen —
+  // the ONE per-person profile. Keeping an inline edit modal here was
+  // the #1 cause of "which screen am I in?" confusion.
   const [activeTab, setActiveTab] = useState<TabKey>('members');
   const [activeCodes, setActiveCodes] = useState<any[]>([]);
-  const [editForm, setEditForm] = useState({
-    fullName: '', email: '', phoneNumber: '', relationship: '', avatar: '', notificationsEnabled: true,
-  });
 
   const { entries: trackerEntries } = useTracker();
 
@@ -1068,17 +1076,9 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   }));
 
   /* ─── Data derivations ──────────────────────────────────────────── */
-  const dailyGoals = useMemo((): DailyGoal[] => {
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    const today = trackerEntries.filter((e: any) => e.timestamp >= start.getTime() && !e.isDeleted);
-    const count = (id: string) => today.filter((e: any) => e.trackerId === id).length;
-    return [
-      { id: 'feed', title: 'Feeding', icon: '🍼', target: 6, current: count('feed'), unit: 'times today', color: '#f59e0b' },
-      { id: 'sleep', title: 'Sleep', icon: '😴', target: 3, current: count('sleep'), unit: 'naps today', color: '#8b5cf6' },
-      { id: 'growth', title: 'Growth', icon: '📏', target: 1, current: count('growth'), unit: 'measurement', color: '#10b981' },
-      { id: 'photo', title: 'Photos', icon: '📸', target: 1, current: today.filter((e: any) => Array.isArray(e.photoUris) && e.photoUris.length > 0).length, unit: 'photo today', color: '#ec4899' },
-    ];
-  }, [trackerEntries]);
+  // dailyGoals was removed — the DailyGoals card belonged on the
+  // HomeScreen dashboard, not the family management screen. It was
+  // duplicating HomeScreen's own "Today's Summary" widget.
 
   const timelineEvents: TimelineEvent[] = useMemo(() => {
     if (!trackerEntries || trackerEntries.length === 0) return [];
@@ -1165,83 +1165,32 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   }, [loadFamily, isPrimaryParent, currentBaby, loadActiveCodes]);
 
   /* ─── Handlers ──────────────────────────────────────────────────── */
-  const handleUpdateMember = async () => {
-    if (!selectedMember) return;
-    if (!editForm.fullName.trim()) { sweetAlert.alert('Error', 'Name is required', 'warning'); return; }
-    setIsLoading(true);
-    let success = false;
-    if (selectedMember.role === UserRole.PARENT_2) {
-      success = await updateParent2Profile({ fullName: editForm.fullName, email: editForm.email, phoneNumber: editForm.phoneNumber, avatar: editForm.avatar });
-    } else if (selectedMember.role === UserRole.PARENT_1) {
-      try { await updateProfile({ fullName: editForm.fullName, email: editForm.email, phoneNumber: editForm.phoneNumber, avatar: editForm.avatar }); success = true; }
-      catch { success = false; }
-    } else {
-      success = await updateGuardianProfile(selectedMember.id, {
-        fullName: editForm.fullName, email: editForm.email, phoneNumber: editForm.phoneNumber,
-        relationship: editForm.relationship, avatar: editForm.avatar, notificationsEnabled: editForm.notificationsEnabled,
-      });
-    }
-    if (success) {
-      triggerHaptic('success');
-      setShowEditModal(false);
-      sweetAlert.alert('Success', 'Member updated', 'success');
-      // loadFamily() now returns a *fresh* array (see FamilyContext
-      // refreshFamily change), so `members` and everything that
-      // derives from it re-renders.
-      await loadFamily();
-    } else {
-      triggerHaptic('error');
-      sweetAlert.alert('Error', 'Failed to update member', 'warning');
-    }
-    setIsLoading(false);
-  };
-
-  const handleRemoveMember = () => {
-    if (!selectedMember) return;
-    // Self-removal guard — must match on userId (profile UUID), not
-    // family_members.id, otherwise this guard silently passes and
-    // the real check has to fire inside FamilyContext.removeMember.
-    const memberUserId = (selectedMember as any).userId || selectedMember.id;
-    if (memberUserId === currentUserId || selectedMember.id === currentUserId) {
-      sweetAlert.alert('Cannot Remove', 'You cannot remove yourself', 'warning');
-      return;
-    }
-    // Original Primary Parent protection. Only the original owner may
-    // be removed by someone they themselves promoted — this is
-    // enforced in `FamilyContext.removeMember` where the `addedBy`
-    // graph is available. Do NOT block at the UI layer.
-    sweetAlert.confirm('Remove Family Member', `Remove ${selectedMember.fullName}?`, () => {
-      triggerHaptic('success');
-      removeMember(selectedMember.id);
-      setShowMemberModal(false);
-    }, () => {}, 'Remove', 'Cancel', true);
-  };
-
-  const handleImagePick = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { sweetAlert.alert('Permission Required', 'Allow photo access', 'warning'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      try {
-        const dirInfo = await FileSystem.getInfoAsync(FAMILY_IMAGES_DIR);
-        if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(FAMILY_IMAGES_DIR, { intermediates: true });
-        const permanentUri = `${FAMILY_IMAGES_DIR}${selectedMember?.id || 'member'}_${Date.now()}.jpg`;
-        await FileSystem.copyAsync({ from: result.assets[0].uri, to: permanentUri });
-        setEditForm(prev => ({ ...prev, avatar: permanentUri }));
-      } catch { sweetAlert.alert('Error', 'Failed to save photo', 'warning'); }
-    }
-  };
-
-  const openMemberDetails = (member: FamilyMember) => {
-    setSelectedMember(member);
-    setEditForm({
-      fullName: member.fullName || '', email: member.email || '', phoneNumber: member.phoneNumber || '',
-      relationship: member.relationship || '', avatar: member.avatar || '',
-      notificationsEnabled: member.notificationsEnabled ?? true,
-    });
-    setShowMemberModal(true);
-    triggerHaptic('light');
-  };
+  // One entry point for every person tap → EditGuardianScreen.
+  // Edit / remove / reset-password / role-change all live there.
+  const openMemberProfile = useCallback(
+    (member: FamilyMember) => {
+      const targetId = (member as any).userId || member.id;
+      if (!targetId) {
+        // Orphaned row (no profile id and no family_members id) —
+        // fall back to a toast instead of navigating to a broken page.
+        sweetAlert.toast('Cannot Open', 'This member has no linked profile yet.', 'info');
+        return;
+      }
+      triggerHaptic('light');
+      navigation.navigate('EditGuardian' as never, {
+        guardianId: targetId,
+        mode:
+          member.role === UserRole.PARENT_2
+            ? 'parent2'
+            : member.role === UserRole.VIEWER
+            ? 'viewer'
+            : 'guardian',
+        fromChat: false,
+        fromFamily: true,
+      } as never);
+    },
+    [navigation, sweetAlert, triggerHaptic],
+  );
 
   const handleRevokeCode = useCallback(async (code: string) => {
     sweetAlert.confirm('Revoke Invite', 'Revoke this invite code?', async () => {
@@ -1358,7 +1307,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                   member.id === currentUserId ||
                   (member as any).userId === currentUserId
                 }
-                onPress={() => openMemberDetails(member)}
+                onPress={() => openMemberProfile(member)}
                 index={index}
                 isDark={isDark}
                 currentUserId={currentUserId}
@@ -1371,12 +1320,12 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   };
 
   /* ─── Tabs ──────────────────────────────────────────────────────── */
+  // Activity + Settings tabs removed on purpose — see the TabKey
+  // comment at the top of this file.
   const tabs = [
     { key: 'tree' as TabKey, label: 'Tree', icon: 'git-network-outline' as const },
     { key: 'members' as TabKey, label: 'Members', icon: 'people-outline' as const },
-    { key: 'activity' as TabKey, label: 'Activity', icon: 'pulse-outline' as const },
     { key: 'access' as TabKey, label: 'Access', icon: 'shield-checkmark-outline' as const },
-    { key: 'settings' as TabKey, label: 'Settings', icon: 'settings-outline' as const },
   ];
 
   const topRibbon = useMemo(() => {
@@ -1479,11 +1428,10 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
         {activeTab === 'members' && (
           <View style={{ paddingTop: DS.space.md }}>
-            <FamilyHealthCard members={members} isDark={isDark} />
-
-            <View style={{ marginTop: DS.space.md }}>
-              <DailyGoals goals={dailyGoals} isDark={isDark} onPress={() => {}} />
-            </View>
+            {/* Health score, daily goals, and yesterday-comparison
+                widgets were removed. They duplicated HomeScreen and
+                made this screen look like a dashboard. It's a
+                MANAGEMENT screen — clean, list-focused. */}
 
             {/* ── DIRECT ADD QUICK ACTION ──────────────────────────────
                 The fourth path, surfaced as a quick action. Lets a parent
@@ -1617,18 +1565,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               currentBaby={currentBaby}
               isDark={isDark}
               onManage={() => setActiveTab('members')}
-              onMemberPress={(m) => {
-                const targetId = (m as any).userId || m.id;
-                if (targetId) {
-                  navigation.navigate('EditGuardian', {
-                    guardianId: targetId,
-                    mode: 'guardian',
-                    fromChat: false,
-                  } as never);
-                } else {
-                  setActiveTab('members');
-                }
-              }}
+              onMemberPress={openMemberProfile}
               onAddCoParent={() => navigation.navigate('CoParentInviteScreen')}
               onAddGuardian={() => navigation.navigate('CoParentInviteScreen')}
             />
@@ -1646,234 +1583,101 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               isDark={isDark}
               canManage={isPrimaryParent}
               currentUserId={currentUserId}
-              onMemberPress={openMemberDetails}
+              onMemberPress={openMemberProfile}
             />
+
+            {/* Danger-zone: previously in the (now-removed) Settings tab.
+                Kept here so nothing is lost — it lives with the other
+                family-management tools, not with app preferences. */}
+            <View style={{ marginTop: DS.space.lg, gap: 10 }}>
+              <SectionHeader title="Danger Zone" icon="warning-outline" color={DS.danger} />
+              {isPrimaryParent && (
+                <PressableScale
+                  onPress={() => {
+                    const candidates = members.filter(
+                      (m) =>
+                        m.role !== UserRole.PARENT_1 &&
+                        ((m as any).userId || m.id) !== currentUserId &&
+                        !!m.lastActive,
+                    );
+                    if (candidates.length === 0) {
+                      sweetAlert.alert(
+                        'No Eligible Members',
+                        'Invite at least one other parent/guardian first.',
+                        'warning',
+                      );
+                      return;
+                    }
+                    const labels = candidates.map(
+                      (m) =>
+                        `${m.fullName} (${getMemberDisplayLabel({
+                          role: m.role,
+                          relationship: m.relationship,
+                        })})`,
+                    );
+                    sweetAlert.confirm(
+                      'Transfer Ownership',
+                      `Who should become Primary Parent?\n\n${labels.join('\n')}`,
+                      async () => {
+                        const chosen = candidates[0];
+                        const res = await transferOwnership(chosen.id);
+                        if (res.success) {
+                          sweetAlert.success('Ownership Transferred', res.message);
+                          await loadFamily();
+                        } else {
+                          sweetAlert.error('Transfer Failed', res.message);
+                        }
+                      },
+                      () => {},
+                      'Transfer',
+                      'Cancel',
+                      true,
+                    );
+                  }}
+                  activeScale={0.98}
+                >
+                  <View style={[styles.setRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                    <View style={[styles.setIcon, { backgroundColor: `${DS.warning}15` }]}>
+                      <Ionicons name="swap-horizontal-outline" size={20} color={DS.warning} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.setTitle, { color: isDark ? DS.white : DS.gray900 }]}>Transfer Ownership</Text>
+                      <Text style={[styles.setSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                        Hand Primary Parent to a partner before leaving
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+                  </View>
+                </PressableScale>
+              )}
+              <PressableScale onPress={handleLeaveFamily} activeScale={0.98}>
+                <View style={[styles.setRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: `${DS.danger}40` }]}>
+                  <View style={[styles.setIcon, { backgroundColor: `${DS.danger}15` }]}>
+                    <Ionicons name="exit-outline" size={20} color={DS.danger} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.setTitle, { color: DS.danger }]}>Leave Family</Text>
+                    <Text style={[styles.setSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                      Remove yourself from this family group
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={DS.gray400} />
+                </View>
+              </PressableScale>
+            </View>
           </View>
         )}
 
-        {activeTab === 'settings' && (
-          <View style={{ paddingHorizontal: DS.space.lg }}>
-            <SettingsTab
-              isDark={isDark}
-              isPrimaryParent={isPrimaryParent}
-              familyCount={familyCount}
-              hasCoParent={hasCoParent}
-              guardianCount={guardians?.length || 0}
-              unreadCount={unreadChat}
-              onOpenMembers={() => setActiveTab('members')}
-              onOpenAccess={() => setActiveTab('access')}
-              onOpenFamilyChat={() => navigation.navigate('FamilyChatList')}
-              onOpenInvite={() => navigation.navigate('CoParentInviteScreen')}
-              onOpenBackup={() => navigation.navigate('BackupRestore')}
-              onOpenReminders={() => navigation.navigate('TrackerReminders')}
-              onLeaveFamily={handleLeaveFamily}
-              onTransferOwnership={() => {
-                // Open a picker of eligible targets (all non-parent1 members
-                // with a userId set — pending invites can't take ownership).
-                const candidates = members.filter(
-                  (m) =>
-                    m.role !== UserRole.PARENT_1 &&
-                    ((m as any).userId || m.id) !== currentUserId &&
-                    !!m.lastActive, // must have actually accepted
-                );
-                if (candidates.length === 0) {
-                  sweetAlert.alert(
-                    'No Eligible Members',
-                    'Invite at least one other parent/guardian first.',
-                    'warning',
-                  );
-                  return;
-                }
-                const labels = candidates.map(
-                  (m) => `${m.fullName} (${getMemberDisplayLabel({ role: m.role, relationship: m.relationship })})`,
-                );
-                sweetAlert.confirm(
-                  'Transfer Ownership',
-                  `Who should become Primary Parent?\n\n${labels.join('\n')}`,
-                  async () => {
-                    // Sequential: try each candidate — the sweetAlert
-                    // doesn't render a native picker. For simplicity we
-                    // pick the first; the caller can re-run for another.
-                    const chosen = candidates[0];
-                    const res = await transferOwnership(chosen.id);
-                    if (res.success) {
-                      sweetAlert.success('Ownership Transferred', res.message);
-                      await loadFamily();
-                    } else {
-                      sweetAlert.error('Transfer Failed', res.message);
-                    }
-                  },
-                  () => {},
-                  'Transfer',
-                  'Cancel',
-                  true,
-                );
-              }}
-            />
-          </View>
-        )}
+        {/* Settings tab was removed — its content now lives either in
+            the Access tab's danger zone (above) or in MoreScreen. */}
 
         <View style={{ height: 40 }} />
       </AnimatedScrollView>
 
-      {/* MEMBER DETAIL MODAL */}
-      <ActionModal
-        visible={showMemberModal}
-        onClose={() => { setShowMemberModal(false); setSelectedMember(null); }}
-        title={selectedMember?.fullName || 'Member Details'}
-        isDark={isDark}
-      >
-        {selectedMember && (
-          <View style={{ gap: DS.space.lg }}>
-            <View style={{ alignItems: 'center', gap: DS.space.md }}>
-              <SafeAvatar
-                avatar={selectedMember.avatar}
-                size={96}
-                fallbackIcon={selectedMember.role === UserRole.PARENT_1 ? 'shield' : 'person'}
-                fallbackColor={ROLE_CONFIG[selectedMember.role].color}
-              />
-              <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.modalRoleBadge}>
-                <Ionicons name={ROLE_CONFIG[selectedMember.role].icon} size={13} color={DS.white} />
-                <Text style={styles.modalRoleText}>
-                  {getMemberDisplayLabel({
-                    role: selectedMember.role,
-                    relationship: selectedMember.relationship,
-                  })}
-                </Text>
-              </LinearGradient>
-            </View>
-
-            <View style={{ gap: 10 }}>
-              {selectedMember.email && (
-                <View style={[styles.detailRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-                  <Ionicons name="mail" size={18} color={DS.primary} />
-                  <Text style={[styles.detailText, { color: isDark ? DS.white : DS.gray900 }]}>{selectedMember.email}</Text>
-                </View>
-              )}
-              {selectedMember.phoneNumber && (
-                <View style={[styles.detailRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-                  <Ionicons name="call" size={18} color={DS.success} />
-                  <Text style={[styles.detailText, { color: isDark ? DS.white : DS.gray900 }]}>{selectedMember.phoneNumber}</Text>
-                </View>
-              )}
-              <View style={[styles.detailRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-                <Ionicons name="people" size={18} color={DS.warning} />
-                <Text style={[styles.detailText, { color: isDark ? DS.white : DS.gray900 }]}>
-                  {getMemberDisplayLabel({
-                    role: selectedMember.role,
-                    relationship: selectedMember.relationship,
-                  })}
-                </Text>
-              </View>
-            </View>
-
-            <View style={{ gap: 10 }}>
-              {selectedMember.id !== currentUserId && selectedMember.status !== 'pending' && (
-                <PressableScale onPress={() => {
-                  setShowMemberModal(false);
-                  navigation.navigate('FamilyChat', {
-                    memberId: selectedMember.id,
-                    memberName: selectedMember.fullName,
-                    memberAvatar: selectedMember.avatar,
-                    memberRole: selectedMember.role,
-                  });
-                }} activeScale={0.97}>
-                  <LinearGradient colors={ROLE_CONFIG[selectedMember.role].gradient} style={styles.modalPrimaryBtn}>
-                    <Ionicons name="chatbubble" size={18} color={DS.white} />
-                    <Text style={styles.modalPrimaryBtnText}>Send Message</Text>
-                  </LinearGradient>
-                </PressableScale>
-              )}
-
-              {isPrimaryParent && selectedMember.role !== UserRole.PARENT_1 && (
-                <>
-                  <PressableScale onPress={() => { setShowMemberModal(false); setShowEditModal(true); }} activeScale={0.97}>
-                    <View style={[styles.modalSecondaryBtn, { borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-                      <Ionicons name="create" size={18} color={DS.primary} />
-                      <Text style={[styles.modalSecondaryText, { color: DS.primary }]}>Edit Profile</Text>
-                    </View>
-                  </PressableScale>
-
-                  <PressableScale onPress={() => {
-                    if (!selectedMember?.email) { sweetAlert.alert('No Email', 'No email on file', 'warning'); return; }
-                    sweetAlert.confirm('Reset Password', `Reset password for ${selectedMember.fullName}?`, async () => {
-                      const r = await resetPasswordForUser(selectedMember.email, 'littleloom_temp_2026');
-                      if (r.success) sweetAlert.alert('Password Reset', 'Temporary password set.', 'success');
-                      else sweetAlert.alert('Error', r.message, 'warning');
-                    }, () => {}, 'Reset', 'Cancel', true);
-                  }} activeScale={0.97}>
-                    <View style={[styles.modalSecondaryBtn, { borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-                      <Ionicons name="key" size={18} color={DS.warning} />
-                      <Text style={[styles.modalSecondaryText, { color: DS.warning }]}>Reset Password</Text>
-                    </View>
-                  </PressableScale>
-
-                  <PressableScale onPress={handleRemoveMember} activeScale={0.97}>
-                    <View style={[styles.modalDangerBtn, { borderColor: `${DS.danger}40` }]}>
-                      <Ionicons name="trash" size={18} color={DS.danger} />
-                      <Text style={[styles.modalDangerText, { color: DS.danger }]}>Remove Member</Text>
-                    </View>
-                  </PressableScale>
-                </>
-              )}
-            </View>
-          </View>
-        )}
-      </ActionModal>
-
-      {/* EDIT MEMBER MODAL */}
-      <ActionModal visible={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Member" isDark={isDark}>
-        <View style={{ gap: DS.space.lg }}>
-          <TouchableOpacity style={{ alignSelf: 'center', position: 'relative' }} onPress={handleImagePick}>
-            <SafeAvatar avatar={editForm.avatar} size={96} fallbackIcon="camera" fallbackColor={DS.primary} />
-            <View style={[styles.avatarEditBadge, { backgroundColor: DS.primary, borderColor: isDark ? DS.darkCard : DS.white }]}>
-              <Ionicons name="camera" size={16} color={DS.white} />
-            </View>
-          </TouchableOpacity>
-
-          {[
-            { label: 'Full Name', key: 'fullName' as const, placeholder: 'Enter full name' },
-            { label: 'Email', key: 'email' as const, placeholder: 'Enter email', keyboard: 'email-address' as const },
-            { label: 'Phone', key: 'phoneNumber' as const, placeholder: 'Enter phone', keyboard: 'phone-pad' as const },
-            { label: 'Relationship', key: 'relationship' as const, placeholder: 'e.g., Grandma, Nanny' },
-          ].map(({ label, key, placeholder, keyboard }) => (
-            <View key={key}>
-              <Text style={[styles.formLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{label}</Text>
-              <TextInput
-                style={[styles.formInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100, color: isDark ? DS.white : DS.gray900 }]}
-                value={(editForm as any)[key]}
-                onChangeText={(text) => setEditForm(prev => ({ ...prev, [key]: text }))}
-                placeholder={placeholder}
-                placeholderTextColor={isDark ? DS.gray600 : DS.gray400}
-                keyboardType={keyboard}
-                autoCapitalize={key === 'email' ? 'none' : 'words'}
-              />
-            </View>
-          ))}
-
-          <View style={[styles.toggleRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-              <Ionicons name={editForm.notificationsEnabled ? 'notifications' : 'notifications-off'} size={20} color={editForm.notificationsEnabled ? DS.primary : (isDark ? DS.gray500 : DS.gray400)} />
-              <View style={{ marginLeft: DS.space.md }}>
-                <Text style={[styles.formLabel, { color: isDark ? DS.white : DS.gray900, marginBottom: 2 }]}>Notifications</Text>
-                <Text style={[styles.setSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Receive family activity alerts</Text>
-              </View>
-            </View>
-            <Switch
-              value={editForm.notificationsEnabled}
-              onValueChange={(v) => setEditForm(prev => ({ ...prev, notificationsEnabled: v }))}
-              trackColor={{ false: isDark ? '#333' : DS.gray300, true: `${DS.primary}60` }}
-              thumbColor={editForm.notificationsEnabled ? DS.primary : (isDark ? '#555' : '#f4f3f4')}
-            />
-          </View>
-
-          <PressableScale onPress={handleUpdateMember} disabled={isLoading} activeScale={0.97}>
-            <LinearGradient colors={[DS.primary, DS.accent]} style={styles.saveBtn}>
-              {isLoading ? <ActivityIndicator color={DS.white} /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
-            </LinearGradient>
-          </PressableScale>
-        </View>
-      </ActionModal>
+       {/* Inline member-details and edit modals were REMOVED. Every
+          member tap now navigates to EditGuardianScreen — the single
+          source of truth for one-person editing. This eliminates
+          the four-places-to-edit-a-member confusion. */}
     </View>
   );
 }

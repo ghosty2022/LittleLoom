@@ -73,7 +73,7 @@ import { RelationshipBackfillBanner } from '../../components/RelationshipBackfil
 import type { RootStackParamList } from '../../types/navigation';
 import { navigationRef } from '../../navigation/navigationRef';
 import { getMemberDisplayLabel } from '../../types/roles';
-import { getMemberNavTarget, resolveTargetId } from '../../utils/memberNavigation';
+import { resolveTargetId } from '../../utils/memberNavigation';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -2307,13 +2307,36 @@ useEffect(() => {
   } as any), []);
 
   const handleMemberAvatarPress = useCallback(
-    async (targetId: string, tappedMember?: any) => {
-      // Baby row from the merged FamilyStack list → open the baby
-      // profile editor (NOT SwitchBaby — the sticky header avatar
-      // already handles switching; this is "view/edit this baby").
+    // Accepts EITHER:
+    //   • (targetId: string, member?: object)  ← RecentTimeline avatar tap
+    //   • (member: object)                     ← FamilyStack row tap
+    // If only one argument is given and it's an object, treat it as the
+    // member and derive targetId from it. This is why tapping a family
+    // member card used to fall through to FamilySharing — the signature
+    // mismatch left `targetId` as an object and `tappedMember` undefined,
+    // so the resolver couldn't find the row.
+    async (targetIdOrMember: any, maybeMember?: any) => {
+      // ── NORMALIZE ARGUMENTS ─────────────────────────────────
+      let tappedMember: any;
+      let targetId: string;
+
+      if (targetIdOrMember && typeof targetIdOrMember === 'object') {
+        // Called as `onMemberPress(member)` — FamilyStack style.
+        tappedMember = targetIdOrMember;
+        targetId = String(
+          tappedMember.userId || tappedMember.id || '',
+        );
+      } else {
+        targetId = String(targetIdOrMember || '');
+        tappedMember = maybeMember;
+      }
+
+      // ── BABY ROW ────────────────────────────────────────────
+      // Synthetic baby row from the merged FamilyStack list →
+      // open the baby profile editor.
       if (
         tappedMember?.__isBaby ||
-        String(targetId || '').startsWith('baby_')
+        targetId.startsWith('baby_')
       ) {
         const baby = tappedMember?.__baby || displayedBaby;
         if (baby?.id) {
@@ -2325,59 +2348,51 @@ useEffect(() => {
         return;
       }
 
-      // The RecentTimeline callback gives us `targetId` and `member`.
-      // If we don't have the full FamilyMember object (rare — e.g. a
-      // timeline entry whose `loggedBy` UUID has no matching row),
-      // resolve it from `members`.
+      // ── RESOLVE THE MEMBER ROW ──────────────────────────────
+      // Prefer the object we were handed; otherwise look it up by
+      // userId OR family_members.id (callers vary).
       let member = tappedMember;
       if (!member) {
         member =
-          members.find((m: any) => (m.userId || m.id) === targetId) ||
+          members.find((m: any) => m.userId === targetId) ||
           members.find((m: any) => m.id === targetId);
       }
       if (!member) {
-        // No family_members row for this user on the current baby —
-        // they were removed. Send the user to the family view so
-        // they can see who's still around.
+        // No matching family_members row — send the user to the
+        // family view so they can see who's still around.
         navigateToScreen('FamilySharing', {});
         return;
       }
 
-      // My effective role for the CURRENT baby (not the global hint).
-      const myRoleForBaby =
-        userProfile?.id
-          ? (
-              members.find(
-                (m: any) =>
-                  m.userId === userProfile.id || m.id === userProfile.id,
-              ) as any
-            )?.role ?? null
-          : null;
-
-      const navTarget = getMemberNavTarget(
-        member,
-        userProfile?.id ?? '',
-        myRoleForBaby,
+      // ── ALWAYS OPEN THAT PERSON'S PROFILE ───────────────────
+      // Tapping a member card is an explicit "show me this person"
+      // intent. Do NOT route through getMemberNavTarget — that
+      // helper is for role-aware editing guards and can downgrade
+      // the destination to FamilySharing. The profile screen itself
+      // enforces permission guards (canEdit / canRemove).
+      const memberId = String(
+        (member as any).userId || (member as any).id || '',
       );
-
-      // Show the guard message if the user isn't allowed to edit.
-      if (navTarget.readOnlyReason) {
-        // `toast` comes from useSweetAlert(); guard defensively in case
-        // the hook shape ever changes.
-        try {
-          if (typeof toast === 'function') {
-            toast('Read-only', navTarget.readOnlyReason, 'info');
-          } else if (typeof sweetAlert === 'function') {
-            sweetAlert('Read-only', navTarget.readOnlyReason, 'info');
-          }
-        } catch {
-          // Non-critical — swallow.
-        }
+      if (!memberId) {
+        navigateToScreen('FamilySharing', {});
+        return;
       }
 
-      navigateToScreen(navTarget.screen, navTarget.params);
+      triggerHaptic('light');
+      navigateToScreen('EditGuardian', {
+        guardianId: memberId,
+        // Resolve edit mode from the CURRENT baby's role for this
+        // member so the editor opens in the right guard level.
+        mode:
+          member.role === 'parent2'
+            ? 'parent2'
+            : member.role === 'viewer'
+            ? 'viewer'
+            : 'guardian',
+        fromChat: false,
+      });
     },
-    [members, userProfile?.id, navigateToScreen, toast, triggerHaptic, displayedBaby],
+    [members, navigateToScreen, triggerHaptic, displayedBaby],
   );
 
   // ── Header profile tap → EditGuardian (self) ────────────────
