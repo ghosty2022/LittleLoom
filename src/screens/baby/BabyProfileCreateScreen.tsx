@@ -623,17 +623,38 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
     const duplicate = babies.find(b => b.name.toLowerCase() === trimmedName.toLowerCase() && b.birthDate === birthIso);
     if (duplicate) {
       toast('A baby with this name and birth date already exists. Using existing profile.', 'info');
-      await switchBaby(duplicate.id);
-      await completeSetup('baby');
-      const { hasParent2 } = await wasSetupCompleted();
-      if (hasParent2 === false) safeNavigate('CoParentInviteScreen');
-      else safeNavigate('Main');
+      try {
+        await switchBaby(duplicate.id);
+        await completeSetup('baby');
+        const { hasParent2 } = await wasSetupCompleted();
+        if (hasParent2 === false) safeNavigate('CoParentInviteScreen');
+        else safeNavigate('Main');
+      } catch (e) {
+        if (__DEV__) console.warn('[BabyProfileCreate] duplicate path failed:', e);
+        toast('Could not open existing profile. Please try again.', 'error');
+      } finally {
+        // Guarantee the spinner clears even on the duplicate path.
+        isCreatingRef.current = false;
+        if (isMounted.current) setIsLoading(false);
+      }
       return;
     }
 
     isCreatingRef.current = true;
     setIsLoading(true);
     triggerHaptic('medium');
+
+    // Safety net: if anything inside the try block hangs (network,
+    // Supabase RLS retry, image upload stall), force-clear the
+    // spinner after 45 s so the user isn't trapped on a loading
+    // screen. The normal finally still clears it earlier on success.
+    const spinnerSafetyTimer = setTimeout(() => {
+      if (isMounted.current) {
+        console.warn('[BabyProfileCreate] Spinner safety timeout fired — clearing');
+        setIsLoading(false);
+        isCreatingRef.current = false;
+      }
+    }, 45000);
 
     let babyId: string | null = null;
 
@@ -683,6 +704,16 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
 
       toast(`${trimmedName}'s profile created! 🎉`, 'success');
 
+      // Mark this session as "baby already chosen" so AppNavigator's
+      // multi-baby guard doesn't re-prompt the user to SwitchBaby
+      // immediately after they just created a baby.
+      try {
+        await AsyncStorage.setItem(
+          '@littleloom_multi_baby_selected_this_session',
+          'true',
+        );
+      } catch {}
+
       try {
         await AsyncStorage.removeItem('@littleloom_babies_cache');
         await AsyncStorage.removeItem('@littleloom_current_baby_id');
@@ -704,6 +735,7 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       }
     } catch { toast('An unexpected error occurred. Please try again.', 'error'); }
     finally {
+      clearTimeout(spinnerSafetyTimer);
       isCreatingRef.current = false;
       if (isMounted.current) setIsLoading(false);
     }

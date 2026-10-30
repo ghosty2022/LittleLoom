@@ -1358,6 +1358,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         '@littleloom_cached_activities_v2',
         '@littleloom_smart_notifications',
         '@littleloom_bayes_backfilled_v1',
+        // Multi-baby selection flag — cleared on signOut so the next
+        // login re-prompts the user to pick a baby.
+        '@littleloom_multi_baby_selected_this_session',
       ]);
 
       if (signedOutUserId) {

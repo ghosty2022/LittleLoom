@@ -30,6 +30,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
@@ -531,6 +532,16 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
       }
 
       if (ok || confirmed) {
+        // Mark this session as "baby already chosen" so LoginScreen
+        // doesn't re-prompt on the next focus / re-login within the
+        // same session. Cleared on signOut.
+        try {
+          await AsyncStorage.setItem(
+            '@littleloom_multi_baby_selected_this_session',
+            'true',
+          );
+        } catch {}
+
         sweetAlert.success('Switched', 'Baby profile updated');
         setTimeout(() => {
           if (!hasNavigated.current && isMounted.current) {

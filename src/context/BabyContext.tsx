@@ -1843,6 +1843,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const now = new Date();
       if (birthDate > now || isNaN(birthDate.getTime())) {
         isCreatingRef.current = false;
+        Alert.alert('Invalid Birth Date', 'Birth date cannot be in the future.');
         return null;
       }
 
@@ -1853,6 +1854,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!userId) {
           console.error('[BabyContext] No authenticated user for createBaby');
           isCreatingRef.current = false;
+          Alert.alert('Not Signed In', 'Please sign in again to create a baby profile.');
           return null;
         }
 
@@ -1922,6 +1924,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error || !result) {
           console.error('[BabyContext] Create baby error:', error);
           isCreatingRef.current = false;
+          Alert.alert(
+            'Could Not Create Profile',
+            error?.message
+              ? `Failed to create baby profile: ${error.message}`
+              : 'Failed to create baby profile. Please try again.',
+          );
           return null;
         }
 
@@ -2013,6 +2021,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const newCurrentId = result.id;
 
+        // ── CRITICAL: seed permissions BEFORE any await ────────────
+        // `BabyProfileCreateScreen` calls `updateBaby(babyId, {...})`
+        // immediately after `createBaby` resolves (to save the
+        // uploaded avatar). If `userPermissions[newBabyId]` isn't
+        // populated by the time that call runs, `canEditBaby()` sees
+        // `undefined` and shows a false "Permission Denied" alert
+        // even though the row was inserted successfully.
+        //
+        // We therefore commit the new baby + its full parent1
+        // permission set to state SYNCHRONOUSLY on the setState below
+        // — no `await` between the INSERT success and the setState.
         if (isMounted.current) {
           setState(prev => ({
             ...prev,
@@ -2097,7 +2116,25 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateBaby = useCallback(
     async (id: string, updates: Partial<BabyProfile>) => {
       try {
-        if (!canEditBaby(id)) {
+        // ── PERMISSION CHECK (with parent1 fallback) ──────────────
+        // `canEditBaby` reads `state.userPermissions[id]`, which is
+        // only populated AFTER `createBaby` finishes its setState
+        // commit. When `BabyProfileCreateScreen` calls
+        // `updateBaby(newBabyId, { avatar })` on the very next tick,
+        // the permissions map may still be empty and we'd show a
+        // false "Permission Denied" alert.
+        //
+        // Fallback: if the row exists in `state.babies` and the
+        // current user is the parent1, allow the edit. This matches
+        // the DB's own RLS policy (`parent1_id = auth.uid()`).
+        const stateBaby = state.babies.find(b => b.id === id);
+        const meId =
+          authUserId ||
+          (await getCurrentUserId());
+        const isParent1 =
+          !!stateBaby && !!meId && stateBaby.parent1Id === meId;
+
+        if (!canEditBaby(id) && !isParent1) {
           Alert.alert(
             'Permission Denied',
             "You do not have permission to edit this baby's profile"
@@ -2309,7 +2346,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         Alert.alert('Error', 'Failed to update baby profile');
       }
     },
-    [mapBabyRowToProfile, canEditBaby, state.userRoles]
+    [mapBabyRowToProfile, canEditBaby, state.userRoles, state.babies, authUserId, getCurrentUserId]
   );
 
   

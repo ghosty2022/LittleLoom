@@ -17,6 +17,7 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import type { RootStackParamList } from '../../types/navigation';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useFamily } from '../../context/FamilyContext';
+import { useBaby } from '../../context/BabyContext';
 import { supabase } from '../../utils/supabase';
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;
@@ -227,6 +228,11 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     recoverPartialSignup,
     markSignupComplete,
   } = useFamily();
+
+  // `babies` is needed to decide whether to route to SwitchBaby on
+  // login. The old code only checked setupComplete, so a user with
+  // 2+ babies was silently dropped onto the "priority" baby.
+  const { babies } = useBaby();
 
   const { resetUnlockLock, forceUnlock } = useSecurity();
 
@@ -510,6 +516,37 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         return;
       }
 
+      // ── MULTI-BABY SELECTION GUARD ─────────────────────────────
+      // If the user belongs to MORE THAN ONE baby, they MUST pick
+      // which baby to continue with before landing on Main. Without
+      // this, the app silently picks the "priority" baby and the
+      // user has no way to know (or change) that without navigating
+      // into SwitchBaby manually.
+      //
+      // We only do this if the user hasn't already made a selection
+      // this session (tracked via a session flag), so a returning
+      // user who already tapped a baby doesn't get re-prompted.
+      const babiesArr = Array.isArray(babies) ? babies : [];
+      const multiBaby = babiesArr.length > 1;
+
+      if (multiBaby) {
+        let alreadySelectedThisSession = false;
+        try {
+          const flag = await AsyncStorage.getItem(
+            '@littleloom_multi_baby_selected_this_session'
+          );
+          alreadySelectedThisSession = flag === 'true';
+        } catch {}
+
+        if (!alreadySelectedThisSession) {
+          navigation.replace('SwitchBaby', {
+            returnTo: 'Main',
+            returnLabel: 'Home',
+          } as never);
+          return;
+        }
+      }
+
       navigation.replace('Main');
     }, 200);
 
@@ -521,6 +558,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     setupComplete,
     hasParent2,
     hasBaby,
+    babies,
     navigation,
     forceUnlock,
     mustChangePassword,

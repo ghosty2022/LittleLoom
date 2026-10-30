@@ -241,6 +241,13 @@ function getNavState(
 
   if (isLocked && securityOn) return 'SECURITY_LOCK';
 
+  // A multi-baby user who hasn't chosen a baby THIS SESSION must be
+  // routed through SwitchBaby before Main. The selection flag is
+  // checked asynchronously in NavigationContent (see the effect
+  // below), so here we only signal "needs baby selection" via a
+  // dedicated state. If the flag is absent, `babyCount > 1` still
+  // falls through to MAIN here — the effect in NavigationContent
+  // will then immediately navigate to SwitchBaby.
   if (babyCount > 0) return 'MAIN';
   if (setupDone) return 'MAIN';
   if (hasBaby === true || hasBaby === 'skipped') return 'MAIN';
@@ -720,6 +727,15 @@ function NavigationContent({
       }
 
       case 'MAIN':
+        // ── MULTI-BABY COLD-START GUARD ──────────────────────────
+        // On cold boot, `babies` may not be hydrated yet when this
+        // effect first runs. We defer the SwitchBaby decision to a
+        // dedicated effect below (`useEffect` after this switch)
+        // which awaits both `babies` AND the session flag.
+        //
+        // This case only handles the "already in a main-flow screen"
+        // shortcut — if we're already inside Main/SwitchBaby, do
+        // nothing.
         if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) return;
 
         if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
@@ -732,7 +748,7 @@ function NavigationContent({
           }
           return;
         }
-        if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) return;
+        if (currentRoute === 'SwitchBaby') return;
 
         safeNavigateTo('Main', true);
         break;
@@ -749,6 +765,71 @@ function NavigationContent({
     resetUnlockLock,
     forceUnlock,
   ]);
+
+  // ── MULTI-BABY COLD-START SELECTION ─────────────────────────────
+  // After login OR cold boot, if the user belongs to 2+ babies and
+  // hasn't chosen one THIS SESSION, push them to SwitchBaby before
+  // Main. This is the missing piece that let a 2-baby user land
+  // silently on the "priority" baby without ever being asked.
+  //
+  // We only fire when:
+  //   • navState is MAIN (auth OK, setup done)
+  //   • babies has hydrated (length > 1)
+  //   • the current route is Main (not already SwitchBaby / a sub-
+  //     flow screen)
+  //   • the session flag is absent
+  const multiBabyCheckedRef = useRef(false);
+  useEffect(() => {
+    if (multiBabyCheckedRef.current) return;
+    if (navState !== 'MAIN') return;
+    if (!isNavReady || !initialCheckDone) return;
+    if (!navRef.current?.isReady()) return;
+
+    const babiesArr = Array.isArray(babies) ? babies : [];
+    if (babiesArr.length <= 1) {
+      multiBabyCheckedRef.current = true;
+      return;
+    }
+
+    const currentRoute = navRef.current.getCurrentRoute()?.name;
+    if (currentRoute === 'SwitchBaby') {
+      multiBabyCheckedRef.current = true;
+      return;
+    }
+    // Only intervene from the MAIN tab root — never yank a user
+    // mid-flow (AddEntry, FamilyChat, etc.).
+    if (currentRoute && currentRoute !== 'Main') {
+      multiBabyCheckedRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      let alreadySelected = false;
+      try {
+        const flag = await AsyncStorage.getItem(
+          '@littleloom_multi_baby_selected_this_session'
+        );
+        alreadySelected = flag === 'true';
+      } catch {}
+      if (cancelled) return;
+      multiBabyCheckedRef.current = true;
+      if (alreadySelected) return;
+
+      try {
+        navRef.current?.navigate('SwitchBaby', {
+          returnTo: 'Main',
+          returnLabel: 'Home',
+        } as any);
+      } catch (e) {
+        if (__DEV__) console.warn('[Navigation] SwitchBaby redirect failed:', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navState, isNavReady, initialCheckDone, babies]);
 
   // ─── Loading gate ─────────────────────────────────────────────
   if (authLoading || !initialCheckDone || !sessionChecked) {
