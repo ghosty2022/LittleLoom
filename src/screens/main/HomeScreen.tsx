@@ -72,6 +72,7 @@ import { RelationshipBackfillBanner } from '../../components/RelationshipBackfil
 import type { RootStackParamList } from '../../types/navigation';
 import { navigationRef } from '../../navigation/navigationRef';
 import { getMemberDisplayLabel } from '../../types/roles';
+import { getMemberNavTarget, resolveTargetId } from '../../utils/memberNavigation';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -1270,7 +1271,9 @@ const RecentTimeline: React.FC<{
   onEntryPress: (entry: any) => void;
   borderRadius: number;
   members?: any[];
-}> = React.memo(({ activities, isDark, theme, onViewAll, onEntryPress, borderRadius, members = [] }) => {
+  /** Fires when the logger's avatar is tapped. */
+  onAvatarPress?: (targetId: string, member: any) => void;
+}> = React.memo(({ activities, isDark, theme, onViewAll, onEntryPress, borderRadius, members = [], onAvatarPress }) => {
   const groups: DayGroup[] = useMemo(() => {
     const sorted = [...(activities || [])]
       .filter((e: any) => e?.timestamp)
@@ -1357,9 +1360,43 @@ const RecentTimeline: React.FC<{
                           />
                           <View style={styles.entryCardContent}>
                             <View style={styles.entryCardHeader}>
-                              <View style={[styles.entryIconBg, { backgroundColor: `${cfg.color}14` }]}>
-                                <Text style={styles.entryEmoji}>{cfg.emoji}</Text>
-                              </View>
+                              {(() => {
+                                const logger =
+                                  members.find((m: any) => m.userId === event.loggedBy) ||
+                                  members.find((m: any) => m.id === event.loggedBy);
+
+                                // No matching family_member for this logger
+                                // (deleted / never on this baby) → non-interactive emoji.
+                                if (!logger) {
+                                  return (
+                                    <View style={[styles.entryIconBg, { backgroundColor: `${cfg.color}14` }]}>
+                                      <Text style={styles.entryEmoji}>{cfg.emoji}</Text>
+                                    </View>
+                                  );
+                                }
+
+                                // Logger resolved → tappable avatar.
+                                return (
+                                  <TouchableOpacity
+                                    activeOpacity={0.75}
+                                    onPress={() => {
+                                      if (onAvatarPress) {
+                                        onAvatarPress(resolveTargetId(logger), logger);
+                                      }
+                                    }}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                  >
+                                    <View style={styles.entryIconBg}>
+                                      <SafeAvatar
+                                        avatar={logger.avatar}
+                                        size={38}
+                                        fallbackEmoji={cfg.emoji}
+                                        fallbackColor={cfg.color}
+                                      />
+                                    </View>
+                                  </TouchableOpacity>
+                                );
+                              })()}
                               <View style={styles.entryInfo}>
                                 <Text style={[styles.entryTitle, { color: theme.text }]} numberOfLines={1}>
                                   {title}
@@ -2195,6 +2232,124 @@ useEffect(() => {
       navigateToScreen('Timeline', {});
     }
   }, [hasBaby, navigateToScreen]);
+  // ── Family member avatar tap (from RecentTimeline) ──────────
+  // This is the second path into the family-management flow — the
+  // first is the "Family" tab inside FamilySharingScreen. But this
+  // path can be tapped by ANY role (Parent 1, Parent 2, Guardian,
+  // Viewer), so we need to route based on WHO is tapped vs. who I
+  // am.
+  //
+  //   • Tapping myself              → EditGuardian (my own profile)
+  //   • Tapping another Parent/     → EditGuardian (guarded: must be a parent)
+  //     Guardian while I'm a parent
+  //   • Tapping anyone else while   → FamilySharing (read-only view)
+  //     I'm a guardian/viewer
+  //
+  // `getMemberNavTarget` centralises the rule so every call site
+  // stays consistent.
+  const handleMemberAvatarPress = useCallback(
+    async (targetId: string, tappedMember?: any) => {
+      // The RecentTimeline callback gives us `targetId` and `member`.
+      // If we don't have the full FamilyMember object (rare — e.g. a
+      // timeline entry whose `loggedBy` UUID has no matching row),
+      // resolve it from `members`.
+      let member = tappedMember;
+      if (!member) {
+        member =
+          members.find((m: any) => (m.userId || m.id) === targetId) ||
+          members.find((m: any) => m.id === targetId);
+      }
+      if (!member) {
+        // No family_members row for this user on the current baby —
+        // they were removed. Send the user to the family view so
+        // they can see who's still around.
+        navigateToScreen('FamilySharing', {});
+        return;
+      }
+
+      // My effective role for the CURRENT baby (not the global hint).
+      const myRoleForBaby =
+        userProfile?.id
+          ? (
+              members.find(
+                (m: any) =>
+                  m.userId === userProfile.id || m.id === userProfile.id,
+              ) as any
+            )?.role ?? null
+          : null;
+
+      const navTarget = getMemberNavTarget(
+        member,
+        userProfile?.id ?? '',
+        myRoleForBaby,
+      );
+
+      // Show the guard message if the user isn't allowed to edit.
+      if (navTarget.readOnlyReason) {
+        // `toast` comes from useSweetAlert(); guard defensively in case
+        // the hook shape ever changes.
+        try {
+          if (typeof toast === 'function') {
+            toast('Read-only', navTarget.readOnlyReason, 'info');
+          } else if (typeof sweetAlert === 'function') {
+            sweetAlert('Read-only', navTarget.readOnlyReason, 'info');
+          }
+        } catch {
+          // Non-critical — swallow.
+        }
+      }
+
+      navigateToScreen(navTarget.screen, navTarget.params);
+    },
+    [members, userProfile?.id, navigateToScreen, toast],
+  );
+
+  // ── Header profile tap → EditGuardian (self) ────────────────
+  // The sticky header's avatar + greeting card both route here.
+  // It MUST mirror the MoreScreen profile-header behaviour:
+  //
+  //   • Parent 1 / Parent 2 → EditGuardian({ guardianId: me.id, mode: 'parent2' })
+  //   • Guardian / Viewer    → EditGuardian({ guardianId: me.id, mode: 'guardian' })
+  //
+  // We resolve the CURRENT baby's role for me (not the global
+  // `userProfile.role` hint) so a Parent1-on-BabyA / Guardian-on-BabyB
+  // user lands on the right editor for the active baby.
+  const handleEditMyProfile = useCallback(() => {
+    const meId = userProfile?.id;
+    if (!meId) {
+      // Fall back to the family dashboard when auth hasn't hydrated
+      // yet — still safer than a no-op.
+      navigateToScreen('Profile');
+      return;
+    }
+
+    const myMemberRow =
+      members.find((m: any) => m.userId === meId) ||
+      members.find((m: any) => m.id === meId) ||
+      null;
+
+    const myRoleForBaby =
+      (myMemberRow?.role as string | undefined) ||
+      // Fallback: if I'm not in `members` yet (FamilyContext still
+      // loading), derive from the current baby's parent slots so we
+      // don't fall through to `viewer` incorrectly.
+      (currentBaby?.parent1Id === meId
+        ? 'parent1'
+        : currentBaby?.parent2Id === meId
+        ? 'parent2'
+        : 'guardian');
+
+    const editMode: 'parent2' | 'guardian' =
+      myRoleForBaby === 'parent1' || myRoleForBaby === 'parent2'
+        ? 'parent2'
+        : 'guardian';
+
+    navigateToScreen('EditGuardian', {
+      guardianId: meId,
+      mode: editMode,
+      fromChat: false,
+    });
+  }, [members, userProfile?.id, currentBaby?.parent1Id, currentBaby?.parent2Id, navigateToScreen]);
 
   /* ── Hero quick actions ── */
   const handleHeroQuickAction = useCallback((action: string) => {
@@ -2445,7 +2600,10 @@ const growthStats = useMemo(() => {
         fullTheme={fullThemeColors || {}}
         fontSizeMultiplier={fontSizeMultiplier}
         compactSpacing={settings.compactSpacing}
-        onProfilePress={() => navigateToScreen('Profile')}
+        // Tapping the avatar + greeting card opens my OWN EditGuardian
+        // (self-edit). Mode is resolved from my role for the current
+        // baby — see `handleEditMyProfile`.
+        onProfilePress={handleEditMyProfile}
       />
 
       <Animated.ScrollView
@@ -2472,7 +2630,7 @@ const growthStats = useMemo(() => {
               postsCount={allTimelineEvents.length}
               streakDays={trackingStreakDays}
               unreadCount={totalUnread}
-              onProfilePress={() => navigateToScreen('Profile')}
+              onProfilePress={handleEditMyProfile}
               onNotificationPress={handleNotificationPress}
               onSettingsPress={() => navigateToScreen('More')}
               onBabyPress={() => navigateToScreen('SwitchBaby', { returnTo: 'Main' })}
@@ -2733,17 +2891,20 @@ const growthStats = useMemo(() => {
                   </View>
                 ) : (
                   <RecentTimeline
-                    activities={allTimelineEvents}
-                    isDark={isDark}
-                    theme={theme}
-                    onViewAll={() => {
-                      if (!requireBaby('Timeline', 'Timeline', {})) return;
-                      navigateToScreen('Timeline', {});
-                    }}
-                    onEntryPress={handleEntryPress}
-                    borderRadius={borderRadiusValue}
-                    members={members}
-                  />
+  activities={allTimelineEvents}
+  isDark={isDark}
+  theme={theme}
+  onViewAll={() => {
+    if (!requireBaby('Timeline', 'Timeline', {})) return;
+    navigateToScreen('Timeline', {});
+  }}
+  onEntryPress={handleEntryPress}
+  borderRadius={borderRadiusValue}
+  members={members}
+  // NEW: avatar tap resolves the correct route + edit mode for
+  // the tapped member based on my role for the current baby.
+  onAvatarPress={handleMemberAvatarPress}
+/>
                 )}
               </View>
             </View>
