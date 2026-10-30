@@ -138,6 +138,20 @@ const isEmoji = (v: string | undefined | null): boolean => {
 };
 const safeStr = (v: unknown, fallback = ''): string => (v == null ? fallback : String(v));
 
+const parseLastActive = (raw: unknown): number => {
+  if (raw == null || raw === '') return 0;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const s = String(raw).trim();
+  if (!s) return 0;
+  if (/^\d+$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return s.length <= 10 ? n * 1000 : n;
+  }
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+
 /* ═══════════════════════════════════════════════════════════════════════════
    GRADIENT TEXT
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -496,7 +510,10 @@ const TabBar = ({ tabs, activeTab, onChange, isDark }: {
 */
 const FamilyHealthCard = React.memo(({ members, isDark }: { members: any[]; isDark: boolean }) => {
   const score = useMemo(() => {
-    const active = members.filter((m) => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 86400000).length;
+    const active = members.filter((m) => {
+      const t = parseLastActive(m?.lastActive);
+      return t > 0 && Date.now() - t <= 7 * 86400000;
+    }).length;
     const total = members.length || 1;
     const activityScore = Math.round((active / total) * 100);
     const engagementScore = Math.min(100, members.length * 15);
@@ -523,9 +540,9 @@ const FamilyHealthCard = React.memo(({ members, isDark }: { members: any[]; isDa
             <Text style={[styles.healthLabel, { color }]}>{label}</Text>
             <View style={styles.healthStatsRow}>
               {[
-                { label: 'Active', value: members.filter((m) => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 86400000).length, color: DS.success },
-                { label: 'Week', value: members.filter((m) => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 86400000).length, color: DS.warning },
-                { label: 'Pending', value: members.filter((m) => !m.lastActive || m.status === 'pending').length, color: DS.danger },
+                { label: 'Active', value: members.filter((m) => { const t = parseLastActive(m?.lastActive); return t > 0 && Date.now() - t <= 86400000; }).length, color: DS.success },
+                { label: 'Week', value: members.filter((m) => { const t = parseLastActive(m?.lastActive); return t > 0 && Date.now() - t <= 7 * 86400000; }).length, color: DS.warning },
+                { label: 'Pending', value: members.filter((m) => parseLastActive(m?.lastActive) === 0 || m.status === 'pending').length, color: DS.danger },
               ].map((stat, i) => (
                 <View key={i} style={styles.healthStat}>
                   <Text style={[styles.healthStatVal, { color: stat.color }]}>{stat.value}</Text>

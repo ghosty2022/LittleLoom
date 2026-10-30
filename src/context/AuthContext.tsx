@@ -520,6 +520,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem('littleloom_last_active_global', lastActiveTimeRef.current.toString());
       }
       appStateRef.current = nextAppState;
+
+      // ── FIX: touch last_active when the app comes back to foreground ──
+      // A user "is active" the moment they foreground the app, and we
+      // want every other device in the family to see that. The RPC
+      // updates every family_members row for this user in one shot.
+      if (nextAppState === 'active' && isAuthenticatedRef.current) {
+        try {
+          await supabase.rpc('touch_family_member_last_active');
+          await supabase.rpc('touch_profile_last_active');
+        } catch {}
+      }
     });
     return () => subscription.remove();
   }, []);
@@ -824,6 +835,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Invalidate any stale/null cached user ID before we proceed.
       clearUserIdCache();
+
+      // ── FIX: stamp `last_active` on sign-in ────────────────────────
+      // Before we read anything else, write the server clock to every
+      // family_members row + the profile row for this user. Do it
+      // BEFORE hydration so the row we just inserted reflects the
+      // fresh timestamp and every other device (or realtime subscriber)
+      // sees "active now" the moment they refresh.
+      try {
+        await Promise.all([
+          supabase.rpc('touch_family_member_last_active'),
+          supabase.rpc('touch_profile_last_active'),
+        ]);
+      } catch (e) {
+        if (__DEV__) console.warn('[Auth] last_active touch on sign-in failed:', e);
+      }
 
       const token = authData.session?.access_token || '';
       const user = authData.user;
@@ -3246,6 +3272,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (event === 'SIGNED_IN' && session) {
         clearUserIdCache();
+        // Fire-and-forget: touch last_active on every new session so
+        // a fresh login (from any device) marks the user active.
+        Promise.allSettled([
+          supabase.rpc('touch_family_member_last_active'),
+          supabase.rpc('touch_profile_last_active'),
+        ]).catch(() => {});
         const user = session.user;
         const userMeta = user.user_metadata || {};
 

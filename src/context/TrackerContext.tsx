@@ -1467,6 +1467,19 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const result = await EntryService.saveEntry(rawInput);
 
+      // ── FIX: touch last_active ─────────────────────────────────
+      // Fire-and-forget. The entry already saved; this is just a
+      // lightweight signal that the caller is active, which every
+      // family device (and FamilySharing's "Active today" count)
+      // will pick up.
+      (async () => {
+        try {
+          const { supabase } = require('@/utils/supabase');
+          await supabase.rpc('touch_family_member_last_active');
+          await supabase.rpc('touch_profile_last_active');
+        } catch {}
+      })();
+
       if (!result.ok) {
         // ─── Offline fallback ────────────────────────────────────────
         console.warn('[TrackerContext] Save failed, queuing offline:', result.error);

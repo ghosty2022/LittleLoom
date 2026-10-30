@@ -702,6 +702,33 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ...stored,
         } as Permission;
 
+        // ── NORMALIZE `last_active` ────────────────────────────────
+        // `family_members.last_active` is TEXT and has been written
+        // as ISO strings, Unix millis, or SQL timestamps over time.
+        // Every consumer downstream does `new Date(member.lastActive)`,
+        // which returns Invalid Date for numeric strings and silently
+        // falls through to "Never". Normalize here so
+        // `FamilyMember.lastActive` is ALWAYS an ISO string (or
+        // undefined when the raw value was empty/invalid).
+        const normalizedLastActive = ((): string | undefined => {
+          const raw = row.last_active;
+          if (raw == null || raw === '') return undefined;
+          if (typeof raw === 'number' && Number.isFinite(raw)) {
+            const ms = raw <= 1e12 ? raw * 1000 : raw;
+            return new Date(ms).toISOString();
+          }
+          const s = String(raw).trim();
+          if (!s) return undefined;
+          if (/^\d+$/.test(s)) {
+            const n = parseInt(s, 10);
+            if (!Number.isFinite(n) || n <= 0) return undefined;
+            const ms = s.length <= 10 ? n * 1000 : n;
+            return new Date(ms).toISOString();
+          }
+          const t = new Date(s).getTime();
+          return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
+        })();
+
         const built: any = {
           id: row.id,
           userId: row.user_id || row.id,
@@ -714,10 +741,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           addedAt: row.added_at,
           addedBy: row.added_by,
           canBeRemoved: row.can_be_removed !== false,
-          lastActive: row.last_active || undefined,
+          lastActive: normalizedLastActive,
           phoneNumber: livePhone,
           notificationsEnabled: row.notifications_enabled !== false,
-          status: row.status || (row.last_active ? 'active' : 'pending'),
+          status: row.status || (normalizedLastActive ? 'active' : 'pending'),
         };
         // Internal hint used only by the dedupe pass above. Never
         // surfaced to consumers — stripped from the final state via
@@ -955,6 +982,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const parent2RowBefore = state.members.find(m => m.id === currentBaby.parent2_id);
     const linkedUserIdBefore = (parent2RowBefore as any)?.userId || currentBaby.parent2_id;
 
+    // Touch the ACTOR's last_active too. The row we're editing might
+    // not be the caller, and editing a family member is a strong
+    // "I'm here" signal for every other device.
+    try { await supabase.rpc('touch_family_member_last_active'); } catch {}
+
     try {
       const dbUpdates: any = {};
       if (updates.fullName !== undefined) dbUpdates.full_name = updates.fullName;
@@ -1169,6 +1201,55 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             hint: (rpcErr as any)?.hint,
           });
         }
+        // If the RPC itself is failing because the DB function has a
+        // bug (e.g. 23505 from the unique indexes), fall back to
+        // `transfer_ownership` when the target is being promoted to
+        // parent1. That RPC is already fixed to handle the swap
+        // atomically.
+        const rpcCode = (rpcErr as any)?.code;
+        if (rpcCode === '23505' && newRole === UserRole.PARENT_1) {
+          try {
+            const { data: transferRow, error: transferErr } = await supabase.rpc(
+              'transfer_ownership',
+              {
+                p_baby_id: currentBaby.id,
+                p_target_row_id: targetRowId,
+                p_actor_id: authProfile?.id ?? null,
+              },
+            );
+            if (!transferErr && transferRow) {
+              const row = Array.isArray(transferRow) ? transferRow[0] : transferRow;
+              if (row?.id) {
+                familyLoadInProgress.current = false;
+                await loadFamily();
+                try {
+                  const { broadcastProfileChange } = require('./AuthContext');
+                  await broadcastProfileChange({ userId: targetUserId, fields: ['role'] });
+                } catch {}
+                const fresh: FamilyMember = {
+                  id: row.id,
+                  userId: row.user_id || targetUserId,
+                  fullName: row.full_name || (targetRow as any)?.fullName || 'Family Member',
+                  email: row.email || (targetRow as any)?.email || '',
+                  avatar: row.avatar || (targetRow as any)?.avatar,
+                  role: UserRole.PARENT_1,
+                  relationship: row.relationship ?? (targetRow as any)?.relationship ?? '',
+                  permissions: row.permissions || ROLE_PERMISSIONS[UserRole.PARENT_1],
+                  addedAt: row.added_at || (targetRow as any)?.addedAt || nowIso,
+                  addedBy: row.added_by || (targetRow as any)?.addedBy || '',
+                  canBeRemoved: false,
+                  lastActive: row.last_active || nowIso,
+                  phoneNumber: row.phone_number || undefined,
+                  notificationsEnabled: row.notifications_enabled !== false,
+                  status: 'active',
+                };
+                return fresh;
+              }
+            }
+          } catch (fallbackErr) {
+            if (__DEV__) console.warn('[promoteMember] transfer_ownership fallback failed:', fallbackErr);
+          }
+        }
         return null;
       }
 
@@ -1323,6 +1404,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const targetRowId = (targetRow as any).id as string;
     const targetUserId: string =
       (targetRow as any).userId || (targetRow as any).id;
+
+    // Touch the ACTOR's last_active. Same reason as parent2.
+    try { await supabase.rpc('touch_family_member_last_active'); } catch {}
 
     // ── Permission check ───────────────────────────────────────────
     const me = state.members.find(
@@ -1488,6 +1572,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const targetUserId = (target as any).userId || target.id;
 
     try {
+      // Touch the actor first so every device sees them as active
+      // during the ownership swap.
+      try { await supabase.rpc('touch_family_member_last_active'); } catch {}
+
       // ── SINGLE ATOMIC RPC — the DB does the swap in one transaction ──
       const { data: rpcRow, error: rpcErr } = await supabase.rpc(
         'transfer_ownership',

@@ -194,6 +194,47 @@ const isEmoji = (v: string | undefined | null): boolean => {
 };
 const safeStr = (v: unknown, fallback = ''): string => (v == null ? fallback : String(v));
 
+const parseLastActive = (raw: unknown): number => {
+  if (raw == null || raw === '') return 0;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const s = String(raw).trim();
+  if (!s) return 0;
+  if (/^\d+$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return s.length <= 10 ? n * 1000 : n;
+  }
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+
+/* ── last_active normalizer ──────────────────────────────────────────
+   `family_members.last_active` is a TEXT column. Across the app it
+   has been written as:
+     • ISO-8601 string ("2025-10-30T14:22:11.123Z")  ← current writer
+     • Unix millis as string ("1730000000000")
+     • Plain SQL timestamp ("2025-10-30 14:22:11")
+     • NULL / "" / "null"
+   `new Date(<unix-millis-as-string>)` returns Invalid Date, so the
+   old code fell through to "Never". This normalizer accepts all four
+   formats and returns epoch millis (or 0 for invalid/empty).
+   ───────────────────────────────────────────────────────────────── */
+const parseLastActive = (raw: unknown): number => {
+  if (raw == null || raw === '') return 0;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const s = String(raw).trim();
+  if (!s) return 0;
+  // Pure digits → Unix millis (or seconds if it's suspiciously small).
+  if (/^\d+$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    // 10-digit values are seconds; 13-digit are millis.
+    return s.length <= 10 ? n * 1000 : n;
+  }
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+
 /* ═══════════════════════════════════════════════════════════════════════════
    GRADIENT TEXT
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -673,8 +714,12 @@ const MemberCard = React.memo(({
   index: number; isDark: boolean; currentUserId: string;
 }) => {
   const roleCfg = ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER];
-  const isOnline = member.lastActive && new Date(member.lastActive).getTime() > Date.now() - 5 * 60000;
-  const isPending = !member.lastActive || member.status === 'pending';
+  const _lastActiveMs = parseLastActive((member as any).lastActive);
+  const isOnline = _lastActiveMs > 0 && Date.now() - _lastActiveMs < 5 * 60000;
+  const isPending = _lastActiveMs === 0 || member.status === 'pending';
+  // Snapshot the timestamp for the "Active X ago" label so we don't
+  // re-derive it inside the render below (which can't use parseLastActive
+  // again without shadowing).
 
   return (
     <Animated.View entering={FadeInUp.delay(index * 60).springify()}>
@@ -720,9 +765,9 @@ const MemberCard = React.memo(({
                   <Ionicons name="time-outline" size={11} color={DS.warning} />
                   <Text style={[styles.pendingInlineText, { color: DS.warning }]}>Invitation pending</Text>
                 </View>
-              ) : member.lastActive ? (
+              ) : _lastActiveMs > 0 ? (
                 <Text style={[styles.memberActiveText, { color: isDark ? DS.gray500 : DS.gray400 }]}>
-                  {isOnline ? 'Active now' : `Active ${formatDistanceToNow(new Date(member.lastActive), { addSuffix: true })}`}
+                  {isOnline ? 'Active now' : `Active ${formatDistanceToNow(new Date(_lastActiveMs), { addSuffix: true })}`}
                 </Text>
               ) : null}
             </View>
@@ -812,8 +857,10 @@ const AccessTab = ({
   currentUserId: string; onMemberPress: (m: FamilyMember) => void;
 }) => {
   const formatLastActive = (iso?: string): string => {
-    if (!iso) return 'Never';
-    const diff = Date.now() - new Date(iso).getTime();
+    const t = parseLastActive(iso);
+    if (!t) return 'Never';
+    const diff = Date.now() - t;
+    if (diff < 0) return 'Just now'; // clock skew guard
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'Just now';
     if (mins < 60) return `${mins}m ago`;
@@ -821,7 +868,7 @@ const AccessTab = ({
     if (hrs < 24) return `${hrs}h ago`;
     const days = Math.floor(hrs / 24);
     if (days < 7) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString();
+    return new Date(t).toLocaleDateString();
   };
 
   return (
@@ -1119,8 +1166,20 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
   const hasCoParent = useMemo(() => members.some(m => m.role === UserRole.PARENT_2) || !!parent2, [members, parent2]);
   const familyCount = useMemo(() => members.length, [members]);
-  const activeCount = useMemo(() => members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 86400000).length, [members]);
-  const pendingCount = useMemo(() => members.filter(m => !m.lastActive || m.status === 'pending').length, [members]);
+  const activeCount = useMemo(
+    () => members.filter(m => {
+      const t = parseLastActive((m as any).lastActive);
+      return t > 0 && Date.now() - t <= 86400000;
+    }).length,
+    [members],
+  );
+  const pendingCount = useMemo(
+    () => members.filter(m => {
+      const t = parseLastActive((m as any).lastActive);
+      return t === 0 || m.status === 'pending';
+    }).length,
+    [members],
+  );
   const unreadChat = 0;
 
   /* ─── Effects ───────────────────────────────────────────────────── */
