@@ -416,11 +416,52 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // ─── Load family with user isolation ──────────────────────────
   const loadFamily = useCallback(async () => {
     if (!currentBaby?.id) {
-      // BabyContext may still be hydrating (cold start, account
-      // switch). Don't wipe — just mark as loading and let the
-      // baby-arrival effect retry.
-      setState(prev => ({ ...prev, isLoading: true }));
-      return;
+      // ── FIX: Guardian cold-start path ─────────────────────────
+      // BabyContext resolves babies for guardians via family_members.
+      // But there's a window where FamilyContext mounts before
+      // BabyContext finishes its first fetch, and currentBaby is
+      // null. The old code bailed here — leaving the guardian stuck
+      // on isLoading until a manual refresh.
+      //
+      // Instead, resolve the baby directly from family_members for
+      // this user, then proceed. This makes the first render work.
+      const uid =
+        authProfile?.id ||
+        (await (async () => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            return session?.user?.id ?? null;
+          } catch {
+            return null;
+          }
+        })());
+      if (!uid) {
+        setState(prev => ({ ...prev, isLoading: true }));
+        return;
+      }
+      try {
+        const { data: fm } = await supabase
+          .from('family_members')
+          .select('baby_id')
+          .eq('user_id', uid)
+          .eq('status', 'active')
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+        if (!fm?.baby_id) {
+          setState(prev => ({ ...prev, isLoading: true }));
+          return;
+        }
+        // Adopt the resolved baby so the rest of loadFamily can run.
+        setCurrentBaby({ id: fm.baby_id } as any);
+        // Loop once more; by then `currentBaby?.id` is set and the
+        // normal path runs.
+        setTimeout(() => loadFamilyRef.current?.().catch(() => {}), 0);
+        return;
+      } catch {
+        setState(prev => ({ ...prev, isLoading: true }));
+        return;
+      }
     }
 
     // Always emit a brand-new state object (even if the same length)

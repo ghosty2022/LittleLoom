@@ -1213,6 +1213,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userPermissions,
       }));
 
+      // ── FIX: wipe the per-user cache after a successful load so a
+      // stale "empty list" from a previous failed attempt can never
+      // be the offline fallback. This is why guardians sometimes
+      // still see "no babies" after the DB is fixed — they were
+      // hydrating the empty cache, not the network.
+      try {
+        await AsyncStorage.removeItem(
+          `${STORAGE_KEYS.BABIES_CACHE_KEY}_${userId}`,
+        );
+      } catch {}
+
       requestAnimationFrame(() => {
         broadcastBabyChange(currentId);
       });
