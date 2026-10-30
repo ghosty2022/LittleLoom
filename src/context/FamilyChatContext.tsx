@@ -751,8 +751,23 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ? (global as any).crypto.randomUUID()
         : `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
+    // ── Two channels: family-scoped + community-scoped ───────────
+    // Group messages live under `family_code = <FAM-...>`; direct
+    // chats are stored under `family_code = 'community'` (see
+    // `sendMessage`). A single channel cannot subscribe to two
+    // disjoint filters on the same table without re-subscribing
+    // (which the SDK rejects). So we run both concurrently and
+    // funnel every payload through the same handler.
+    // ── Family-agnostic channel for broadcasts, presence, and DMs ─
+    // Group messages are still scoped by the DB `family_code` column
+    // via the `.on('postgres_changes', { filter: family_code=eq... })`
+    // handler below — the channel *name* just needs to be stable so a
+    // peer in Family B can receive a Community DM sent by a peer in
+    // Family A. Include the USER id (not the family code) so multi-
+    // family users have ONE channel that lives across baby switches.
+    const meIdForChannel = userProfileRef.current?.id ?? 'anon';
     const channel = supabase.channel(
-      `family-chat-${familyCode}-${uniqueSuffix}`,
+      `family-chat-user-${meIdForChannel}-${uniqueSuffix}`,
       {
         config: {
           broadcast: { ack: true, self: true },
@@ -761,7 +776,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       },
     );
 
-    /* ─── INSERT ─────────────────────────────────────────────── */
+    /* ─── INSERT (family-scoped groups) ──────────────────────── */
     channel.on(
       'postgres_changes',
       {
@@ -912,6 +927,14 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const m = data.message as FamilyMessage;
         // Ignore messages for chats this user has permanently hidden.
         if (hiddenChatsRef.current.has(m.chatId)) return;
+        // Ignore messages that belong to a different family's group
+        // chat. Direct chats use `'community'` and are always accepted.
+        if (
+          m.familyCode !== 'community' &&
+          m.familyCode !== familyCode
+        ) {
+          return;
+        }
         const chat = chatsRef.current.find(c => c.id === m.chatId);
         const isChatMuted = chat?.isMuted ?? false;
 
@@ -1026,7 +1049,136 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     realtimeChannelRef.current = channel;
   }, []);
+    /* ─── INSERT (community DMs) ──────────────────────────────── */
+    // Same handler shape, but the filter is the sentinel family_code
+    // used by direct chats. Without this, DMs sent while the peer
+    // is in a DIFFERENT family never realtime-deliver.
+    channel.on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'family_messages',
+        filter: `family_code=eq.community`,
+      },
+      (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+        const raw = payload.new as Record<string, unknown>;
+        if (!raw) return;
+        const isFromThisDevice = raw.device_id === deviceIdRef.current;
+        try {
+          const reactions = parseReactions(raw.reactions);
+          const fileMetadata = parseFileMeta(raw.file_metadata);
+          const message: FamilyMessage = {
+            id: raw.id as string,
+            syncId: raw.sync_id as string,
+            deviceId: raw.device_id as string,
+            version: (raw.version as number) || 1,
+            chatId: raw.chat_id as string,
+            senderId: raw.sender_id as string,
+            senderName: raw.sender_name as string,
+            senderRole: raw.sender_role as string,
+            senderAvatar: (raw.sender_avatar as string) || undefined,
+            receiverId: (raw.receiver_id as string) || undefined,
+            content: raw.content as string,
+            type: (raw.type as MessageType) || 'text',
+            imageUrl: (raw.image_url as string) || undefined,
+            fileUrl: (raw.file_url as string) || undefined,
+            voiceUrl: (raw.voice_url as string) || undefined,
+            fileMetadata,
+            timestamp: raw.timestamp as string,
+            read: (raw.read as boolean) || false,
+            readBy: (raw.read_by as string[]) || [],
+            familyCode: 'community',
+            reactions,
+            replyTo: (raw.reply_to as string) || undefined,
+            replyToPreview: (raw.reply_to_preview as string) || undefined,
+            isEdited: (raw.is_edited as boolean) || false,
+            editedAt: (raw.edited_at as string) || undefined,
+            deliveryStatus: 'sent',
+          };
+          if (hiddenChatsRef.current.has(message.chatId)) return;
+          const existingChat = chatsRef.current.find(c => c.id === message.chatId);
+          const isChatMuted = existingChat?.isMuted ?? false;
+          setState(prev => {
+            const existing = prev.messages[message.chatId] ?? [];
+            if (existing.some(m => m.id === message.id || m.syncId === message.syncId)) return prev;
+            return {
+              ...prev,
+              messages: {
+                ...prev.messages,
+                [message.chatId]: [...existing, message],
+              },
+              chats: prev.chats.map(c =>
+                c.id === message.chatId
+                  ? {
+                      ...c,
+                      lastMessage: message,
+                      updatedAt: message.timestamp,
+                      unreadCount: isFromThisDevice ? c.unreadCount : (c.unreadCount || 0) + 1,
+                    }
+                  : c,
+              ),
+            };
+          });
+          const activeChatId = currentChatIdRef.current;
+          if (
+            !isFromThisDevice &&
+            activeChatId !== message.chatId &&
+            !isChatMuted &&
+            message.type !== 'system'
+          ) {
+            notificationService
+              .sendChatNotification(
+                message.senderName,
+                message.type === 'image' ? '📷 Sent a photo'
+                  : message.type === 'file' ? '📎 Sent a file'
+                  : message.type === 'voice' ? '🎤 Sent a voice message'
+                  : message.content,
+                message.chatId,
+              )
+              .catch(() => {});
+          }
+        } catch (error) {
+          console.error('[FamilyChat] Community DM INSERT error:', error);
+        }
+      },
+    );
 
+    /* ─── UPDATE (community DMs) ──────────────────────────────── */
+    channel.on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'family_messages',
+        filter: `family_code=eq.community`,
+      },
+      (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+        const raw = payload.new as Record<string, unknown>;
+        if (!raw) return;
+        const messageId = raw.id as string;
+        const chatId = raw.chat_id as string;
+        const reactions = parseReactions(raw.reactions);
+        setState(prev => {
+          const chatMessages = prev.messages[chatId];
+          if (!chatMessages) return prev;
+          const updated = chatMessages.map(msg =>
+            msg.id === messageId
+              ? {
+                  ...msg,
+                  read: (raw.read as boolean) || false,
+                  readBy: (raw.read_by as string[]) || [],
+                  reactions: reactions.length > 0 ? reactions : msg.reactions,
+                  content: (raw.content as string) || msg.content,
+                  isEdited: (raw.is_edited as boolean) || msg.isEdited,
+                  editedAt: (raw.edited_at as string) || msg.editedAt,
+                }
+              : msg,
+          );
+          return { ...prev, messages: { ...prev.messages, [chatId]: updated } };
+        });
+      },
+    );
   /* ─── Perform Initial Sync ──────────────────────────────────── */
   const performInitialSync = useCallback(async () => {
     const familyCode = familyCodeRef.current;
@@ -1069,7 +1221,13 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       //    after signing in on any device.
       const me = userProfileRef.current;
       const hasChats = (chatsData ?? []).length > 0;
-      if (!hasChats && me?.id) {
+      // Only self-heal if we know which BABY this family code belongs
+      // to. Without a baby we'd seed `family_group_FAM-XXXXXX` and DMs
+      // to *whoever* happens to be in family_members — but there's no
+      // baby to key it on. A user who's only signed up for Community
+      // (no baby) should never hit this path.
+      const hasBabyForCode = !!babyContext?.id;
+      if (!hasChats && me?.id && hasBabyForCode) {
         try {
           // ── Resolve the baby this family code belongs to ────────
           // `app_settings.current_baby_id` is per-user and can point
@@ -1298,11 +1456,17 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
         chats.push(chat);
 
-        const { data: msgData, error: msgError } = await supabase
+        // For direct chats (DMs), don't filter by family — they are
+        // global. For group chats, filter by the family code.
+        const isDirectChat = chat.type === 'direct';
+        let msgQuery = supabase
           .from('family_messages')
           .select('*')
-          .eq('chat_id', chat.id)
-          .eq('family_code', familyCode)
+          .eq('chat_id', chat.id);
+        if (!isDirectChat) {
+          msgQuery = msgQuery.eq('family_code', familyCode);
+        }
+        const { data: msgData, error: msgError } = await msgQuery
           .order('timestamp', { ascending: true })
           .limit(100);
 
@@ -1427,10 +1591,16 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const participantNames: Record<string, string> = {};
       const participantRoles: Record<string, string> = {};
       const participantAvatars: Record<string, string> = {};
+      // `FamilyMember.id` is the `family_members` row id — NOT the
+      // profile UUID. `family_chats.participants` must hold profile
+      // UUIDs (matches the `parent1_id` / `parent2_id` shape) so
+      // every other query in this file (participants.includes, .contains,
+      // getOrCreateDirectChat's [me.id, otherId] compare) works.
       members.forEach(m => {
-        participantRoles[m.id] = m.role;
-        participantNames[m.id] = m.fullName;
-        participantAvatars[m.id] = m.avatar || '👤';
+        const uid = (m as any).userId || m.id;
+        participantRoles[uid] = m.role;
+        participantNames[uid] = m.fullName;
+        participantAvatars[uid] = m.avatar || '👤';
       });
 
       const now = new Date().toISOString();
@@ -1440,7 +1610,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         id: chatId,
         type: 'group',
         name: displayName,
-        participants: members.map(m => m.id),
+        participants: members.map(m => (m as any).userId || m.id),
         participant_roles: participantRoles,
         participant_names: participantNames,
         participant_avatars: participantAvatars,
@@ -1491,7 +1661,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         id: chatId,
         type: 'group',
         name: displayName,
-        participants: members.map(m => m.id),
+        participants: members.map(m => (m as any).userId || m.id),
         participantRoles,
         participantNames,
         participantAvatars,
@@ -1690,6 +1860,22 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
+      // ── Community DMs are GLOBAL, not per-family ───────────
+      // A `direct_<sorted-uids>` chat is conceptually a single
+      // conversation between two people, regardless of which family
+      // they're currently viewing. If we tag it with the active
+      // `familyCode`, messages sent while in Family A disappear from
+      // the peer's view when they switch to Family B — because the
+      // realtime channel name (which derives from `family_code`) and
+      // the INSERT filter both key on the active family.
+      //
+      // Use a stable sentinel so the DM is family-agnostic. Group
+      // chats (`family_group_<familyCode>`) stay scoped to their
+      // family code — that's correct: different babies = different
+      // family groups.
+      const isDirectChat = chat.type === 'direct';
+      const messageFamilyCode = isDirectChat ? 'community' : familyCode;
+
       const newMessage: FamilyMessage = {
         id: messageId,
         syncId,
@@ -1709,7 +1895,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         timestamp: now,
         read: false,
         readBy: [me.id],
-        familyCode,
+        familyCode: messageFamilyCode,
         reactions: [],
         replyTo: replyToId,
         replyToPreview,
@@ -2421,17 +2607,28 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return false;
         }
 
+        // Write BOTH the per-baby scoped key (authoritative for
+        // multi-family users) and the legacy per-user key (for
+        // back-compat with existing screens).
+        const joinRows: Array<Record<string, unknown>> = [
+          {
+            key: 'family_code',
+            value: code,
+            user_id: userProfileRef.current?.id ?? null,
+            updated_at: new Date().toISOString(),
+          },
+        ];
+        if (babyContext?.id) {
+          joinRows.push({
+            key: `family_code_${babyContext.id}`,
+            value: code,
+            user_id: userProfileRef.current?.id ?? null,
+            updated_at: new Date().toISOString(),
+          });
+        }
         await supabase
           .from('app_settings')
-          .upsert(
-            {
-              key: 'family_code',
-              value: code,
-              user_id: userProfileRef.current?.id ?? null,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'key,user_id' },
-          );
+          .upsert(joinRows, { onConflict: 'key,user_id' });
 
         if (userProfileRef.current && !chatData.participants.includes(userProfileRef.current.id)) {
           const me = userProfileRef.current;
@@ -2558,7 +2755,12 @@ const getChatMessages = useCallback(
 
   const getMemberChatInfo = useCallback(
     (memberId: string): { name: string; avatar: string; role: string; displayLabel: string } | null => {
-      const member = members.find(m => m.id === memberId);
+      // `memberId` may be a `family_members.id` OR a `profiles.id`
+      // (chat participants are UUIDs, but some callers pass the row
+      // id). Match both.
+      const member =
+        members.find(m => m.id === memberId) ||
+        members.find(m => (m as any).userId === memberId);
       if (!member) return null;
       const displayLabel =
         (member.relationship && member.relationship.trim()) ||

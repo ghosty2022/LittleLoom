@@ -340,10 +340,59 @@ const BabyCard = memo<{
 
             {/* Info */}
             <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <Text style={[styles.babyName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
                   {baby.name}
                 </Text>
+                {/* Role badge — makes it obvious which baby this user
+                    OWNS vs which they're a guest on. */}
+                {baby.role && (
+                  <View
+                    style={[
+                      styles.roleBadge,
+                      {
+                        backgroundColor:
+                          baby.role === 'parent1' ? `${DS.primary}18`
+                          : baby.role === 'parent2' ? `${DS.accent}18`
+                          : baby.role === 'guardian' ? `${DS.success}18`
+                          : `${DS.gray400}18`,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        baby.role === 'parent1' ? 'shield'
+                        : baby.role === 'parent2' ? 'heart'
+                        : baby.role === 'guardian' ? 'shield-checkmark'
+                        : 'eye'
+                      }
+                      size={9}
+                      color={
+                        baby.role === 'parent1' ? DS.primary
+                        : baby.role === 'parent2' ? DS.accent
+                        : baby.role === 'guardian' ? DS.success
+                        : DS.gray500
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.roleBadgeText,
+                        {
+                          color:
+                            baby.role === 'parent1' ? DS.primary
+                            : baby.role === 'parent2' ? DS.accent
+                            : baby.role === 'guardian' ? DS.success
+                            : DS.gray500,
+                        },
+                      ]}
+                    >
+                      {baby.role === 'parent1' ? 'Owner'
+                        : baby.role === 'parent2' ? 'Co-Parent'
+                        : baby.role === 'guardian' ? 'Guardian'
+                        : 'Viewer'}
+                    </Text>
+                  </View>
+                )}
                 {isSelected && (
                   <View style={[styles.babyActivePill, { backgroundColor: `${DS.success}18` }]}>
                     <Ionicons name="checkmark-circle" size={10} color={DS.success} />
@@ -799,4 +848,9 @@ const styles = StyleSheet.create({
     ...DS.shadow.md,
   },
   continueText: { color: DS.white, fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
+    roleBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+  },
+  roleBadgeText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.2 },
 });
