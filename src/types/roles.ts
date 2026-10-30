@@ -167,29 +167,93 @@ export interface FamilyMember {
 // ─────────────────────────────────────────────────────────────────────
 
 const RELATIONSHIP_CANONICAL: Record<string, string> = {
+  // ── Parents ──────────────────────────────────────────
   mother: 'Mother',
   mom: 'Mother',
+  mommy: 'Mother',
   mum: 'Mother',
+  mummy: 'Mother',
   mama: 'Mother',
+  ma: 'Mother',
   father: 'Father',
   dad: 'Father',
-  papa: 'Father',
   daddy: 'Father',
+  papa: 'Father',
+  pop: 'Father',
+  pa: 'Father',
+  parent: 'Parent',
+  // ── Step-parents ─────────────────────────────────────
+  'step-mom': 'Step-Mother',
+  'step mom': 'Step-Mother',
+  stepmom: 'Step-Mother',
+  'step-dad': 'Step-Father',
+  'step dad': 'Step-Father',
+  stepdad: 'Step-Father',
+  'step-mother': 'Step-Mother',
+  'step-father': 'Step-Father',
+  'step-parent': 'Step-Parent',
+  // ── Grandparents ─────────────────────────────────────
   grandmother: 'Grandmother',
   grandma: 'Grandmother',
   granny: 'Grandmother',
+  'nana': 'Grandmother',
+  'nan': 'Grandmother',
+  'mimi': 'Grandmother',
+  'oma': 'Grandmother',
   grandfather: 'Grandfather',
   grandpa: 'Grandfather',
-  nanny: 'Nanny',
+  'papa bear': 'Grandfather',
+  'pops': 'Grandfather',
+  'opa': 'Grandfather',
+  grandparent: 'Grandparent',
+  'great-grandmother': 'Great-Grandmother',
+  'great-grandfather': 'Great-Grandfather',
+  // ── Extended family ──────────────────────────────────
   aunt: 'Aunt',
+  auntie: 'Aunt',
+  'aunty': 'Aunt',
   uncle: 'Uncle',
+  'unc': 'Uncle',
   sister: 'Sister',
   brother: 'Brother',
-  guardian: 'Guardian',
+  cousin: 'Cousin',
+  niece: 'Niece',
+  nephew: 'Nephew',
+  'godmother': 'Godmother',
+  'godfather': 'Godfather',
+  'godparent': 'Godparent',
+  // ── In-laws ──────────────────────────────────────────
+  'mother-in-law': 'Mother-in-law',
+  'mom-in-law': 'Mother-in-law',
+  'father-in-law': 'Father-in-law',
+  'dad-in-law': 'Father-in-law',
+  'sister-in-law': 'Sister-in-law',
+  'brother-in-law': 'Brother-in-law',
+  'in-law': 'In-law',
+  // ── Caregivers / professionals ────────────────────────
+  nanny: 'Nanny',
+  'nanny share': 'Nanny',
   caregiver: 'Caregiver',
+  'carer': 'Caregiver',
   sitter: 'Babysitter',
   babysitter: 'Babysitter',
-  parent: 'Parent',
+  'baby sitter': 'Babysitter',
+  'au pair': 'Au Pair',
+  'au-pair': 'Au Pair',
+  guardian: 'Guardian',
+  'legal guardian': 'Legal Guardian',
+  'foster parent': 'Foster Parent',
+  'adoptive parent': 'Adoptive Parent',
+  // ── Others ───────────────────────────────────────────
+  friend: 'Family Friend',
+  'family friend': 'Family Friend',
+  'neighbor': 'Neighbor',
+  other: 'Family Member',
+  relative: 'Relative',
+  // ── Co-parent role labels (when relationship is empty) ─
+  parent1: 'Primary Parent',
+  parent2: 'Co-Parent',
+  viewer: 'Viewer',
 };
 
 export const canonicalizeRelationship = (raw?: string | null): string => {
@@ -243,4 +307,44 @@ export const canRoleRemove = (actorRole: UserRole | string): boolean => {
 
 export const canRoleChangeRoles = (actorRole: UserRole | string): boolean => {
   return actorRole === UserRole.PARENT_1 || actorRole === 'parent1';
+};
+// ─────────────────────────────────────────────────────────────────────
+// ROLE → BADGE COLOR — used everywhere a role chip appears so the
+// color of "Primary Parent", "Co-Parent", "Guardian", "Viewer" is
+// always consistent (chat list, family tree, member cards, etc.).
+// ─────────────────────────────────────────────────────────────────────
+export const getMemberRoleBadgeColor = (member: {
+  role?: UserRole | string;
+}): string => {
+  switch (member?.role) {
+    case UserRole.PARENT_1:
+    case 'parent1':
+      return '#6366f1';
+    case UserRole.PARENT_2:
+    case 'parent2':
+      return '#ec4899';
+    case UserRole.GUARDIAN:
+    case 'guardian':
+      return '#10b981';
+    case UserRole.VIEWER:
+    case 'viewer':
+      return '#94a3b8';
+    default:
+      return '#94a3b8';
+  }
+};
+
+/**
+ * The compact label shown on a chip in the family tree / chat list.
+ * Prefers the defined relationship ("Mother", "Nana", "Nanny"),
+ * falls back to role name.
+ */
+export const getMemberCompactLabel = (member: {
+  role?: UserRole | string;
+  relationship?: string;
+  fullName?: string;
+}): string => {
+  const rel = canonicalizeRelationship(member?.relationship);
+  if (rel && rel.toLowerCase() !== 'parent') return rel;
+  return getMemberDisplayLabel(member);
 };

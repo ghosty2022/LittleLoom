@@ -955,37 +955,196 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   }, [guardianId, members, loadFamily, userProfile, profile, currentBaby, sweetAlert, loadMemberActivities]);
 
   /* ─── REFRESH MEMBER DATA ─── */
+  /* ─── REFRESH MEMBER DATA ─── */
   const refreshMemberData = useCallback(async () => {
     if (isLoadingRef.current || !member) return;
     isLoadingRef.current = true;
     try {
-      if (typeof refreshFamily === 'function') await refreshFamily();
-      if (typeof refreshBabyData === 'function' && currentBaby?.id) await refreshBabyData(currentBaby.id);
-      const updatedMember = members.find(m => m.id === member.id);
-      if (updatedMember && isMountedRef.current) {
-        setMember(updatedMember);
+      // ── FIX: await loadFamily() (not refreshFamily) so we can read
+      // the *fresh* state after the async DB round-trip completes.
+      // `refreshFamily` is fire-and-forget relative to `members`; the
+      // stale closure is why the role reverted on every focus.
+      await loadFamily();
+
+      // Read the freshly-loaded members from the DB directly to avoid
+      // any stale closure. This is the authoritative source.
+      let dbRow: any = null;
+      try {
+        const { data: row } = await supabase
+          .from('family_members')
+          .select('*')
+          .eq('baby_id', currentBaby?.id || '')
+          .or(`id.eq.${member.id},user_id.eq.${(member as any).userId || member.id}`)
+          .is('deleted_at', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        dbRow = row;
+      } catch (e) {
+        if (__DEV__) console.warn('[EditGuardian] fresh DB read failed:', e);
+      }
+
+      // Prefer the DB row (authoritative role), then the members array.
+      let resolvedMember: FamilyMember | null = null;
+      if (dbRow) {
+        resolvedMember = {
+          id: dbRow.id,
+          userId: dbRow.user_id,
+          fullName: dbRow.full_name,
+          email: dbRow.email,
+          avatar: dbRow.avatar,
+          role: dbRow.role,
+          relationship: dbRow.relationship,
+          permissions: dbRow.permissions,
+          addedAt: dbRow.added_at,
+          addedBy: dbRow.added_by,
+          canBeRemoved: dbRow.can_be_removed !== false,
+          lastActive: dbRow.last_active,
+          phoneNumber: dbRow.phone_number,
+          notificationsEnabled: dbRow.notifications_enabled !== false,
+          status: dbRow.status || 'active',
+        } as FamilyMember;
+      } else {
+        const byRowId = members.find(m => m.id === member.id);
+        const byUserId = members.find(
+          (m: any) => m.userId === (member as any).userId,
+        );
+        resolvedMember = byRowId || byUserId || null;
+      }
+
+      // (Fallback DB read below this line stays as-is — leave it.)
+      if (!resolvedMember && guardianId) {
+        try {
+          const { data: row } = await supabase
+            .from('family_members')
+            .select('*')
+            .eq('baby_id', currentBaby?.id || '')
+            .or(`id.eq.${guardianId},user_id.eq.${guardianId}`)
+            .is('deleted_at', null)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (row) {
+            resolvedMember = {
+              id: row.id,
+              userId: row.user_id,
+              fullName: row.full_name,
+              email: row.email,
+              avatar: row.avatar,
+              role: row.role,
+              relationship: row.relationship,
+              permissions: row.permissions,
+              addedAt: row.added_at,
+              addedBy: row.added_by,
+              canBeRemoved: row.can_be_removed !== false,
+              lastActive: row.last_active,
+              phoneNumber: row.phone_number,
+              notificationsEnabled: row.notifications_enabled !== false,
+              status: row.status || 'active',
+            } as FamilyMember;
+          }
+        } catch {}
+      }
+
+      let resolvedMember: FamilyMember | null = updatedMember || null;
+
+      // Fallback: DB read if the row vanished from `members`
+      // (e.g. a stale dedupe pass). We still want the UI to render.
+      if (!resolvedMember && guardianId) {
+        try {
+          const { data: row } = await supabase
+            .from('family_members')
+            .select('*')
+            .eq('baby_id', currentBaby?.id || '')
+            .or(`id.eq.${guardianId},user_id.eq.${guardianId}`)
+            .is('deleted_at', null)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (row) {
+            resolvedMember = {
+              id: row.id,
+              userId: row.user_id,
+              fullName: row.full_name,
+              email: row.email,
+              avatar: row.avatar,
+              role: row.role,
+              relationship: row.relationship,
+              permissions: row.permissions,
+              addedAt: row.added_at,
+              addedBy: row.added_by,
+              canBeRemoved: row.can_be_removed !== false,
+              lastActive: row.last_active,
+              phoneNumber: row.phone_number,
+              notificationsEnabled: row.notifications_enabled !== false,
+              status: row.status || 'active',
+            } as FamilyMember;
+          }
+        } catch {}
+      }
+
+      if (resolvedMember && isMountedRef.current) {
+        setMember(resolvedMember);
         let username = formData.username;
         let verifiedFromDb = isMemberVerified;
-        const profileIdForLookup = updatedMember.id === (userProfile?.id || userProfile?.uid || profile?.id) ? (userProfile?.id || userProfile?.uid || profile?.id) : (updatedMember as any).userId;
+        const profileIdForLookup =
+          resolvedMember.id === (userProfile?.id || userProfile?.uid || profile?.id)
+            ? (userProfile?.id || userProfile?.uid || profile?.id)
+            : (resolvedMember as any).userId;
         if (profileIdForLookup) {
           try {
-            const { data } = await supabase.from('profiles').select('community_handle, community_username, is_verified').eq('id', profileIdForLookup).maybeSingle();
-            if (data) { username = (data.community_handle || '').replace(/^@/, '') || (data.community_username || '') || username; verifiedFromDb = data.is_verified === true; }
+            const { data } = await supabase
+              .from('profiles')
+              .select('community_handle, community_username, is_verified')
+              .eq('id', profileIdForLookup)
+              .maybeSingle();
+            if (data) {
+              username =
+                (data.community_handle || '').replace(/^@/, '') ||
+                data.community_username ||
+                username;
+              verifiedFromDb = data.is_verified === true;
+            }
           } catch {}
         }
         if (isMountedRef.current) setIsMemberVerified(verifiedFromDb);
         const initialData = {
-          fullName: updatedMember.fullName || '', email: updatedMember.email || '', phoneNumber: updatedMember.phoneNumber || '',
-          relationship: updatedMember.relationship || '', username, avatar: updatedMember.avatar || '', notificationsEnabled: updatedMember.notificationsEnabled ?? true,
+          fullName: resolvedMember.fullName || '',
+          email: resolvedMember.email || '',
+          phoneNumber: resolvedMember.phoneNumber || '',
+          relationship: resolvedMember.relationship || '',
+          username,
+          avatar: resolvedMember.avatar || '',
+          notificationsEnabled: resolvedMember.notificationsEnabled ?? true,
         };
         setFormData(initialData);
         setOriginalData(initialData);
-        if (currentBaby) await loadMemberActivities(updatedMember.id, updatedMember.userId, updatedMember.fullName);
+        if (currentBaby) {
+          await loadMemberActivities(
+            resolvedMember.id,
+            resolvedMember.userId,
+            resolvedMember.fullName,
+          );
+        }
       }
-    } catch (error) { if (__DEV__) console.warn('[EditGuardian] refresh error:', error); }
-    finally { isLoadingRef.current = false; }
-  }, [member, members, refreshFamily, refreshBabyData, currentBaby, loadMemberActivities, formData.username, userProfile, profile, isMemberVerified]);
-
+    } catch (error) {
+      if (__DEV__) console.warn('[EditGuardian] refresh error:', error);
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, [
+    member,
+    members,
+    loadFamily,
+    refreshBabyData,
+    currentBaby,
+    loadMemberActivities,
+    formData.username,
+    userProfile,
+    profile,
+    isMemberVerified,
+    guardianId,
+  ]);
   /* ─── INITIAL LOAD ─── */
   useEffect(() => {
     if (!initialLoadDone.current) { initialLoadDone.current = true; loadMemberData(); }
@@ -1300,49 +1459,109 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   }, [triggerHaptic]);
 
   /* ─── RIBBON ─── */
+  /* ─── RIBBON — fully role-aware ─── */
   const topRibbon = useMemo(() => {
-    if (!member || !roleConfig) return { icon: 'information-circle-outline' as const, color: DS.info, label: 'No data', text: 'Loading member...' };
-    // Only show "Invite to start logging" if they haven't finished
-    // accepting AND the family is genuinely empty. Once anyone is
-    // invited/accepted, this becomes a "No activity yet" nudge.
-    const isPendingMember = !member.lastActive || member.status === 'pending';
-    // If they were JUST promoted to parent1/parent2, they are no longer
-    // a "new member" regardless of activity count.
+    if (!member || !roleConfig) {
+      return {
+        icon: 'information-circle-outline' as const,
+        color: DS.info,
+        label: 'No data',
+        text: 'Loading member...',
+      };
+    }
+
+    const firstName = member.fullName?.split(' ')[0] || 'this member';
     const isParentRole =
       member.role === UserRole.PARENT_1 || member.role === UserRole.PARENT_2;
+    const isPendingMember =
+      !member.lastActive && member.status === 'pending';
+    const displayLabel = getMemberDisplayLabel({
+      role: member.role,
+      relationship: member.relationship,
+    });
+
+    // ── PARENTS FIRST ─────────────────────────────────────────
+    // A parent is NEVER a "new member to nudge". Show their role,
+    // defined relationship, and permission summary — full stop.
+    if (isParentRole) {
+      return {
+        icon: 'shield-checkmark-outline' as const,
+        color: ROLE_CONFIG[member.role].color,
+        label: ROLE_CONFIG[member.role].label,
+        text: `${firstName} · ${displayLabel} · ${ROLE_CONFIG[member.role].permissions.length} permissions`,
+        onPress: () => handleTabChange('permissions'),
+      };
+    }
+
+    if (isPendingMember) {
+      return {
+        icon: 'mail-outline' as const,
+        color: DS.warning,
+        label: 'Pending invite',
+        text: `Waiting for ${firstName} to accept the invitation`,
+        onPress: () => handleTabChange('permissions'),
+      };
+    }
+
+    // ── GUARDIAN / VIEWER BRANCHES ────────────────────────────
+    // Only non-parents can be "new" — but we phrase it in terms of
+    // their defined relationship, never as "nudge them to start".
     if (memberActivities.length === 0) {
-      if (isPendingMember) {
+      if (member.status === 'pending') {
         return {
           icon: 'mail-outline' as const,
           color: DS.warning,
-          label: 'Pending invite',
-          text: `Waiting for ${member.fullName.split(' ')[0]} to accept the invitation`,
-          onPress: () => handleTabChange('permissions'),
-        };
-      }
-      if (isParentRole) {
-        return {
-          icon: 'shield-checkmark-outline' as const,
-          color: ROLE_CONFIG[member.role].color,
-          label: ROLE_CONFIG[member.role].label,
-          text: `${member.fullName.split(' ')[0]} is now ${getMemberDisplayLabel({ role: member.role, relationship: member.relationship })} · ${ROLE_CONFIG[member.role].permissions.length} permissions`,
+          label: 'Invite pending',
+          text: `Waiting for ${firstName} to accept the invitation`,
           onPress: () => handleTabChange('permissions'),
         };
       }
       return {
         icon: 'sparkles-outline' as const,
-        color: DS.primary,
-        label: 'New member',
-        text: `${member.fullName.split(' ')[0]} hasn't logged any entries yet — nudge them to start`,
+        color: roleConfig.color,
+        label: `${displayLabel}`,
+        text: `${firstName} is a ${displayLabel} with ${ROLE_CONFIG[member.role].permissions.length} permissions · Tap to view`,
+        onPress: () => handleTabChange('permissions'),
+      };
+    }
+
+    const daysSince = member?.lastActive
+      ? Math.floor(
+          (Date.now() - new Date(member.lastActive).getTime()) /
+            (24 * 60 * 60 * 1000),
+        )
+      : 0;
+    if (daysSince > 7) {
+      return {
+        icon: 'alarm-outline' as const,
+        color: DS.warning,
+        label: 'Inactive',
+        text: `Last active ${daysSince} days ago · ${memberActivities.length} total activities`,
         onPress: () => handleTabChange('activity'),
       };
     }
-    const daysSince = member?.lastActive ? Math.floor((Date.now() - new Date(member.lastActive).getTime()) / (24 * 60 * 60 * 1000)) : 0;
-    if (daysSince > 7) return { icon: 'alarm-outline' as const, color: DS.warning, label: 'Inactive', text: `Last active ${daysSince} days ago`, onPress: () => handleTabChange('activity') };
-    if (canManagePermissions) return { icon: 'shield-checkmark-outline' as const, color: roleConfig.color, label: 'Access', text: `${roleConfig.permissions.length} permissions granted · Tap to manage`, onPress: () => handleTabChange('permissions') };
-    return { icon: 'checkmark-circle-outline' as const, color: DS.success, label: 'Active member', text: `${memberActivities.length} activities this period`, onPress: () => handleTabChange('activity') };
-  }, [member, roleConfig, memberActivities.length, canManagePermissions]);
-
+    if (canManagePermissions) {
+      return {
+        icon: 'shield-checkmark-outline' as const,
+        color: roleConfig.color,
+        label: displayLabel,
+        text: `${ROLE_CONFIG[member.role].permissions.length} permissions granted · Tap to manage`,
+        onPress: () => handleTabChange('permissions'),
+      };
+    }
+    return {
+      icon: 'checkmark-circle-outline' as const,
+      color: DS.success,
+      label: displayLabel,
+      text: `${memberActivities.length} activities this period`,
+      onPress: () => handleTabChange('activity'),
+    };
+  }, [
+    member,
+    roleConfig,
+    memberActivities.length,
+    canManagePermissions,
+  ]);
   /* ─── GUARDS ─── */
   if (!member && !isHydrating) {
     return (

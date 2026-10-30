@@ -205,8 +205,12 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     const q = searchQuery.toLowerCase();
     return sortedChats.filter((c: FamilyChat) => {
       const otherId = c.participants.find((p) => p !== currentUserId);
-      const isDeactivatedPeer = !!otherId && !participant;
-      const name = participant?.displayName || c.name || '';
+      const communityUser = otherId ? getUserById(otherId) : undefined;
+      const name =
+        communityUser?.displayName ||
+        (otherId && c.participantNames?.[otherId]) ||
+        c.name ||
+        '';
       return (
         name.toLowerCase().includes(q) ||
         (c.lastMessage?.content || '').toLowerCase().includes(q)
@@ -233,9 +237,25 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const renderChat = ({ item, index }: { item: FamilyChat; index: number }) => {
     const lastMessage = item.lastMessage;
     const otherId = item.participants.find((p) => p !== currentUserId);
-    const isDeactivatedPeer = !!otherId && !participant;
+
+    // ── Resolve participant safely ─────────────────────────────
+    // getUserById returns undefined for deleted / removed users.
+    // Fall back to the chat's cached participant name so we never
+    // render "undefined". If BOTH are missing → inactive.
+    const communityUser = otherId ? getUserById(otherId) : undefined;
+    const participant: any = otherId
+      ? (communityUser || {
+          id: otherId,
+          displayName: item.participantNames?.[otherId] || item.name || 'Conversation',
+          avatar: item.participantAvatars?.[otherId],
+          onlineStatus: 'offline',
+        })
+      : undefined;
+    const isDeactivatedPeer =
+      !!otherId && !communityUser && !item.participantNames?.[otherId];
+
     const isMyMessage = lastMessage?.senderId === currentUserId;
-    const isOnline = participant?.onlineStatus === 'online';
+    const isOnline = communityUser?.onlineStatus === 'online';
     const liveRoleBadge = otherId ? (roleLabelsRef.current[otherId] || '') : '';
 
     return (
@@ -250,7 +270,18 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
           ]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            if (otherId) navigation.navigate('Chat', { chatId: otherId } as any);
+            if (!otherId) return;
+            // ── GUARD: never navigate to an inactive/deleted user ──
+            if (isDeactivatedPeer) {
+              const { Alert } = require('react-native');
+              Alert.alert(
+                'Member Inactive',
+                'This family member is no longer active on the platform.',
+                [{ text: 'OK' }],
+              );
+              return;
+            }
+            navigation.navigate('Chat', { chatId: otherId } as any);
           }}
           onLongPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

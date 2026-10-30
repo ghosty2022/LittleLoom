@@ -31,6 +31,7 @@ interface FamilyContextType extends FamilyState {
   getEffectivePermissions: (userId?: string) => Permission;
   updateParent2Profile: (updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>) => Promise<boolean>;
   updateGuardianProfile: (memberId: string, updates: Partial<FamilyMember>) => Promise<boolean>;
+  promoteMember: (memberId: string, newRole: UserRole) => Promise<FamilyMember | null>;
   resendInvite: (memberId: string) => Promise<boolean>;
   cancelInvite: (memberId: string) => Promise<boolean>;
   refreshMemberStatus: (memberId: string) => Promise<void>;
@@ -555,12 +556,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // ── 5. De-dupe by user_id (fallback: id). When TWO rows exist
       //       for the same user (legacy data, or an interrupted
-      //       promote/demote), the winner is decided by:
-      //         1. Higher role priority  (parent1 > parent2 > guardian > viewer)
-      //         2. If tied on priority, the MORE RECENTLY UPDATED row
-      //         3. If still tied, the row with a non-null `last_active`
-      // This prevents a stale guardian row from shadowing a freshly
-      // promoted parent1 row that has the same user_id.
+      //       promote/demote), we ALWAYS keep the row with the most
+      //       recent `updated_at`. Role priority is intentionally NOT
+      //       used — that was the bug that made a stale parent1 row
+      //       shadow a freshly-demoted guardian row (or vice-versa),
+      //       and made a role change "revert" after the realtime
+      //       reload. The DB's `updated_at` is the single source of
+      //       truth for which row is current.
       const priority: Record<UserRole, number> = {
         [UserRole.PARENT_1]: 0,
         [UserRole.PARENT_2]: 1,
@@ -581,84 +583,16 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           byKey.set(key, m);
           continue;
         }
-
-        const existingPrio = priority[existing.role] ?? 4;
-        const newPrio = priority[m.role] ?? 4;
-
-        if (newPrio < existingPrio) {
-          byKey.set(key, m);
-          continue;
-        }
-        if (newPrio > existingPrio) {
-          continue;
-        }
-
-        // Same role → prefer most-recent updated_at
-        const existingTs = rowUpdatedAt(existing);
-        const newTs = rowUpdatedAt(m);
-        if (newTs > existingTs) {
-          byKey.set(key, m);
-          continue;
-        }
-        if (newTs < existingTs) {
-          continue;
-        }
-
-        // Same role and same timestamp → prefer the row with lastActive
-        // set (implies accepted / active), otherwise keep the existing.
-        if (!!m.lastActive && !existing.lastActive) {
+        // Keep whichever row was updated most recently. Timestamps
+        // are the ONLY tiebreaker; role priority does NOT decide.
+        if (rowUpdatedAt(m) > rowUpdatedAt(existing)) {
           byKey.set(key, m);
         }
       }
+      // Sort for display only: parent1 → parent2 → guardian → viewer.
       const uniqueMembers = Array.from(byKey.values()).sort(
         (a, b) => (priority[a.role] ?? 4) - (priority[b.role] ?? 4),
       );
-
-      // ── RECONCILE babies.parent1_id / parent2_id WITH family_members ──
-      // The tree (and every downstream consumer) reads parent1/parent2
-      // from `babies`. If a role change in `family_members` desynced
-      // those columns, we heal them here so:
-      //   • A promoted parent shows under "Primary Parent" on next render.
-      //   • A demoted parent stops showing under "Primary Parent".
-      // Fire-and-forget — we don't block the UI on the write.
-      try {
-        const fmParent1 = uniqueMembers.find(m => m.role === UserRole.PARENT_1);
-        const fmParent2 = uniqueMembers.find(m => m.role === UserRole.PARENT_2);
-        const dbParent1Id = currentBaby?.parent1_id || null;
-        const dbParent2Id = currentBaby?.parent2_id || null;
-        const wantParent1Id = fmParent1?.userId || fmParent1?.id || null;
-        const wantParent2Id = fmParent2?.userId || fmParent2?.id || null;
-
-        const needParent1Fix = wantParent1Id && dbParent1Id !== wantParent1Id;
-        const needParent2Fix = wantParent2Id && dbParent2Id !== wantParent2Id;
-
-        if (needParent1Fix || needParent2Fix) {
-          const updates: Record<string, unknown> = {
-            updated_at: new Date().toISOString(),
-          };
-          if (needParent1Fix) updates.parent1_id = wantParent1Id;
-          if (needParent2Fix) updates.parent2_id = wantParent2Id;
-          // Clear the OTHER slot if it's now occupied by a non-parent.
-          if (dbParent2Id && wantParent1Id && dbParent2Id === wantParent1Id) {
-            updates.parent2_id = null;
-          }
-          if (dbParent1Id && wantParent2Id && dbParent1Id === wantParent2Id) {
-            updates.parent1_id = wantParent2Id;
-          }
-          supabase
-            .from('babies')
-            .update(updates)
-            .eq('id', currentBaby.id)
-            .then(() => {
-              if (__DEV__) console.log('[FamilyContext] ✅ Reconciled babies.parent1/2_id');
-            })
-            .catch((e) => {
-              if (__DEV__) console.warn('[FamilyContext] baby role reconcile failed:', e);
-            });
-        }
-      } catch (e) {
-        if (__DEV__) console.warn('[FamilyContext] role reconcile threw:', e);
-      }
 
       const nextParent1 = uniqueMembers.find(m => m.role === UserRole.PARENT_1) || null;
       const nextParent2 = uniqueMembers.find(m => m.role === UserRole.PARENT_2) || null;
@@ -988,6 +922,168 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return false;
       }
     }
+
+      // ─── PROMOTE / DEMOTE MEMBER (atomic, single entry point) ─────────────
+  //
+  // This is THE ONLY place a role change should go through. It:
+  //   1. Resolves the target row by BOTH `family_members.id` and `userId`.
+  //   2. Soft-deletes any *sibling* rows for the same `user_id` on this
+  //      baby (prevents the "two rows fight for one user" revert bug).
+  //   3. Writes `family_members.role` (canonical lowercase).
+  //   4. Mirrors the new role to `profiles.role` (waits for the write).
+  //   5. Syncs `babies.parent1_id` / `parent2_id` (single atomic update).
+  //   6. Awaits a fresh `loadFamily()` so `state.members` reflects reality.
+  //   7. Broadcasts a `role` change AFTER the DB commit.
+  //
+  // Returns the fresh `FamilyMember` on success, or `null` on failure.
+  // ─────────────────────────────────────────────────────────────────────
+  const promoteMember = useCallback(
+    async (memberId: string, newRole: UserRole): Promise<FamilyMember | null> => {
+      if (!currentBaby?.id) return null;
+
+      // Resolve the target — first try the live state, then a DB read.
+      let targetRow =
+        state.members.find(m => m.id === memberId) ||
+        state.members.find(m => (m as any).userId === memberId) ||
+        null;
+
+      if (!targetRow) {
+        const { data } = await supabase
+          .from('family_members')
+          .select('*')
+          .eq('baby_id', currentBaby.id)
+          .or(`id.eq.${memberId},user_id.eq.${memberId}`)
+          .is('deleted_at', null)
+          .maybeSingle();
+        if (!data) {
+          if (__DEV__) console.warn('[promoteMember] target not found:', memberId);
+          return null;
+        }
+        targetRow = {
+          id: data.id,
+          userId: data.user_id,
+          fullName: data.full_name,
+          email: data.email,
+          role: data.role,
+        } as FamilyMember;
+      }
+
+      const targetUserId: string =
+        (targetRow as any).userId || (targetRow as any).id;
+      const targetRowId = (targetRow as any).id;
+      const nowIso = new Date().toISOString();
+      const dbRole =
+        newRole === UserRole.PARENT_1
+          ? 'parent1'
+          : newRole === UserRole.PARENT_2
+          ? 'parent2'
+          : newRole === UserRole.GUARDIAN
+          ? 'guardian'
+          : 'viewer';
+
+      try {
+        // ── 1. Soft-delete sibling rows for the SAME user on this baby,
+        //       EXCEPT the target row we're about to update. ────────
+        try {
+          await supabase
+            .from('family_members')
+            .update({ deleted_at: nowIso, updated_at: nowIso })
+            .eq('baby_id', currentBaby.id)
+            .eq('user_id', targetUserId)
+            .neq('id', targetRowId)
+            .is('deleted_at', null);
+        } catch (e) {
+          if (__DEV__) console.warn('[promoteMember] sibling purge failed:', e);
+        }
+
+        // ── 2. Write family_members.role ──────────────────────────
+        const { error: fmErr } = await supabase
+          .from('family_members')
+          .update({ role: dbRole, updated_at: nowIso })
+          .eq('id', targetRowId);
+        if (fmErr) {
+          if (__DEV__) console.warn('[promoteMember] family_members write failed:', fmErr);
+          return null;
+        }
+
+        // ── 3. Mirror to profiles.role ────────────────────────────
+        try {
+          await supabase
+            .from('profiles')
+            .update({ role: dbRole, updated_at: nowIso })
+            .eq('id', targetUserId);
+        } catch (e) {
+          if (__DEV__) console.warn('[promoteMember] profiles mirror failed:', e);
+        }
+
+        // ── 4. Sync babies.parent1_id / parent2_id ────────────────
+        // Single atomic update. We ONLY write the columns that are
+        // actually changing — never null the other slot unless we're
+        // moving the same UUID out of it.
+        const babyUpdates: Record<string, unknown> = { updated_at: nowIso };
+        if (newRole === UserRole.PARENT_1) {
+          babyUpdates.parent1_id = targetUserId;
+          if (currentBaby.parent2_id === targetUserId) {
+            babyUpdates.parent2_id = null;
+          }
+        } else if (newRole === UserRole.PARENT_2) {
+          babyUpdates.parent2_id = targetUserId;
+          if (currentBaby.parent1_id === targetUserId) {
+            babyUpdates.parent1_id = null;
+          }
+        } else {
+          // Demoted to guardian / viewer — clear any parent slot
+          // they currently occupy.
+          if (currentBaby.parent2_id === targetUserId) {
+            babyUpdates.parent2_id = null;
+          }
+          // Do NOT clear parent1_id here — that would orphan the baby.
+          // Transferring ownership is a separate explicit flow.
+        }
+
+        try {
+          await supabase
+            .from('babies')
+            .update(babyUpdates)
+            .eq('id', currentBaby.id);
+        } catch (e) {
+          if (__DEV__) console.warn('[promoteMember] baby sync failed:', e);
+        }
+
+        // ── 5. Fresh loadFamily (bypass the in-progress guard) ────
+        // This is what kills the "stale closure" revert. We await it
+        // so the caller receives a live `members` array.
+        familyLoadInProgress.current = false;
+        await loadFamily();
+
+        // ── 6. Build the fresh member from the NEW state ──────────
+        const freshMember =
+          state.members.find(
+            m =>
+              m.id === targetRowId ||
+              ((m as any).userId === targetUserId),
+          ) ||
+          // If `state.members` hasn't flushed yet (rare), fall back to
+          // the DB-verified role from our own write.
+          ({ ...(targetRow as FamilyMember), role: newRole } as FamilyMember);
+
+        // ── 7. Broadcast AFTER the DB commit ──────────────────────
+        try {
+          const { broadcastProfileChange } = require('./AuthContext');
+          await broadcastProfileChange({
+            userId: targetUserId,
+            fields: ['role'],
+          });
+        } catch {}
+
+        return { ...freshMember, role: newRole };
+      } catch (e) {
+        if (__DEV__) console.error('[promoteMember] threw:', e);
+        return null;
+      }
+    },
+    [currentBaby, state.members, loadFamily],
+  );
 
     // Capture the member row BEFORE the async `loadFamily()` below so
     // the role-change broadcast targets the correct profile userId —
@@ -1511,10 +1607,19 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     try {
+      const removedMember = state.members.find(m => m.id === memberId);
+      const removedUserId = (removedMember as any)?.userId || memberId;
+      const nowIso = new Date().toISOString();
+
+      // ── 1. Soft-delete EVERY row for this user on this baby ─────
+      // If they were promoted then demoted, there could be multiple
+      // rows. Kill them all so no stale row survives and reappears.
       const { error } = await supabase
         .from('family_members')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', memberId);
+        .update({ deleted_at: nowIso, updated_at: nowIso })
+        .eq('baby_id', currentBaby.id)
+        .eq('user_id', removedUserId)
+        .is('deleted_at', null);
 
       if (error) {
         console.error('Error removing member:', error);
@@ -1522,41 +1627,46 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return false;
       }
 
-      const guardianIds = (currentBaby.guardian_ids || []).filter((id: string) => id !== memberId);
-      await supabase
-        .from('babies')
-        .update({ guardian_ids: guardianIds })
-        .eq('id', currentBaby.id);
-
-      if (state.parent2?.id === memberId) {
-        await supabase
-          .from('babies')
-          .update({ parent2_id: null })
-          .eq('id', currentBaby.id);
+      // ── 2. Clear parent slots if this was a parent ─────────────
+      const babyUpdates: Record<string, unknown> = { updated_at: nowIso };
+      if (currentBaby.parent2_id === removedUserId) {
+        babyUpdates.parent2_id = null;
+      }
+      // Never clear parent1_id here — ownership transfer is a
+      // separate flow. If a Parent1 truly wants to leave, they
+      // must transfer ownership first.
+      if (Object.keys(babyUpdates).length > 1) {
+        try {
+          await supabase
+            .from('babies')
+            .update(babyUpdates)
+            .eq('id', currentBaby.id);
+        } catch {}
       }
 
-      const removedMember = state.members.find(m => m.id === memberId);
-      const removedUserId = (removedMember as any)?.userId || memberId;
-
-      setState(prev => ({
-        ...prev,
-        members: prev.members.filter(m => m.id !== memberId),
-        guardians: prev.guardians.filter(m => m.id !== memberId),
-        parent2: prev.parent2?.id === memberId ? null : prev.parent2,
-      }));
-
-      // Fan out so chats / EditGuardian / chat headers drop this user
-      // immediately, and any profile card showing them re-renders.
+      // ── 3. Clear guardian_ids mirror ───────────────────────────
+      const guardianIds = (currentBaby.guardian_ids || []).filter(
+        (id: string) => id !== memberId && id !== removedUserId,
+      );
       try {
-        if (removedUserId) {
-          const { broadcastProfileChange } = require('./AuthContext');
-          await broadcastProfileChange({
-            userId: removedUserId,
-            fields: ['fullName', 'avatar', 'role'],
-          });
-        }
+        await supabase
+          .from('babies')
+          .update({ guardian_ids: guardianIds })
+          .eq('id', currentBaby.id);
       } catch {}
 
+      // ── 4. Fan out so chats / EditGuardian / tree drop them ────
+      try {
+        const { broadcastProfileChange } = require('./AuthContext');
+        await broadcastProfileChange({
+          userId: removedUserId,
+          fields: ['fullName', 'avatar', 'role'],
+        });
+      } catch {}
+
+      // ── 5. Fresh load ──────────────────────────────────────────
+      familyLoadInProgress.current = false;
+      await loadFamily();
       return true;
     } catch (error) {
       console.error('Error removing member:', error);
@@ -2179,6 +2289,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     refreshFamily,
     inviteMember,
     removeMember,
+    promoteMember,
     getEffectivePermissions,
     updateParent2Profile,
     updateGuardianProfile,
