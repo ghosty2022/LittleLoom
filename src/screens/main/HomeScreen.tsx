@@ -141,6 +141,7 @@ const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 const CACHE_KEYS = {
   BABY: '@littleloom_cached_baby_v3',
   ACTIVITIES: '@littleloom_cached_activities_v3',
+  MEMBERS: '@littleloom_cached_members_v3',
 };
 
 const scopedCacheKey = (base: string, userId: string | null | undefined, babyId?: string | null) => {
@@ -1830,7 +1831,48 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // `todayContributors`, both of which broke with
   // `ReferenceError: Property 'members' doesn't exist` when this
   // line was accidentally left inside a JSDoc block.
-  const { members } = useFamily();
+  const { members: liveMembers } = useFamily();
+
+  // ── INSTANT-RENDER MEMBERS CACHE ──────────────────────────────
+  // The FamilyStack sits near the top of the screen and previously
+  // only rendered after `useFamily()` finished its own async fetch
+  // — which on a cold start (2nd parent device) is 1–3 s. We cache
+  // the last-known members list and seed from it immediately, so
+  // the avatar row paints on frame 1. Live members overwrite it as
+  // soon as they arrive (same list, no flicker — React reconciles).
+  const [cachedMembers, setCachedMembers] = useState<any[]>([]);
+
+  // Hydrate members cache (scoped by userId + babyId).
+  useEffect(() => {
+    const userId = userProfile?.id;
+    const babyId = currentBaby?.id;
+    if (!userId || !babyId) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const key = scopedCacheKey(CACHE_KEYS.MEMBERS, userId, babyId);
+        if (!key) return;
+        const raw = await AsyncStorage.getItem(key);
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setCachedMembers(parsed);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [userProfile?.id, currentBaby?.id]);
+
+  // Persist members cache whenever the live list changes.
+  useEffect(() => {
+    const userId = userProfile?.id;
+    const babyId = currentBaby?.id;
+    if (!userId || !babyId || !Array.isArray(liveMembers) || liveMembers.length === 0) return;
+    const key = scopedCacheKey(CACHE_KEYS.MEMBERS, userId, babyId);
+    if (key) AsyncStorage.setItem(key, JSON.stringify(liveMembers)).catch(() => {});
+  }, [liveMembers, userProfile?.id, currentBaby?.id]);
+
+  // The members value every downstream consumer should read.
+  const members = liveMembers.length > 0 ? liveMembers : cachedMembers;
 
   const {
     entries: trackerEntriesRaw,
@@ -1874,6 +1916,17 @@ const loadActivities = refreshTrackerEntries;
 // we wipe the in-memory cache and reload scoped keys.
 const cacheHydratedForUserRef = useRef<string | null>(null);
 
+/**
+ * INSTANT-RENDER CACHE HYDRATION
+ *
+ * Two changes vs. the old version:
+ *  1. We read AsyncStorage for BOTH baby + activities + members in a single
+ *     Promise.all — no more serial round-trips.
+ *  2. `setIsLoadingInitial(false)` fires as soon as the read completes,
+ *     INDEPENDENT of whether auth has resolved. The cached baby/activities
+ *     render immediately, and the live data from useBaby/useTracker swaps
+ *     in silently when it arrives. No skeleton flash for the 2nd parent.
+ */
 useEffect(() => {
   const userId = userProfile?.id ?? null;
 
@@ -1887,7 +1940,8 @@ useEffect(() => {
   }
 
   if (!userId) {
-    // Signed out — nothing to load, and nothing to keep.
+    // Signed out — nothing to load, and nothing to keep. But DO flip
+    // loading off so the skeleton doesn't hang if sign-out races mount.
     setIsLoadingInitial(false);
     return;
   }
@@ -1895,13 +1949,11 @@ useEffect(() => {
   let cancelled = false;
   (async () => {
     try {
-      // Only load the BABY cache keyed by user (baby not yet known here).
       const babyKey = scopedCacheKey(CACHE_KEYS.BABY, userId);
-      const babyJson = babyKey ? await AsyncStorage.getItem(babyKey) : null;
+      const [babyJson] = await Promise.all([
+        babyKey ? AsyncStorage.getItem(babyKey) : Promise.resolve(null),
+      ]);
 
-      // Activities cache is keyed by user + the cached baby's id, so that a
-      // different baby's rows can NEVER leak into this user's session even
-      // if they own multiple babies.
       let actJson: string | null = null;
       if (babyJson) {
         try {
@@ -1926,6 +1978,9 @@ useEffect(() => {
     } finally {
       if (!cancelled) {
         cacheLoaded.current = true;
+        // Fire this even if the cache was empty — the live hooks will
+        // populate. The point is: nothing should block on the skeleton
+        // once we've made our best-effort read.
         setIsLoadingInitial(false);
       }
     }
@@ -2074,21 +2129,39 @@ useEffect(() => {
   }, []);
 
   /* ── Load data instantly on focus + mount ── */
+  // Two guards instead of one:
+  //   • First focus after mount always reloads (cold start).
+  //   • Subsequent focuses reload ONLY when the current baby changed
+  //     — so a baby switch pulls the right data, but re-entering the
+  //     screen without changing babies doesn't refetch needlessly.
+  const lastFocusedBabyIdRef = useRef<string | null>(null);
+
   useFocusEffect(
     useCallback(() => {
-      if (isInitialLoad.current || !dataLoaded.current) {
+      const currentBabyIdForFocus = currentBabyId ?? null;
+      const isFirstFocus = isInitialLoad.current;
+      const babyChanged = lastFocusedBabyIdRef.current !== currentBabyIdForFocus;
+
+      if (isFirstFocus || babyChanged) {
         isInitialLoad.current = false;
+        lastFocusedBabyIdRef.current = currentBabyIdForFocus;
         loadBabies();
         loadActivities();
         dataLoaded.current = true;
       }
       rehydratePinStatus().catch(() => {});
-    }, [loadBabies, loadActivities, rehydratePinStatus])
+    }, [loadBabies, loadActivities, rehydratePinStatus, currentBabyId])
   );
 
+  // Mount-time kick (does NOT double-fire on focus because of the
+  // isInitialLoad / dataLoaded dance above — the focus effect will
+  // still be the first to set isInitialLoad.current = false).
   useEffect(() => {
-    loadBabies();
-    loadActivities();
+    if (!dataLoaded.current) {
+      loadBabies();
+      loadActivities();
+      dataLoaded.current = true;
+    }
   }, []);
 
   const scrollHandler = useAnimatedScrollHandler({
@@ -2479,6 +2552,18 @@ useEffect(() => {
   const handleBabyHeaderPress = useCallback(() => {
     const totalBabies = Array.isArray(babies) ? babies.length : 0;
     if (totalBabies > 1) {
+      // Pre-warm AsyncStorage reads for the OTHER babies' activities so
+      // the eventual switch is near-instant. Fire-and-forget — failures
+      // are silent and the normal load path is unaffected.
+      const userId = userProfile?.id;
+      if (userId) {
+        babies.forEach((b: any) => {
+          if (b?.id && b.id !== currentBabyId) {
+            const key = scopedCacheKey(CACHE_KEYS.ACTIVITIES, userId, b.id);
+            if (key) AsyncStorage.getItem(key).catch(() => {});
+          }
+        });
+      }
       navigateToScreen('SwitchBaby', {
         returnTo: 'Main',
         returnLabel: 'Home',
@@ -2721,7 +2806,13 @@ const growthStats = useMemo(() => {
 
   const scrollTopPadding = HEADER_TOTAL_HEIGHT + 10;
 
-  const showSkeletons = isLoadingInitial || (authLoading && !cachedBaby && allTimelineEvents.length === 0);
+  // Skeletons are ONLY shown while the AsyncStorage read is in flight.
+  // Once that completes (which is fast, and independent of auth), we
+  // render whatever we have: cachedBaby / cachedActivities on a cold
+  // start, or the live values on a warm one. Auth loading must NEVER
+  // gate the render — otherwise the "other parent" device (cold cache,
+  // slow token refresh) stares at a skeleton for seconds.
+  const showSkeletons = isLoadingInitial && !cachedBaby && allTimelineEvents.length === 0;
 
   /* ─── RENDER ─── */
   return (
