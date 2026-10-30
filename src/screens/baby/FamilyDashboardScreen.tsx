@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import FamilyTree from '../../components/FamilyTree';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { differenceInMonths, format, formatDistanceToNow } from 'date-fns';
@@ -1189,10 +1190,11 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
             </View>
 
             <View style={{ marginTop: DS.space.lg }}>
-              <FamilyStack
+              <FamilyTree
                 members={members}
+                currentBaby={currentBaby}
                 isDark={isDark}
-                onPress={handleNavigateFamily}
+                onManage={handleNavigateFamily}
                 onMemberPress={(m) => {
                   const targetId = (m as any).userId || m.id;
                   if (targetId) {
@@ -1205,6 +1207,8 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
                     handleNavigateFamily();
                   }
                 }}
+                onAddCoParent={() => navigation.navigate('CoParentInviteScreen')}
+                onAddGuardian={() => navigation.navigate('CoParentInviteScreen')}
               />
             </View>
 

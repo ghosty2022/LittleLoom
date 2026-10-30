@@ -1259,39 +1259,6 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     );
   }
 
-  if (!user) {
-    return (
-      <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.lightBg }]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <View style={styles.centered}>
-          <LinearGradient
-            colors={
-              isDark
-                ? ['rgba(99,102,241,0.22)', 'rgba(236,72,153,0.12)']
-                : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.05)']
-            }
-            style={styles.emptyIconBg}
-          >
-            <Ionicons name="person-outline" size={40} color={LL.primary} />
-          </LinearGradient>
-          <Text style={[styles.errorText, { color: isDark ? LL.gray400 : LL.gray500 }]}>
-            User not found
-          </Text>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.goBackButton}>
-            <LinearGradient
-              colors={[LL.primary, LL.accent]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.goBackGrad}
-            >
-              <Text style={styles.goBackText}>Go Back</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   /* ── Main render ────────────────────────────────────────── */
   return (
     <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.lightBg }]}>
@@ -1337,20 +1304,25 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
         <TouchableOpacity
           style={styles.userInfo}
-          onPress={() => navigation.navigate('CommunityMemberProfile', { userId: user.id })}
+          onPress={() => {
+            if (user?.id) {
+              navigation.navigate('CommunityMemberProfile', { userId: user.id });
+            }
+          }}
           activeOpacity={0.8}
+          disabled={!user}
         >
           <View style={styles.avatarWrap}>
             <SafeAvatar
-              avatar={user.avatar}
+              avatar={user?.avatar}
               size={42}
               fallbackIcon="person"
               fallbackColor={LL.primary}
               fallbackBgColor={`${LL.primary}20`}
-              borderWidth={user.onlineStatus === 'online' && !isBlocked ? 2 : 0}
+              borderWidth={user?.onlineStatus === 'online' && !isBlocked ? 2 : 0}
               borderColor={LL.success}
             />
-            {!isBlocked && user.onlineStatus === 'online' && (
+            {!isBlocked && user?.onlineStatus === 'online' && (
               <View style={[styles.onlineDot, { borderColor: isDark ? LL.darkSurface : LL.white }]}>
                 <View style={[styles.onlineDotInner, { backgroundColor: LL.success }]} />
               </View>
@@ -1365,9 +1337,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
                 ]}
                 numberOfLines={1}
               >
-                {user.displayName}
+                {user?.displayName ?? 'Unknown member'}
               </Text>
-              {user.isVerified && !isBlocked && (
+              {user?.isVerified && !isBlocked && (
                 <View style={[styles.verifiedBadge, { backgroundColor: LL.primary }]}>
                   <Ionicons name="checkmark" size={10} color={LL.white} />
                 </View>
@@ -1418,6 +1390,18 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Inactive member banner — replaces the old full-screen
+          "User not found" dead-end so the chat shell still renders
+          and the user can read history / go back. */}
+      {!user && (
+        <View style={[styles.blockedBanner, { backgroundColor: `${LL.error}12`, marginTop: LL.space.sm }]}>
+          <Ionicons name="person-remove" size={18} color={LL.error} />
+          <Text style={[styles.blockedBannerText, { color: LL.error, flex: 1 }]}>
+            This member is no longer active
+          </Text>
+        </View>
+      )}
 
       {/* Messages */}
       <FlatList
@@ -1480,7 +1464,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             <Text style={[styles.typingLabel, { color: isDark ? LL.gray400 : LL.gray500 }]}>
               {/* `user` is re-hydrated from CommunityContext on every
                   profile change, so this stays fresh. */}
-              {user.displayName} is typing
+              {user?.displayName ?? 'Someone'} is typing
             </Text>
             <TypingDots isDark={isDark} />
           </View>
@@ -1641,7 +1625,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
               style={[styles.optionItem, styles.optionItemLast]}
               onPress={() => {
                 setShowOptions(false);
-                navigation.navigate('CommunityMemberProfile', { userId: user.id });
+                if (user?.id) {
+                  navigation.navigate('CommunityMemberProfile', { userId: user.id });
+                }
               }}
             >
               <Ionicons name="person" size={22} color={LL.primary} />

@@ -45,6 +45,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
 import { UserRole, FamilyMember, getMemberDisplayLabel, canonicalizeRelationship } from '../../types/roles';
+import FamilyTree from '../../components/FamilyTree';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
@@ -1566,6 +1567,31 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                 </View>
               )}
             </View>
+          </View>
+        )}
+
+        {activeTab === 'tree' && (
+          <View style={{ paddingTop: DS.space.md }}>
+            <FamilyTree
+              members={members}
+              currentBaby={currentBaby}
+              isDark={isDark}
+              onManage={() => setActiveTab('members')}
+              onMemberPress={(m) => {
+                const targetId = (m as any).userId || m.id;
+                if (targetId) {
+                  navigation.navigate('EditGuardian', {
+                    guardianId: targetId,
+                    mode: 'guardian',
+                    fromChat: false,
+                  } as never);
+                } else {
+                  setActiveTab('members');
+                }
+              }}
+              onAddCoParent={() => navigation.navigate('CoParentInviteScreen')}
+              onAddGuardian={() => navigation.navigate('CoParentInviteScreen')}
+            />
           </View>
         )}
 
