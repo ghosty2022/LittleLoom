@@ -404,6 +404,22 @@ const BabyCard = memo<{
                 <Text style={[styles.babyAge, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                   {baby.age}
                 </Text>
+                {!!baby.familyLabel && (
+                  <>
+                    <View style={[styles.babyDot, { backgroundColor: isDark ? DS.gray600 : DS.gray300 }]} />
+                    <Ionicons
+                      name={baby.role === 'parent1' || baby.role === 'parent2' ? 'home' : 'people'}
+                      size={11}
+                      color={isDark ? DS.gray500 : DS.gray400}
+                    />
+                    <Text
+                      style={[styles.babyDate, { color: isDark ? DS.gray500 : DS.gray400 }]}
+                      numberOfLines={1}
+                    >
+                      {baby.familyLabel}
+                    </Text>
+                  </>
+                )}
                 <View style={[styles.babyDot, { backgroundColor: isDark ? DS.gray600 : DS.gray300 }]} />
                 <Text style={styles.babyEmoji}>
                   {baby.gender === 'girl' ? '👧' : baby.gender === 'boy' ? '👦' : '👶'}
@@ -489,7 +505,10 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
     try {
       const success = await switchBaby(babyId);
       if (success) {
-        await loadBabies();
+        // `switchBaby` already updates `currentBabyId` and broadcasts;
+        // a full `loadBabies()` here causes a redundant re-fetch. The
+        // baby-change listeners (FamilyContext, FamilyChatContext,
+        // TrackerContext) already re-hydrate from the broadcast.
         sweetAlert.success('Switched', 'Baby profile updated');
         setTimeout(() => {
           if (!hasNavigated.current && isMounted.current) {

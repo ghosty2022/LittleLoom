@@ -57,6 +57,10 @@ export interface BabyProfile {
   parent2Id?: string;
   guardianIds?: string[];
   role?: 'parent1' | 'parent2' | 'guardian' | 'viewer';
+  /** Human label for the family this baby belongs to. Used in the
+   *  baby switcher to disambiguate when a user belongs to more than
+   *  one family (e.g. "Sarah's family" vs "Your family"). */
+  familyLabel?: string;
   weight?: string;
   height?: string;
   bloodType?: string;
@@ -917,9 +921,52 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       
-      const babies: BabyProfile[] = allBabies.map((baby: any) =>
-        mapBabyRowToProfile(baby, userRoles[baby.id] || 'viewer')
+      // ── Family labels ─────────────────────────────────────────
+      // A user can belong to multiple families (Parent1 on Baby A,
+      // Guardian on Baby B). The switcher shows "Sarah's family" for
+      // guardians so they can tell Baby-B-from-Sarah apart from
+      // Baby-B-from-James without tapping into each.
+      //
+      // We resolve the parent1's display name for each baby ONCE,
+      // in a single batched query.
+      const parent1Ids = Array.from(
+        new Set(
+          allBabies
+            .map(b => b.parent1_id)
+            .filter((id: any): id is string => !!id),
+        ),
       );
+      const parent1Names: Record<string, string> = {};
+      if (parent1Ids.length > 0) {
+        try {
+          const { data: parents } = await supabase
+            .from('profiles')
+            .select('id, full_name, community_display_name')
+            .in('id', parent1Ids);
+          (parents || []).forEach((p: any) => {
+            parent1Names[p.id] =
+              p.community_display_name || p.full_name || 'Family';
+          });
+        } catch {}
+      }
+
+      const babies: BabyProfile[] = allBabies.map((baby: any) => {
+        const role = userRoles[baby.id] || 'viewer';
+        const profile = mapBabyRowToProfile(baby, role);
+        // Determine family label:
+        //   • I'm a parent → "Your family"
+        //   • I'm a guardian/viewer → "<Parent1 first name>'s family"
+        if (role === 'parent1' || role === 'parent2') {
+          profile.familyLabel = 'Your family';
+        } else {
+          const p1Name = baby.parent1_id
+            ? parent1Names[baby.parent1_id] || ''
+            : '';
+          const first = p1Name.split(' ')[0] || 'Shared';
+          profile.familyLabel = `${first}'s family`;
+        }
+        return profile;
+      });
 
       
       // IMPORTANT: scope the cache by user ID so a different account

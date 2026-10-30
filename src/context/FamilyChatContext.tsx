@@ -1018,37 +1018,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // Intentionally empty — presence not used for UI yet.
     });
 
-    /* ─── Subscribe ──────────────────────────────────────────── */
-    channel.subscribe(status => {
-      if (status === 'SUBSCRIBED') {
-        isSubscribedRef.current = true;
-        reconnectAttemptsRef.current = 0;
-        channel
-          .track({
-            user_id: userProfileRef.current?.id,
-            user_name: userProfileRef.current?.fullName,
-            device_id: deviceIdRef.current,
-            online_at: new Date().toISOString(),
-          })
-          .catch(err => console.warn('[FamilyChat] Presence track failed:', err));
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        isSubscribedRef.current = false;
-        reconnectAttemptsRef.current += 1;
-        const delay = Math.min(
-          5000 * Math.pow(1.5, reconnectAttemptsRef.current - 1),
-          30_000,
-        );
-        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (realtimeChannelRef.current && !isSubscribedRef.current) {
-            realtimeChannelRef.current.subscribe();
-          }
-        }, delay);
-      }
-    });
-
-    realtimeChannelRef.current = channel;
-  }, []);
     /* ─── INSERT (community DMs) ──────────────────────────────── */
     // Same handler shape, but the filter is the sentinel family_code
     // used by direct chats. Without this, DMs sent while the peer
@@ -1179,6 +1148,40 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
       },
     );
+
+    /* ─── Subscribe ──────────────────────────────────────────── */
+    channel.subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        isSubscribedRef.current = true;
+        reconnectAttemptsRef.current = 0;
+        channel
+          .track({
+            user_id: userProfileRef.current?.id,
+            user_name: userProfileRef.current?.fullName,
+            device_id: deviceIdRef.current,
+            online_at: new Date().toISOString(),
+          })
+          .catch(err => console.warn('[FamilyChat] Presence track failed:', err));
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        isSubscribedRef.current = false;
+        reconnectAttemptsRef.current += 1;
+        const delay = Math.min(
+          5000 * Math.pow(1.5, reconnectAttemptsRef.current - 1),
+          30_000,
+        );
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (realtimeChannelRef.current && !isSubscribedRef.current) {
+            realtimeChannelRef.current.subscribe();
+          }
+        }, delay);
+      }
+    });
+
+    realtimeChannelRef.current = channel;
+  }, []);
+
+    
   /* ─── Perform Initial Sync ──────────────────────────────────── */
   const performInitialSync = useCallback(async () => {
     const familyCode = familyCodeRef.current;
