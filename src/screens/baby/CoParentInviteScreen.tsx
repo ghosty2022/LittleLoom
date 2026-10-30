@@ -20,6 +20,7 @@ import {
   UIManager,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -1236,6 +1237,15 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     setIsLoading(true);
     try {
       await skipSetup('parent2');
+      // Mark onboarding complete so cold-boot / re-login routes
+      // straight to Main (the family dashboard is reachable, invites
+      // can be sent from FamilySharing).
+      try {
+        await AsyncStorage.multiSet([
+          ['littleloom_setup_complete', 'true'],
+          ['littleloom_onboarding_complete_v3', 'true'],
+        ]);
+      } catch {}
       showToast('Skipped for now - you can add later in Family settings', 'info');
       navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
     } catch {
@@ -1251,6 +1261,17 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     setIsLoading(true);
     try {
       await completeSetup('parent2');
+      // `completeSetup` already writes `littleloom_parent2_completed`
+      // and, if baby is also done, `littleloom_setup_complete`.
+      // We belt-and-suspenders the setup + onboarding flags here in
+      // case this screen was reached without going through the full
+      // flow (e.g. deep link, restored nav state).
+      try {
+        await AsyncStorage.multiSet([
+          ['littleloom_setup_complete', 'true'],
+          ['littleloom_onboarding_complete_v3', 'true'],
+        ]);
+      } catch {}
       showToast('Setup complete! Welcome to the family', 'success');
       navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
     } catch {

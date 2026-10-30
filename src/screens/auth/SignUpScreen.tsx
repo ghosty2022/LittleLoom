@@ -361,7 +361,10 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
         if (socialResult.success && isMounted.current) {
           showSuccess('Welcome!', `Signed in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
-          navigation.replace('BabyOptional');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'BabyOptional' as never }],
+          });
           return;
         }
       }
@@ -372,7 +375,10 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
       if (success && isMounted.current) {
         showSuccess('Welcome!', `Account created with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`);
-        navigation.replace('BabyOptional');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'BabyOptional' as never }],
+        });
       } else {
         showError('Sign Up Failed', 'Could not create account. The email may already be in use.');
       }
@@ -569,10 +575,16 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
         if (recoveryResult.success) {
           showSuccess('Welcome to the family!', recoveryResult.message);
-          navigation.replace('BabyOptional');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'BabyOptional' as never }],
+          });
         } else {
           showSuccess('Account Created!', 'Your account has been created. Please complete your family setup.');
-          navigation.replace('BabyOptional');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'BabyOptional' as never }],
+          });
         }
       } else {
         showError('Failed', signUpResult.message || 'Could not create account. Please try again.');
@@ -683,7 +695,13 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
       if (result.success && isMounted.current) {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
-        navigation.replace('BabyOptional');
+        // Hard reset so the auth stack can't resurface if the root
+        // navigator re-runs its navState resolver (which it does
+        // whenever BabyContext hydrates).
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'BabyOptional' as never }],
+        });
       } else {
         try {
           const existing = await findUserByEmail(email.trim());
@@ -802,7 +820,10 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         }
 
         showSuccess(`Welcome, ${joinFullName.trim()}!`, result.message);
-        navigation.replace('BabyOptional');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'BabyOptional' as never }],
+        });
       } else {
         showError('Join Failed', result.message || 'Could not join family. Please try again.');
         joinAttempted.current = false;

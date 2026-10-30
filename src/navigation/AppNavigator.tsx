@@ -241,22 +241,40 @@ function getNavState(
 
   if (isLocked && securityOn) return 'SECURITY_LOCK';
 
-  // A multi-baby user who hasn't chosen a baby THIS SESSION must be
-  // routed through SwitchBaby before Main. The selection flag is
-  // checked asynchronously in NavigationContent (see the effect
-  // below), so here we only signal "needs baby selection" via a
-  // dedicated state. If the flag is absent, `babyCount > 1` still
-  // falls through to MAIN here — the effect in NavigationContent
-  // will then immediately navigate to SwitchBaby.
-  if (babyCount > 0) return 'MAIN';
-  if (setupDone) return 'MAIN';
-  if (hasBaby === true || hasBaby === 'skipped') return 'MAIN';
+  // ── HARD GATE: 0 babies + setup not REALLY done → setup flow ──
+  //
+  // The previous logic trusted `hasBaby === 'skipped'` / `setupDone`
+  // unconditionally. On a fresh sign-up on a device that previously
+  // hosted a fully-set-up account, those AsyncStorage flags leaked
+  // from the OLD account and made the new user skip BabyOptional /
+  // CoParentInviteScreen entirely.
+  //
+  // The authoritative signal is `babyCount > 0`. If the user has
+  // zero babies AND `hasBaby` is anything other than an explicit
+  // `true` (i.e. they actually created one), we MUST route to the
+  // setup flow — never straight to Main.
+  if (babyCount === 0) {
+    if (hasBaby === true) {
+      // They marked "baby done" but have no baby in the DB yet —
+      // BabyContext hasn't hydrated. Give MAIN a chance; the setup
+      // flow will be re-entered if hydration confirms 0.
+      return 'MAIN';
+    }
+    if (!setupDone) {
+      // Brand new / unfinished account → setup flow.
+      const p2Addressed = hasP2 === true || hasP2 === 'skipped';
+      if (!p2Addressed) return 'SETUP_PARENT2';
+      // Parent2 addressed → baby step is next.
+      return 'SETUP_BABY';
+    }
+    // `setupDone === true` but babyCount === 0. This is the classic
+    // leak-from-prior-account case. Route through setup anyway.
+    return 'SETUP_BABY';
+  }
 
-  if (setupDone) return 'MAIN';
-  const p2Addressed = hasP2 === true || hasP2 === 'skipped';
-  if (!p2Addressed) return 'SETUP_PARENT2';
+  // 1+ babies → Main flow. `setupDone` is not required if a baby
+  // exists (they own a baby — clearly set up).
   return 'MAIN';
-}
 
 function NavigationContent({
   isDark: propIsDark,
@@ -472,6 +490,61 @@ function NavigationContent({
         if (isMounted.current) setBabiesReady(true);
       });
   }, [isAuthenticated, isValidSession, authLoading, loadBabies]);
+
+  // ── RE-EVALUATE ON BABY HYDRATION ─────────────────────────────
+  // When `loadBabies` finishes and the count goes from 0 → N (or
+  // stays 0), re-run the navState resolver. Without this, a fresh
+  // signup would race: navState latches to MAIN using stale
+  // `setupDone`/`hasBaby` flags before BabyContext reports "0
+  // babies", and NavigationContainer resets the stack onto Main.
+  useEffect(() => {
+    if (!isAuthenticated || !isValidSession) return;
+    if (authLoading) return;
+    // Nudge the resolver by touching the babyCount ref and forcing
+    // a re-run of the main resolver effect.
+    babyCountRef.current = babies?.length || 0;
+    // Force re-evaluation by re-computing navState with the latest
+    // counts. This deliberately mimics the resolver effect's body
+    // so we don't have to over-parameterise it.
+    if (mustChangePassword === true && !isSecurityLocked) {
+      if (lastNavState.current !== 'FORCED_PASSWORD_CHANGE') {
+        lastNavState.current = 'FORCED_PASSWORD_CHANGE';
+        setNavState('FORCED_PASSWORD_CHANGE' as any);
+      }
+      return;
+    }
+    const newState = getNavState(
+      authLoading,
+      isAuthenticated,
+      isValidSession,
+      isSecurityLocked,
+      securityOn,
+      setupComplete,
+      hasParent2,
+      hasBaby,
+      babyCountRef.current,
+      hasSkippedBabyRef.current,
+      hasSeenOnboarding,
+      isFirstOpen,
+    );
+    if (newState !== lastNavState.current) {
+      lastNavState.current = newState;
+      setNavState(newState);
+    }
+  }, [
+    babies?.length,
+    isAuthenticated,
+    isValidSession,
+    authLoading,
+    mustChangePassword,
+    isSecurityLocked,
+    securityOn,
+    setupComplete,
+    hasParent2,
+    hasBaby,
+    hasSeenOnboarding,
+    isFirstOpen,
+  ]);
 
   // ── App foreground handling ───────────────────────────────────
   useEffect(() => {

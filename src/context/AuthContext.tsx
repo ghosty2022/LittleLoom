@@ -1144,6 +1144,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
+      // ── HARD-RESET SETUP FLAGS FOR THE NEW ACCOUNT ──────────────
+      // A device that previously hosted a fully-set-up account still
+      // has `littleloom_setup_complete = 'true'` and
+      // `littleloom_baby_completed = 'skipped'` etc. in AsyncStorage.
+      // If we don't wipe them, the post-auth effects in
+      // `LoginScreen` + `NavigationContent` see `setupComplete: true`
+      // for a BRAND-NEW user with 0 babies and force-navigate to
+      // `Main` — bypassing `BabyOptional` / `CoParentInviteScreen`.
+      //
+      // Wipe all setup-related keys NOW, before the state commit,
+      // so no reader can observe a half-transitioned state.
+      try {
+        await AsyncStorage.multiRemove([
+          ASYNC_KEYS.SETUP_COMPLETE,
+          ASYNC_KEYS.HAS_PARENT2,
+          ASYNC_KEYS.HAS_BABY,
+          ASYNC_KEYS.PARENT2_COMPLETED,
+          ASYNC_KEYS.BABY_COMPLETED,
+          ASYNC_KEYS.ONBOARDING_COMPLETE,
+          '@littleloom_has_skipped_baby',
+          '@littleloom_current_baby_id',
+          '@littleloom_babies_cache',
+          '@littleloom_last_baby_sync',
+          '@littleloom_multi_baby_selected_this_session',
+        ]);
+      } catch {}
+
       const handle = `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
       // Persist the declared relationship into the profile row so it
       // survives across devices even before a baby exists.
@@ -1236,9 +1263,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           session: signUpData.session,
           onboardingComplete: false,
           hasSeenOnboarding: true,
+          // Explicitly false so no downstream reader (LoginScreen,
+          // NavigationContent, BabyContext) can treat this account
+          // as already set up.
           setupComplete: false,
           hasParent2: false,
           hasBaby: false,
+          mustChangePassword: false,
         }));
       }
 
@@ -1299,6 +1330,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         AsyncStorage.setItem(ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'),
       ]);
 
+      // Same hard-reset as `signUp` — a fresh social sign-up on a
+      // device that previously hosted a set-up account must NOT
+      // inherit `setupComplete: true`.
+      try {
+        await AsyncStorage.multiRemove([
+          ASYNC_KEYS.SETUP_COMPLETE,
+          ASYNC_KEYS.HAS_PARENT2,
+          ASYNC_KEYS.HAS_BABY,
+          ASYNC_KEYS.PARENT2_COMPLETED,
+          ASYNC_KEYS.BABY_COMPLETED,
+          ASYNC_KEYS.ONBOARDING_COMPLETE,
+          '@littleloom_has_skipped_baby',
+          '@littleloom_current_baby_id',
+          '@littleloom_babies_cache',
+          '@littleloom_last_baby_sync',
+          '@littleloom_multi_baby_selected_this_session',
+        ]);
+      } catch {}
+
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1310,6 +1360,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setupComplete: false,
           hasParent2: false,
           hasBaby: false,
+          mustChangePassword: false,
         }));
       }
 
@@ -2735,6 +2786,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
       } catch {}
+
+      // The invitee IS already part of a family (via family_members
+      // + babies.parent2_id / app_settings.current_baby_id). Mark
+      // setup complete so navigation routes them straight to Main
+      // — NOT through BabyOptional / CoParentInviteScreen.
+      try {
+        await AsyncStorage.multiSet([
+          [ASYNC_KEYS.SETUP_COMPLETE, 'true'],
+          [ASYNC_KEYS.HAS_PARENT2, 'true'],
+          [ASYNC_KEYS.HAS_BABY, 'true'],
+          [ASYNC_KEYS.PARENT2_COMPLETED, 'true'],
+          [ASYNC_KEYS.BABY_COMPLETED, 'true'],
+          [ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'],
+          ['@littleloom_multi_baby_selected_this_session', 'true'],
+        ]);
+      } catch {}
+      if (isMounted.current) {
+        setState(prev => ({
+          ...prev,
+          setupComplete: true,
+          hasParent2: true,
+          hasBaby: true,
+          onboardingComplete: true,
+          mustChangePassword: false,
+        }));
+      }
 
       return {
         success: true,
