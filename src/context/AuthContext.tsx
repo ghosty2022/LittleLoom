@@ -2818,9 +2818,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 'User',
               email: user.email || '',
               avatar: userMeta.avatar || '👤',
-              role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
-              createdAt: user.created_at || new Date().toISOString(),
-              preferences: { notifications: true, darkMode: false, language: 'en' },
+                      // `role` here is only a best-effort "primary family" hint.
+        // The authoritative role for any given baby is stored in
+        // `family_members.role` and resolved per-baby by BabyContext
+        // and FamilyContext. Never gate actions on this field alone.
+        role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
+        createdAt: user.created_at || new Date().toISOString(),
+        preferences: { notifications: true, darkMode: false, language: 'en' },
+        communityUsername: commUsername || baseName,
             };
 
         if (isMounted.current) {

@@ -205,13 +205,18 @@ const createSystemMessage = (
   familyCode: string,
   deviceId: string,
   senderName = 'LittleLoom',
+  // `sender_id` is `uuid NOT NULL` in the schema — 'system' would
+  // fail the UUID cast on insert. Callers MUST pass a real user id
+  // (the creator of the message). The `senderRole: 'system'` and
+  // `type: 'system'` still mark it as a system message in the UI.
+  senderId: string,
 ): FamilyMessage => ({
   id: `sys_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
   syncId: `sys_${Crypto.randomUUID()}`,
   deviceId,
   version: 1,
   chatId,
-  senderId: 'system',
+  senderId,
   senderName,
   senderRole: 'system',
   senderAvatar: '🤖',
@@ -1458,7 +1463,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         chatId,
         `Welcome to ${getCurrentBaby()?.name || 'your baby'}'s family chat! 💕`,
         familyCode,
-        deviceIdRef.current,
+  deviceIdRef.current,
+  'LittleLoom',
+  me.id,
       );
 
       await supabase.from('family_messages').insert({
@@ -2447,7 +2454,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             chatData.id,
             `👋 ${me.fullName} joined the family`,
             code,
-            deviceIdRef.current,
+  deviceIdRef.current,
+  'LittleLoom',
+  me.id,
           );
           await supabase.from('family_messages').insert({
             id: welcome.id,

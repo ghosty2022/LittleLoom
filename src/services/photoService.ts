@@ -14,6 +14,9 @@ import {
   sortPhotosDesc,
 } from '../types/photos';
 
+// Per-user + per-baby scoped keys. Two different families on the same
+// device (e.g. two parents sharing a phone, or the same parent managing
+// two babies) must never share favorites / captions / tags.
 const KEYS = {
   FAVORITES: '@littleloom_gallery_favorites_v2',
   PRIVATE: '@littleloom_gallery_private_v2',
@@ -21,6 +24,14 @@ const KEYS = {
   TAGS: '@littleloom_gallery_tags_v2',
   LOCAL_PHOTOS: '@littleloom_gallery_local_v2',
 } as const;
+
+// Runtime scope — set by the Gallery screen before calling loadPhotoMetadata.
+// Defaults to a global fallback so a fresh install still works.
+let _scope = 'global';
+export const setPhotoMetadataScope = (userId: string | null, babyId: string | null) => {
+  _scope = `${userId ?? 'anon'}_${babyId ?? 'all'}`;
+};
+const scoped = (k: string) => `${k}_${_scope}`;
 
 export interface PhotoMetadata {
   favorites: Set<string>;

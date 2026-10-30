@@ -240,16 +240,31 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // ─── React to baby switches ───────────────────────────────────────
   // If BabyContext switches baby (via switchBaby), reload family for
   // the new baby. Without this, `currentBaby` went stale.
+  //
+  // We debounce by a tick because React state updates from
+  // BabyContext (`setState` inside switchBaby) and this effect can
+  // race — `babyFromContext` may still be the OLD baby on the first
+  // render after the switch. Reading `babyIdFromContext` first
+  // guarantees we use the NEW baby id.
   useEffect(() => {
     const newId = babyIdFromContext ?? babyFromContext?.id ?? null;
     if (!newId) return;
     if (currentBaby?.id === newId) return;
 
-    if (babyFromContext) {
+    // Commit the new baby reference immediately so callers see it.
+    if (babyFromContext && babyFromContext.id === newId) {
       setCurrentBaby(babyFromContext);
     }
-    // Reload family for the new baby
-    loadFamilyRef.current?.();
+
+    // Defer the family reload until after React has flushed the
+    // baby switch — otherwise loadFamily may read the OLD
+    // `currentBaby.id` and hydrate the wrong family.
+    const timer = setTimeout(() => {
+      familyLoadInProgress.current = false;
+      loadFamilyRef.current?.().catch(() => {});
+    }, 50);
+
+    return () => clearTimeout(timer);
   }, [babyIdFromContext, babyFromContext?.id, currentBaby?.id]);
 
   // ─── Fallback: query Supabase only if BabyContext is empty ────────

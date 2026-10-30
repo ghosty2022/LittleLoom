@@ -910,6 +910,40 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     return () => { setCurrentChatId(null); };
   }, [chatId, setCurrentChatId]);
 
+  // ── Family-switch guard ────────────────────────────────────
+  // A user can belong to MULTIPLE families (Parent1 on Baby A,
+  // Guardian on Baby B). If the active baby switches while they're
+  // inside a chat, `FamilyChatContext` re-derives `familyCode`
+  // and re-hydrates `chats` — which means this screen's `chatId`
+  // points at a chat that belongs to a DIFFERENT family.
+  //
+  // We detect this by checking whether the current chat still
+  // exists in the context's chat list. If not, close the chat
+  // and return to the list so the user lands in the correct
+  // family's conversation list.
+  const { familyCode: activeFamilyCode } = useFamilyChat();
+  const chatStillExistsRef = useRef(true);
+  useEffect(() => {
+    if (!chatId) return;
+    const fresh = getChatById(chatId);
+    // If the chat no longer exists OR the family code changed,
+    // the user has switched families. Bail out.
+    const chatFamily = fresh?.familyCode;
+    const switchedFamily =
+      chatFamily &&
+      activeFamilyCode &&
+      chatFamily !== activeFamilyCode;
+    if ((!fresh && !chatStillExistsRef.current) || switchedFamily) {
+      // Only navigate once
+      if (chatStillExistsRef.current) {
+        chatStillExistsRef.current = false;
+        navigation.goBack();
+      }
+    } else if (fresh) {
+      chatStillExistsRef.current = true;
+    }
+  }, [chatId, activeFamilyCode, getChatById, navigation]);
+
   // ── Instant message sync via context subscription (no polling) ──
   const { subscribeToChatMessages } = useFamilyChat();
   const lastMarkedCountRef = useRef<number>(-1);

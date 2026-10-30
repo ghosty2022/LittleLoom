@@ -969,12 +969,28 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const isValidCurrent = currentId && babies.some(b => b.id === currentId);
 
         if (!isValidCurrent) {
+          // ── Multi-family priority ────────────────────────────────
+          // A user can be Parent1 on Baby A and Guardian on Baby B.
+          // If the stored `current_baby_id` is stale (baby was
+          // deleted, or this is a fresh device), pick the baby with
+          // the HIGHEST role tier they own, then the most recently
+          // created baby. This matches what users expect: "my own
+          // baby first, then babies I'm a guardian of."
           const prioritizedBabies = [...babies].sort((a, b) => {
-            const priority = { parent1: 0, parent2: 1, guardian: 2, viewer: 3 };
-            return (
-              (priority[a.role as keyof typeof priority] || 3) -
-              (priority[b.role as keyof typeof priority] || 3)
-            );
+            const priority: Record<string, number> = {
+              parent1: 0,
+              parent2: 1,
+              guardian: 2,
+              viewer: 3,
+            };
+            const roleDelta =
+              (priority[a.role || 'viewer'] ?? 3) -
+              (priority[b.role || 'viewer'] ?? 3);
+            if (roleDelta !== 0) return roleDelta;
+            // Same role → newest baby first.
+            const aT = new Date(a.createdAt || 0).getTime();
+            const bT = new Date(b.createdAt || 0).getTime();
+            return bT - aT;
           });
           currentId = prioritizedBabies[0]?.id || babies[0].id;
           if (__DEV__) {
@@ -2384,6 +2400,24 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requestAnimationFrame(() => {
           broadcastBabyChange(id);
         });
+
+        // ── Cross-context fan-out ────────────────────────────────
+        // A baby switch changes which FAMILY is active. Anything
+        // that keys data off the baby (family members, chats,
+        // tracker entries, growth charts) must re-hydrate.
+        //
+        // We emit a profile-change so FamilyContext / UserContext /
+        // FamilyChatContext reload their per-baby data. The `role`
+        // field signals these consumers that they should treat the
+        // change as authoritative (they debounce longer on role
+        // changes and reload deeper).
+        try {
+          const { broadcastProfileChange } = require('./AuthContext');
+          await broadcastProfileChange({
+            userId,
+            fields: ['role'],
+          });
+        } catch {}
 
         await AsyncStorage.removeItem(`${STORAGE_KEYS.BABIES_CACHE_KEY}_${userId}`);
 
