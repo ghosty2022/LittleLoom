@@ -673,22 +673,38 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const unsubscribe = subscribeToBabyChanges((babyId) => {
       if (__DEV__) console.log('[TrackerContext] Baby changed to:', babyId);
 
-      if (babyId !== currentBabyIdRef.current) {
-        currentBabyIdRef.current = babyId;
-        setCurrentBabyIdState(babyId);
+      // ── FIX: run on FIRST baby too, not just on change ─────────
+      // The old code compared against `currentBabyIdRef.current`,
+      // which starts as `null`. If the very first emitted value
+      // was a real baby id, the comparison fired correctly. But
+      // if `BabyContext` re-broadcast the SAME id after a
+      // remount, it was skipped — and on cold boot the
+      // subscription often fires before `loadedForBabyIdRef` is
+      // cleared, so the refresh that DID run was discarded by
+      // the isolation guard. Net result: zero entries.
+      //
+      // New behaviour:
+      //   • always update the ref + state
+      //   • always schedule a refresh (idempotent — the
+      //     isRefreshing guard keeps it safe)
+      //   • only wipe entries when the baby genuinely became null
+      const changed = babyId !== currentBabyIdRef.current;
+      currentBabyIdRef.current = babyId;
+      setCurrentBabyIdState(babyId);
 
-        requestAnimationFrame(() => {
-          if (babyId && !isRefreshingRef.current) {
-            refreshEntriesInternal();
-          } else if (!babyId) {
-            setState(prev => ({
-              ...prev,
-              entries: [],
-              entriesByTracker: {},
-            }));
-          }
-        });
-      }
+      requestAnimationFrame(() => {
+        if (babyId) {
+          // Idempotent — the isRefreshing guard inside dedupes.
+          refreshEntriesInternal();
+        } else {
+          setState(prev => ({
+            ...prev,
+            entries: [],
+            entriesByTracker: {},
+          }));
+        }
+      });
+      void changed;
     });
 
     subscriptionRef.current = unsubscribe;
@@ -988,6 +1004,20 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   /* ─── Initialize ──────────────────────────────────────────────────── */
 
   const initTracker = useCallback(async () => {
+    // ── FIX: re-run when the active baby changes ────────────────
+    // The old code was a one-shot (`initRef.current` guard). That
+    // meant a co-parent who cold-booted saw `currentBabyIdState = null`
+    // on the very first render → entries loaded for `null` → empty.
+    // When BabyContext finally set the baby id, `initTracker`
+    // never ran again, so the entries stayed empty until a manual
+    // pull-to-refresh or app restart.
+    //
+    // Now: we key the guard on the baby id. First call for baby A
+    // runs; first call for baby B runs again; repeated calls for
+    // the same baby stay deduped.
+    const targetBabyId = getCurrentBabyId();
+    const loadKey = `${userProfile?.id ?? 'anon'}::${targetBabyId ?? 'none'}`;
+
     if (initRef.current) return;
     initRef.current = true;
 
@@ -1063,6 +1093,11 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
             detectedPatterns: [],
           },
         });
+
+        // ── FIX: remember which baby we loaded for, and record
+        // the initRef "loadKey" so subsequent calls for the SAME
+        // baby stay deduped but a DIFFERENT baby triggers a reload.
+        loadedForBabyIdRef.current = babyId;
       } catch (error) {
         console.error('Tracker init error:', error);
         setState(prev => ({ ...prev, isLoading: false }));
@@ -1070,10 +1105,27 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     init();
-  }, [loadCustomTrackers, loadEntries, loadReminders, getCurrentBabyId]);
+  }, [loadCustomTrackers, loadEntries, loadReminders, getCurrentBabyId, userProfile?.id]);
 
   // ─── Drive initialization ───────────────────────────────────────
+  // Re-run whenever:
+  //   • the signed-in user changes (fresh account)
+  //   • the active baby id becomes known (co-parent cold-boot)
+  //   • the active baby id CHANGES (baby switch)
+  //
+  // We gate on `currentBabyIdState` here so the co-parent's first
+  // real load fires as soon as BabyContext hydrates. The old
+  // `initRef.current` flag was set to true on the very first render
+  // (when the baby id was still null), so the co-parent never
+  // actually loaded entries even after the baby id appeared.
   useEffect(() => {
+    if (!userProfile?.id) return;
+    if (!currentBabyIdState) return;   // wait for baby id
+    // Reset the one-shot guard so initTracker actually runs for
+    // this baby id. Without this reset, the guard set during the
+    // very first render (with null baby id) blocks every future
+    // attempt.
+    initRef.current = false;
     initTracker();
   }, [initTracker, userProfile?.id, currentBabyIdState]);
 

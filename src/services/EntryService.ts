@@ -1,25 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
 import type { TrackerEntry } from '@/types/trackers';
@@ -117,7 +95,6 @@ function sanitizeAiTags(tags?: unknown): string[] {
     .filter((t): t is string => t.length > 0);
   return [...new Set(cleaned)].slice(0, 20);
 }
-
 
 
 
@@ -362,38 +339,73 @@ export async function saveEntry(
       return { ok: false, error: 'No authenticated user' };
     }
 
-    
-    
-    const fiveSecondsAgo = new Date(
-      new Date(input.timestamp).getTime() - 5000
-    ).toISOString();
-    const fiveSecondsLater = new Date(
-      new Date(input.timestamp).getTime() + 5000
-    ).toISOString();
+    // ── DUPLICATE SUPPRESSION (5 second window) ──────────────────
+    // Wrapped in try/catch: the read here can fail for a co-parent
+    // if RLS blocks SELECT (even when INSERT is allowed), and we
+    // do NOT want to block the user's save because the dupe
+    // pre-check couldn't run. A failed dupe-check = "assume not
+    // a duplicate" and proceed with the insert.
+    try {
+      const fiveSecondsAgo = new Date(
+        new Date(input.timestamp).getTime() - 5000
+      ).toISOString();
+      const fiveSecondsLater = new Date(
+        new Date(input.timestamp).getTime() + 5000
+      ).toISOString();
 
-    const { data: dupes } = await supabase
-      .from('tracker_entries')
-      .select('id, data')
-      .eq('baby_id', input.babyId)
-      .eq('tracker_id', input.trackerId)
-      .eq('is_deleted', false)
-      .gte('timestamp', fiveSecondsAgo)
-      .lte('timestamp', fiveSecondsLater);
+      const { data: dupes, error: dupErr } = await supabase
+        .from('tracker_entries')
+        .select('id, data')
+        .eq('baby_id', input.babyId)
+        .eq('tracker_id', input.trackerId)
+        .eq('is_deleted', false)
+        .gte('timestamp', fiveSecondsAgo)
+        .lte('timestamp', fiveSecondsLater);
 
-    if (dupes && dupes.length > 0) {
-      const incomingData = JSON.stringify(sanitizePayload(input.data));
-      const isDuplicate = dupes.some(
-        (d) => JSON.stringify(sanitizePayload(d.data)) === incomingData
-      );
+      if (!dupErr && dupes && dupes.length > 0) {
+        const incomingData = JSON.stringify(sanitizePayload(input.data));
+        const isDuplicate = dupes.some(
+          (d) => JSON.stringify(sanitizePayload(d.data)) === incomingData
+        );
 
-      if (isDuplicate) {
-        if (__DEV__) {
-          console.warn(
-            '[EntryService] Duplicate entry suppressed:',
-            input.trackerId
+        if (isDuplicate) {
+          if (__DEV__) {
+            console.warn(
+              '[EntryService] Duplicate entry suppressed:',
+              input.trackerId
+            );
+          }
+          // Return the existing row so the caller can still update
+          // its local state with the correct id.
+          const existingRow = dupes.find(
+            (d) => JSON.stringify(sanitizePayload(d.data)) === incomingData,
           );
+          if (existingRow) {
+            try {
+              const { data: fullRow } = await supabase
+                .from('tracker_entries')
+                .select('*')
+                .eq('id', existingRow.id)
+                .maybeSingle();
+              if (fullRow) {
+                return { ok: true, entry: mapRowToEntry(fullRow) };
+              }
+            } catch {}
+          }
+          return { ok: true };
         }
-        return { ok: true };
+      } else if (dupErr && __DEV__) {
+        // Don't block the save — just log. RLS-filtered reads
+        // don't raise errors, but a policy denial on the SELECT
+        // side (rare) will.
+        console.warn(
+          '[EntryService] Duplicate check skipped (read error):',
+          dupErr.message,
+        );
+      }
+    } catch (dupeErr) {
+      if (__DEV__) {
+        console.warn('[EntryService] Duplicate check threw:', dupeErr);
       }
     }
 
@@ -417,7 +429,26 @@ export async function saveEntry(
       })
       .catch(() => {});
 
-    await invalidateCache(input.babyId);
+    // ── FIX: repopulate the local cache ───────────────────────────
+    // The old code wiped the cache after a successful save but
+    // never wrote it back. If the network drops immediately
+    // after, the next cold boot falls back to an EMPTY cache.
+    // Instead of just invalidating, also write the freshly-saved
+    // entry into the cache so it survives going offline.
+    try {
+      const existing = await getCachedEntries(input.babyId);
+      const mapped: TrackerEntry = mapRowToEntry(payload);
+      const merged = new Map<string, TrackerEntry>();
+      for (const e of existing) merged.set(e.id, e);
+      merged.set(mapped.id, mapped);
+      const sorted = [...merged.values()]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 500);
+      await writeCache(input.babyId, sorted);
+    } catch {
+      // Best-effort — the upsert already succeeded.
+    }
+
     return { ok: true };
   } catch (error: any) {
     if (__DEV__) {
@@ -568,6 +599,73 @@ export async function restoreEntry(
 
 
 
+/**
+ * Apply the `GetEntriesOptions` filters to a list of already-mapped
+ * entries. Used by both the direct-query result and the RPC fallback
+ * so we never drift.
+ */
+function applyEntryFilters(
+  entries: TrackerEntry[],
+  options: GetEntriesOptions
+): TrackerEntry[] {
+  let out = entries;
+  if (!options.includeDeleted) {
+    out = out.filter(e => !e.isDeleted);
+  }
+  if (options.trackerId) {
+    out = out.filter(e => e.trackerId === options.trackerId);
+  }
+  if (options.since !== undefined) {
+    out = out.filter(e => e.timestamp >= options.since!);
+  }
+  if (options.until !== undefined) {
+    out = out.filter(e => e.timestamp <= options.until!);
+  }
+  if (Array.isArray(options.aiTags) && options.aiTags.length > 0) {
+    const needles = options.aiTags.map((t) => t.toLowerCase());
+    out = out.filter((e) =>
+      (e.aiTags ?? []).some((t) =>
+        needles.some((n) => t.toLowerCase().includes(n)),
+      ),
+    );
+  }
+  if (options.limit) out = out.slice(0, options.limit);
+  return out;
+}
+
+/**
+ * Fallback read via the `get_entries_for_member` SECURITY DEFINER RPC.
+ * Returns `null` when the RPC itself failed (so the caller knows to
+ * fall through to the offline cache); returns `[]` when the RPC ran
+ * cleanly but legitimately found nothing.
+ */
+async function readViaRpc(
+  options: GetEntriesOptions
+): Promise<TrackerEntry[] | null> {
+  try {
+    const { data: rpcRows, error: rpcErr } = await supabase
+      .rpc('get_entries_for_member', { p_baby_id: options.babyId });
+    if (rpcErr) {
+      if (__DEV__) {
+        console.warn('[EntryService] RPC fallback failed:', rpcErr.message);
+      }
+      return null;
+    }
+    if (!Array.isArray(rpcRows) || rpcRows.length === 0) {
+      return [];
+    }
+    const mapped = rpcRows.map(mapRowToEntry);
+    return applyEntryFilters(mapped, options);
+  } catch (e) {
+    if (__DEV__) {
+      console.warn('[EntryService] RPC fallback threw:', e);
+    }
+    return null;
+  }
+}
+
+
+
 export async function getEntries(
   options: GetEntriesOptions
 ): Promise<TrackerEntry[]> {
@@ -610,14 +708,56 @@ export async function getEntries(
       if (__DEV__) {
         console.warn('[EntryService] Read failed:', error.message);
       }
+    } else {
+      const directRows = (data || []).map(mapRowToEntry);
+      if (directRows.length > 0) {
+        return directRows;
+      }
+      // Direct query succeeded but returned 0 rows. For a parent
+      // that genuinely has no entries this is fine. But for a
+      // co-parent/guardian whose RLS silently filters the table,
+      // "0 rows with no error" is the exact failure mode that
+      // makes activities disappear. Attempt the RPC read before
+      // trusting "0".
+      if (__DEV__) {
+        console.log(
+          `[EntryService] Direct read empty for baby ${options.babyId} — trying RPC fallback`,
+        );
+      }
+    }
+
+    // ── RPC fallback ────────────────────────────────────────────
+    // `get_entries_for_member` is SECURITY DEFINER and validates
+    // family_members membership itself, so it bypasses the
+    // restrictive RLS on `tracker_entries`.
+    const rpc = await readViaRpc(options);
+    if (rpc !== null) {
+      if (rpc.length > 0) {
+        if (__DEV__) {
+          console.log(
+            `[EntryService] RPC recovered ${rpc.length} entries for baby ${options.babyId}`,
+          );
+        }
+        return rpc;
+      }
+      // RPC ran cleanly and also returned 0 → the baby truly has
+      // no entries (or none matching the filters). Return the
+      // offline cache as a last-chance local copy.
       return await readFromCache(options);
     }
 
-    return (data || []).map(mapRowToEntry);
+    // RPC itself failed (network / function missing / etc.) —
+    // fall through to the offline cache.
+    return await readFromCache(options);
   } catch (error: any) {
     if (__DEV__) {
       console.warn('[EntryService] Read error:', error?.message);
     }
+    // Even a thrown exception gets one RPC attempt, because the
+    // direct-query path may have failed for RLS-related reasons
+    // that the RPC can bypass.
+    const rpc = await readViaRpc(options);
+    if (rpc !== null && rpc.length > 0) return rpc;
     return await readFromCache(options);
   }
 }
@@ -650,12 +790,6 @@ function cacheKey(babyId: string): string {
   return `${CACHE_PREFIX}${babyId}`;
 }
 
-async function invalidateCache(babyId: string): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(cacheKey(babyId));
-  } catch {}
-}
-
 async function readFromCache(
   options: GetEntriesOptions
 ): Promise<TrackerEntry[]> {
@@ -663,32 +797,7 @@ async function readFromCache(
     const raw = await AsyncStorage.getItem(cacheKey(options.babyId));
     if (!raw) return [];
     const cached: TrackerEntry[] = JSON.parse(raw);
-    let filtered = cached;
-    if (!options.includeDeleted) {
-      filtered = filtered.filter(e => !e.isDeleted);
-    }
-    if (options.trackerId) {
-      filtered = filtered.filter(e => e.trackerId === options.trackerId);
-    }
-    if (options.since !== undefined) {
-      filtered = filtered.filter(e => e.timestamp >= options.since!);
-    }
-    if (options.until !== undefined) {
-      filtered = filtered.filter(e => e.timestamp <= options.until!);
-    }
-    
-    if (Array.isArray(options.aiTags) && options.aiTags.length > 0) {
-      const needles = options.aiTags.map((t) => t.toLowerCase());
-      filtered = filtered.filter((e) =>
-        (e.aiTags ?? []).some((t) =>
-          needles.some((n) => t.toLowerCase().includes(n))
-        )
-      );
-    }
-    if (options.limit) {
-      filtered = filtered.slice(0, options.limit);
-    }
-    return filtered;
+    return applyEntryFilters(cached, options);
   } catch {
     return [];
   }
@@ -801,8 +910,17 @@ export async function countEntriesForTracker(
       .eq('tracker_id', trackerId)
       .eq('is_deleted', false);
 
-    if (error) return 0;
-    return count ?? 0;
+    if (!error && typeof count === 'number' && count > 0) {
+      return count;
+    }
+  } catch {}
+
+  // Fallback: some RLS configurations block `head: true` counts for
+  // non-parents even when individual rows are visible. If we get 0,
+  // do a lightweight `getEntries` and count client-side.
+  try {
+    const entries = await getEntries({ babyId, trackerId, limit: 5000 });
+    return entries.length;
   } catch {
     return 0;
   }
@@ -827,7 +945,7 @@ export const EntryService = {
   sanitizePhotoUris,
   sanitizeTags,
   sanitizeAiTags,
-  
+  writeCache,
   getEntriesForTracker,
   getEntriesInRange,
   getEntriesByAiTags,

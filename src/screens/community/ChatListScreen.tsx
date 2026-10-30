@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Platform,
@@ -71,7 +71,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const { userProfile } = useAuth();
   const currentUserId = userProfile?.id || '';
 
-  const { getUserById } = useCommunity();
+  const { getUserById, getUserRole } = useCommunity() as any;
   const { members: familyMembers } = useFamily();
   const {
     messages,
@@ -80,34 +80,9 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     subscribeToChatMessages,
   } = useFamilyChat() as any;
 
-  // ── Live role badge cache (Parent 1 / Co-Parent / Guardian / Viewer) ──
-  // Re-queried from `profiles.role` on every profile-change event.
-  const roleLabelsRef = useRef<Record<string, string>>({});
-  useEffect(() => {
-    const refreshRoles = async () => {
-      const unique = new Set<string>();
-      chats.forEach((c) => {
-        const other = c.participants.find((p) => p !== currentUserId);
-        if (other) unique.add(other);
-      });
-      const { getUserRole } = useCommunity() as any;
-      if (typeof getUserRole !== 'function') return;
-      for (const uid of unique) {
-        const role = await getUserRole(uid);
-        roleLabelsRef.current[uid] =
-          role === 'parent1' ? 'Primary Parent'
-          : role === 'parent2' ? 'Co-Parent'
-          : role === 'guardian' ? 'Guardian'
-          : role === 'viewer' ? 'Viewer'
-          : '';
-      }
-      requestAnimationFrame(() => setListTick((n) => n + 1));
-    };
-    refreshRoles();
-    const unsub = subscribeToProfileChanges(() => refreshRoles());
-    return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatIdsKey]);
+  // ── List refresh tick (declared first so effects below can bump it) ──
+  const [listTick, setListTick] = useState(0);
+
   // Community DMs live in the shared family_messages table keyed by
   // the direct chat id "direct_<idA>_<idB>". Build the list from
   // whatever direct chats the current user has.
@@ -143,14 +118,43 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
   }, [messages, userProfile?.id, getUserById, isChatHidden]);
-  // Real-time: refresh the list whenever any direct chat receives a
-  // message. Also re-runs after a delete so a hidden chat disappears
-  // immediately even if a stray broadcast arrives.
-  const [listTick, setListTick] = useState(0);
+
   const chatIdsKey = useMemo(
     () => chats.map(c => c.id).sort().join('|'),
     [chats],
   );
+
+  // ── Live role badge cache (Parent 1 / Co-Parent / Guardian / Viewer) ──
+  // Re-queried from `profiles.role` on every profile-change event.
+  const roleLabelsRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const refreshRoles = async () => {
+      if (typeof getUserRole !== 'function') return;
+      const unique = new Set<string>();
+      chats.forEach((c) => {
+        const other = c.participants.find((p) => p !== currentUserId);
+        if (other) unique.add(other);
+      });
+      for (const uid of unique) {
+        const role = await getUserRole(uid);
+        roleLabelsRef.current[uid] =
+          role === 'parent1' ? 'Primary Parent'
+          : role === 'parent2' ? 'Co-Parent'
+          : role === 'guardian' ? 'Guardian'
+          : role === 'viewer' ? 'Viewer'
+          : '';
+      }
+      requestAnimationFrame(() => setListTick((n) => n + 1));
+    };
+    refreshRoles();
+    const unsub = subscribeToProfileChanges(() => refreshRoles());
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatIdsKey]);
+
+  // Real-time: refresh the list whenever any direct chat receives a
+  // message. Also re-runs after a delete so a hidden chat disappears
+  // immediately even if a stray broadcast arrives.
   useEffect(() => {
     if (!subscribeToChatMessages) return;
     const unsubs: Array<() => void> = [];
@@ -164,7 +168,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     return () => { unsubs.forEach(u => u()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatIdsKey, subscribeToChatMessages]);
-
+  
   const refresh = undefined;
 
   const { isDark } = useApp();
