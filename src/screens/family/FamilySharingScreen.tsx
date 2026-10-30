@@ -406,7 +406,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.pulseTitle}>
-                FAMILY
+                FAMILY HUB
               </GradientText>
               <View style={[styles.pulseLivePill, { backgroundColor: `${DS.success}18` }]}>
                 <PulsingDot color={DS.success} size={6} />
@@ -1389,7 +1389,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
           </TouchableOpacity>
           <View style={{ alignItems: 'center' }}>
-            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>FAMILY</GradientText>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>FAMILY HUB</GradientText>
             <Text style={[styles.headerSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
               {members.length} member{members.length !== 1 ? 's' : ''}
             </Text>
