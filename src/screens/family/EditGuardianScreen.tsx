@@ -725,7 +725,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const guardianId = params.guardianId ?? params.memberId ?? '';
   const mode = params.mode ?? 'guardian';
 
-  const { members, updateGuardianProfile, promoteMember, removeMember, loadFamily, refreshFamily } = useFamily();
+  const { members, updateGuardianProfile, promoteMember, removeMember, loadFamily, refreshFamily, addMemberDirectly } = useFamily();
   const { hasPermission, profile, updateProfile } = useUser();
   const { currentBaby, milestones, refreshBabyData } = useBaby();
   const { entries: trackerEntries } = useTracker();
@@ -755,6 +755,11 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const [showRoleModal, setShowRoleModal] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [addMemberIdentifier, setAddMemberIdentifier] = useState('');
+  const [addMemberRole, setAddMemberRole] = useState<UserRole>(UserRole.GUARDIAN);
+  const [addMemberRelationship, setAddMemberRelationship] = useState('');
+  const [isAddingMember, setIsAddingMember] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [memberActivities, setMemberActivities] = useState<any[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
@@ -1384,6 +1389,45 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       'Cancel',
     );
   };
+  /* ─── ADD MEMBER DIRECTLY ─── */
+  // The fourth path. Called from the "Add Member Directly" button.
+  // Resolves the identifier against `profiles` (email / @username /
+  // phone) and creates an ACTIVE family_members row on the spot.
+  const handleAddMemberDirectly = useCallback(async () => {
+    if (isAddingMember) return;
+    const identifier = addMemberIdentifier.trim();
+    if (!identifier) {
+      sweetAlert.error('Missing Identifier', 'Enter an email, @username, or phone number');
+      return;
+    }
+    if (!addMemberRelationship.trim()) {
+      sweetAlert.error('Missing Relationship', 'Enter their relationship to the baby (e.g. Grandma)');
+      return;
+    }
+    setIsAddingMember(true);
+    triggerHaptic('medium');
+    try {
+      const fresh = await addMemberDirectly(
+        identifier,
+        addMemberRole,
+        addMemberRelationship.trim(),
+      );
+      if (fresh) {
+        triggerHaptic('success');
+        setShowAddMemberModal(false);
+        setAddMemberIdentifier('');
+        setAddMemberRelationship('');
+        setAddMemberRole(UserRole.GUARDIAN);
+        sweetAlert.success('Member Added', `${fresh.fullName} was added to the family.`);
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[handleAddMemberDirectly] error:', e);
+      sweetAlert.error('Error', 'Failed to add member');
+    } finally {
+      setIsAddingMember(false);
+    }
+  }, [isAddingMember, addMemberIdentifier, addMemberRelationship, addMemberRole, addMemberDirectly, sweetAlert, triggerHaptic]);
+
   /* ─── ACTIONS ─── */
   const handleCall = async () => {
     if (!member?.phoneNumber) { sweetAlert.alert('No Phone Number', 'No phone number on file.', 'warning'); return; }
@@ -1778,6 +1822,23 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                     </View>
                   </PressableScale>
                 )}
+
+                {/* ── ADD MEMBER DIRECTLY ───────────────────────────────
+                    The fourth path. Adds an existing LittleLoom user by
+                    email / @username / phone with zero invite overhead.
+                    Pairs with the existing invite / QR / code flows. */}
+                {canManagePermissions && (
+                  <PressableScale
+                    onPress={() => { triggerHaptic('light'); setShowAddMemberModal(true); }}
+                    activeScale={0.97}
+                  >
+                    <View style={[styles.managePermBtn, { backgroundColor: `${DS.success}12`, borderColor: `${DS.success}30` }]}>
+                      <Ionicons name="person-add" size={18} color={DS.success} />
+                      <Text style={[styles.managePermText, { color: DS.success }]}>Add Member Directly</Text>
+                      <Ionicons name="chevron-forward" size={18} color={DS.success} />
+                    </View>
+                  </PressableScale>
+                )}
               </View>
             )}
 
@@ -1993,6 +2054,150 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
               </TouchableOpacity>
             );
           })}
+        </ScrollView>
+      </ActionModal>
+
+      {/* ── ADD MEMBER DIRECTLY MODAL ─────────────────────────────────
+          The fourth path. Adds an existing LittleLoom account to the
+          family with no invite code / no sign-up round-trip. */}
+      <ActionModal
+        visible={showAddMemberModal}
+        onClose={() => { if (!isAddingMember) setShowAddMemberModal(false); }}
+        title="Add Member Directly"
+        isDark={isDark}
+      >
+        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '75%' }}>
+          <View style={{
+            backgroundColor: `${DS.success}10`,
+            borderColor: `${DS.success}30`,
+            borderWidth: 1,
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 16,
+            flexDirection: 'row',
+            gap: 8,
+          }}>
+            <Ionicons name="flash" size={16} color={DS.success} />
+            <Text style={{ fontSize: 11, color: DS.success, flex: 1, fontWeight: '600', lineHeight: 15 }}>
+              Instantly adds an <Text style={{ fontWeight: '800' }}>existing LittleLoom user</Text> to this family.
+              Use their email, @username, or phone number. For someone not on LittleLoom yet, use "Invite" instead.
+            </Text>
+          </View>
+
+          <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+            Email, @username, or phone
+          </Text>
+          <View style={[styles.inputRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.gray50 }]}>
+            <Ionicons name="at" size={16} color={DS.success} />
+            <TextInput
+              style={[styles.inputText, { color: isDark ? DS.white : DS.gray900, flex: 1 }]}
+              value={addMemberIdentifier}
+              onChangeText={setAddMemberIdentifier}
+              placeholder="e.g. grandma@example.com or @nana"
+              placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
+              autoCapitalize="none"
+              autoCorrect={false}
+              selectionColor={DS.success}
+              editable={!isAddingMember}
+            />
+          </View>
+
+          <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500, marginTop: 16 }]}>
+            Relationship to Baby
+          </Text>
+          <View style={[styles.inputRow, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : DS.gray50 }]}>
+            <Ionicons name="heart-outline" size={16} color={DS.success} />
+            <TextInput
+              style={[styles.inputText, { color: isDark ? DS.white : DS.gray900, flex: 1 }]}
+              value={addMemberRelationship}
+              onChangeText={setAddMemberRelationship}
+              placeholder="e.g. Grandma, Nanny, Uncle"
+              placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
+              autoCapitalize="words"
+              selectionColor={DS.success}
+              editable={!isAddingMember}
+            />
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+            {['Mother', 'Father', 'Guardian', 'Grandmother', 'Grandfather', 'Nanny', 'Caregiver', 'Aunt', 'Uncle'].map((rel) => (
+              <TouchableOpacity
+                key={rel}
+                onPress={() => setAddMemberRelationship(rel)}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12,
+                  backgroundColor: addMemberRelationship === rel ? DS.success : `${DS.success}15`,
+                }}
+                disabled={isAddingMember}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: addMemberRelationship === rel ? '#fff' : DS.success }}>
+                  {rel}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.inputLabel, { color: isDark ? DS.gray400 : DS.gray500, marginTop: 16 }]}>
+            Role
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {[
+              { role: UserRole.GUARDIAN, label: 'Guardian', icon: 'shield-checkmark' as const, color: '#10b981' },
+              { role: UserRole.VIEWER, label: 'Viewer', icon: 'eye' as const, color: '#64748b' },
+              { role: UserRole.PARENT_2, label: 'Co-Parent', icon: 'heart' as const, color: '#ec4899' },
+            ].map((opt) => {
+              const active = addMemberRole === opt.role;
+              return (
+                <PressableScale
+                  key={opt.role}
+                  onPress={() => setAddMemberRole(opt.role)}
+                  activeScale={0.96}
+                  style={{ flex: 1 }}
+                  disabled={isAddingMember}
+                >
+                  <View style={{
+                    padding: 12,
+                    borderRadius: 12,
+                    borderWidth: 2,
+                    borderColor: active ? opt.color : (isDark ? DS.darkBorder : DS.gray200),
+                    backgroundColor: active ? `${opt.color}15` : (isDark ? DS.darkCard : DS.white),
+                    alignItems: 'center',
+                    gap: 6,
+                  }}>
+                    <Ionicons name={opt.icon} size={20} color={opt.color} />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: active ? opt.color : (isDark ? DS.gray300 : DS.gray700) }}>
+                      {opt.label}
+                    </Text>
+                  </View>
+                </PressableScale>
+              );
+            })}
+          </View>
+
+          <Text style={{ fontSize: 10, color: isDark ? DS.gray500 : DS.gray400, marginTop: 8, lineHeight: 14 }}>
+            Primary Parent cannot be assigned here — use "Transfer Ownership" if you want to hand the crown to someone else.
+          </Text>
+
+          <PressableScale
+            onPress={handleAddMemberDirectly}
+            disabled={isAddingMember || !addMemberIdentifier.trim() || !addMemberRelationship.trim()}
+            activeScale={0.97}
+            style={{ marginTop: 16 }}
+          >
+            <LinearGradient
+              colors={
+                addMemberIdentifier.trim() && addMemberRelationship.trim() && !isAddingMember
+                  ? [DS.success, '#059669']
+                  : [DS.gray300, DS.gray400]
+              }
+              style={styles.saveBtn}
+            >
+              {isAddingMember ? (
+                <ActivityIndicator color={DS.white} size="small" />
+              ) : (
+                <Text style={styles.saveText}>Add to Family</Text>
+              )}
+            </LinearGradient>
+          </PressableScale>
         </ScrollView>
       </ActionModal>
 

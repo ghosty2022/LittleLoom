@@ -8,7 +8,7 @@ import { supabase } from '@/utils/supabase';
 import { useAuth, subscribeToProfileChanges } from './AuthContext';
 import { useBaby } from './BabyContext';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember } from '../types/roles';
+import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember, resolveProfileByIdentifier, ResolvedProfile } from '../types/roles';
 
 export type { FamilyMember } from '../types/roles';
 
@@ -36,6 +36,29 @@ interface FamilyContextType extends FamilyState {
    * to re-open the app.
    */
   inviteMember: (email: string, role: UserRole, relationship: string) => Promise<boolean>;
+  /**
+   * Directly add an EXISTING LittleLoom user to this family.
+   *
+   * This is the "fourth path" alongside:
+   *   • inviteMember        (email/username/phone → pending or active row)
+   *   • generateInviteCode  (code → shared → signed up → family_members row)
+   *   • promoteMember       (change role of an existing member)
+   *
+   * `addMemberDirectly` skips the invite flow entirely. It:
+   *   • Resolves the identifier against `profiles`
+   *   • Refuses if the user is already a member
+   *   • Inserts an ACTIVE `family_members` row with the correct
+   *     permissions, user_id, status='active'
+   *   • Syncs babies.parent2_id if role=parent2
+   *   • Fires realtime so every device re-renders
+   *
+   * Returns the new FamilyMember, or null on any failure.
+   */
+  addMemberDirectly: (
+    identifier: string,
+    role: UserRole,
+    relationship: string,
+  ) => Promise<FamilyMember | null>;
   removeMember: (memberId: string) => Promise<boolean>;
   getEffectivePermissions: (userId?: string) => Permission;
   updateParent2Profile: (updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>) => Promise<boolean>;
@@ -1328,6 +1351,238 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [currentBaby, authProfile, state.members, loadFamily]);
 
 
+  // ─── Add Existing Account Directly ────────────────────────────────────
+  // THE FOURTH PATH. Adds an existing LittleLoom user to this family with
+  // zero invite/QR/code overhead. EditGuardian "Add Member", FamilySharing
+  // "Invite by username", and any admin panel all funnel through here.
+  const addMemberDirectly = useCallback(async (
+    identifier: string,
+    role: UserRole,
+    relationship: string,
+  ): Promise<FamilyMember | null> => {
+    if (!currentBaby?.id || !authProfile?.id) {
+      showAlert('Error', 'No baby selected or not signed in');
+      return null;
+    }
+
+    const raw = (identifier || '').trim();
+    if (!raw) {
+      showAlert('Invalid Input', 'Enter an email, username, or phone number');
+      return null;
+    }
+
+    // Resolve to a real profile (email / @username / phone)
+    let profile: ResolvedProfile | null = null;
+    try {
+      profile = await resolveProfileByIdentifier(raw, supabase);
+    } catch (e) {
+      if (__DEV__) console.warn('[addMemberDirectly] resolve failed:', e);
+    }
+
+    if (!profile) {
+      showAlert(
+        'Not on LittleLoom',
+        `${raw} isn't on LittleLoom yet. Use "Invite" to send them a code, or share the invite link.`,
+      );
+      return null;
+    }
+
+    if (profile.id === authProfile.id) {
+      showAlert('Already You', "That's your own account — you're already in this family.");
+      return null;
+    }
+
+    // Duplicate check: same user_id anywhere in this family?
+    try {
+      const { data: existing } = await supabase
+        .from('family_members')
+        .select('id, role, status, deleted_at')
+        .eq('baby_id', currentBaby.id)
+        .eq('user_id', profile.id)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (existing) {
+        showAlert(
+          'Already a Member',
+          `${profile.fullName} is already part of this family as ${existing.role}.`,
+        );
+        return null;
+      }
+
+      // Also check for a soft-deleted row — restore instead of insert
+      const { data: softDeleted } = await supabase
+        .from('family_members')
+        .select('id, role, deleted_at')
+        .eq('baby_id', currentBaby.id)
+        .eq('user_id', profile.id)
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (softDeleted?.id) {
+        // Restore the old row and set the new role
+        const nowIso = new Date().toISOString();
+        const dbRole =
+          role === UserRole.PARENT_2 ? 'parent2'
+          : role === UserRole.GUARDIAN ? 'guardian'
+          : 'viewer';
+        const { error: restoreErr } = await supabase
+          .from('family_members')
+          .update({
+            role: dbRole,
+            deleted_at: null,
+            is_deleted: false,
+            status: 'active',
+            relationship: relationship || 'Family Member',
+            permissions: ROLE_PERMISSIONS[role] as unknown as Record<string, boolean>,
+            last_active: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('id', softDeleted.id);
+
+        if (restoreErr) {
+          if (__DEV__) console.warn('[addMemberDirectly] restore failed:', restoreErr.message);
+          showAlert('Error', 'Failed to restore previous membership');
+          return null;
+        }
+
+        familyLoadInProgress.current = false;
+        await loadFamily();
+
+        try {
+          const { broadcastProfileChange } = require('./AuthContext');
+          await broadcastProfileChange({ userId: profile.id, fields: ['role'] });
+        } catch {}
+
+        showAlert('Member Re-added', `${profile.fullName} was re-added as ${role}.`);
+
+        const restored = state.members.find(
+          (m) => (m.userId || m.id) === profile.id,
+        );
+        return restored || null;
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[addMemberDirectly] duplicate check failed:', e);
+    }
+
+    // Fresh insert as an ACTIVE member
+    const newId = generateId();
+    const dbRole =
+      role === UserRole.PARENT_1 ? 'parent1'
+      : role === UserRole.PARENT_2 ? 'parent2'
+      : role === UserRole.GUARDIAN ? 'guardian'
+      : 'viewer';
+
+    // `parent1` can only be assigned through promoteMember/transferOwnership
+    // — never through a direct add. Guard defensively.
+    if (dbRole === 'parent1') {
+      showAlert(
+        'Role Not Allowed',
+        'Use "Transfer Ownership" to make someone a Primary Parent.',
+      );
+      return null;
+    }
+
+    const nowIso = new Date().toISOString();
+    try {
+      const { data: inserted, error: insertErr } = await supabase
+        .from('family_members')
+        .insert({
+          id: newId,
+          baby_id: currentBaby.id,
+          user_id: profile.id,
+          email: profile.email || '',
+          full_name: profile.fullName,
+          avatar: profile.avatar,
+          role: dbRole,
+          relationship: relationship || 'Family Member',
+          permissions: ROLE_PERMISSIONS[role] as unknown as Record<string, boolean>,
+          added_at: nowIso,
+          added_by: authProfile.id,
+          can_be_removed: true,
+          last_active: nowIso,
+          phone_number: profile.phoneNumber,
+          notifications_enabled: true,
+          status: 'active',
+          updated_at: nowIso,
+          is_deleted: false,
+        })
+        .select('*')
+        .maybeSingle();
+
+      if (insertErr || !inserted) {
+        if (__DEV__) {
+          console.error('[addMemberDirectly] insert failed:', {
+            code: (insertErr as any)?.code,
+            message: insertErr?.message,
+            details: (insertErr as any)?.details,
+            hint: (insertErr as any)?.hint,
+          });
+        }
+        showAlert('Error', 'Failed to add member. Please try again.');
+        return null;
+      }
+
+      // Sync parent2 slot if this is a co-parent add
+      if (dbRole === 'parent2') {
+        try {
+          await supabase
+            .from('babies')
+            .update({ parent2_id: profile.id, updated_at: nowIso })
+            .eq('id', currentBaby.id);
+        } catch {}
+      }
+
+      // Mirror to profiles.role so AuthContext hydrates correctly
+      try {
+        await supabase
+          .from('profiles')
+          .update({ role: dbRole, updated_at: nowIso })
+          .eq('id', profile.id);
+      } catch {}
+
+      // Broadcast so every device (including theirs) re-renders the tree
+      try {
+        const { broadcastProfileChange } = require('./AuthContext');
+        await broadcastProfileChange({ userId: profile.id, fields: ['role'] });
+      } catch {}
+
+      familyLoadInProgress.current = false;
+      await loadFamily();
+
+      // Return the fresh row built from what we just wrote
+      const fresh: FamilyMember = {
+        id: inserted.id,
+        userId: profile.id,
+        fullName: profile.fullName,
+        email: profile.email,
+        avatar: profile.avatar || undefined,
+        role,
+        relationship: relationship || 'Family Member',
+        permissions: ROLE_PERMISSIONS[role],
+        addedAt: nowIso,
+        addedBy: authProfile.id,
+        canBeRemoved: true,
+        lastActive: nowIso,
+        phoneNumber: profile.phoneNumber || undefined,
+        notificationsEnabled: true,
+        status: 'active',
+      };
+
+      showAlert(
+        'Member Added',
+        `${profile.fullName} joined the family as ${role === UserRole.GUARDIAN ? 'Guardian' : role === UserRole.PARENT_2 ? 'Co-Parent' : 'Viewer'}.`,
+      );
+      return fresh;
+    } catch (e) {
+      if (__DEV__) console.error('[addMemberDirectly] threw:', e);
+      showAlert('Error', 'Failed to add member');
+      return null;
+    }
+  }, [currentBaby, authProfile, loadFamily, state.members]);
+
   // ─── Invite Member ─────────────────────────────────────────────────────
   const inviteMember = useCallback(async (email: string, role: UserRole, relationship: string) => {
     if (!isOwner || !authProfile || !currentBaby) {
@@ -2352,6 +2607,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadFamily,
     refreshFamily,
     inviteMember,
+    addMemberDirectly,
     removeMember,
     promoteMember,
     getEffectivePermissions,
@@ -2373,7 +2629,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     recoverPartialSignup,
     getPartialSignupInfo,
     transferOwnership,
-  }), [state, loadFamily, refreshFamily, inviteMember, removeMember, getEffectivePermissions, 
+  }), [state, loadFamily, refreshFamily, inviteMember, addMemberDirectly, removeMember, getEffectivePermissions, 
       updateParent2Profile, updateGuardianProfile, resendInvite, cancelInvite, 
       refreshMemberStatus, generateInviteCode, getActiveInviteCodes, revokeInviteCode,
       getCurrentBaby, getBabyId, validateInviteCode, useInviteCode,
@@ -2409,6 +2665,7 @@ export const useFamily = (): FamilyContextType => {
     loadFamily: async () => {},
     refreshFamily: async () => {},
     inviteMember: async () => false,
+    addMemberDirectly: async () => null,
     removeMember: async () => false,
     getEffectivePermissions: () => ROLE_PERMISSIONS[UserRole.VIEWER],
     updateParent2Profile: async () => false,

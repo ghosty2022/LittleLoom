@@ -381,3 +381,75 @@ export const getMemberCompactLabel = (member: {
   if (rel && rel.toLowerCase() !== 'parent') return rel;
   return getMemberDisplayLabel(member);
 };
+
+// ─────────────────────────────────────────────────────────────────────
+// IDENTIFIER RESOLUTION
+// ─────────────────────────────────────────────────────────────────────
+// Used by every "add an existing account to a family" path:
+//   • inviteMember        (email / username / phone → invite)
+//   • addMemberDirectly   (email / username / phone → active membership)
+//   • signUpWithInviteCode (used_by resolution + post-signup linking)
+//
+// Resolves the string against the `profiles` table:
+//   • email               → direct match
+//   • @username / username → community_handle / community_username
+//   • phone number        → last-7-digits ilike match
+//
+// Returns `null` if nothing matches, so callers can treat
+// "not on LittleLoom yet" (→ invite code) vs "existing account"
+// (→ direct add / link) uniformly.
+// ─────────────────────────────────────────────────────────────────────
+export interface ResolvedProfile {
+  id: string;
+  fullName: string;
+  email: string;
+  phoneNumber: string | null;
+  avatar: string | null;
+  handle: string | null;
+}
+
+export const resolveProfileByIdentifier = async (
+  identifier: string,
+  supabaseClient: any,
+): Promise<ResolvedProfile | null> => {
+  const raw = (identifier || '').trim();
+  if (!raw || !supabaseClient) return null;
+
+  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
+  const looksLikePhone = /^\+?[\d\s\-()]{7,}$/.test(raw);
+  const handleBare = raw.replace(/^@+/, '').toLowerCase();
+
+  try {
+    let query = supabaseClient
+      .from('profiles')
+      .select('id, full_name, email, phone_number, community_avatar, avatar_url, community_handle, community_username');
+
+    if (looksLikeEmail) {
+      query = query.eq('email', raw.toLowerCase());
+    } else if (looksLikePhone) {
+      const digits = raw.replace(/[^\d]/g, '');
+      query = query
+        .not('phone_number', 'is', null)
+        .ilike('phone_number', `%${digits.slice(-7)}%`)
+        .limit(1);
+    } else {
+      query = query.or(
+        `community_handle.eq.@${handleBare},community_username.eq.${handleBare}`,
+      );
+    }
+
+    const { data, error } = await query.maybeSingle();
+    if (error || !data?.id) return null;
+
+    return {
+      id: data.id,
+      fullName: data.full_name || 'Family Member',
+      email: data.email || '',
+      phoneNumber: data.phone_number || null,
+      avatar: data.community_avatar || data.avatar_url || null,
+      handle: data.community_handle || data.community_username || null,
+    };
+  } catch {
+    return null;
+  }
+};

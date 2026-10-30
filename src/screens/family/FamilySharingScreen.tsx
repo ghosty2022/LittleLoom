@@ -1485,6 +1485,45 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               <DailyGoals goals={dailyGoals} isDark={isDark} onPress={() => {}} />
             </View>
 
+            {/* ── DIRECT ADD QUICK ACTION ──────────────────────────────
+                The fourth path, surfaced as a quick action. Lets a parent
+                add an existing LittleLoom user by identifier without
+                going through the invite flow. */}
+            {isPrimaryParent && (
+              <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+                <PressableScale
+                  onPress={() => {
+                    HAPTIC_LIGHT();
+                    navigation.navigate('CoParentInviteScreen' as never);
+                  }}
+                  activeScale={0.97}
+                >
+                  <LinearGradient
+                    colors={[DS.success, '#059669']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      paddingVertical: 14,
+                      borderRadius: DS.radius.md,
+                      ...DS.shadow.md,
+                    }}
+                  >
+                    <Ionicons name="person-add" size={18} color={DS.white} />
+                    <Text style={{ color: DS.white, fontSize: 14, fontWeight: '700' }}>
+                      Add Someone You Know
+                    </Text>
+                  </LinearGradient>
+                </PressableScale>
+                <Text style={{ fontSize: 10, color: isDark ? DS.gray500 : DS.gray400, textAlign: 'center', marginTop: 6, fontWeight: '500' }}>
+                  Add an existing LittleLoom user by @username, email, or phone
+                </Text>
+              </View>
+            )}
+
             <View style={{ marginTop: DS.space.lg, paddingHorizontal: DS.space.lg }}>
               {renderMemberSection(
                 'Primary Parent',
