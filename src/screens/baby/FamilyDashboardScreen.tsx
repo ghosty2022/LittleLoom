@@ -42,7 +42,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useFamily } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
-import { UserRole } from '../../types/roles';
+import { UserRole, getMemberDisplayLabel } from '../../types/roles';
 import { useBaby } from '../../context/BabyContext';
 import { useTracker } from '../../hooks/useTrackerContext';
 import OptimizedImage from '../../components/OptimizedImage';
@@ -647,34 +647,191 @@ const BabyCard = React.memo(({ isDark, baby, streak, onEdit, onGrowth }: {
 /* ═══════════════════════════════════════════════════════════════════════════
    FAMILY STACK
    ═══════════════════════════════════════════════════════════════════════════ */
-const FamilyStack = React.memo(({ members, isDark, onPress }: {
-  members: any[]; isDark: boolean; onPress: () => void;
-}) => (
-  <Animated.View entering={FadeInUp.delay(260).springify()}>
-    <SectionHeader title="Your Family" subtitle={`${members.length} member${members.length !== 1 ? 's' : ''}`} icon="people-outline" color={DS.primary} action={onPress} actionLabel="Manage" />
-    <PressableScale onPress={onPress} activeScale={0.98}>
-      <View style={[styles.familyStackCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-        <View style={styles.familyStackRow}>
-                      {members.slice(0, 5).map((m, i) => {
+const FamilyStack = React.memo(({ members, isDark, onPress, onMemberPress }: {
+  members: any[];
+  isDark: boolean;
+  onPress: () => void;
+  onMemberPress?: (member: any) => void;
+}) => {
+  // Prefer showing parent1 > parent2 > guardians > viewers.
+  // `members` is already sorted by role priority in FamilyContext,
+  // but we defensively re-sort so a stale order can't hide the owner.
+  const ordered = useMemo(() => {
+    const rank: Record<string, number> = { parent1: 0, parent2: 1, guardian: 2, viewer: 3 };
+    return [...members].sort(
+      (a, b) => (rank[a.role as string] ?? 4) - (rank[b.role as string] ?? 4),
+    );
+  }, [members]);
+
+  return (
+    <Animated.View entering={FadeInUp.delay(260).springify()}>
+      <SectionHeader
+        title="Your Family"
+        subtitle={`${members.length} member${members.length !== 1 ? 's' : ''}`}
+        icon="people-outline"
+        color={DS.primary}
+        action={onPress}
+        actionLabel="Manage"
+      />
+      {ordered.length === 0 ? (
+        <PressableScale onPress={onPress} activeScale={0.98}>
+          <View
+            style={[
+              styles.familyStackCard,
+              {
+                backgroundColor: isDark ? DS.darkCard : DS.white,
+                borderColor: isDark ? DS.darkBorder : DS.gray200,
+              },
+            ]}
+          >
+            <View style={{ padding: DS.space.lg, alignItems: 'center', gap: 6 }}>
+              <Ionicons name="people-outline" size={28} color={isDark ? DS.gray500 : DS.gray400} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? DS.gray300 : DS.gray700 }}>
+                Invite someone to your family
+              </Text>
+              <Text style={{ fontSize: 11, color: isDark ? DS.gray500 : DS.gray500, textAlign: 'center' }}>
+                Tap Manage to add a co-parent, guardian, or viewer.
+              </Text>
+            </View>
+          </View>
+        </PressableScale>
+      ) : (
+        <View
+          style={[
+            styles.familyStackCard,
+            {
+              backgroundColor: isDark ? DS.darkCard : DS.white,
+              borderColor: isDark ? DS.darkBorder : DS.gray200,
+            },
+          ]}
+        >
+          {/* Horizontally scrollable member chips, each showing
+              avatar + name + human relationship label. Tap a chip to
+              open that member's EditGuardian screen — same behaviour
+              as the "Manage" header link, but scoped to one member. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.familyStackRow}
+          >
+            {ordered.slice(0, 10).map((m, i) => {
               const roleCfg = ROLE_CONFIG[m.role] || ROLE_CONFIG[UserRole.VIEWER];
+              const label = getMemberDisplayLabel({
+                role: m.role,
+                relationship: m.relationship,
+              });
               return (
-                <View key={`${m.id}_${m.role}_${i}`} style={[styles.stackAvatar, { marginLeft: i > 0 ? -12 : 0, zIndex: 10 - i, borderColor: isDark ? DS.darkCard : DS.white }]}>
-                  <SafeAvatar avatar={m.avatar} size={44} fallbackColor={roleCfg.color} />
-                </View>
+                <PressableScale
+                  key={`${m.id}_${m.role}_${i}`}
+                  onPress={() => {
+                    if (onMemberPress) onMemberPress(m);
+                    else onPress();
+                  }}
+                  activeScale={0.94}
+                  style={{ alignItems: 'center', width: 72, marginRight: 8 }}
+                >
+                  <View
+                    style={{
+                      borderRadius: 26,
+                      borderWidth: 2,
+                      borderColor: isDark ? DS.darkCard : DS.white,
+                    }}
+                  >
+                    <SafeAvatar avatar={m.avatar} size={48} fallbackColor={roleCfg.color} />
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '700',
+                      color: isDark ? DS.white : DS.gray900,
+                      marginTop: 4,
+                      textAlign: 'center',
+                    }}
+                    numberOfLines={1}
+                  >
+                    {m.fullName?.split(' ')[0] || 'Member'}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      fontWeight: '700',
+                      color: roleCfg.color,
+                      textAlign: 'center',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.2,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {label}
+                  </Text>
+                </PressableScale>
               );
             })}
-          {members.length > 5 && (
-            <View style={[styles.stackAvatarMore, { marginLeft: -12, backgroundColor: isDark ? DS.darkSurface : DS.gray100, borderColor: isDark ? DS.darkCard : DS.white }]}>
-              <Text style={[styles.stackAvatarMoreText, { color: isDark ? DS.gray300 : DS.gray600 }]}>+{members.length - 5}</Text>
+            {ordered.length > 10 && (
+              <View style={{ alignItems: 'center', width: 72 }}>
+                <View
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 24,
+                    backgroundColor: isDark ? DS.darkSurface : DS.gray100,
+                    borderWidth: 2,
+                    borderColor: isDark ? DS.darkCard : DS.white,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '800',
+                      color: isDark ? DS.gray300 : DS.gray600,
+                    }}
+                  >
+                    +{ordered.length - 10}
+                  </Text>
+                </View>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: isDark ? DS.gray500 : DS.gray500,
+                    marginTop: 6,
+                  }}
+                >
+                  more
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+          <PressableScale onPress={onPress} activeScale={0.98}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingVertical: 10,
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: isDark ? DS.darkBorder : DS.gray200,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: DS.primary,
+                }}
+              >
+                Manage family
+              </Text>
+              <Ionicons name="chevron-forward" size={13} color={DS.primary} />
             </View>
-          )}
-          <View style={{ flex: 1 }} />
-          <Ionicons name="chevron-forward" size={18} color={isDark ? DS.gray500 : DS.gray400} />
+          </PressableScale>
         </View>
-      </View>
-    </PressableScale>
-  </Animated.View>
-));
+      )}
+    </Animated.View>
+  );
+});
 
 /* ═══════════════════════════════════════════════════════════════════════════
    QUICK ACTIONS
@@ -1032,7 +1189,23 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
             </View>
 
             <View style={{ marginTop: DS.space.lg }}>
-              <FamilyStack members={members} isDark={isDark} onPress={handleNavigateFamily} />
+              <FamilyStack
+                members={members}
+                isDark={isDark}
+                onPress={handleNavigateFamily}
+                onMemberPress={(m) => {
+                  const targetId = (m as any).userId || m.id;
+                  if (targetId) {
+                    navigation.navigate('EditGuardian', {
+                      guardianId: targetId,
+                      mode: 'guardian',
+                      fromChat: false,
+                    });
+                  } else {
+                    handleNavigateFamily();
+                  }
+                }}
+              />
             </View>
 
             <View style={{ marginTop: DS.space.lg }}>

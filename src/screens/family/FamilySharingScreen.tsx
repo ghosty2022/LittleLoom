@@ -1265,7 +1265,11 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   const handleTabChange = (tab: TabKey) => { setActiveTab(tab); HAPTIC_LIGHT(); };
 
   /* ─── Render helpers ────────────────────────────────────────────── */
-  const renderMemberSection = (title: string, data: FamilyMember[], emptyText?: string) => {
+  const renderMemberSection = (
+    title: string,
+    data: FamilyMember[],
+    emptyText?: string,
+  ) => {
     // De-dupe by `userId` (profile UUID) — this is stable across role
     // changes. `id` (family_members row id) can change if a member is
     // removed and re-invited, so the old check sometimes showed the
@@ -1274,17 +1278,59 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       (m, i, arr) =>
         i === arr.findIndex((x) => (x.userId || x.id) === (m.userId || m.id)),
     );
+
+    // ── EMPTY-STATE GATE ────────────────────────────────────────
+    // Only show the "invite someone" CTA when the family is
+    // COMPLETELY empty. If the family already has ANY members
+    // (parent1 at minimum), the section renders silently with
+    // nothing — no misleading "Invite member to start logging
+    // entries" text under Co-Parent / Guardians while you're still
+    // waiting for someone to accept that specific role.
+    //
+    // The exceptions are the "Primary Parent" section (which is
+    // never empty after seeding) and explicit empty-state titles
+    // passed by callers who WANT the CTA (e.g. the onboarding path).
+    const familyHasAnyMembers = members.length > 0;
+    const shouldShowEmpty =
+      unique.length === 0 && !!emptyText && !familyHasAnyMembers;
+
+    if (unique.length === 0 && !shouldShowEmpty) {
+      return null;
+    }
+
     return (
       <View style={{ marginBottom: DS.space.lg }}>
-        <SectionHeader title={title} subtitle={`${unique.length} ${unique.length === 1 ? 'member' : 'members'}`} icon="people-outline" />
-        {unique.length === 0 && emptyText ? (
-          <View style={[styles.emptyCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-            <View style={[styles.emptyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
+        <SectionHeader
+          title={title}
+          subtitle={`${unique.length} ${unique.length === 1 ? 'member' : 'members'}`}
+          icon="people-outline"
+        />
+        {shouldShowEmpty ? (
+          <View
+            style={[
+              styles.emptyCard,
+              {
+                backgroundColor: isDark ? DS.darkCard : DS.white,
+                borderColor: isDark ? DS.darkBorder : DS.gray200,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.emptyIcon,
+                { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 },
+              ]}
+            >
               <Ionicons name="people-outline" size={32} color={isDark ? DS.gray500 : DS.gray400} />
             </View>
-            <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>{emptyText}</Text>
+            <Text style={[styles.emptySub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+              {emptyText}
+            </Text>
             {isPrimaryParent && title !== 'Primary Parent' && (
-              <PressableScale onPress={() => navigation.navigate('CoParentInviteScreen')} activeScale={0.96}>
+              <PressableScale
+                onPress={() => navigation.navigate('CoParentInviteScreen')}
+                activeScale={0.96}
+              >
                 <LinearGradient colors={[DS.primary, DS.accent]} style={styles.emptyBtn}>
                   <Text style={styles.emptyBtnText}>Add Member</Text>
                 </LinearGradient>
@@ -1295,9 +1341,12 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
           <View style={{ gap: 8 }}>
             {unique.map((member, index) => (
               <MemberCard
-                key={member.id + index}
+                key={`${member.id}_${member.role}_${index}`}
                 member={member}
-                isCurrentUser={member.id === currentUserId || member.userId === currentUserId}
+                isCurrentUser={
+                  member.id === currentUserId ||
+                  (member as any).userId === currentUserId
+                }
                 onPress={() => openMemberDetails(member)}
                 index={index}
                 isDark={isDark}
@@ -1425,9 +1474,25 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             </View>
 
             <View style={{ marginTop: DS.space.lg, paddingHorizontal: DS.space.lg }}>
-              {renderMemberSection('Primary Parent', members.filter(m => m.role === UserRole.PARENT_1))}
-              {renderMemberSection('Co-Parent', members.filter(m => m.role === UserRole.PARENT_2), 'No co-parent added yet')}
-              {renderMemberSection('Guardians & Viewers', members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER), 'No guardians added yet')}
+              {renderMemberSection(
+                'Primary Parent',
+                members.filter(m => m.role === UserRole.PARENT_1),
+              )}
+              {renderMemberSection(
+                'Co-Parent',
+                members.filter(m => m.role === UserRole.PARENT_2),
+                // Only show the "no co-parent yet" CTA when the WHOLE
+                // family is empty — otherwise it reads like a bug.
+                members.length === 0 ? 'Invite a co-parent to share tracking' : undefined,
+              )}
+              {renderMemberSection(
+                'Guardians & Viewers',
+                members.filter(
+                  m =>
+                    m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER,
+                ),
+                members.length === 0 ? 'Invite a guardian to help out' : undefined,
+              )}
 
               {isPrimaryParent && activeCodes.length > 0 && (
                 <View style={{ marginBottom: DS.space.lg }}>

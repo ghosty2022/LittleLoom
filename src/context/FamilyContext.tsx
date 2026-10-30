@@ -527,7 +527,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ...stored,
         } as Permission;
 
-        return {
+        const built: any = {
           id: row.id,
           userId: row.user_id || row.id,
           fullName: liveName,
@@ -544,17 +544,34 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           notificationsEnabled: row.notifications_enabled !== false,
           status: row.status || (row.last_active ? 'active' : 'pending'),
         };
+        // Internal hint used only by the dedupe pass above. Never
+        // surfaced to consumers — stripped from the final state via
+        // the `FamilyMember` type's structural typing.
+        built.__updatedAt = row.updated_at || row.added_at || '';
+        return built as FamilyMember;
       };
 
       const built: FamilyMember[] = rawRows.map(buildMember);
 
-      // ── 5. De-dupe by user_id (fallback: id) BUT prefer parent1
-      //      > parent2 > guardian > viewer when duplicates exist ───
+      // ── 5. De-dupe by user_id (fallback: id). When TWO rows exist
+      //       for the same user (legacy data, or an interrupted
+      //       promote/demote), the winner is decided by:
+      //         1. Higher role priority  (parent1 > parent2 > guardian > viewer)
+      //         2. If tied on priority, the MORE RECENTLY UPDATED row
+      //         3. If still tied, the row with a non-null `last_active`
+      // This prevents a stale guardian row from shadowing a freshly
+      // promoted parent1 row that has the same user_id.
       const priority: Record<UserRole, number> = {
         [UserRole.PARENT_1]: 0,
         [UserRole.PARENT_2]: 1,
         [UserRole.GUARDIAN]: 2,
         [UserRole.VIEWER]: 3,
+      };
+      const rowUpdatedAt = (m: FamilyMember): number => {
+        const raw = (m as any).__updatedAt as string | undefined;
+        if (!raw) return 0;
+        const t = new Date(raw).getTime();
+        return isNaN(t) ? 0 : t;
       };
       const byKey = new Map<string, FamilyMember>();
       for (const m of built) {
@@ -562,7 +579,34 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const existing = byKey.get(key);
         if (!existing) {
           byKey.set(key, m);
-        } else if ((priority[m.role] ?? 4) < (priority[existing.role] ?? 4)) {
+          continue;
+        }
+
+        const existingPrio = priority[existing.role] ?? 4;
+        const newPrio = priority[m.role] ?? 4;
+
+        if (newPrio < existingPrio) {
+          byKey.set(key, m);
+          continue;
+        }
+        if (newPrio > existingPrio) {
+          continue;
+        }
+
+        // Same role → prefer most-recent updated_at
+        const existingTs = rowUpdatedAt(existing);
+        const newTs = rowUpdatedAt(m);
+        if (newTs > existingTs) {
+          byKey.set(key, m);
+          continue;
+        }
+        if (newTs < existingTs) {
+          continue;
+        }
+
+        // Same role and same timestamp → prefer the row with lastActive
+        // set (implies accepted / active), otherwise keep the existing.
+        if (!!m.lastActive && !existing.lastActive) {
           byKey.set(key, m);
         }
       }
@@ -944,42 +988,109 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // ── ROLE CHANGE → SYNC babies.parent1_id / parent2_id ──────
-      // `family_members.role` is the truth, but downstream consumers
-      // (BabyContext maps `currentBaby.parent1_id` → `isPrimaryParent`,
-      // and FamilyContext.loadFamily reads it back for display) rely on
-      // `babies.parent1_id`. Sync it here so a promotion is visible on
-      // the very next render — without waiting for loadFamily()'s lazy
-      // reconcile to fire.
+      // The AUTHORITATIVE source of truth for role is
+      // `family_members.role`. `babies.parent1_id` / `parent2_id` are
+      // convenience mirrors that the rest of the app reads for fast
+      // lookups. They MUST be kept in sync, but the sync direction is
+      // always family_members → babies, never the reverse.
+      //
+      // Rules:
+      //   • Promoting to PARENT_1: move parent1_id to the new owner.
+      //     If they used to be parent2_id, clear parent2_id. If the
+      //     OLD parent1 still exists as a family_member, leave them
+      //     alone (they'll be demoted separately if the caller wants).
+      //   • Promoting to PARENT_2: set parent2_id.
+      //   • Demoting from PARENT_1: we do NOT auto-clear parent1_id —
+      //     that would leave the baby orphaned. The caller must first
+      //     promote someone else (which handles the swap).
+      //   • Demoting from PARENT_2: clear parent2_id.
       if (updates.role !== undefined && currentBaby) {
         try {
+          // CRITICAL: resolve the TRUE profile UUID. `linkedUserIdBefore`
+          // is already that value — do NOT fall back to `memberId` here,
+          // because that would write a `family_members.id` into a
+          // `uuid` column and hit a FK violation silently.
           const targetUserId = linkedUserIdBefore;
-          if (updates.role === UserRole.PARENT_1 && targetUserId) {
-            const previousParent1 = currentBaby.parent1_id;
-            const updatesForBaby: Record<string, unknown> = {
+          const isUuidLike =
+            typeof targetUserId === 'string' &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              targetUserId,
+            );
+
+          if (!isUuidLike) {
+            if (__DEV__) {
+              console.warn(
+                '[FamilyContext] Skipping babies.parent1/2_id sync — target ID is not a UUID:',
+                targetUserId,
+              );
+            }
+          } else if (updates.role === UserRole.PARENT_1) {
+            // Promote to Parent1. If the target was previously
+            // parent2_id, clear that column so we never have the same
+            // UUID in both slots.
+            const babyUpdates: Record<string, unknown> = {
               parent1_id: targetUserId,
               updated_at: new Date().toISOString(),
             };
-            // If the previous parent1 is now a different role, they
-            // must be cleared out of parent1 slot. If they are still
-            // parent1 (only one parent1 allowed), the SQL will refuse.
-            await supabase.from('babies').update(updatesForBaby).eq('id', currentBaby.id);
-            if (__DEV__) {
-              console.log('[FamilyContext] ✅ Promoted parent1:', targetUserId, 'was:', previousParent1);
+            if (currentBaby.parent2_id === targetUserId) {
+              babyUpdates.parent2_id = null;
             }
-          } else if (updates.role === UserRole.PARENT_2 && targetUserId) {
-            await supabase
+            const { error: p1Err } = await supabase
               .from('babies')
-              .update({ parent2_id: targetUserId, updated_at: new Date().toISOString() })
+              .update(babyUpdates)
               .eq('id', currentBaby.id);
-          } else if (updates.role && targetUserId && currentBaby.parent2_id === targetUserId) {
-            // Demoted from parent2 → guardian/viewer: clear parent2 slot
-            await supabase
+            if (p1Err && __DEV__) {
+              console.warn(
+                '[FamilyContext] babies.parent1_id promote failed:',
+                p1Err.message,
+                babyUpdates,
+              );
+            }
+          } else if (updates.role === UserRole.PARENT_2) {
+            const babyUpdates: Record<string, unknown> = {
+              parent2_id: targetUserId,
+              updated_at: new Date().toISOString(),
+            };
+            // If target was previously parent1, clear that slot — but
+            // ONLY if we're sure the OLD parent1 is no longer them.
+            if (currentBaby.parent1_id === targetUserId) {
+              babyUpdates.parent1_id = null;
+            }
+            const { error: p2Err } = await supabase
               .from('babies')
-              .update({ parent2_id: null, updated_at: new Date().toISOString() })
+              .update(babyUpdates)
               .eq('id', currentBaby.id);
+            if (p2Err && __DEV__) {
+              console.warn(
+                '[FamilyContext] babies.parent2_id promote failed:',
+                p2Err.message,
+                babyUpdates,
+              );
+            }
+          } else if (
+            (updates.role === UserRole.GUARDIAN ||
+              updates.role === UserRole.VIEWER) &&
+            currentBaby.parent2_id === targetUserId
+          ) {
+            // Demoted from parent2 → guardian/viewer: clear parent2 slot.
+            // Never touch parent1_id here — the owner only changes via
+            // an explicit promotion of someone else.
+            const { error: demoteErr } = await supabase
+              .from('babies')
+              .update({
+                parent2_id: null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', currentBaby.id);
+            if (demoteErr && __DEV__) {
+              console.warn(
+                '[FamilyContext] babies.parent2_id demote failed:',
+                demoteErr.message,
+              );
+            }
           }
         } catch (e) {
-          if (__DEV__) console.warn('[FamilyContext] parent slot sync failed:', e);
+          if (__DEV__) console.warn('[FamilyContext] parent slot sync threw:', e);
         }
       }
 
