@@ -180,6 +180,7 @@ export type RootStackParamList = {
     activeTab?: 'create' | 'join';
   } | undefined;
   ForgotPassword: undefined;
+  ForcedPasswordChange: undefined;
 
   
   QRScanner: undefined;
@@ -456,7 +457,8 @@ export type NavigationState =
   | 'SETUP_PARENT2'
   | 'SETUP_BABY'
   | 'SECURITY_LOCK'
-  | 'MAIN';
+  | 'MAIN'
+  | 'FORCED_PASSWORD_CHANGE';
 
 
 

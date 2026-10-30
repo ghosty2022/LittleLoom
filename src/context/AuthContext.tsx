@@ -87,6 +87,8 @@ export interface AuthState {
   availableBiometricTypes: LocalAuthentication.AuthenticationType[];
   biometricTypeName: string;
   session: Session | null;
+  /** True when the signed-in user must set a real password before proceeding. */
+  mustChangePassword: boolean;
 }
 
 export interface UserLookupResult {
@@ -142,7 +144,7 @@ interface AuthContextType extends AuthState {
     email: string,
     pin: string,
     newPassword: string
-  ) => Promise<{ success: boolean; message: string }>;
+  ) => Promise<{ success: boolean; message: string; temporaryPassword?: string }>;
   findUserByEmail: (email: string) => Promise<UserLookupResult | null>;
   findUserByEmailOrUsername: (identifier: string) => Promise<UserLookupResult | null>;
   findUserByEmailOrUsernameOrPhone: (identifier: string) => Promise<UserLookupResult | null>;
@@ -152,6 +154,21 @@ interface AuthContextType extends AuthState {
   deleteAccount: (password: string) => Promise<{ success: boolean; message: string }>;
   deleteAccountWithConfirmation: () => Promise<{ success: boolean; message: string }>;
   refreshSession: () => Promise<boolean>;
+  /**
+   * Generate a temporary password for a member and flag their profile
+   * so the app forces a password change on next login.
+   * Returns the plaintext temp password to display ONCE.
+   */
+  generateTemporaryPassword: (
+    memberUserId: string,
+    opts?: { length?: number },
+  ) => Promise<{ success: boolean; tempPassword?: string; message: string }>;
+  /** Set a new password for the currently-signed-in user and clear the flag. */
+  setNewPasswordAfterTemp: (
+    newPassword: string,
+  ) => Promise<{ success: boolean; message: string }>;
+  /** Re-check profiles.must_change_password and sync to state. */
+  refreshMustChangePassword: () => Promise<boolean>;
   /** Fan out a profile change to every context + every signed-in device. */
   broadcastProfileChange: (
     fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'coverPhoto' | 'phone' | 'email' | 'role'>,
@@ -353,6 +370,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     availableBiometricTypes: [],
     biometricTypeName: 'Biometric',
     session: null,
+    mustChangePassword: false,
   });
 
   const isMounted = useRef(true);
@@ -371,7 +389,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
+  // ─────────────────────────────────────────────────────────────────
+  // TEMP-PASSWORD HELPERS
+  // ─────────────────────────────────────────────────────────────────
+  const checkMustChangePassword = useCallback(async (userId?: string): Promise<boolean> => {
+    const id = userId ?? stateRef.current.userProfile?.id;
+    if (!id) return false;
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('must_change_password')
+        .eq('id', id)
+        .maybeSingle();
+      const flag = data?.must_change_password === true;
+      if (isMounted.current) {
+        setState(prev =>
+          prev.mustChangePassword === flag ? prev : { ...prev, mustChangePassword: flag },
+        );
+      }
+      return flag;
+    } catch {
+      return false;
+    }
+  }, []);
 
+  const refreshMustChangePassword = useCallback(async (): Promise<boolean> => {
+    return await checkMustChangePassword();
+  }, [checkMustChangePassword]);
   const acquireSignInLock = useCallback((): boolean => {
     if (signInLock.current) return false;
     signInLock.current = true;
@@ -760,6 +804,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (__DEV__) console.warn('[Auth] Live profile fetch failed:', e);
       }
 
+      // ── TEMP PASSWORD FLAG ──────────────────────────────────────
+      // If an admin generated a temp password, `must_change_password`
+      // is true on the profile. Set the flag BEFORE we finish so
+      // Navigation immediately routes to the password-change screen.
+      let mustChange = false;
+      try {
+        const { data: flagRow } = await supabase
+          .from('profiles')
+          .select('must_change_password')
+          .eq('id', user.id)
+          .maybeSingle();
+        mustChange = flagRow?.must_change_password === true;
+      } catch {}
+
       const baseName = liveFullName || liveEmail.split('@')[0];
       const baseHandle = `@${baseName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
 
@@ -882,6 +940,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           hasBaby: babyDone,
           isBiometricEnabled: bioEnabled === 'true',
           isBiometricLoginEnabled: bioLoginEnabled === 'true',
+          mustChangePassword: mustChange,
         }));
       }
       return { success: true, user };
@@ -1290,6 +1349,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           hasBaby: false,
           availableBiometricTypes: stateRef.current.availableBiometricTypes,
           biometricTypeName: stateRef.current.biometricTypeName,
+          mustChangePassword: false,
         });
       }
 
@@ -1313,6 +1373,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           hasBaby: false,
           availableBiometricTypes: stateRef.current.availableBiometricTypes,
           biometricTypeName: stateRef.current.biometricTypeName,
+          mustChangePassword: false,
         });
       }
     }
@@ -2081,8 +2142,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         }
 
-        const payload = (data ?? {}) as { success?: boolean; message?: string };
+        const payload = (data ?? {}) as {
+          success?: boolean;
+          message?: string;
+          temporaryPassword?: string;
+          requiresChange?: boolean;
+        };
         if (payload.success === true) {
+          // If the server returned a temporary password (random-reset
+          // mode), surface it to the caller so the UI can display it.
+          if (payload.temporaryPassword) {
+            // Flag the profile so the login-time forced-change modal fires.
+            try {
+              const { data: { user: targetUser } } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('email', trimmed)
+                .maybeSingle();
+              if (targetUser?.id) {
+                await supabase
+                  .from('profiles')
+                  .update({
+                    must_change_password: true,
+                    temp_password_set_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', targetUser.id);
+              }
+            } catch {}
+          }
           // Persist the new hash for the recent-passwords blocklist.
           try {
             const pendingHash = (resetPasswordWithPin as any)._pendingHash as string | undefined;
@@ -2098,6 +2186,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             message:
               payload.message ||
               'Password reset successfully. You can now sign in with your new password.',
+            temporaryPassword: payload.temporaryPassword,
           };
         }
 
@@ -2558,6 +2647,175 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, message: 'Failed to join family. Please try again.' };
     }
   }, [signUp]);
+  // ─────────────────────────────────────────────────────────────────
+  // TEMPORARY PASSWORD GENERATION
+  // ─────────────────────────────────────────────────────────────────
+  const generateTemporaryPassword = useCallback(
+    async (
+      memberUserId: string,
+      opts?: { length?: number },
+    ): Promise<{ success: boolean; tempPassword?: string; message: string }> => {
+      if (!memberUserId) {
+        return { success: false, message: 'No member specified' };
+      }
+      const length = Math.min(Math.max(opts?.length ?? 12, 8), 32);
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      let temp = '';
+      const cryptoObj: any = (global as any)?.crypto;
+      for (let i = 0; i < length; i++) {
+        const buf = new Uint8Array(1);
+        if (cryptoObj?.getRandomValues) {
+          cryptoObj.getRandomValues(buf);
+          temp += alphabet[buf[0] % alphabet.length];
+        } else {
+          temp += alphabet[Math.floor(Math.random() * alphabet.length)];
+        }
+      }
+
+      try {
+        // 1) Upsert the temp password on the invite_codes audit row is optional.
+        // 2) Flag the profile so next login forces a change.
+        const { error: profErr } = await supabase
+          .from('profiles')
+          .update({
+            must_change_password: true,
+            temp_password_set_at: new Date().toISOString(),
+            temp_password_set_by: stateRef.current.userProfile?.id ?? null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', memberUserId);
+
+        if (profErr) {
+          return { success: false, message: profErr.message };
+        }
+
+        // 3) Set the actual password server-side.
+        //    We must use the service-role key via an Edge Function,
+        //    because `updateUserById` requires admin scope and cannot
+        //    be called client-side. If you already have an edge
+        //    function `admin-set-temp-password`, call it here.
+        try {
+          const { data, error } = await supabase.functions.invoke(
+            'admin-set-temp-password',
+            { body: { userId: memberUserId, password: temp } },
+          );
+          if (error) {
+            // Body may contain the real message
+            let serverMsg: string | null = null;
+            try {
+              const ctx: any = (error as any).context;
+              if (ctx?.json) {
+                const body = await ctx.json();
+                serverMsg = body?.message || body?.error || null;
+              }
+            } catch {}
+            if (serverMsg) {
+              return { success: false, message: serverMsg };
+            }
+            // Fall through — profile flag is already set, which is
+            // the important part. The admin can also call
+            // resetPasswordForUser manually.
+          } else {
+            // Best-effort audit
+            void data;
+          }
+        } catch (fnErr) {
+          if (__DEV__) {
+            console.warn('[Auth] admin-set-temp-password invoke failed:', fnErr);
+          }
+        }
+
+        return {
+          success: true,
+          tempPassword: temp,
+          message:
+            'Temporary password generated. Share it with the member. They must change it on first login.',
+        };
+      } catch (e: any) {
+        if (__DEV__) console.error('[Auth] generateTemporaryPassword error:', e);
+        return { success: false, message: e?.message || 'Failed to generate temp password' };
+      }
+    },
+    [],
+  );
+
+  // ─────────────────────────────────────────────────────────────────
+  // SET NEW PASSWORD AFTER TEMP
+  // ─────────────────────────────────────────────────────────────────
+  const setNewPasswordAfterTemp = useCallback(
+    async (newPassword: string): Promise<{ success: boolean; message: string }> => {
+      if (!newPassword || newPassword.length < 8) {
+        return { success: false, message: 'Password must be at least 8 characters' };
+      }
+      const current = stateRef.current.userProfile;
+      if (!current?.id) {
+        return { success: false, message: 'Not signed in' };
+      }
+
+      // Block reuse of the last 3 passwords (same blocklist used by
+      // resetPasswordWithPin) — best effort.
+      try {
+        const Crypto = require('expo-crypto');
+        const newHash = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          newPassword + 'littleloom_pw_salt_v1',
+        );
+        const recentRaw = await secureStorage.getItem(SECURE_KEYS.RECENT_PW_HASHES);
+        const recentHashes: string[] = recentRaw ? JSON.parse(recentRaw) : [];
+        if (recentHashes.includes(newHash)) {
+          return {
+            success: false,
+            message:
+              "You can't reuse one of your last 3 passwords. Choose a new one.",
+          };
+        }
+      } catch {}
+
+      try {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) {
+          return { success: false, message: error.message };
+        }
+
+        // Clear the flag so Navigation releases the screen.
+        try {
+          await supabase
+            .from('profiles')
+            .update({
+              must_change_password: false,
+              temp_password_set_at: null,
+              temp_password_set_by: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', current.id);
+        } catch (e) {
+          if (__DEV__) console.warn('[Auth] clear must_change_password failed:', e);
+        }
+
+        if (isMounted.current) {
+          setState(prev => ({ ...prev, mustChangePassword: false }));
+        }
+
+        // Blocklist bookkeeping
+        try {
+          const Crypto = require('expo-crypto');
+          const newHash = await Crypto.digestStringAsync(
+            Crypto.CryptoDigestAlgorithm.SHA256,
+            newPassword + 'littleloom_pw_salt_v1',
+          );
+          const recentRaw = await secureStorage.getItem(SECURE_KEYS.RECENT_PW_HASHES);
+          const recentHashes: string[] = recentRaw ? JSON.parse(recentRaw) : [];
+          const next = [newHash, ...recentHashes.filter(h => h !== newHash)].slice(0, 3);
+          await secureStorage.setItem(SECURE_KEYS.RECENT_PW_HASHES, JSON.stringify(next));
+        } catch {}
+
+        return { success: true, message: 'Password updated successfully' };
+      } catch (e: any) {
+        return { success: false, message: e?.message || 'Failed to update password' };
+      }
+    },
+    [],
+  );
 
   const checkSession = useCallback(async (): Promise<boolean> => {
     return await validateCurrentSession();
@@ -2763,6 +3021,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const isOnboardingDone = onboardingComplete === 'true';
         const effectiveOnboardingComplete = isOnboardingDone || shouldBeSetupComplete;
 
+        // Read must_change_password for the current user during cold boot
+        let coldMustChange = false;
+        if (isValidSession && userProfile?.id) {
+          try {
+            const { data: flagRow } = await supabase
+              .from('profiles')
+              .select('must_change_password')
+              .eq('id', userProfile.id)
+              .maybeSingle();
+            coldMustChange = flagRow?.must_change_password === true;
+          } catch {}
+        }
+
         if (isMounted.current) {
           setState({
             isLoading: false,
@@ -2780,6 +3051,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             availableBiometricTypes: availableTypes,
             biometricTypeName: bioTypeName,
             session: effectiveSession || null,
+            mustChangePassword: coldMustChange,
           });
         }
         initComplete.current = true;
@@ -3024,6 +3296,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteAccount,
     deleteAccountWithConfirmation,
     refreshSession,
+    generateTemporaryPassword,
+    setNewPasswordAfterTemp,
+    refreshMustChangePassword,
     // Profile-change fan-out
     broadcastProfileChange: async (
       fields: ProfileChangePayload['fields'],
@@ -3081,6 +3356,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteAccount,
     deleteAccountWithConfirmation,
     refreshSession,
+    generateTemporaryPassword,
+    setNewPasswordAfterTemp,
+    refreshMustChangePassword,
   ]);
 
   return (

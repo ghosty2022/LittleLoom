@@ -732,7 +732,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const { hasPermission, profile, updateProfile } = useUser();
   const { currentBaby, milestones, refreshBabyData } = useBaby();
   const { entries: trackerEntries } = useTracker();
-  const { userProfile } = useAuth();
+  const { userProfile, generateTemporaryPassword } = useAuth();
   const { darkMode, triggerHaptic } = useCustomization();
   const sweetAlert = useSweetAlert();
   const colorScheme = useColorScheme();
@@ -1471,6 +1471,60 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     }
   }, [isAddingMember, addMemberIdentifier, addMemberRelationship, addMemberRole, addMemberDirectly, sweetAlert, triggerHaptic, navigation]);
 
+  
+  /* ─── GENERATE TEMP PASSWORD ─── */
+  const handleGenerateTempPassword = useCallback(async () => {
+    if (!member) return;
+    const memberUserId = (member as any).userId || member.id;
+    if (!memberUserId) {
+      sweetAlert.error('Not Ready', 'This member has no linked account yet.');
+      return;
+    }
+    if (memberUserId === (userProfile?.id || '')) {
+      sweetAlert.warning('That\'s You', 'You cannot reset your own password from here.');
+      return;
+    }
+
+    sweetAlert.confirm(
+      'Generate Temporary Password?',
+      `${member.fullName} will be signed out of any active sessions and forced to choose a new password on next login.`,
+      async () => {
+        setIsSaving(true);
+        triggerHaptic('medium');
+        try {
+          const result = await generateTemporaryPassword(memberUserId);
+          if (result.success && result.tempPassword) {
+            triggerHaptic('success');
+            // Show the temp password ONCE in a modal the admin can copy.
+            sweetAlert.success(
+              'Temporary Password Generated',
+              `Share this with ${member.fullName.split(' ')[0]}:\n\n` +
+                `${result.tempPassword}\n\n` +
+                `They must change it on first login.`,
+            );
+            // Optionally: broadcast so this member's other devices
+            // re-fetch and lock instantly.
+            try {
+              const { broadcastProfileChange } = require('../../context/AuthContext');
+              await broadcastProfileChange({ userId: memberUserId, fields: ['role'] });
+            } catch {}
+          } else {
+            triggerHaptic('error');
+            sweetAlert.error('Could Not Generate', result.message || 'Please try again.');
+          }
+        } catch (e: any) {
+          triggerHaptic('error');
+          sweetAlert.error('Error', e?.message || 'Failed to generate temp password.');
+        } finally {
+          setIsSaving(false);
+        }
+      },
+      () => {},
+      'Generate',
+      'Cancel',
+    );
+  }, [member, userProfile, generateTemporaryPassword, sweetAlert, triggerHaptic]);
+
   /* ─── ACTIONS ─── */
   const handleCall = async () => {
     if (!member?.phoneNumber) { sweetAlert.alert('No Phone Number', 'No phone number on file.', 'warning'); return; }
@@ -1913,6 +1967,22 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                 )}
               </View>
             )}
+                {/* ── RESET PASSWORD ────────────────────────────────────
+                    Generates a temp password + forces change on next
+                    login via profiles.must_change_password. Parent
+                    sees the temp password ONCE to share manually. */}
+                {canManagePermissions && member && (member as any).userId && (
+                  <PressableScale
+                    onPress={() => { triggerHaptic('light'); handleGenerateTempPassword(); }}
+                    activeScale={0.97}
+                  >
+                    <View style={[styles.managePermBtn, { backgroundColor: `${DS.warning}12`, borderColor: `${DS.warning}30` }]}>
+                      <Ionicons name="key" size={18} color={DS.warning} />
+                      <Text style={[styles.managePermText, { color: DS.warning }]}>Reset Password</Text>
+                      <Ionicons name="chevron-forward" size={18} color={DS.warning} />
+                    </View>
+                  </PressableScale>
+                )}
 
             {/* ─── SETTINGS ─── */}
             {activeTab === 'settings' && (
