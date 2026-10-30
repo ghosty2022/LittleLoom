@@ -196,6 +196,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const loadingRef = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);
   const loadFamilyRef = useRef<(() => Promise<void>) | null>(null);
+  // Prevents the "no baby yet" retry loop from running forever.
+  const loadFamilyRetryCount = useRef(0);
 
   // ─── Realtime: reload family when members change on any device ──
   useRealtimeSubscription({
@@ -420,11 +422,20 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // BabyContext resolves babies for guardians via family_members.
       // But there's a window where FamilyContext mounts before
       // BabyContext finishes its first fetch, and currentBaby is
-      // null. The old code bailed here — leaving the guardian stuck
-      // on isLoading until a manual refresh.
+      // null.
       //
-      // Instead, resolve the baby directly from family_members for
-      // this user, then proceed. This makes the first render work.
+      // Strategy:
+      //   1. Try app_settings.current_baby_id (fast — the guardian
+      //      usually has it after first successful load).
+      //   2. Try family_members (authoritative — works on very first
+      //      cold start).
+      //   3. Persist the resolved baby to app_settings so subsequent
+      //      launches hit path 1 instantly.
+      //   4. Retry up to 4 times with backoff to survive the race
+      //      with BabyContext's own hydration.
+      //
+      // On EVERY retry we bump a retry counter so we never loop
+      // forever if the user genuinely has no baby.
       const uid =
         authProfile?.id ||
         (await (async () => {
@@ -439,29 +450,84 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setState(prev => ({ ...prev, isLoading: true }));
         return;
       }
+
+      // ── Path 1: app_settings.current_baby_id (fastest) ────────
+      let resolvedBabyId: string | null = null;
       try {
-        const { data: fm } = await supabase
-          .from('family_members')
-          .select('baby_id')
+        const { data: settingsRow } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'current_baby_id')
           .eq('user_id', uid)
-          .eq('status', 'active')
-          .is('deleted_at', null)
-          .limit(1)
           .maybeSingle();
-        if (!fm?.baby_id) {
+        if (settingsRow?.value) resolvedBabyId = settingsRow.value;
+      } catch {}
+
+      // ── Path 2: family_members (authoritative) ────────────────
+      if (!resolvedBabyId) {
+        try {
+          const { data: fm } = await supabase
+            .from('family_members')
+            .select('baby_id')
+            .eq('user_id', uid)
+            .eq('status', 'active')
+            .is('deleted_at', null)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (fm?.baby_id) resolvedBabyId = fm.baby_id;
+        } catch {}
+      }
+
+      if (!resolvedBabyId) {
+        // Retry with backoff — BabyContext may not have hydrated yet.
+        // We track attempts via a ref so this doesn't loop forever.
+        const attempt = (loadFamilyRetryCount.current ?? 0) + 1;
+        loadFamilyRetryCount.current = attempt;
+        if (attempt <= 4) {
+          const delay = Math.min(150 * attempt, 800);
+          if (__DEV__) {
+            console.log(
+              `[FamilyContext] loadFamily: no baby yet (attempt ${attempt}), retrying in ${delay}ms`,
+            );
+          }
+          setTimeout(() => {
+            loadFamilyRef.current?.().catch(() => {});
+          }, delay);
           setState(prev => ({ ...prev, isLoading: true }));
-          return;
+        } else {
+          // Genuinely no baby — stop retrying.
+          loadFamilyRetryCount.current = 0;
+          setState(prev => ({ ...prev, isLoading: false }));
         }
-        // Adopt the resolved baby so the rest of loadFamily can run.
-        setCurrentBaby({ id: fm.baby_id } as any);
-        // Loop once more; by then `currentBaby?.id` is set and the
-        // normal path runs.
-        setTimeout(() => loadFamilyRef.current?.().catch(() => {}), 0);
-        return;
-      } catch {
-        setState(prev => ({ ...prev, isLoading: true }));
         return;
       }
+
+      // Reset retry counter — we found a baby.
+      loadFamilyRetryCount.current = 0;
+
+      // Adopt the resolved baby so the rest of loadFamily can run.
+      setCurrentBaby({ id: resolvedBabyId } as any);
+
+      // Persist to app_settings so path 1 hits on the next launch.
+      try {
+        await supabase
+          .from('app_settings')
+          .upsert(
+            {
+              key: 'current_baby_id',
+              value: resolvedBabyId,
+              user_id: uid,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'key,user_id' },
+          );
+      } catch {}
+
+      // Loop once more; by then `currentBaby?.id` is set and the
+      // normal path runs.
+      setTimeout(() => loadFamilyRef.current?.().catch(() => {}), 0);
+      return;
     }
 
     // Always emit a brand-new state object (even if the same length)
@@ -835,28 +901,37 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (babyLoading || !authProfile) return;
 
     if (!currentBaby) {
-      setState({
-        isLoading: false,
-        members: [],
-        parent1: null,
-        parent2: null,
-        guardians: [],
-        pendingInvites: [],
-      });
+      // Don't wipe the members list if BabyContext is still
+      // hydrating — that's what makes the co-parent / guardian row
+      // flash into the list and vanish again. Instead, leave the
+      // last-known members visible and let `loadFamily` retry with
+      // backoff (see the retry loop in loadFamily).
+      if (!babyLoading) {
+        setState(prev =>
+          prev.members.length === 0
+            ? prev
+            : {
+                isLoading: false,
+                members: [],
+                parent1: null,
+                parent2: null,
+                guardians: [],
+                pendingInvites: [],
+              },
+        );
+      }
       initRef.current = false;
       return;
     }
 
-    if (initRef.current && state.members.length > 0) {
-      loadFamily();
-      return;
-    }
-
-    if (!initRef.current) {
-      initRef.current = true;
-      loadFamily();
-    }
-  }, [currentBaby?.id, babyLoading, authProfile]);
+    // Always call loadFamily when the active baby changes. The old
+    // code short-circuited on `initRef.current && state.members.length > 0`,
+    // which meant a baby SWITCH never reloaded the family — so a
+    // co-parent who switched to their own baby saw the previous
+    // baby's members until they navigated away and back.
+    initRef.current = true;
+    loadFamily();
+  }, [currentBaby?.id, babyLoading, authProfile, loadFamily]);
 
   // ─── Update Parent 2 Profile ───────────────────────────────────────────
   const updateParent2Profile = useCallback(async (

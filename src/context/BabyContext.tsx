@@ -481,16 +481,45 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useRealtimeSubscription({
     table: 'family_members',
     enabled: true,
-    onInsert: () => {
+    onInsert: (payload: any) => {
       if (__DEV__) console.log('[BabyContext] Realtime family_members.inserted');
+      // ── FIX: ignore the first event during hydration ─────────
+      // The subscription is active from mount, but `loadBabies`
+      // hasn't resolved `currentUserIdRef` or `babies` yet on
+      // cold start. A `loadBabies(true)` fired now runs with a
+      // stale user id and commits an EMPTY baby list — which is
+      // exactly what makes the co-parent's family row appear,
+      // then disappear a second later.
+      //
+      // We debounce + only fire once BabyContext has finished
+      // at least one successful load (i.e. `state.isInitialized`
+      // is true AND `currentUserIdRef` is set).
+      if (!currentUserIdRef.current) {
+        if (__DEV__) {
+          console.log('[BabyContext] family_members.insert — waiting for user id');
+        }
+        return;
+      }
+      if (!state.isInitialized) {
+        if (__DEV__) {
+          console.log('[BabyContext] family_members.insert — waiting for first load');
+        }
+        // Schedule a single deferred retry so we don't miss it.
+        setTimeout(() => {
+          if (isMounted.current) loadBabiesRef.current?.(true);
+        }, 800);
+        return;
+      }
       loadBabiesRef.current?.(true);
     },
     onUpdate: () => {
       if (__DEV__) console.log('[BabyContext] Realtime family_members.updated');
+      if (!currentUserIdRef.current || !state.isInitialized) return;
       loadBabiesRef.current?.(true);
     },
     onDelete: () => {
       if (__DEV__) console.log('[BabyContext] Realtime family_members.deleted');
+      if (!currentUserIdRef.current || !state.isInitialized) return;
       loadBabiesRef.current?.(true);
     },
   });

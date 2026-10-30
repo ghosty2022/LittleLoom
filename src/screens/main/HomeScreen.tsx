@@ -1830,7 +1830,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // `todayContributors`, both of which broke with
   // `ReferenceError: Property 'members' doesn't exist` when this
   // line was accidentally left inside a JSDoc block.
-  const { members } = useFamily();
+  //
+  // `loadFamily` is pulled in so HomeScreen can trigger the family
+  // refresh itself — otherwise the co-parent / guardian row is only
+  // ever loaded when the user opens FamilySharing / EditGuardian,
+  // which is why the family strip appeared empty for the first
+  // several seconds after launch.
+  const { members, loadFamily } = useFamily();
 
   const {
     entries: trackerEntriesRaw,
@@ -2076,6 +2082,14 @@ useEffect(() => {
   /* ── Load data instantly on focus + mount ── */
   useFocusEffect(
     useCallback(() => {
+      // Always refresh the family on focus — the co-parent /
+      // guardian list is defined by `family_members` and can
+      // change on another device at any moment. Without this,
+      // `members` in `FamilyStack` stays stale until the user
+      // happens to navigate into FamilySharing.
+      if (typeof loadFamily === 'function') {
+        loadFamily().catch(() => {});
+      }
       if (isInitialLoad.current || !dataLoaded.current) {
         isInitialLoad.current = false;
         loadBabies();
@@ -2083,12 +2097,18 @@ useEffect(() => {
         dataLoaded.current = true;
       }
       rehydratePinStatus().catch(() => {});
-    }, [loadBabies, loadActivities, rehydratePinStatus])
+    }, [loadBabies, loadActivities, loadFamily, rehydratePinStatus])
   );
 
   useEffect(() => {
     loadBabies();
     loadActivities();
+    // Fire-and-forget initial family load. This runs once on mount
+    // so the co-parent / guardian row appears on first paint instead
+    // of waiting for the first focus event.
+    if (typeof loadFamily === 'function') {
+      loadFamily().catch(() => {});
+    }
   }, []);
 
   const scrollHandler = useAnimatedScrollHandler({
@@ -2431,29 +2451,30 @@ useEffect(() => {
       return;
     }
 
+    // Try to resolve my role from family_members FIRST — that's the
+    // authoritative source and is refreshed on focus. If it's still
+    // empty (very first render before loadFamily resolves), fall
+    // back to the baby's parent slots, then to 'guardian'.
     const myMemberRow =
-      members.find((m: any) => m.userId === meId) ||
+      members.find((m: any) => (m as any).userId === meId) ||
       members.find((m: any) => m.id === meId) ||
       null;
 
-    // Strip `normalizeRole` to a plain lowercase string. Both
-    // 'parent1' / 'parent2' / 'guardian' / 'viewer' and the enum
-    // values (same strings) are handled.
     const rawRole = String(myMemberRow?.role || '').toLowerCase();
 
     const myRoleForBaby: string =
       rawRole ||
-      // Fallback: derive from currentBaby parent slots. Only trust
-      // this when `members` is empty for the current baby (mid-load).
       (currentBaby?.parent1Id === meId
         ? 'parent1'
         : currentBaby?.parent2Id === meId
         ? 'parent2'
         : 'guardian');
 
-    const editMode: 'parent2' | 'guardian' =
+    const editMode: 'parent2' | 'guardian' | 'viewer' =
       myRoleForBaby === 'parent1' || myRoleForBaby === 'parent2'
         ? 'parent2'
+        : myRoleForBaby === 'viewer'
+        ? 'viewer'
         : 'guardian';
 
     navigateToScreen('EditGuardian', {
