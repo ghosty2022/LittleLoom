@@ -1419,6 +1419,12 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         setAddMemberRelationship('');
         setAddMemberRole(UserRole.GUARDIAN);
         sweetAlert.success('Member Added', `${fresh.fullName} was added to the family.`);
+        // Navigate back so the family tree / member list reloads
+        // on focus and shows the newly-added person immediately.
+        // Without this, the user has to pull-to-refresh manually.
+        setTimeout(() => {
+          if (navigation.canGoBack()) navigation.goBack();
+        }, 800);
       }
     } catch (e) {
       if (__DEV__) console.warn('[handleAddMemberDirectly] error:', e);
@@ -1426,7 +1432,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     } finally {
       setIsAddingMember(false);
     }
-  }, [isAddingMember, addMemberIdentifier, addMemberRelationship, addMemberRole, addMemberDirectly, sweetAlert, triggerHaptic]);
+  }, [isAddingMember, addMemberIdentifier, addMemberRelationship, addMemberRole, addMemberDirectly, sweetAlert, triggerHaptic, navigation]);
 
   /* ─── ACTIONS ─── */
   const handleCall = async () => {

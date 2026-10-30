@@ -48,6 +48,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useFamily } from '../../context/FamilyContext';
+import type { AddMemberResult } from '../../context/FamilyContext';
 import { UserRole } from '../../types/roles';
 import { useSweetAlert } from '../../components/SweetAlert';
 import QRCode from 'react-native-qrcode-svg';
@@ -1097,10 +1098,6 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
       navigation.navigate('CreateBabyProfile' as never);
       return;
     }
-    if (role === 'parent2' && currentBaby?.parent2_id) {
-      showToast('This baby already has a Co-Parent', 'error');
-      return;
-    }
     HAPTIC_MEDIUM();
     setIsAddingDirect(true);
     try {
@@ -1108,22 +1105,33 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
         role === 'parent2' ? UserRole.PARENT_2
         : role === 'guardian' ? UserRole.GUARDIAN
         : UserRole.VIEWER;
-      const fresh = await addMemberDirectly(
+      const result: AddMemberResult = await addMemberDirectly(
         directIdentifier.trim(),
         userRoleEnum,
         relationship.trim(),
       );
-      if (fresh) {
+
+      if (result.ok) {
         HAPTIC_SUCCESS();
-        showToast(`${fresh.fullName} joined the family!`);
+        // Use the SAME Aura success modal used throughout the app.
+        // This replaces the tiny toast with a proper success capsule
+        // that matches MoreScreen / EditGuardian.
+        sweetAlert.success(result.title, result.message);
         setDirectIdentifier('');
         setRelationship('');
-        // Refresh the active codes list so the stats update too
+        setRole('guardian');
         await loadActiveCodes();
+      } else {
+        if (result.isWarning) {
+          sweetAlert.warning(result.title, result.message);
+        } else {
+          sweetAlert.error(result.title, result.message);
+        }
+        HAPTIC_WARNING();
       }
     } catch (e) {
       if (__DEV__) console.warn('[CoParentInvite] addDirect', e);
-      showToast('Could not add member', 'error');
+      sweetAlert.error('Something Went Wrong', 'Could not add member. Please try again.');
     } finally {
       setIsAddingDirect(false);
     }
@@ -1136,9 +1144,10 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     addMemberDirectly,
     loadActiveCodes,
     showToast,
+    sweetAlert,
     navigation,
   ]);
-
+  
   const handleShare = useCallback(async (method: 'copy' | 'whatsapp' | 'sms' | 'email' | 'native', codeOverride?: string) => {
     const code = codeOverride || generatedCode;
     if (!code) return;

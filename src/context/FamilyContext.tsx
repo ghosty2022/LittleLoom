@@ -23,6 +23,48 @@ interface FamilyState {
   pendingInvites: FamilyMember[];
 }
 
+/**
+ * Structured result from `addMemberDirectly`.
+ *
+ * `ok: true`  → `member` is the freshly-inserted / restored row.
+ * `ok: false` → `code` is a stable discriminator the caller can branch
+ *               on to pick the right icon + title in its Aura modal:
+ *
+ *   • 'not_signed_in'      — no baby or no auth session
+ *   • 'invalid_input'      — empty identifier
+ *   • 'not_found'          — identifier doesn't match any profile
+ *   • 'already_you'        — identifier resolves to the caller
+ *   • 'already_member'     — target is already a member (active row)
+ *   • 'restore_failed'     — soft-deleted row existed but couldn't revive
+ *   • 'insert_failed'      — fresh insert was rejected (RLS / constraint)
+ *   • 'unexpected'         — something else threw
+ */
+export type AddMemberResult =
+  | {
+      ok: true;
+      member: FamilyMember;
+      /** Convenience label for the modal title ("Member Added"). */
+      title: string;
+      /** One-line success message (already includes the member name). */
+      message: string;
+    }
+  | {
+      ok: false;
+      code:
+        | 'not_signed_in'
+        | 'invalid_input'
+        | 'not_found'
+        | 'already_you'
+        | 'already_member'
+        | 'restore_failed'
+        | 'insert_failed'
+        | 'unexpected';
+      title: string;
+      message: string;
+      /** True if the caller should show a `warning` modal instead of `error`. */
+      isWarning?: boolean;
+    };
+
 interface FamilyContextType extends FamilyState {
   loadFamily: () => Promise<void>;
   refreshFamily: () => Promise<void>;
@@ -44,21 +86,22 @@ interface FamilyContextType extends FamilyState {
    *   • generateInviteCode  (code → shared → signed up → family_members row)
    *   • promoteMember       (change role of an existing member)
    *
-   * `addMemberDirectly` skips the invite flow entirely. It:
-   *   • Resolves the identifier against `profiles`
-   *   • Refuses if the user is already a member
-   *   • Inserts an ACTIVE `family_members` row with the correct
-   *     permissions, user_id, status='active'
-   *   • Syncs babies.parent2_id if role=parent2
-   *   • Fires realtime so every device re-renders
+   * Resolves the identifier against `profiles`, refuses if the user
+   * is already a member, and inserts an ACTIVE `family_members` row
+   * with the correct permissions / user_id / status. Syncs
+   * `babies.parent2_id` when the role is parent2, then fires realtime
+   * so every device re-renders.
    *
-   * Returns the new FamilyMember, or null on any failure.
+   * Returns a *structured result* rather than just `FamilyMember | null`
+   * so the caller can render its own modal (`useSweetAlert`, etc.) with
+   * a tailored message per failure mode. `FamilyContext` does NOT
+   * render user-facing UI itself — that's the caller's job.
    */
   addMemberDirectly: (
     identifier: string,
     role: UserRole,
     relationship: string,
-  ) => Promise<FamilyMember | null>;
+  ) => Promise<AddMemberResult>;
   removeMember: (memberId: string) => Promise<boolean>;
   
   getEffectivePermissions: (userId?: string) => Permission;
@@ -1360,16 +1403,24 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     identifier: string,
     role: UserRole,
     relationship: string,
-  ): Promise<FamilyMember | null> => {
+  ): Promise<AddMemberResult> => {
     if (!currentBaby?.id || !authProfile?.id) {
-      showAlert('Error', 'No baby selected or not signed in');
-      return null;
+      return {
+        ok: false,
+        code: 'not_signed_in',
+        title: 'Not Signed In',
+        message: 'Please sign in and select a baby first.',
+      };
     }
 
     const raw = (identifier || '').trim();
     if (!raw) {
-      showAlert('Invalid Input', 'Enter an email, username, or phone number');
-      return null;
+      return {
+        ok: false,
+        code: 'invalid_input',
+        title: 'Missing Info',
+        message: 'Enter an email, @username, or phone number.',
+      };
     }
 
     // Resolve to a real profile (email / @username / phone)
@@ -1381,16 +1432,23 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     if (!profile) {
-      showAlert(
-        'Not on LittleLoom',
-        `${raw} isn't on LittleLoom yet. Use "Invite" to send them a code, or share the invite link.`,
-      );
-      return null;
+      return {
+        ok: false,
+        code: 'not_found',
+        title: 'Not on LittleLoom',
+        message: `${raw} isn't on LittleLoom yet. Use "Invite via Code" to send them a code instead.`,
+        isWarning: true,
+      };
     }
 
     if (profile.id === authProfile.id) {
-      showAlert('Already You', "That's your own account — you're already in this family.");
-      return null;
+      return {
+        ok: false,
+        code: 'already_you',
+        title: "That's You",
+        message: "That's your own account — you're already in this family.",
+        isWarning: true,
+      };
     }
 
     // Duplicate check: same user_id anywhere in this family?
@@ -1404,11 +1462,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .maybeSingle();
 
       if (existing) {
-        showAlert(
-          'Already a Member',
-          `${profile.fullName} is already part of this family as ${existing.role}.`,
-        );
-        return null;
+        return {
+          ok: false,
+          code: 'already_member',
+          title: 'Already a Member',
+          message: `${profile.fullName} is already part of this family as ${existing.role}.`,
+          isWarning: true,
+        };
       }
 
       // Also check for a soft-deleted row — restore instead of insert
@@ -1423,7 +1483,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .maybeSingle();
 
       if (softDeleted?.id) {
-        // Restore the old row and set the new role
         const nowIso = new Date().toISOString();
         const dbRole =
           role === UserRole.PARENT_2 ? 'parent2'
@@ -1445,8 +1504,12 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (restoreErr) {
           if (__DEV__) console.warn('[addMemberDirectly] restore failed:', restoreErr.message);
-          showAlert('Error', 'Failed to restore previous membership');
-          return null;
+          return {
+            ok: false,
+            code: 'restore_failed',
+            title: 'Restore Failed',
+            message: 'This person was previously removed. We could not restore their membership — please try again.',
+          };
         }
 
         familyLoadInProgress.current = false;
@@ -1457,12 +1520,36 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           await broadcastProfileChange({ userId: profile.id, fields: ['role'] });
         } catch {}
 
-        showAlert('Member Re-added', `${profile.fullName} was re-added as ${role}.`);
+        const restored =
+          state.members.find((m) => (m.userId || m.id) === profile.id) || null;
 
-        const restored = state.members.find(
-          (m) => (m.userId || m.id) === profile.id,
-        );
-        return restored || null;
+        const roleLabel =
+          role === UserRole.GUARDIAN ? 'Guardian'
+          : role === UserRole.PARENT_2 ? 'Co-Parent'
+          : 'Viewer';
+
+        return {
+          ok: true,
+          member: (restored ?? {
+            id: softDeleted.id,
+            userId: profile.id,
+            fullName: profile.fullName,
+            email: profile.email,
+            avatar: profile.avatar || undefined,
+            role,
+            relationship: relationship || 'Family Member',
+            permissions: ROLE_PERMISSIONS[role],
+            addedAt: nowIso,
+            addedBy: authProfile.id,
+            canBeRemoved: true,
+            lastActive: nowIso,
+            phoneNumber: profile.phoneNumber || undefined,
+            notificationsEnabled: true,
+            status: 'active',
+          }) as FamilyMember,
+          title: 'Member Re-added',
+          message: `${profile.fullName} is back in the family as ${roleLabel}.`,
+        };
       }
     } catch (e) {
       if (__DEV__) console.warn('[addMemberDirectly] duplicate check failed:', e);
@@ -1476,14 +1563,14 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       : role === UserRole.GUARDIAN ? 'guardian'
       : 'viewer';
 
-    // `parent1` can only be assigned through promoteMember/transferOwnership
-    // — never through a direct add. Guard defensively.
     if (dbRole === 'parent1') {
-      showAlert(
-        'Role Not Allowed',
-        'Use "Transfer Ownership" to make someone a Primary Parent.',
-      );
-      return null;
+      return {
+        ok: false,
+        code: 'invalid_input',
+        title: 'Use Transfer Ownership',
+        message: 'Primary Parent can only be assigned via "Transfer Ownership".',
+        isWarning: true,
+      };
     }
 
     const nowIso = new Date().toISOString();
@@ -1522,11 +1609,14 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             hint: (insertErr as any)?.hint,
           });
         }
-        showAlert('Error', 'Failed to add member. Please try again.');
-        return null;
+        return {
+          ok: false,
+          code: 'insert_failed',
+          title: 'Could Not Add Member',
+          message: 'The database rejected the new membership. Please try again or check your permissions.',
+        };
       }
 
-      // Sync parent2 slot if this is a co-parent add
       if (dbRole === 'parent2') {
         try {
           await supabase
@@ -1536,7 +1626,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch {}
       }
 
-      // Mirror to profiles.role so AuthContext hydrates correctly
       try {
         await supabase
           .from('profiles')
@@ -1544,7 +1633,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .eq('id', profile.id);
       } catch {}
 
-      // Broadcast so every device (including theirs) re-renders the tree
       try {
         const { broadcastProfileChange } = require('./AuthContext');
         await broadcastProfileChange({ userId: profile.id, fields: ['role'] });
@@ -1553,7 +1641,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       familyLoadInProgress.current = false;
       await loadFamily();
 
-      // Return the fresh row built from what we just wrote
       const fresh: FamilyMember = {
         id: inserted.id,
         userId: profile.id,
@@ -1572,15 +1659,25 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         status: 'active',
       };
 
-      showAlert(
-        'Member Added',
-        `${profile.fullName} joined the family as ${role === UserRole.GUARDIAN ? 'Guardian' : role === UserRole.PARENT_2 ? 'Co-Parent' : 'Viewer'}.`,
-      );
-      return fresh;
+      const roleLabel =
+        role === UserRole.GUARDIAN ? 'Guardian'
+        : role === UserRole.PARENT_2 ? 'Co-Parent'
+        : 'Viewer';
+
+      return {
+        ok: true,
+        member: fresh,
+        title: 'Member Added',
+        message: `${profile.fullName} joined the family as ${roleLabel}.`,
+      };
     } catch (e) {
       if (__DEV__) console.error('[addMemberDirectly] threw:', e);
-      showAlert('Error', 'Failed to add member');
-      return null;
+      return {
+        ok: false,
+        code: 'unexpected',
+        title: 'Something Went Wrong',
+        message: 'Failed to add member. Please try again.',
+      };
     }
   }, [currentBaby, authProfile, loadFamily, state.members]);
 
@@ -2716,7 +2813,12 @@ export const useFamily = (): FamilyContextType => {
     loadFamily: async () => {},
     refreshFamily: async () => {},
     inviteMember: async () => false,
-    addMemberDirectly: async () => null,
+    addMemberDirectly: async () => ({
+      ok: false,
+      code: 'not_signed_in',
+      title: 'Not Ready',
+      message: 'Family context has not mounted yet.',
+    }),
     removeMember: async () => false,
     getEffectivePermissions: () => ROLE_PERMISSIONS[UserRole.VIEWER],
     updateParent2Profile: async () => false,
