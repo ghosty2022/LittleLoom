@@ -275,6 +275,7 @@ function getNavState(
   // 1+ babies → Main flow. `setupDone` is not required if a baby
   // exists (they own a baby — clearly set up).
   return 'MAIN';
+}
 
 function NavigationContent({
   isDark: propIsDark,
