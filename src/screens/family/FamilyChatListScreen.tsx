@@ -571,8 +571,7 @@ const ChatListItem: React.FC<{
   const isDeactivatedPeer =
     isDirect &&
     !!otherParticipantId &&
-    !liveMember &&
-    !chat.participantNames?.[otherParticipantId];
+    !liveMember;
   const otherAvatar = liveMember?.avatar
     ?? (otherParticipantId ? chat.participantAvatars?.[otherParticipantId] : null);
   const otherRole = liveMember?.role

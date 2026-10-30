@@ -725,7 +725,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const guardianId = params.guardianId ?? params.memberId ?? '';
   const mode = params.mode ?? 'guardian';
 
-  const { members, updateGuardianProfile, removeMember, loadFamily, refreshFamily } = useFamily();
+  const { members, updateGuardianProfile, promoteMember, removeMember, loadFamily, refreshFamily } = useFamily();
   const { hasPermission, profile, updateProfile } = useUser();
   const { currentBaby, milestones, refreshBabyData } = useBaby();
   const { entries: trackerEntries } = useTracker();
@@ -1013,43 +1013,6 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       }
 
       // (Fallback DB read below this line stays as-is — leave it.)
-      if (!resolvedMember && guardianId) {
-        try {
-          const { data: row } = await supabase
-            .from('family_members')
-            .select('*')
-            .eq('baby_id', currentBaby?.id || '')
-            .or(`id.eq.${guardianId},user_id.eq.${guardianId}`)
-            .is('deleted_at', null)
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (row) {
-            resolvedMember = {
-              id: row.id,
-              userId: row.user_id,
-              fullName: row.full_name,
-              email: row.email,
-              avatar: row.avatar,
-              role: row.role,
-              relationship: row.relationship,
-              permissions: row.permissions,
-              addedAt: row.added_at,
-              addedBy: row.added_by,
-              canBeRemoved: row.can_be_removed !== false,
-              lastActive: row.last_active,
-              phoneNumber: row.phone_number,
-              notificationsEnabled: row.notifications_enabled !== false,
-              status: row.status || 'active',
-            } as FamilyMember;
-          }
-        } catch {}
-      }
-
-      let resolvedMember: FamilyMember | null = updatedMember || null;
-
-      // Fallback: DB read if the row vanished from `members`
-      // (e.g. a stale dedupe pass). We still want the UI to render.
       if (!resolvedMember && guardianId) {
         try {
           const { data: row } = await supabase
@@ -1383,42 +1346,44 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const handleRoleChange = async (newRole: UserRole) => {
     if (!member || !hasPermission('manageFamily')) return;
     if (member.role === newRole) { setShowRoleModal(false); return; }
-    const roleConfigLocal = ROLE_CONFIG[newRole];
-    sweetAlert.confirm('Change Role', `Change ${member.fullName} to ${roleConfigLocal.label}?`, async () => {
-      setIsSaving(true);
-      try {
-        // ── ROLE CHANGE — optimistic + verify ────────────────────
-        // Persist the new role, then RE-READ it from the DB. If
-        // the round-trip shows the old role (RLS dropped the
-        // write, or `profiles.role` mirror overwrote it), surface
-        // the failure instead of silently reverting in the UI.
-        const freshMember = await updateGuardianProfile(member.id, { role: newRole });
-        if (freshMember) {
-          // Use the DB-verified member returned by updateGuardianProfile.
-          // This is the single source of truth — no stale `members` closure,
-          // no re-query race, no revert.
-          setMember(freshMember);
-          // Clear the cached role so `roleConfig` re-derives from the new role.
-          try {
-            const { broadcastProfileChange } = require('../../context/AuthContext');
-            const linkedUserId = (member as any).userId || member.id;
-            if (linkedUserId) {
-              await broadcastProfileChange({ userId: linkedUserId, fields: ['role'] });
-            }
-          } catch {}
-          sweetAlert.success('Role Updated', `${member.fullName} is now a ${ROLE_CONFIG[newRole].label}`);
-          // Do NOT call refreshMemberData() here — it re-reads from the
-          // stale `members` prop and can overwrite the fresh member.
-          // The FamilyContext realtime subscription will refresh the list
-          // in the background; this screen already has the truth.
+    const cfg = ROLE_CONFIG[newRole];
+    sweetAlert.confirm(
+      'Change Role',
+      `Change ${member.fullName} to ${cfg.label}?`,
+      async () => {
+        setIsSaving(true);
+        try {
+          // THE ONLY path for role changes. Returns the DB-verified
+          // member — never `true`/`false`, never a stale closure.
+          const fresh = await promoteMember(
+            (member as any).userId || member.id,
+            newRole,
+          );
+          if (fresh) {
+            // Use the fresh object as the source of truth.
+            setMember(fresh);
+            setOriginalData(prev => ({ ...prev, role: fresh.role as any }));
+            sweetAlert.success(
+              'Role Updated',
+              `${member.fullName} is now ${cfg.label}`,
+            );
+            // Do NOT call refreshMemberData() — it would read from a
+            // stale `members` closure and clobber the fresh value.
+          } else {
+            sweetAlert.error('Error', 'Failed to update role');
+          }
+        } catch {
+          sweetAlert.error('Error', 'An error occurred');
+        } finally {
+          setIsSaving(false);
+          setShowRoleModal(false);
         }
-        else sweetAlert.error('Error', 'Failed to update role');
-      } catch { sweetAlert.error('Error', 'An error occurred'); }
-      setIsSaving(false);
-      setShowRoleModal(false);
-    }, () => setShowRoleModal(false), 'Change', 'Cancel');
+      },
+      () => setShowRoleModal(false),
+      'Change',
+      'Cancel',
+    );
   };
-
   /* ─── ACTIONS ─── */
   const handleCall = async () => {
     if (!member?.phoneNumber) { sweetAlert.alert('No Phone Number', 'No phone number on file.', 'warning'); return; }
@@ -1507,7 +1472,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     // Only non-parents can be "new" — but we phrase it in terms of
     // their defined relationship, never as "nudge them to start".
     if (memberActivities.length === 0) {
-      if (member.status === 'pending') {
+      // A member who has ANY lastActive timestamp is already in.
+      // Only show "invite pending" when there's truly no activity
+      // AND the row is marked pending.
+      if (member.status === 'pending' && !member.lastActive) {
         return {
           icon: 'mail-outline' as const,
           color: DS.warning,

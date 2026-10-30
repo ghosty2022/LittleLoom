@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFamily } from '../../context/FamilyContext';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -71,6 +72,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const currentUserId = userProfile?.id || '';
 
   const { getUserById } = useCommunity();
+  const { members: familyMembers } = useFamily();
   const {
     messages,
     isChatHidden,
@@ -243,16 +245,26 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     // Fall back to the chat's cached participant name so we never
     // render "undefined". If BOTH are missing → inactive.
     const communityUser = otherId ? getUserById(otherId) : undefined;
+    // Authoritative "is this member active?" check: does the peer
+    // still have a family_members row on this baby?
+    const liveFamilyMember = otherId
+      ? familyMembers.find(
+          (m: any) => m.id === otherId || m.userId === otherId,
+        )
+      : undefined;
     const participant: any = otherId
-      ? (communityUser || {
+      ? (communityUser || liveFamilyMember || {
           id: otherId,
           displayName: item.participantNames?.[otherId] || item.name || 'Conversation',
           avatar: item.participantAvatars?.[otherId],
           onlineStatus: 'offline',
         })
       : undefined;
+    // Inactive ONLY when: peer has no Community profile AND no
+    // family_members row. A cached name alone is NOT enough — it
+    // may be a stale snapshot.
     const isDeactivatedPeer =
-      !!otherId && !communityUser && !item.participantNames?.[otherId];
+      !!otherId && !liveFamilyMember && !communityUser;
 
     const isMyMessage = lastMessage?.senderId === currentUserId;
     const isOnline = communityUser?.onlineStatus === 'online';
