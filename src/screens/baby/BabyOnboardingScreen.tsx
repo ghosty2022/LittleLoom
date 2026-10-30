@@ -33,6 +33,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { useBaby } from '../../context/BabyContext';
 import { useAuth } from '../../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -731,6 +732,13 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         navigation.replace('CoParentInviteScreen');
       } else {
         await completeSetup('parent2');
+        try {
+          await AsyncStorage.multiSet([
+            ['littleloom_setup_complete', 'true'],
+            ['littleloom_onboarding_complete_v3', 'true'],
+            ['@littleloom_multi_baby_selected_this_session', 'true'],
+          ]);
+        } catch {}
         toast(`Welcome back! Imported ${baby.name}'s profile`, 'success');
         navigation.replace('Main');
       }
@@ -748,10 +756,35 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
     try {
       await skipSetup('baby');
       const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
-      if (isSetupComplete) navigation.replace('Main');
-      else if (hasParent2 === false) { toast("Let's set up family sharing", 'info'); navigation.replace('CoParentInviteScreen'); }
-      else if (hasParent2 === 'skipped') { await completeSetup('parent2'); toast('You can add a baby later from settings', 'info'); navigation.replace('Main'); }
-      else { toast('You can add a baby later from settings', 'info'); navigation.replace('Main'); }
+
+      // Ensure the setup-complete flag is persisted whenever BOTH
+      // steps are now addressed, regardless of which branch we take.
+      // Without this, a user who skips baby after skipping parent2
+      // could still be routed back into BabyOptional on the next
+      // cold boot.
+      const p2Addressed = hasParent2 === true || hasParent2 === 'skipped';
+
+      if (isSetupComplete) {
+        navigation.replace('Main');
+      } else if (hasParent2 === false) {
+        toast("Let's set up family sharing", 'info');
+        navigation.replace('CoParentInviteScreen');
+      } else if (p2Addressed) {
+        await completeSetup('parent2');
+        // Force-write the setup-complete flag: completeSetup only
+        // writes it when BOTH flags are non-null, which is true here.
+        try {
+          await AsyncStorage.multiSet([
+            ['littleloom_setup_complete', 'true'],
+            ['littleloom_onboarding_complete_v3', 'true'],
+          ]);
+        } catch {}
+        toast('You can add a baby later from settings', 'info');
+        navigation.replace('Main');
+      } else {
+        toast('You can add a baby later from settings', 'info');
+        navigation.replace('Main');
+      }
     } catch {
       toast('Could not skip baby setup', 'error');
       try { navigation.replace('Main'); } catch {}
@@ -776,7 +809,26 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
       const { hasParent2, setupComplete: isSetupComplete } = await wasSetupCompleted();
       if (isSetupComplete) { navigation.replace('Main'); return; }
       if (hasParent2 === false) { toast('Invite a co-parent to join the family', 'info'); navigation.replace('CoParentInviteScreen'); return; }
-      if (hasParent2 === 'skipped') { await completeSetup('parent2'); toast('Baby profile selected', 'success'); navigation.replace('Main'); return; }
+      if (hasParent2 === 'skipped') {
+        await completeSetup('parent2');
+        try {
+          await AsyncStorage.multiSet([
+            ['littleloom_setup_complete', 'true'],
+            ['littleloom_onboarding_complete_v3', 'true'],
+            ['@littleloom_multi_baby_selected_this_session', 'true'],
+          ]);
+        } catch {}
+        toast('Baby profile selected', 'success');
+        navigation.replace('Main');
+        return;
+      }
+      try {
+        await AsyncStorage.multiSet([
+          ['littleloom_setup_complete', 'true'],
+          ['littleloom_onboarding_complete_v3', 'true'],
+          ['@littleloom_multi_baby_selected_this_session', 'true'],
+        ]);
+      } catch {}
       toast('Baby profile selected', 'success');
       navigation.replace('Main');
     } catch {

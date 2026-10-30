@@ -483,6 +483,33 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     navigationAttemptedRef.current = true;
 
+    // ── NEVER OVERRIDE THE SETUP FLOW ──────────────────────────────
+    // A fresh signup lands on BabyOptional / CoParentInviteScreen /
+    // CreateBabyProfile via `navigation.reset`. If LoginScreen is
+    // still mounted (React Navigation keeps parents in memory), this
+    // effect would otherwise fire on the next render and call
+    // `navigation.replace('Main')` — collapsing the setup stack and
+    // dumping the user into Home with no baby.
+    //
+    // We read the CURRENT route from navigationRef and skip if we're
+    // already inside the setup flow or the main tabs.
+    try {
+      const { navigationRef } = require('../../navigation/navigationRef');
+      const currentRoute = navigationRef?.current?.getCurrentRoute?.()?.name;
+      const SETUP_SCREENS = new Set([
+        'BabyOptional',
+        'CreateBabyProfile',
+        'CoParentInviteScreen',
+        'Main',
+        'SwitchBaby',
+        'SecurityLock',
+        'ForcedPasswordChange',
+      ]);
+      if (currentRoute && SETUP_SCREENS.has(currentRoute)) {
+        return;
+      }
+    } catch {}
+
     // ── TEMP PASSWORD: block all setup flow until password is reset ──
     // Navigation also routes to ForcedPasswordChange on its own, but
     // we short-circuit here so the login screen never briefly flashes
@@ -1059,6 +1086,24 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       if (result.success && isMounted.current) {
         showSuccess(`Welcome${userName !== 'there' ? `, ${userName}` : ''}!`, 'Biometric login successful');
         forceUnlock().catch(() => {});
+        // Multi-baby guard — same as the main auth effect.
+        const babiesArr = Array.isArray(babies) ? babies : [];
+        if (babiesArr.length > 1) {
+          let alreadySelected = false;
+          try {
+            alreadySelected =
+              (await AsyncStorage.getItem(
+                '@littleloom_multi_baby_selected_this_session',
+              )) === 'true';
+          } catch {}
+          if (!alreadySelected) {
+            navigation.replace('SwitchBaby', {
+              returnTo: 'Main',
+              returnLabel: 'Home',
+            } as never);
+            return true;
+          }
+        }
         return true;
       } else {
         showError('Biometric Failed', 'Please use your password');

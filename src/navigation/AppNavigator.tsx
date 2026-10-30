@@ -852,6 +852,7 @@ function NavigationContent({
   //     flow screen)
   //   • the session flag is absent
   const multiBabyCheckedRef = useRef(false);
+  const multiBabySettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (multiBabyCheckedRef.current) return;
     if (navState !== 'MAIN') return;
@@ -859,10 +860,33 @@ function NavigationContent({
     if (!navRef.current?.isReady()) return;
 
     const babiesArr = Array.isArray(babies) ? babies : [];
+
+    // If we're in the ambiguity window (0 or 1 babies right now),
+    // don't latch yet — a second baby may still be hydrating from
+    // the DB. Give `loadBabies` 500 ms to settle before deciding.
     if (babiesArr.length <= 1) {
-      multiBabyCheckedRef.current = true;
-      return;
+      if (multiBabySettleTimerRef.current) {
+        clearTimeout(multiBabySettleTimerRef.current);
+      }
+      multiBabySettleTimerRef.current = setTimeout(() => {
+        multiBabySettleTimerRef.current = null;
+        if (multiBabyCheckedRef.current) return;
+        // Only latch if the count really settled at <= 1.
+        const currentCount = Array.isArray(babies) ? babies.length : 0;
+        if (currentCount <= 1) {
+          multiBabyCheckedRef.current = true;
+        }
+        // If it grew, this effect will fire again when `babies`
+        // updates — the dependency array includes `babies`.
+      }, 500);
+      return () => {
+        if (multiBabySettleTimerRef.current) {
+          clearTimeout(multiBabySettleTimerRef.current);
+          multiBabySettleTimerRef.current = null;
+        }
+      };
     }
+
 
     const currentRoute = navRef.current.getCurrentRoute()?.name;
     if (currentRoute === 'SwitchBaby') {

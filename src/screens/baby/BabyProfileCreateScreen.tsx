@@ -727,7 +727,17 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         const { hasParent2, setupComplete } = await wasSetupCompleted();
         if (setupComplete) safeNavigate('Main');
         else if (hasParent2 === false) safeNavigate('CoParentInviteScreen');
-        else if (hasParent2 === 'skipped') { await completeSetup('parent2'); safeNavigate('Main'); }
+        else if (hasParent2 === 'skipped') {
+          await completeSetup('parent2');
+          try {
+            await AsyncStorage.multiSet([
+              ['littleloom_setup_complete', 'true'],
+              ['littleloom_onboarding_complete_v3', 'true'],
+              ['@littleloom_multi_baby_selected_this_session', 'true'],
+            ]);
+          } catch {}
+          safeNavigate('Main');
+        }
         else safeNavigate('Main');
       } catch {
         toast('Could not finalize setup. Please try again.', 'error');

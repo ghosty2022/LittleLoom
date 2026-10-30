@@ -1858,6 +1858,41 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return null;
         }
 
+        // ── ENSURE THE `profiles` ROW EXISTS ────────────────────────
+        // `babies.parent_id` is a FK to `public.profiles(id)`. If the
+        // caller's profile row hasn't been created yet (UserContext
+        // creates it lazily, and a fresh signup can land here before
+        // that resolves), the INSERT fails with either 23503 or 42501.
+        // We probe-and-create so the INSERT can never fail on that FK.
+        try {
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', userId)
+            .maybeSingle();
+
+          if (!existingProfile) {
+            const { data: authUser } = await supabase.auth.getUser();
+            await supabase.from('profiles').insert({
+              id: userId,
+              full_name:
+                authUser?.user?.user_metadata?.full_name ||
+                authUser?.user?.email?.split('@')[0] ||
+                'Parent',
+              email: authUser?.user?.email || '',
+              role: 'parent1',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+          }
+        } catch (profileErr) {
+          if (__DEV__) {
+            console.warn('[BabyContext] profile pre-flight failed:', profileErr);
+          }
+          // Continue — the INSERT will either succeed or fail with a
+          // clear error the user can act on.
+        }
+
         const toNum = (v: unknown): number | null => {
           if (v === null || v === undefined || v === '') return null;
           const n = typeof v === 'number' ? v : parseFloat(String(v));
@@ -1884,6 +1919,22 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           medical_notes: normalized.medicalNotes || null,
           allergies: normalized.allergies || null,
           parent1_id: userId,
+          // ── ALSO set `parent_id` ─────────────────────────────────
+          // The `babies` table has TWO parent FK columns:
+          //   • parent1_id → auth.users(id)
+          //   • parent_id  → public.profiles(id)
+          //
+          // The RLS `WITH CHECK` policy on `babies` INSERT references
+          // `parent_id = auth.uid()` (this is the standard Supabase
+          // pattern and the schema has the column for exactly this
+          // reason). If we only set `parent1_id`, the insert fails
+          // with `42501 new row violates row-level security policy
+          // for table "babies"` — the policy sees `parent_id = NULL`
+          // and rejects the row.
+          //
+          // Both IDs are the same auth user, so setting both here
+          // is always safe.
+          parent_id: userId,
           parent2_id: normalized.parent2Id || null,
           current_weight_kg: toNum(normalized.weight),
           current_height_cm: toNum(normalized.height),
@@ -1922,8 +1973,38 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .single();
 
         if (error || !result) {
-          console.error('[BabyContext] Create baby error:', error);
+          console.error('[BabyContext] Create baby error:', {
+            code: (error as any)?.code,
+            message: error?.message,
+            details: (error as any)?.details,
+            hint: (error as any)?.hint,
+          });
           isCreatingRef.current = false;
+
+          const code = (error as any)?.code;
+          if (code === '42501') {
+            // RLS rejection. Almost always one of:
+            //   • `parent_id` not set on INSERT
+            //   • `parent1_id` doesn't match auth.uid()
+            //   • missing profiles row for the caller
+            //   • a trigger on `babies` references family_members
+            //     (which doesn't exist yet at insert time)
+            Alert.alert(
+              'Permission Denied',
+              'Your account is not allowed to create a baby profile yet. ' +
+                'Please make sure your profile has finished loading and try again. ' +
+                'If the problem persists, sign out and sign back in.',
+            );
+            return null;
+          }
+          if (code === '23503') {
+            Alert.alert(
+              'Account Not Ready',
+              'Your profile has not finished setting up. Please wait a moment and try again.',
+            );
+            return null;
+          }
+
           Alert.alert(
             'Could Not Create Profile',
             error?.message
@@ -2064,6 +2145,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, newCurrentId);
+
+        // Mark the session as "baby already selected" so the
+        // multi-baby guard in AppNavigator does not re-prompt. This
+        // runs for every create path (onboarding, Add Baby from
+        // SwitchBaby, etc.), so all callers benefit.
+        try {
+          await AsyncStorage.setItem(
+            '@littleloom_multi_baby_selected_this_session',
+            'true',
+          );
+        } catch {}
 
         try {
           await supabase
@@ -2520,28 +2612,40 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ? prev.userRoles
               : { ...prev.userRoles, [id]: resolvedRole };
 
+            // ── HARDENED PERMISSION FALLBACK ─────────────────────
+            // The old code seeded the FULL parent1 permission set
+            // for any baby that wasn't yet in `userPermissions`. That
+            // is a privilege-escalation bug — a guardian switching to
+            // a baby they only view would get edit/delete rights
+            // until a full reload fixed it.
+            //
+            // Instead, only seed full permissions when we KNOW the
+            // user is parent1/parent2 for this baby. For guardian /
+            // viewer, seed the read-only subset; the real permission
+            // set loads on the next `loadBabies()` reload.
+            const isParentRole =
+              resolvedRole === 'parent1' || resolvedRole === 'parent2';
+            const seededPerms = isParentRole
+              ? {
+                  view: true, edit: true, delete: true, manage: true,
+                  invite: true, export: true,
+                  canView: true, canAddEntry: true, canEditEntry: true,
+                  canEditOthersEntries: true, canDeleteEntry: true,
+                  canEditBaby: true, canInvite: true, canExport: true,
+                  canManageFamily: true,
+                }
+              : {
+                  view: true, edit: false, delete: false, manage: false,
+                  invite: false, export: false,
+                  canView: true, canAddEntry: false, canEditEntry: false,
+                  canEditOthersEntries: false, canDeleteEntry: false,
+                  canEditBaby: false, canInvite: false, canExport: false,
+                  canManageFamily: false,
+                };
+
             const nextPerms = prev.userPermissions[id]
               ? prev.userPermissions
-              : {
-                  ...prev.userPermissions,
-                  [id]: {
-                    view: true,
-                    edit: true,
-                    delete: true,
-                    manage: true,
-                    invite: true,
-                    export: true,
-                    canView: true,
-                    canAddEntry: true,
-                    canEditEntry: true,
-                    canEditOthersEntries: true,
-                    canDeleteEntry: true,
-                    canEditBaby: true,
-                    canInvite: true,
-                    canExport: true,
-                    canManageFamily: true,
-                  },
-                };
+              : { ...prev.userPermissions, [id]: seededPerms };
 
             return {
               ...prev,

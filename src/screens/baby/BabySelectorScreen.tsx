@@ -506,7 +506,15 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
     // "switch to already-active baby" succeed as a no-op.
     const liveActiveId = babies.find((b: any) => b.isActive)?.id ?? currentBabyId;
     if (babyId === liveActiveId) {
-      // Already active — just close the sheet. No toast.
+      // They confirmed the currently-active baby — treat this as an
+      // explicit selection so the multi-baby guard doesn't re-prompt
+      // on the next cold boot / login this session.
+      try {
+        await AsyncStorage.setItem(
+          '@littleloom_multi_baby_selected_this_session',
+          'true',
+        );
+      } catch {}
       safeGoBack();
       return;
     }

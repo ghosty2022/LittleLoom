@@ -1244,6 +1244,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
         await AsyncStorage.multiSet([
           ['littleloom_setup_complete', 'true'],
           ['littleloom_onboarding_complete_v3', 'true'],
+          ['@littleloom_multi_baby_selected_this_session', 'true'],
         ]);
       } catch {}
       showToast('Skipped for now - you can add later in Family settings', 'info');
@@ -1270,6 +1271,7 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
         await AsyncStorage.multiSet([
           ['littleloom_setup_complete', 'true'],
           ['littleloom_onboarding_complete_v3', 'true'],
+          ['@littleloom_multi_baby_selected_this_session', 'true'],
         ]);
       } catch {}
       showToast('Setup complete! Welcome to the family', 'success');
