@@ -1256,10 +1256,10 @@ export default function EntryDetailScreen() {
 
   const computedStats = useMemo(() => {
     if (!entry) return { entryNumber: 0, totalInTracker: 0, sameDayCount: 0, sincePrev: null, avgGap: null };
-    const trackerEntries = safeEntries.filter((e: any) => e?.trackerId === entry.trackerId).sort((a: any, b: any) => a.timestamp - b.timestamp);
+    const trackerEntries = allEntries.filter((e: any) => e?.trackerId === entry.trackerId).sort((a: any, b: any) => a.timestamp - b.timestamp);
     const entryIndex = trackerEntries.findIndex((e: any) => e.id === entry.id);
     const prevEntry = entryIndex > 0 ? trackerEntries[entryIndex - 1] : null;
-    const sameDay = safeEntries.filter((e: any) => e && e.id !== entry.id && isSameDay(new Date(e.timestamp), new Date(entry.timestamp)));
+    const sameDay = allEntries.filter((e: any) => e && e.id !== entry.id && isSameDay(new Date(e.timestamp), new Date(entry.timestamp)));
     const gapMs = prevEntry ? entry.timestamp - prevEntry.timestamp : null;
     const avgGapMs = trackerEntries.length >= 2
       ? trackerEntries.reduce((sum: number, e: any, i: number) => {
@@ -1283,7 +1283,7 @@ export default function EntryDetailScreen() {
       sincePrev: gapMs ? fmtGap(gapMs) : null,
       avgGap: avgGapMs ? fmtGap(avgGapMs) : null,
     };
-  }, [entry, safeEntries]);
+  }, [entry, allEntries]);
 
   const topRibbon = useMemo(() => {
     if (!entry) {
