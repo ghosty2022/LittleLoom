@@ -2885,20 +2885,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Clear the flag so Navigation releases the screen.
-        try {
-          await supabase
-            .from('profiles')
-            .update({
-              must_change_password: false,
-              temp_password_set_at: null,
-              temp_password_set_by: null,
-              temp_password_expires_at: null,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', current.id);
-        } catch (e) {
-          if (__DEV__) console.warn('[Auth] clear must_change_password failed:', e);
+        //
+        // This write is the *only* thing that ends the forced-change
+        // state. If it fails, the user will be bounced back to
+        // ForcedPasswordChange on every future sign-in. So we
+        // - retry once
+        // - then VERIFY the write took effect
+        // - and refuse to return success if the DB still says
+        //   must_change_password = true.
+        const clearPayload = {
+          must_change_password: false,
+          temp_password_set_at: null,
+          temp_password_set_by: null,
+          temp_password_expires_at: null,
+          updated_at: new Date().toISOString(),
+        };
+
+        let flagCleared = false;
+        for (let attempt = 0; attempt < 2 && !flagCleared; attempt++) {
+          try {
+            const { error: clearErr } = await supabase
+              .from('profiles')
+              .update(clearPayload)
+              .eq('id', current.id);
+
+            if (clearErr) {
+              if (__DEV__) {
+                console.warn(
+                  `[Auth] clear must_change_password attempt ${attempt + 1} failed:`,
+                  clearErr.message,
+                );
+              }
+              // small backoff before retry
+              await new Promise((r) => setTimeout(r, 300));
+              continue;
+            }
+
+            // Verify it actually landed. `.select('id')` forces a
+            // round-trip; if RLS swallowed the write we get 0 rows
+            // and `data` is an empty array.
+            const { data: verifyRow, error: verifyErr } = await supabase
+              .from('profiles')
+              .select('must_change_password')
+              .eq('id', current.id)
+              .maybeSingle();
+
+            if (!verifyErr && verifyRow?.must_change_password === false) {
+              flagCleared = true;
+            } else if (__DEV__) {
+              console.warn(
+                '[Auth] must_change_password still true after update — retrying',
+                verifyErr?.message,
+              );
+            }
+          } catch (e) {
+            if (__DEV__) console.warn('[Auth] clear must_change_password threw:', e);
+            await new Promise((r) => setTimeout(r, 300));
+          }
         }
+
+        if (!flagCleared) {
+          // Password IS updated in auth.users, but the profile flag
+          // is stuck. Return failure so the screen doesn't clear the
+          // UI and dump the user into a loop. The next call will hit
+          // the same code path and hopefully succeed on a fresh
+          // network / RLS state.
+          if (isMounted.current) {
+            setState((prev) => ({ ...prev, mustChangePassword: true }));
+          }
+          return {
+            success: false,
+            message:
+              'Password was updated, but we could not finish syncing your account. Please tap Save again.',
+          };
+        }
+
+        // Best-effort cleanup of the plaintext store row.
+        try {
+          const me = current.id;
+          await supabase
+            .from('temp_password_store')
+            .delete()
+            .eq('target_user_id', me);
+        } catch {}
 
         if (isMounted.current) {
           setState(prev => ({ ...prev, mustChangePassword: false }));

@@ -354,6 +354,34 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ? allBabies.find((b: any) => b.id === wantedId) ?? allBabies[0]
           : allBabies[0];
         setCurrentBaby(chosen ?? null);
+
+        // ── GUARDIAN / CO-PARENT FIX ─────────────────────────────
+        // A member added directly (or via an accepted invite) has
+        // no `parent1_id` / `parent2_id` match on `babies` and no
+        // `app_settings.current_baby_id` row, so BabyContext's own
+        // resolver returns `null` and this effect leaves
+        // `currentBaby = null`. FamilyContext's `loadFamily` then
+        // early-returns on `!currentBaby?.id` and the invitee sees
+        // an empty family — or, worse, a synthetic Parent-1 card
+        // that is actually themselves.
+        //
+        // Persist the resolved baby to `app_settings` so the next
+        // cold boot hydrates instantly without a network round-trip.
+        if (chosen?.id && authProfile?.id) {
+          try {
+            await supabase
+              .from('app_settings')
+              .upsert(
+                {
+                  key: 'current_baby_id',
+                  value: chosen.id,
+                  user_id: authProfile.id,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'key,user_id' },
+              );
+          } catch {}
+        }
       }
     } catch (error) {
       console.warn('[FamilyProvider] Could not load baby data:', error);
@@ -372,9 +400,17 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const isOwner = useMemo(() => {
     const effectiveProfile = authProfile;
     if (!effectiveProfile) return false;
-    if (effectiveProfile.role === 'parent1' || effectiveProfile.role === UserRole.PARENT_1) return true;
-    if (!currentBaby) return false;
-    return currentBaby.parent1_id === effectiveProfile.id;
+    // `authProfile.role` is a GLOBAL hint and is wrong for anyone who
+    // is Parent1 on one baby and Guardian on another. The authoritative
+    // owner is `babies.parent1_id`. Fall back to the role hint only
+    // when we have no baby yet (very first render).
+    if (currentBaby) {
+      return currentBaby.parent1_id === effectiveProfile.id;
+    }
+    return (
+      effectiveProfile.role === 'parent1' ||
+      effectiveProfile.role === (UserRole.PARENT_1 as any)
+    );
   }, [authProfile, currentBaby]);
 
   // ─── Load family with user isolation ──────────────────────────
@@ -452,8 +488,16 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // ── 2. Ensure the parent1 row is present even if the seed
       //    failed above (defensive: some legacy babies never got one).
+      //
+      //    CRITICAL: we only synthesise this row for the ACTUAL
+      //    parent1 (`babies.parent1_id === authProfile.id`). The
+      //    previous version also used `currentBaby.parent1_id` as a
+      //    fallback for the *name* fields even when the viewer was a
+      //    guardian/viewer being added directly — which made a
+      //    guardian appear to themselves as "Primary Parent".
       if (
         currentBaby.parent1_id &&
+        authProfile?.id === currentBaby.parent1_id &&
         !rawRows.some(r => r.user_id === currentBaby.parent1_id && r.role === 'parent1')
       ) {
         rawRows.push({

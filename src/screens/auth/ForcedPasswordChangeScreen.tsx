@@ -40,7 +40,7 @@ const AURA = {
 
 export default function ForcedPasswordChangeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { userProfile, setNewPasswordAfterTemp } = useAuth();
+  const { userProfile, setNewPasswordAfterTemp, signOut } = useAuth();
   const { forceUnlock } = useSecurity();
   const { darkMode: isDark, triggerHaptic } = useCustomization();
   const { error: showError, success: showSuccess } = useSweetAlert();
@@ -173,6 +173,28 @@ export default function ForcedPasswordChangeScreen({ navigation }: Props) {
                 </>
               )}
             </TouchableOpacity>
+
+            {/* Escape hatch — if the sync keeps failing the user must be
+                able to sign out and try with their temp password again
+                rather than getting permanently trapped on this screen. */}
+            <TouchableOpacity
+              style={styles.escapeRow}
+              onPress={async () => {
+                try {
+                  await signOut();
+                } catch {}
+                navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+              }}
+              disabled={isSaving}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="log-out-outline"
+                size={16}
+                color="rgba(28,25,23,0.7)"
+              />
+              <Text style={styles.escapeText}>Sign out and start over</Text>
+            </TouchableOpacity>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -211,4 +233,18 @@ const styles = StyleSheet.create({
     gap: 8, marginTop: 8,
   },
   saveText: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 0.4 },
+
+  escapeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 18,
+    paddingVertical: 10,
+  },
+  escapeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(28,25,23,0.7)',
+  },
 });

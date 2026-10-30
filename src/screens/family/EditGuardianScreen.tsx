@@ -877,19 +877,29 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         members.find(m => (m as any).userId === guardianId);
       if (!found) {
         const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
-        if (guardianId === currentUserIdLocal || guardianId === 'parent1') {
+        // Only synthesise a PARENT_1 card when the viewer is the
+        // ACTUAL owner of `currentBaby`. A guardian / viewer who was
+        // added directly would otherwise see themselves as "Primary
+        // Parent" because `guardianId` equals their own id.
+        const isActualOwner = currentBaby?.parent1_id === currentUserIdLocal;
+        if (
+          (guardianId === currentUserIdLocal && isActualOwner) ||
+          guardianId === 'parent1'
+        ) {
           found = {
-            id: currentUserIdLocal || 'parent1', userId: currentUserIdLocal || 'parent1',
+            id: currentUserIdLocal || 'parent1',
+            userId: currentUserIdLocal || 'parent1',
             fullName: userProfile?.fullName || profile?.fullName || 'Primary Parent',
             email: userProfile?.email || profile?.email || '',
             phoneNumber: userProfile?.phoneNumber || profile?.phoneNumber || '',
             avatar: userProfile?.avatar || profile?.avatar || '',
             role: UserRole.PARENT_1,
-            relationship: '',   // ← leave empty so getMemberDisplayLabel
-                                //   falls back to "Primary Parent" instead of
-                                //   shadowing a real relationship like "Mother".
-            addedAt: new Date().toISOString(), lastActive: new Date().toISOString(),
-            notificationsEnabled: true, canBeRemove: false, canEdit: false,
+            relationship: '',
+            addedAt: new Date().toISOString(),
+            lastActive: new Date().toISOString(),
+            notificationsEnabled: true,
+            canBeRemove: false,
+            canEdit: false,
           } as FamilyMember;
         }
       }

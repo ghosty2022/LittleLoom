@@ -1392,6 +1392,42 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
                     </TouchableOpacity>
                   </View>
 
+                  {/* Temp-password hint. Shown whenever the password
+                      field has content and looks like it might be a
+                      temporary password (>=8 chars, mixed case + digit).
+                      Users with a real password never notice this; users
+                      with a temp password get the confirmation they need
+                      to press Sign In. */}
+                  {password.length >= 8 && /[0-9]/.test(password) && /[A-Za-z]/.test(password) && (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'flex-start',
+                        gap: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        marginBottom: 14,
+                        borderRadius: 12,
+                        backgroundColor: isDark ? 'rgba(245,158,11,0.08)' : 'rgba(245,158,11,0.06)',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.18)',
+                      }}
+                    >
+                      <Ionicons name="key-outline" size={16} color={AURA.warning} />
+                      <Text
+                        style={{
+                          flex: 1,
+                          fontSize: 11,
+                          lineHeight: 16,
+                          fontWeight: '500',
+                          color: isDark ? AURA.gray400 : AURA.gray500,
+                        }}
+                      >
+                        Using a temporary password? Sign in normally — you'll be asked to set a new one on the next screen.
+                      </Text>
+                    </View>
+                  )}
+
                   {/* Remember / Forgot */}
                   <View style={styles.rowContainer}>
                     <TouchableOpacity

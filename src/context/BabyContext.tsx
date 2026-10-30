@@ -782,14 +782,47 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             if (babyError) {
               console.warn('[BabyContext] Baby query error:', babyError.message);
-            } else if (babyData && babyData.length > 0) {
+            }
+            // ── FIX: Guardian / viewer visibility ─────────────────
+            // If `family_members` returned the baby_id but the
+            // follow-up `babies` SELECT returns 0 rows, the RLS
+            // policy on `babies` is blocking non-parent reads. That
+            // is the #1 cause of "guardian sees empty family".
+            // We attempt a fallback read via a SECURITY DEFINER RPC
+            // `get_baby_for_member(baby_id)` that returns the row
+            // if the caller has an active family_members row.
+            let effectiveBabyData = babyData;
+            if ((!effectiveBabyData || effectiveBabyData.length === 0) && uniqueBabyIds.length > 0) {
+              if (__DEV__) {
+                console.warn(
+                  '[BabyContext] `babies` SELECT returned 0 rows for family_members baby_ids — ' +
+                  'likely an RLS policy issue. Attempting RPC fallback.',
+                );
+              }
+              const recovered: any[] = [];
+              for (const bid of uniqueBabyIds) {
+                try {
+                  const { data: rpcRow, error: rpcErr } = await supabase
+                    .rpc('get_baby_for_member', { p_baby_id: bid });
+                  if (!rpcErr && rpcRow) {
+                    const row = Array.isArray(rpcRow) ? rpcRow[0] : rpcRow;
+                    if (row) recovered.push(row);
+                  }
+                } catch {}
+              }
+              if (recovered.length > 0) {
+                effectiveBabyData = recovered;
+              }
+            }
+
+            if (effectiveBabyData && effectiveBabyData.length > 0) {
               if (__DEV__) {
                 console.log(
-                  `[BabyContext] Found ${babyData.length} babies from family_members`
+                  `[BabyContext] Found ${effectiveBabyData.length} babies from family_members`
                 );
               }
 
-              babyData.forEach((baby: any) => {
+              effectiveBabyData.forEach((baby: any) => {
                 if (!seenBabyIds.has(baby.id)) {
                   seenBabyIds.add(baby.id);
                   allBabies.push(baby);
