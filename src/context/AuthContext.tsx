@@ -436,10 +436,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               })
               .eq('id', id);
           } catch {}
-          // Sign out cleanly
+          // Sign out cleanly — just hit Supabase directly. The
+          // onAuthStateChange SIGNED_OUT listener handles the rest.
           try {
-            const { signOut } = (AuthContext as any) ?? {};
-            // Use the same signOut path as the rest of the app
             await supabase.auth.signOut({ scope: 'local' });
           } catch {}
           await Promise.all([
@@ -476,9 +475,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return await checkMustChangePassword();
   }, [checkMustChangePassword]);
 
-  const refreshMustChangePassword = useCallback(async (): Promise<boolean> => {
-    return await checkMustChangePassword();
-  }, [checkMustChangePassword]);
   const acquireSignInLock = useCallback((): boolean => {
     if (signInLock.current) return false;
     signInLock.current = true;
@@ -3138,10 +3134,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (__DEV__) console.log('[Auth] Auth state change:', event);
 
       if (event === 'SIGNED_IN' && session) {
-        // Clear any cached user ID (from a previous session or a
-        // `null` cached during the sign-out window) so subsequent
-        // dbHelpers.getCurrentUserId() calls resolve against the
-        // *new* session immediately.
         clearUserIdCache();
         const user = session.user;
         const userMeta = user.user_metadata || {};
@@ -3150,10 +3142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const sameUser = existingProfile?.id === user.id;
 
         // Derive the fallback name/handle from the session — NEVER
-        // reference `commUsername` or `baseName` here; those are local
-        // to `performSignInInternal` and referencing them throws a
-        // ReferenceError that aborts the SIGNED_IN handler and leaves
-        // Supabase auth in a signed-out state.
+        // reference `commUsername` or `baseName` here.
         const fallbackName =
           userMeta.full_name ||
           userMeta.fullName ||
@@ -3171,10 +3160,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               fullName: fallbackName,
               email: user.email || '',
               avatar: userMeta.avatar || '👤',
-              // `role` here is only a best-effort "primary family" hint.
-              // The authoritative role for any given baby is stored in
-              // `family_members.role` and resolved per-baby by BabyContext
-              // and FamilyContext. Never gate actions on this field alone.
               role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
               createdAt: user.created_at || new Date().toISOString(),
               preferences: { notifications: true, darkMode: false, language: 'en' },
@@ -3194,9 +3179,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             userToken: session.access_token,
             userProfile,
             session,
+            mustChangePassword: false,
           }));
         }
       } else if (event === 'SIGNED_OUT') {
+
         if (__DEV__) console.log('[Auth] SIGNED_OUT event received, clearing state');
         clearUserIdCache();
         if (isMounted.current) {
@@ -3216,6 +3203,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             hasBaby: false,
             availableBiometricTypes: stateRef.current.availableBiometricTypes,
             biometricTypeName: stateRef.current.biometricTypeName,
+            mustChangePassword: false,
           });
         }
       } else if (event === 'PASSWORD_RECOVERY') {
