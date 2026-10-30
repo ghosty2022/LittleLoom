@@ -820,9 +820,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // Sort for display only: parent1 → parent2 → guardian → viewer.
-      const uniqueMembers = dedupedMembers.sort(
-        (a, b) => (priority[a.role] ?? 4) - (priority[b.role] ?? 4),
-      );
+      const stripInternal = (m: FamilyMember): FamilyMember => {
+        const { __updatedAt, ...clean } = m as any;
+        return clean as FamilyMember;
+      };
+      const uniqueMembers = dedupedMembers
+        .sort((a, b) => (priority[a.role] ?? 4) - (priority[b.role] ?? 4))
+        .map(stripInternal);
 
       const nextParent1 = uniqueMembers.find(m => m.role === UserRole.PARENT_1) || null;
       const nextParent2 = uniqueMembers.find(m => m.role === UserRole.PARENT_2) || null;

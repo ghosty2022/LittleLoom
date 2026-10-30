@@ -444,7 +444,12 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       : null;
 
-    const freshPosts = [...posts];
+    const __seenPostIds = new Set<string>();
+    const freshPosts = posts.filter(p => {
+      if (__seenPostIds.has(p.id)) return false;
+      __seenPostIds.add(p.id);
+      return true;
+    });
     const freshTopics = [...topics];
     const freshNotifications = [...notifications];
     const freshBlocked = [...blocked];

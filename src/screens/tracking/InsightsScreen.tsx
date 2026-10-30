@@ -792,7 +792,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     /* Timeline correlations */
     timelineCorrelations.slice(0, 3).forEach((c, i) => {
       items.push({
-        id: `corr-${c.id || i}`,
+        id: `corr-${c.id || `idx-${i}`}`,
         type: 'correlation',
         title: 'Pattern Discovered',
         description: c.insight || 'New pattern found in your tracking data.',

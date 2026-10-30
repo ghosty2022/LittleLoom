@@ -1,3 +1,4 @@
+
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -239,6 +240,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // async work doesn't commit over newer work.
   // ─────────────────────────────────────────────────────────────
   const mountTokenRef = useRef<number>(0);
+  const loadRequestIdRef = useRef<number>(0);
 
   
   // Bump the mount token every time the provider mounts. Must run
@@ -639,8 +641,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     loadInProgressRef.current = true;
     const myMountToken = mountTokenRef.current;
+    const myRequestId = ++loadRequestIdRef.current;
     if (__DEV__) console.log('[BabyContext] Starting loadBabies...');
-
+    
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
@@ -1157,6 +1160,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         return;
       }
+      if (loadRequestIdRef.current !== myRequestId) {
+        if (__DEV__) {
+          console.log('[BabyContext] Superseded by newer load request — aborting stale commit');
+        }
+        return;
+      }
 
       if (babies.length > 0 && !backfillRanRef.current) {
         backfillRanRef.current = true;
@@ -1203,10 +1212,16 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
       }
 
+      const __seenBabyIds = new Set<string>();
+      const dedupedBabies = babies.filter(b => {
+        if (__seenBabyIds.has(b.id)) return false;
+        __seenBabyIds.add(b.id);
+        return true;
+      });
       setState(prev => ({
         ...prev,
         isLoading: false,
-        babies,
+        babies: dedupedBabies,
         currentBabyId: currentId,
         currentBaby: babyToSet,
         hasSkippedBaby,
@@ -1393,17 +1408,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   
   
+  // NOTE: the previous 300 ms `loadBabies(true)` trigger here was a duplicate
+  // of the `init` effect below and the `onAuthStateChange` handler. Both
+  // already fire on mount / sign-in, so this effect only needs to reset
+  // state on sign-out. Keeping the duplicate caused overlapping loadBabies
+  // runs that raced and produced duplicate key warnings.
   useEffect(() => {
-    if (authUserId) {
-      initRef.current = false;
-      backfillRanRef.current = false;
-      
-      const t = setTimeout(() => {
-        if (isMounted.current) loadBabies(true);
-      }, 300);
-      return () => clearTimeout(t);
-    } else {
-      
+    if (!authUserId) {
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
@@ -1416,7 +1427,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
     }
-  }, [authUserId, loadBabies]);
+  }, [authUserId]);
 
   
   useEffect(() => {
@@ -1765,6 +1776,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       isCreatingRef.current = true;
 
+      try {
       // ── Normalize camelCase ↔ snake_case ─────────────────────
       // BabyProfileCreateScreen historically sent snake_case keys
       // (`birth_weight_kg`, `date_of_birth`, `current_weight_kg`, …)
@@ -1816,7 +1828,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const birthDate = new Date(normalized.birthDate);
       const now = new Date();
       if (birthDate > now || isNaN(birthDate.getTime())) {
-        isCreatingRef.current = false;
         Alert.alert('Invalid Birth Date', 'Birth date cannot be in the future.');
         return null;
       }
@@ -1827,7 +1838,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (!userId) {
           console.error('[BabyContext] No authenticated user for createBaby');
-          isCreatingRef.current = false;
           Alert.alert('Not Signed In', 'Please sign in again to create a baby profile.');
           return null;
         }
@@ -1953,7 +1963,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             details: (error as any)?.details,
             hint: (error as any)?.hint,
           });
-          isCreatingRef.current = false;
 
           const code = (error as any)?.code;
           if (code === '42501') {
@@ -2167,12 +2176,13 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           Haptics.NotificationFeedbackType.Success
         ).catch(() => {});
 
-        isCreatingRef.current = false;
         return result.id;
       } catch (error) {
-        isCreatingRef.current = false;
         console.error('[BabyContext] Create baby error:', error);
         return null;
+      }
+      } finally {
+        isCreatingRef.current = false;
       }
     },
     [calculateAge, getCurrentUserId, broadcastBabyChange]

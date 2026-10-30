@@ -1499,6 +1499,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // ─── Use functional update to avoid clobbering concurrent adds ──
       const entriesSnapshot: TrackerEntry[] = [newEntry, ...(Array.isArray(state.entries) ? state.entries : [])];
       setState(prev => {
+        // Realtime INSERT may have already landed while `EntryService.saveEntry`
+        // was awaiting the DB response. Skip the optimistic push in that case
+        // so the same entry is never rendered twice.
+        if (prev.entries.some(e => e.id === newEntry.id)) {
+          return prev;
+        }
         const updatedEntries = [newEntry, ...prev.entries];
         const updatedEntriesByTracker = { ...prev.entriesByTracker };
         if (!updatedEntriesByTracker[trackerId]) {

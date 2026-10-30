@@ -994,16 +994,21 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         return { ...w, value: parseFloat((w.value / Math.pow(h.value / 100, 2)).toFixed(2)), type: 'bmi' as const };
       }).filter(Boolean) as GrowthMeasurement[];
     }
-    return data.map((g, i) => ({ value: Number(g.value) || 0, label: safeFmt(g.date, 'MMM d'), index: i }));
+    return data.map((g, i) => ({ value: Number(g.value) || 0, label: safeFmt(g.date, 'MMM d'), index: i, rawId: g.id }));
   }, [growthData, activeMetric, timeRange, currentBaby, getGrowthData]);
 
   const velocityData = useMemo(() => {
     if (chartData.length < 2) return [];
     const v: { value: number; label: string }[] = [];
     for (let i = 1; i < chartData.length; i++) {
+      // Look up by raw measurement id (not by formatted label) so two
+      // measurements on the same calendar day can't resolve to the same
+      // source row.
+      const currRaw = growthData.find(g => g.id === (chartData[i] as any).rawId);
+      const prevRaw = growthData.find(g => g.id === (chartData[i - 1] as any).rawId);
       const d = safeDiffDays(
-        safeParseDate(growthData.find(g => g.date.includes(chartData[i].label))?.date) || new Date(),
-        safeParseDate(growthData.find(g => g.date.includes(chartData[i - 1].label))?.date) || new Date(),
+        safeParseDate(currRaw?.date) || new Date(),
+        safeParseDate(prevRaw?.date) || new Date(),
       );
       if (d <= 0) continue;
       v.push({ value: parseFloat(((chartData[i].value - chartData[i - 1].value) / d * 30).toFixed(2)), label: chartData[i].label });
