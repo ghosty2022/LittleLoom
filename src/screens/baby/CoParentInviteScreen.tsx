@@ -48,6 +48,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useApp } from '../../context/AppContext';
 import { useFamily } from '../../context/FamilyContext';
+import { UserRole } from '../../types/roles';
 import { useSweetAlert } from '../../components/SweetAlert';
 import QRCode from 'react-native-qrcode-svg';
 
@@ -916,6 +917,7 @@ const CodeDetailsModal = React.memo(({
 export default function CoParentInviteScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { isDark, colors } = useApp();
+  const initialMode = (route.params as any)?.initialMode as 'invite' | 'direct' | undefined;
   const { themeColors, triggerHaptic, avatar } = useCustomization();
   const { userProfile, skipSetup, completeSetup, setupComplete } = useAuth();
   const { currentBaby, babies } = useBaby();
@@ -924,11 +926,21 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
     getActiveInviteCodes,
     revokeInviteCode,
     getPartialSignupInfo,
+    addMemberDirectly,
   } = useFamily();
   const sweetAlert = useSweetAlert();
 
   const primary = themeColors?.primary || colors?.primary || DS.primary;
   const secondary = themeColors?.secondary || colors?.primaryLight || DS.accent;
+
+  // Mode: 'invite' (code flow) or 'direct' (add existing account).
+  // Defaults from the route param so other screens can deep-link
+  // straight into the "Add Known Person" flow.
+  const [inviteMode, setInviteMode] = useState<'invite' | 'direct'>(
+    initialMode === 'direct' ? 'direct' : 'invite',
+  );
+  const [directIdentifier, setDirectIdentifier] = useState('');
+  const [isAddingDirect, setIsAddingDirect] = useState(false);
 
   const [role, setRole] = useState<RoleKey>('parent2');
   const [relationship, setRelationship] = useState('');
@@ -1066,6 +1078,66 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
       setIsGenerating(false);
     }
   }, [validate, currentBaby, generateInviteCode, role, relationship, fullName, email, phone, loadActiveCodes, showToast, navigation]);
+
+  // ── DIRECT ADD HANDLER ─────────────────────────────────────────────
+  // The fourth path from the invite screen. Resolves an existing
+  // LittleLoom account and adds them as an active member on the spot.
+  const handleAddDirect = useCallback(async () => {
+    if (isAddingDirect) return;
+    if (!directIdentifier.trim()) {
+      showToast('Enter an email, @username, or phone', 'error');
+      return;
+    }
+    if (!relationship.trim()) {
+      showToast('Enter their relationship to the baby', 'error');
+      return;
+    }
+    if (!currentBaby?.id) {
+      showToast('Add a baby profile first', 'info');
+      navigation.navigate('CreateBabyProfile' as never);
+      return;
+    }
+    if (role === 'parent2' && currentBaby?.parent2_id) {
+      showToast('This baby already has a Co-Parent', 'error');
+      return;
+    }
+    HAPTIC_MEDIUM();
+    setIsAddingDirect(true);
+    try {
+      const userRoleEnum =
+        role === 'parent2' ? UserRole.PARENT_2
+        : role === 'guardian' ? UserRole.GUARDIAN
+        : UserRole.VIEWER;
+      const fresh = await addMemberDirectly(
+        directIdentifier.trim(),
+        userRoleEnum,
+        relationship.trim(),
+      );
+      if (fresh) {
+        HAPTIC_SUCCESS();
+        showToast(`${fresh.fullName} joined the family!`);
+        setDirectIdentifier('');
+        setRelationship('');
+        // Refresh the active codes list so the stats update too
+        await loadActiveCodes();
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[CoParentInvite] addDirect', e);
+      showToast('Could not add member', 'error');
+    } finally {
+      setIsAddingDirect(false);
+    }
+  }, [
+    isAddingDirect,
+    directIdentifier,
+    relationship,
+    role,
+    currentBaby,
+    addMemberDirectly,
+    loadActiveCodes,
+    showToast,
+    navigation,
+  ]);
 
   const handleShare = useCallback(async (method: 'copy' | 'whatsapp' | 'sms' | 'email' | 'native', codeOverride?: string) => {
     const code = codeOverride || generatedCode;
@@ -1270,13 +1342,183 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
           <AuraRibbon isDark={isDark} {...topRibbon} />
         </View>
 
+        {/* ═══ MODE TOGGLE ═══════════════════════════════════════════
+            Two ways to grow the family:
+              • Invite  — share a code with anyone, they sign up
+              • Add     — instantly link an EXISTING LittleLoom user
+            This is the "fourth path" surfaced where users already are. */}
+        <Animated.View entering={FadeInUp.delay(100).springify()}>
+          <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
+            <View style={[
+              styles.modeSwitch,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100,
+                borderColor: isDark ? DS.darkBorder : DS.gray200,
+              },
+            ]}>
+              <TouchableOpacity
+                onPress={() => { HAPTIC_LIGHT(); setInviteMode('invite'); }}
+                activeOpacity={0.85}
+                style={[
+                  styles.modeTab,
+                  inviteMode === 'invite' && {
+                    backgroundColor: isDark ? DS.darkSurface : DS.white,
+                    ...DS.shadow.sm,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="qr-code-outline"
+                  size={16}
+                  color={inviteMode === 'invite' ? primary : (isDark ? DS.gray400 : DS.gray500)}
+                />
+                <Text style={[
+                  styles.modeTabText,
+                  {
+                    color: inviteMode === 'invite' ? primary : (isDark ? DS.gray400 : DS.gray500),
+                    fontWeight: inviteMode === 'invite' ? '800' : '600',
+                  },
+                ]}>
+                  Invite via Code
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => { HAPTIC_LIGHT(); setInviteMode('direct'); }}
+                activeOpacity={0.85}
+                style={[
+                  styles.modeTab,
+                  inviteMode === 'direct' && {
+                    backgroundColor: isDark ? DS.darkSurface : DS.white,
+                    ...DS.shadow.sm,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="flash-outline"
+                  size={16}
+                  color={inviteMode === 'direct' ? DS.success : (isDark ? DS.gray400 : DS.gray500)}
+                />
+                <Text style={[
+                  styles.modeTabText,
+                  {
+                    color: inviteMode === 'direct' ? DS.success : (isDark ? DS.gray400 : DS.gray500),
+                    fontWeight: inviteMode === 'direct' ? '800' : '600',
+                  },
+                ]}>
+                  Add Known Person
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Animated.View>
+
         {/* Role Selection */}
         <View style={{ marginTop: DS.space.lg }}>
           <RoleSelector selected={role} onSelect={setRole} isDark={isDark} />
         </View>
 
-        {/* Form / Success */}
-        {!generatedCode ? (
+        {/* ═══ DIRECT ADD FORM (mode='direct') ═══════════════════════
+            Shown when the parent already knows the person's account.
+            Bypasses the invite-code flow entirely and creates an
+            ACTIVE membership row on the spot. */}
+        {inviteMode === 'direct' && !generatedCode && (
+          <Animated.View entering={FadeInUp.delay(160).springify()} style={{ marginTop: DS.space.lg }}>
+            <SectionHeader
+              title="Who to add"
+              subtitle="They already have a LittleLoom account"
+              icon="person-add-outline"
+              color={DS.success}
+            />
+            <View style={{ paddingHorizontal: DS.space.lg }}>
+              <View style={[
+                styles.formCard,
+                {
+                  backgroundColor: isDark ? DS.darkCard : DS.white,
+                  borderColor: isDark ? DS.darkBorder : DS.gray200,
+                },
+              ]}>
+                <View style={{
+                  flexDirection: 'row',
+                  gap: 8,
+                  padding: 10,
+                  borderRadius: 10,
+                  backgroundColor: `${DS.success}10`,
+                  borderWidth: 1,
+                  borderColor: `${DS.success}25`,
+                  marginBottom: 12,
+                }}>
+                  <Ionicons name="flash" size={14} color={DS.success} />
+                  <Text style={{ flex: 1, fontSize: 11, color: DS.success, fontWeight: '600', lineHeight: 15 }}>
+                    Requires an existing LittleLoom account. For new people, use <Text style={{ fontWeight: '800' }}>Invite via Code</Text>.
+                  </Text>
+                </View>
+
+                <InputRow
+                  icon="at"
+                  label="Email, @username, or phone *"
+                  placeholder="e.g. grandma@example.com or @nana"
+                  value={directIdentifier}
+                  onChangeText={setDirectIdentifier}
+                  themeColor={DS.success}
+                  isDark={isDark}
+                  autoCapitalize="none"
+                />
+                <InputRow
+                  icon="heart-outline"
+                  label="Relationship *"
+                  placeholder={ROLE_META[role].placeholder}
+                  value={relationship}
+                  onChangeText={setRelationship}
+                  themeColor={DS.success}
+                  isDark={isDark}
+                />
+
+                <View style={[styles.permPill, { backgroundColor: `${DS.success}10` }]}>
+                  <Ionicons name="shield-checkmark-outline" size={14} color={DS.success} />
+                  <Text style={[styles.permPillText, { color: isDark ? DS.gray300 : DS.gray700 }]}>
+                    {ROLE_META[role].permissions.join(' · ')}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <Animated.View entering={FadeInUp.delay(220).springify()} style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
+              <PressableScale
+                onPress={handleAddDirect}
+                disabled={!directIdentifier.trim() || !relationship.trim() || isAddingDirect}
+                activeScale={0.97}
+              >
+                <LinearGradient
+                  colors={
+                    directIdentifier.trim() && relationship.trim() && !isAddingDirect
+                      ? [DS.success, '#059669']
+                      : [DS.gray300, DS.gray400]
+                  }
+                  style={styles.generateBtn}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  {isAddingDirect ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="person-add" size={20} color="#fff" />
+                      <Text style={styles.generateBtnText}>Add to Family Now</Text>
+                      <Ionicons name="arrow-forward" size={18} color="#fff" />
+                    </>
+                  )}
+                </LinearGradient>
+              </PressableScale>
+              <Text style={[styles.generateHint, { color: isDark ? DS.gray500 : DS.gray400 }]}>
+                They join instantly · No sign-up needed
+              </Text>
+            </Animated.View>
+          </Animated.View>
+        )}
+
+        {/* Form / Success — INVITE MODE, FORM STATE */}
+        {inviteMode === 'invite' && !generatedCode && (
           <Animated.View entering={FadeInUp.delay(160).springify()} style={{ marginTop: DS.space.lg }}>
             <SectionHeader title="Details" subtitle="Who are you inviting?" icon="person-outline" color={secondary} />
             <View style={{ paddingHorizontal: DS.space.lg }}>
@@ -1358,7 +1600,10 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
               </Text>
             </Animated.View>
           </Animated.View>
-        ) : (
+        )}
+
+        {/* Form / Success — INVITE MODE, SUCCESS STATE */}
+        {inviteMode === 'invite' && !!generatedCode && (
           <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.lg }}>
             <SuccessCapsule
               code={generatedCode}
@@ -1514,6 +1759,27 @@ export default function CoParentInviteScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+
+  /* Mode switch (Invite vs Add) */
+  modeSwitch: {
+    flexDirection: 'row',
+    padding: 4,
+    borderRadius: DS.radius.full,
+    borderWidth: 1,
+    gap: 2,
+  },
+  modeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: DS.radius.full,
+  },
+  modeTabText: {
+    fontSize: 12,
+  },
 
   /* Toast */
   toast: {

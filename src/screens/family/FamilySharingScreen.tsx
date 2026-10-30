@@ -1494,7 +1494,10 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                 <PressableScale
                   onPress={() => {
                     HAPTIC_LIGHT();
-                    navigation.navigate('CoParentInviteScreen' as never);
+                    navigation.navigate(
+                      'CoParentInviteScreen' as never,
+                      { initialMode: 'direct' } as never,
+                    );
                   }}
                   activeScale={0.97}
                 >

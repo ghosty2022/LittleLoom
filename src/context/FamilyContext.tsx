@@ -60,6 +60,7 @@ interface FamilyContextType extends FamilyState {
     relationship: string,
   ) => Promise<FamilyMember | null>;
   removeMember: (memberId: string) => Promise<boolean>;
+  
   getEffectivePermissions: (userId?: string) => Permission;
   updateParent2Profile: (updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>) => Promise<boolean>;
   updateGuardianProfile: (memberId: string, updates: Partial<FamilyMember>) => Promise<boolean>;
@@ -1665,22 +1666,23 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (orParts.length > 0) {
-        const { data: existing } = await supabase
+        // Look for an ACTIVE row first
+        const { data: activeRow } = await supabase
           .from('family_members')
-          .select('id, status, user_id')
+          .select('id, status, user_id, role')
           .eq('baby_id', currentBaby.id)
           .is('deleted_at', null)
           .or(orParts.join(','))
           .maybeSingle();
 
-        if (existing) {
+        if (activeRow) {
           // If the invite is pending but the user now has an account,
           // LINK it instead of refusing. This is the key upgrade: a
           // pending invite becomes an active membership the moment
           // the invitee signs up, with no re-invite needed.
           if (
-            existing.status === 'pending' &&
-            !existing.user_id &&
+            activeRow.status === 'pending' &&
+            !activeRow.user_id &&
             resolvedUserId
           ) {
             const { error: linkErr } = await supabase
@@ -1694,7 +1696,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 last_active: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               })
-              .eq('id', existing.id);
+              .eq('id', activeRow.id);
 
             if (linkErr) {
               if (__DEV__) console.warn('[inviteMember] link failed:', linkErr.message);
@@ -1702,7 +1704,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               return false;
             }
 
-            // Sync parent2 slot on the baby row if the role requires it.
             if (role === UserRole.PARENT_2) {
               try {
                 await supabase
@@ -1712,15 +1713,65 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               } catch {}
             }
 
+            familyLoadInProgress.current = false;
             await loadFamily();
             showAlert('Member Added', `${resolvedName || 'Member'} joined the family`);
             return true;
           }
 
-          showAlert('Duplicate Invite', 'This person is already part of this family');
+          showAlert(
+            'Already a Member',
+            `This person is already in the family as ${activeRow.role}.`,
+          );
           return false;
         }
+
+        // No active row — check for a SOFT-DELETED row we should revive
+        try {
+          const { data: softRow } = await supabase
+            .from('family_members')
+            .select('id, role, user_id')
+            .eq('baby_id', currentBaby.id)
+            .not('deleted_at', 'is', null)
+            .or(orParts.join(','))
+            .order('deleted_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (softRow?.id) {
+            const nowIso = new Date().toISOString();
+            const dbRole =
+              role === UserRole.PARENT_2 ? 'parent2'
+              : role === UserRole.GUARDIAN ? 'guardian'
+              : 'viewer';
+            const { error: restoreErr } = await supabase
+              .from('family_members')
+              .update({
+                role: dbRole,
+                deleted_at: null,
+                is_deleted: false,
+                status: 'active',
+                user_id: resolvedUserId || softRow.user_id,
+                full_name: resolvedName || undefined,
+                relationship: relationship || 'Family Member',
+                permissions: ROLE_PERMISSIONS[role] as unknown as Record<string, boolean>,
+                last_active: nowIso,
+                updated_at: nowIso,
+              })
+              .eq('id', softRow.id);
+
+            if (!restoreErr) {
+              familyLoadInProgress.current = false;
+              await loadFamily();
+              showAlert('Member Re-added', `${resolvedName || 'They'} was restored to the family.`);
+              return true;
+            }
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[inviteMember] soft-deleted revive failed:', e);
+        }
       }
+
     } catch (e) {
       if (__DEV__) console.warn('[inviteMember] dup check failed:', e);
     }
