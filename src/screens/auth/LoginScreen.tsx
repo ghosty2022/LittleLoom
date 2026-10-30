@@ -526,7 +526,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     const parent2Addressed = hasParent2 === true || hasParent2 === 'skipped';
     const babyAddressed = hasBaby === true || hasBaby === 'skipped';
 
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       if (!isMounted.current) return;
       if (loginAttempted.current) return;
 
@@ -565,6 +565,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
           alreadySelectedThisSession = flag === 'true';
         } catch {}
 
+        if (!isMounted.current) return;
         if (!alreadySelectedThisSession) {
           navigation.replace('SwitchBaby', {
             returnTo: 'Main',
@@ -574,6 +575,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         }
       }
 
+      if (!isMounted.current) return;
       navigation.replace('Main');
     }, 200);
 

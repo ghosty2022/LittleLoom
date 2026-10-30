@@ -194,20 +194,6 @@ const isEmoji = (v: string | undefined | null): boolean => {
 };
 const safeStr = (v: unknown, fallback = ''): string => (v == null ? fallback : String(v));
 
-const parseLastActive = (raw: unknown): number => {
-  if (raw == null || raw === '') return 0;
-  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-  const s = String(raw).trim();
-  if (!s) return 0;
-  if (/^\d+$/.test(s)) {
-    const n = parseInt(s, 10);
-    if (!Number.isFinite(n) || n <= 0) return 0;
-    return s.length <= 10 ? n * 1000 : n;
-  }
-  const t = new Date(s).getTime();
-  return Number.isFinite(t) ? t : 0;
-};
-
 /* ── last_active normalizer ──────────────────────────────────────────
    `family_members.last_active` is a TEXT column. Across the app it
    has been written as:

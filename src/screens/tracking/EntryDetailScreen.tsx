@@ -49,12 +49,15 @@ import {
   isValid,
 } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 
 import { useCustomization } from '@/hooks/useCustomization';
 import { useUnifiedTrackerTheme } from '@/hooks/useUnifiedTrackerTheme';
 import { useTracker } from '../../hooks';
 import { useBaby } from '@/context/BabyContext';
+import { useFamily } from '@/context/FamilyContext';
+import { getMemberDisplayLabel } from '@/types/roles';
+import { resolveTargetId } from '@/utils/memberNavigation';
 import { SafeAvatar } from '@/components/SafeAvatar';
 import { useSweetAlert } from '@/components/SweetAlert';
 
@@ -726,7 +729,7 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, accent, isDark }: 
    Similar Entries
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry, isDark, accent }: any) => {
+const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry, isDark, accent, members = [] }: any) => {
   const similar = useMemo(() => {
     if (!entry) return [];
     return allEntries
@@ -763,7 +766,20 @@ const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry, isDar
                     </Text>
                     <Text style={[styles.similarMeta, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                       {safeFmt(e.timestamp, 'MMM d, h:mm a')}
-                      {e.loggedByName ? ` • ${e.loggedByName}` : ''}
+                      {(() => {
+                        const logger =
+                          (members.find((m: any) => m.userId === (e as any).loggedBy) ||
+                            members.find((m: any) => m.id === (e as any).loggedBy)) ||
+                          null;
+                        const displayName = logger?.fullName || e.loggedByName;
+                        const displayLabel = logger
+                          ? getMemberDisplayLabel({ role: logger.role, relationship: logger.relationship })
+                          : '';
+                        if (!displayName) return '';
+                        return displayLabel
+                          ? ` • ${displayName} (${displayLabel})`
+                          : ` • ${displayName}`;
+                      })()}
                     </Text>
                   </View>
                   <View style={[styles.similarValueBadge, { backgroundColor: `${c}12` }]}>
@@ -807,6 +823,9 @@ export default function EntryDetailScreen() {
     entries: allEntries,
   } = useTracker();
   const { babies, currentBaby } = useBaby();
+  // Pull family members so we can resolve the CURRENT name + role for
+  // the logger — same source of truth as HomeScreen's RecentTimeline.
+  const { members, loadFamily } = useFamily();
   const { success, confirm } = useSweetAlert();
 
   const entryId = route.params?.entryId;
@@ -841,6 +860,21 @@ export default function EntryDetailScreen() {
     })();
     return () => { mounted = false; };
   }, [entryId, entry?.editedAt]);
+
+  // ── Refresh family on focus ─────────────────────────────────────
+  // The audit card resolves the logger's CURRENT name + role from
+  // `members`. If the user changed that person's role/name on
+  // another device (or in EditGuardian), we want the audit card to
+  // reflect it as soon as the screen is focused — not just after
+  // the next cold boot.
+  useFocusEffect(
+    useCallback(() => {
+      if (typeof loadFamily === 'function') {
+        loadFamily().catch(() => {});
+      }
+      return () => {};
+    }, [loadFamily]),
+  );
 
   const baby = useMemo(() => {
     if (!entry) return currentBaby;
@@ -1009,20 +1043,107 @@ export default function EntryDetailScreen() {
     if (entry.notes) lines.push('', `Notes: ${entry.notes}`);
     if (tags.length > 0) lines.push(`Tags: ${tags.map((t: string) => `#${t}`).join(' ')}`);
     if (photos.length > 0) lines.push(`📷 ${photos.length} photo${photos.length > 1 ? 's' : ''} attached`);
-    lines.push('', `Logged by ${entry.loggedByName || 'You'} • LittleLoom`);
+    lines.push('', `Logged by ${loggedByDisplay.name}${loggedByDisplay.label ? ` (${loggedByDisplay.label})` : ''} • LittleLoom`);
     return lines.join('\n');
-  }, [entry, entryDate, detailRows, tracker, tags, photos]);
+  }, [entry, entryDate, detailRows, tracker, tags, photos, loggedByDisplay]);
 
+  // ── LIVE LOGGER RESOLUTION ─────────────────────────────────────
+  // Same source of truth as HomeScreen's RecentTimeline: resolve the
+  // logger from `family_members` (live names + relationships), not
+  // from the immutable `entry.loggedByName/loggedByRole` snapshot.
+  //
+  //   • member.userId === entry.loggedBy → canonical match
+  //   • member.id === entry.loggedBy     → legacy fallback
+  //   • member.fullName === entry.loggedByName → last-resort match
+  //
+  // Then label = getMemberDisplayLabel({ role, relationship }) which
+  // yields "Mother"/"Father"/"Guardian"/"Primary Parent"/etc. — the
+  // same human label used everywhere else in the app.
+  //
+  // If no member row matches (deleted account, orphaned entry) we
+  // gracefully fall back to the historical snapshot but never
+  // default to "Primary Parent" — we surface the historical role
+  // honestly and label unknown loggers as "Family Member".
   const loggedByDisplay = useMemo(() => {
-    if (!entry) return { name: 'You', role: 'parent1', avatar: '' };
-    return {
-      name: entry.loggedByName || 'You',
-      role: entry.loggedByRole || 'parent1',
-      avatar: '',
-    };
-  }, [entry]);
+    if (!entry) {
+      return {
+        name: 'You',
+        role: 'parent1' as string,
+        relationship: '',
+        label: 'Primary Parent',
+        avatar: '',
+        member: null as any,
+      };
+    }
 
-  const roleMeta = ROLE_META[loggedByDisplay.role] || { label: 'Member', color: accent };
+    const rawBy: any = (entry as any).loggedBy;
+    const rawByName: string = String((entry as any).loggedByName || '').trim();
+
+    // Look up the canonical member row for the logger.
+    const member =
+      (rawBy &&
+        (members.find((m: any) => m.userId === rawBy) ||
+          members.find((m: any) => m.id === rawBy))) ||
+      (rawByName &&
+        members.find(
+          (m: any) =>
+            (m.fullName || '').trim().toLowerCase() ===
+            rawByName.toLowerCase(),
+        )) ||
+      null;
+
+    // Role: prefer the LIVE family_members role; fall back to the
+    // historical snapshot (`loggedByRole`). Never default to
+    // 'parent1' — that was the "everyone shows as Primary Parent"
+    // bug. Unknown → 'viewer' so the label reads "Viewer" and
+    // callers can choose to hide it if they want.
+    const liveRole: string = String(
+      (member as any)?.role || (entry as any).loggedByRole || 'viewer',
+    ).toLowerCase();
+
+    // Relationship: prefer LIVE `relationship` (Mother/Father/etc.),
+    // which is what `getMemberDisplayLabel` produces.
+    const liveRelationship: string =
+      String((member as any)?.relationship || '').trim();
+
+    // The canonical human label — "Mother", "Father", "Guardian",
+    // "Primary Parent", "Co-Parent", "Viewer", or "Family Member".
+    const label: string = getMemberDisplayLabel({
+      role: liveRole,
+      relationship: liveRelationship,
+    });
+
+    // Display name: prefer LIVE `fullName` (handles rename); fall
+    // back to the historical `loggedByName` only if the member is
+    // gone.
+    const liveName: string =
+      String((member as any)?.fullName || '').trim() ||
+      rawByName ||
+      'You';
+
+    const liveAvatar: string =
+      String((member as any)?.avatar || '').trim();
+
+    return {
+      name: liveName,
+      role: liveRole,
+      relationship: liveRelationship,
+      label,
+      avatar: liveAvatar,
+      member,
+    };
+  }, [entry, members]);
+
+  // Color for the audit avatar + role pill — derived from the LIVE
+  // role, not the historical snapshot.
+  const roleMeta = useMemo(() => {
+    return (
+      ROLE_META[loggedByDisplay.role] || {
+        label: loggedByDisplay.label,
+        color: accent,
+      }
+    );
+  }, [loggedByDisplay.role, loggedByDisplay.label, accent]);
 
   /* Handlers */
   const handleShare = useCallback(async () => {
@@ -1370,14 +1491,63 @@ export default function EntryDetailScreen() {
             <GlassCard isDark={isDark}>
               <View style={{ padding: DS.space.md }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={[styles.auditAvatar, { backgroundColor: roleMeta.color }]}>
-                    <Text style={styles.auditAvatarText}>
-                      {loggedByDisplay.name.trim().charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
+                  {/* Avatar — use the live family avatar when we
+                      resolved a member; otherwise fall back to the
+                      role-initial circle. */}
+                  {loggedByDisplay.avatar ? (
+                    <PressableScale
+                      activeScale={0.94}
+                      onPress={() => {
+                        if (!loggedByDisplay.member) return;
+                        try {
+                          HAPTIC_LIGHT();
+                          const targetId = resolveTargetId(loggedByDisplay.member);
+                          if (targetId) {
+                            navigation.navigate('EditGuardian' as any, {
+                              guardianId: targetId,
+                              mode:
+                                loggedByDisplay.role === 'parent2'
+                                  ? 'parent2'
+                                  : loggedByDisplay.role === 'viewer'
+                                  ? 'viewer'
+                                  : 'guardian',
+                              fromChat: false,
+                              fromFamily: true,
+                            });
+                          }
+                        } catch {}
+                      }}
+                    >
+                      <SafeAvatar
+                        avatar={loggedByDisplay.avatar}
+                        size={42}
+                        fallbackIcon="person"
+                        borderColor={roleMeta.color}
+                        borderWidth={2}
+                        animated={false}
+                      />
+                    </PressableScale>
+                  ) : (
+                    <View style={[styles.auditAvatar, { backgroundColor: roleMeta.color }]}>
+                      <Text style={styles.auditAvatarText}>
+                        {loggedByDisplay.name.trim().charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.auditName, { color: isDark ? DS.white : DS.gray900 }]}>
+                    <Text style={[styles.auditName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                      {/* Show "Name (Relationship)" — same idiom as
+                          HomeScreen's RecentTimeline. If there's no
+                          relationship, fall back to just the name. */}
                       {loggedByDisplay.name}
+                      {!!loggedByDisplay.label &&
+                        loggedByDisplay.label !== 'Family Member' &&
+                        loggedByDisplay.label !== loggedByDisplay.name && (
+                          <Text style={{ color: isDark ? DS.gray400 : DS.gray500, fontWeight: '600' }}>
+                            {` (${loggedByDisplay.label})`}
+                          </Text>
+                        )}
                     </Text>
                     <Text style={[styles.auditMeta, { color: isDark ? DS.gray500 : DS.gray400 }]}>
                       Logged {format(entryDate, 'MMM d, yyyy • h:mm a')}
@@ -1485,7 +1655,20 @@ export default function EntryDetailScreen() {
                             </Text>
                             <Text style={[styles.dayMeta, { color: isDark ? DS.gray400 : DS.gray500 }]}>
                               {format(new Date(e.timestamp), 'h:mm a')}
-                              {e.loggedByName ? ` • ${e.loggedByName}` : ''}
+                              {(() => {
+                                const logger =
+                                  members.find((m: any) => m.userId === (e as any).loggedBy) ||
+                                  members.find((m: any) => m.id === (e as any).loggedBy) ||
+                                  null;
+                                const displayName = logger?.fullName || e.loggedByName;
+                                const displayLabel = logger
+                                  ? getMemberDisplayLabel({ role: logger.role, relationship: logger.relationship })
+                                  : '';
+                                if (!displayName) return '';
+                                return displayLabel
+                                  ? ` • ${displayName} (${displayLabel})`
+                                  : ` • ${displayName}`;
+                              })()}
                             </Text>
                           </View>
                           <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray600 : DS.gray400} />
