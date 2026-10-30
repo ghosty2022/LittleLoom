@@ -58,6 +58,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useUser } from '../../context/UserContext';
 import { UniversalSpinner } from '../../components/UniversalSpinner';
 import { useCustomization } from '../../hooks/useCustomization';
+import FamilyTree from '../../components/FamilyTree';
 import { supabase } from '@/utils/supabase';
 
 const IS_FABRIC =
@@ -564,38 +565,6 @@ const ActivityRow = React.memo<any>(({ activity, index, isDark }) => {
           </View>
         </View>
       </View>
-    </Animated.View>
-  );
-});
-
-/* ─── Family Node ─── */
-const FamilyNode = React.memo<any>(({ member, roleKey, index, onPress, isDark, size }) => {
-  const meta = ROLE_PRESENTATION[roleKey] || ROLE_PRESENTATION.viewer;
-  const avatarSrc: string | undefined = member?.avatar;
-  const isUrl = avatarSrc && (avatarSrc.startsWith('http') || avatarSrc.startsWith('file://'));
-  const isEmoji = avatarSrc && avatarSrc.length <= 4 && /\p{Emoji}/u.test(avatarSrc);
-
-  return (
-    <Animated.View entering={FadeInUp.delay(index * 50).springify()}>
-      <PressableScale onPress={onPress} activeScale={0.94}>
-        <View style={[styles.familyNode, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-          <LinearGradient colors={meta.gradient} style={[styles.familyAvatar, { width: size, height: size, borderRadius: size / 2 }]}>
-            {isUrl ? (
-              <Image source={{ uri: avatarSrc! }} style={{ width: '100%', height: '100%' }} />
-            ) : isEmoji ? (
-              <Text style={{ fontSize: size * 0.45 }}>{avatarSrc}</Text>
-            ) : (
-              <Ionicons name={meta.icon} size={size * 0.55} color={DS.white} />
-            )}
-          </LinearGradient>
-          <Text style={[styles.familyName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{member.fullName || 'Member'}</Text>
-          <View style={[styles.familyBadge, { backgroundColor: `${meta.color}18` }]}>
-            <Text style={[styles.familyBadgeText, { color: meta.color }]}>
-              {getMemberDisplayLabel({ role: member.role, relationship: member.relationship })}
-            </Text>
-          </View>
-        </View>
-      </PressableScale>
     </Animated.View>
   );
 });
@@ -1566,96 +1535,78 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
 
             {/* ─── FAMILY ─── */}
             {activeTab === 'family' && (
-              <View style={{ marginTop: DS.space.md, gap: 10, paddingHorizontal: DS.space.lg }}>
-                <GlassCard isDark={isDark}>
-                  <View style={{ padding: DS.space.md }}>
-                    <View style={styles.cardHeader}>
-                      <View style={styles.cardHeaderLeft}>
-                        <View style={[styles.cardIcon, { backgroundColor: `${DS.primary}15` }]}>
-                          <Ionicons name="people" size={14} color={DS.primary} />
-                        </View>
-                        <View>
-                          <Text style={[styles.cardTitle, { color: isDark ? DS.white : DS.gray900 }]}>Family Tree</Text>
-                          <Text style={[styles.cardSub, { color: isDark ? DS.gray500 : DS.gray400 }]}>{members.length} connected</Text>
-                        </View>
-                      </View>
-                    </View>
+              <View style={{ marginTop: DS.space.md, gap: 10 }}>
+                {/*
+                  Use the shared <FamilyTree /> component so this screen
+                  shows the exact same hierarchy as FamilyDashboardScreen
+                  and the FamilySharing → Tree tab. It buckets `members`
+                  by tier (parents → baby → guardians → viewers) and
+                  renders dashed "Add Co-Parent" / "Add Guardian" slots
+                  when a tier has room.
 
-                    <View style={styles.familyRow}>
-                      {members.filter(m => m.role === UserRole.PARENT_1 || m.role === UserRole.PARENT_2).map((m, i) => {
-                        const roleKey = m.role === UserRole.PARENT_1 ? 'parent1' : 'parent2';
-                        const displayLabel = getMemberDisplayLabel({ role: m.role, relationship: m.relationship });
-                        return (
-                          <FamilyNode
-                            key={`${m.id}_${m.role}_${i}`}
-                            member={m}
-                            roleKey={roleKey}
-                            index={i}
-                            onPress={() => sweetAlert.alert(
-                              m.fullName,
-                              `${displayLabel}\n${m.email || 'No email'}`,
-                            )}
-                            isDark={isDark}
-                            size={FAMILY_NODE_SIZE * 0.55}
-                          />
-                        );
-                      })}
-                      <Animated.View entering={FadeInUp.delay(150).springify()}>
-                        <View style={[styles.familyNode, styles.familyNodeHighlight, { backgroundColor: isDark ? 'rgba(245,158,11,0.08)' : 'rgba(245,158,11,0.05)', borderColor: DS.warning }]}>
-                          <LinearGradient colors={ROLE_PRESENTATION.baby.gradient} style={[styles.familyAvatar, { width: FAMILY_NODE_SIZE * 0.55, height: FAMILY_NODE_SIZE * 0.55, borderRadius: FAMILY_NODE_SIZE * 0.275 }]}>
-                            {isImageUri(babyPhoto) ? <Image source={{ uri: babyPhoto as string }} style={{ width: '100%', height: '100%' }} /> : isEmoji(babyPhoto) ? <Text style={{ fontSize: FAMILY_NODE_SIZE * 0.35 }}>{babyPhoto}</Text> : <Ionicons name={ROLE_PRESENTATION.baby.icon} size={FAMILY_NODE_SIZE * 0.3} color={DS.white} />}
-                          </LinearGradient>
-                          <Text style={[styles.familyName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{currentBabyData?.name || 'Baby'}</Text>
-                          <View style={[styles.familyBadge, { backgroundColor: `${ROLE_PRESENTATION.baby.color}18` }]}>
-                            <Text style={[styles.familyBadgeText, { color: ROLE_PRESENTATION.baby.color }]}>{calculateAge(currentBabyData?.birthDate || '')}</Text>
+                  `onMemberPress` routes to EditGuardian exactly like the
+                  dashboard does, so tapping anyone in this tree lands on
+                  the same profile screen as tapping them anywhere else.
+                */}
+                <FamilyTree
+                  members={members}
+                  currentBaby={currentBabyData}
+                  isDark={isDark}
+                  onManage={() => navigation.navigate('FamilySharing' as never)}
+                  onMemberPress={(m) => {
+                    const targetId = (m as any).userId || m.id;
+                    if (targetId) {
+                      navigation.navigate(
+                        'EditGuardian' as never,
+                        {
+                          guardianId: targetId,
+                          mode: 'guardian',
+                          fromChat: false,
+                        } as never,
+                      );
+                    } else {
+                      navigation.navigate('FamilySharing' as never);
+                    }
+                  }}
+                  onAddCoParent={() => navigation.navigate('CoParentInviteScreen' as never)}
+                  onAddGuardian={() => navigation.navigate('CoParentInviteScreen' as never)}
+                />
+
+                {/* Invite CTAs stay as a lightweight row below the tree */}
+                <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+                  <SectionHeader
+                    title="Invite to Family"
+                    subtitle="Share with someone you trust"
+                    icon="person-add-outline"
+                    color={DS.success}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {(['parent2', 'guardian', 'viewer'] as const).map((role) => {
+                      const meta = ROLE_PRESENTATION[role];
+                      const inviteLabel =
+                        role === 'parent2' ? 'Co-Parent'
+                        : role === 'guardian' ? 'Guardian'
+                        : 'Viewer';
+                      return (
+                        <PressableScale
+                          key={role}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            navigation.navigate('FamilySharing' as never);
+                          }}
+                          activeScale={0.94}
+                          style={{ flex: 1 }}
+                        >
+                          <View style={[styles.inviteCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                            <LinearGradient colors={meta.gradient} style={styles.inviteIcon}>
+                              <Ionicons name={meta.icon} size={18} color={DS.white} />
+                            </LinearGradient>
+                            <Text style={[styles.inviteLabel, { color: isDark ? DS.gray300 : DS.gray700 }]}>{inviteLabel}</Text>
                           </View>
-                        </View>
-                      </Animated.View>
-                      {members.filter(m => m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER).map((m, i) => {
-                        const roleKey = m.role === UserRole.GUARDIAN ? 'guardian' : 'viewer';
-                        const displayLabel = getMemberDisplayLabel({ role: m.role, relationship: m.relationship });
-                        return (
-                          <FamilyNode
-                            key={`${m.id}_${m.role}_guardian_${i}`}
-                            member={m}
-                            roleKey={roleKey}
-                            index={i + 2}
-                            onPress={() => sweetAlert.alert(
-                              m.fullName,
-                              `${displayLabel}\n${m.email || 'No email'}`,
-                            )}
-                            isDark={isDark}
-                            size={FAMILY_NODE_SIZE * 0.55}
-                          />
-                        );
-                      })}
-                    </View>
+                        </PressableScale>
+                      );
+                    })}
                   </View>
-                </GlassCard>
-
-                {/* ── FAMILY TREE HINT ────────────────────────────────
-                    Once there are 2+ members, encourage inviting a
-                    co-parent / guardian. Show the tree first, then the
-                    invite CTA — the current order hides the tree. */}
-                <SectionHeader title="Invite to Family" subtitle="Share with someone you trust" icon="person-add-outline" color={DS.success} />
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {(['parent2', 'guardian', 'viewer'] as const).map((role) => {
-                    const meta = ROLE_PRESENTATION[role];
-                    const inviteLabel =
-                      role === 'parent2' ? 'Co-Parent'
-                      : role === 'guardian' ? 'Guardian'
-                      : 'Viewer';
-                    return (
-                      <PressableScale key={role} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('FamilySharing' as never); }} activeScale={0.94} style={{ flex: 1 }}>
-                        <View style={[styles.inviteCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
-                          <LinearGradient colors={meta.gradient} style={styles.inviteIcon}>
-                            <Ionicons name={meta.icon} size={18} color={DS.white} />
-                          </LinearGradient>
-                          <Text style={[styles.inviteLabel, { color: isDark ? DS.gray300 : DS.gray700 }]}>{inviteLabel}</Text>
-                        </View>
-                      </PressableScale>
-                    );
-                  })}
                 </View>
               </View>
             )}
@@ -1852,13 +1803,7 @@ const styles = StyleSheet.create({
   saveBigBtn: { paddingVertical: 14, borderRadius: DS.radius.md, alignItems: 'center' },
   saveBigText: { color: DS.white, fontSize: 14, fontWeight: '700' },
 
-  familyRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: DS.space.md },
-  familyNode: { alignItems: 'center', paddingHorizontal: 10, paddingVertical: 10, borderRadius: 16, borderWidth: 1, minWidth: 80 },
-  familyNodeHighlight: { borderWidth: 2 },
-  familyAvatar: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 6 },
-  familyName: { fontSize: 11, fontWeight: '700', textAlign: 'center', marginBottom: 3, maxWidth: 80 },
-  familyBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
-  familyBadgeText: { fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
+
 
   inviteCard: { padding: 12, borderRadius: DS.radius.md, borderWidth: 1, alignItems: 'center', gap: 6 },
   inviteIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
