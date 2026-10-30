@@ -56,6 +56,7 @@ import { useCommunity } from '../../context/CommunityContext';
 import { useAudio, SOUND_TRACKS } from '../../context/AudioContext';
 import { useMedia } from '../../context/MediaContext';
 import { useFamilyChat } from '../../context/FamilyChatContext';
+import { useFamily } from '../../context/FamilyContext';
 import { useSafety } from '../../context/SafetyContext';
 import { useApp } from '../../context/AppContext';
 
@@ -63,12 +64,16 @@ import { useApp } from '../../context/AppContext';
 import CorrelationCard from '../../components/trackers/CorrelationCard';
 import PredictionCard from '../../components/trackers/PredictionCard';
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
+import FamilyStack from '../../components/FamilyStack';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { ShimmerLoader } from '../../components/UniversalSpinner';
+import { RelationshipBackfillBanner } from '../../components/RelationshipBackfillBanner';
 
 // Types
 import type { RootStackParamList } from '../../types/navigation';
 import { navigationRef } from '../../navigation/navigationRef';
+import { getMemberDisplayLabel } from '../../types/roles';
+import { getMemberNavTarget, resolveTargetId } from '../../utils/memberNavigation';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -130,9 +135,18 @@ const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 /* ═══════════════════════════════════════════════════════════════════════════
    CACHE KEYS
    ═══════════════════════════════════════════════════════════════════════════ */
+// Cache keys are namespaced by userId so account-switch on the same device
+// can never hydrate one user's cache into another user's session. The bare
+// names are kept only for one-time cleanup in signOut (AuthContext).
 const CACHE_KEYS = {
-  BABY: '@littleloom_cached_baby',
-  ACTIVITIES: '@littleloom_cached_activities_v2',
+  BABY: '@littleloom_cached_baby_v3',
+  ACTIVITIES: '@littleloom_cached_activities_v3',
+};
+
+const scopedCacheKey = (base: string, userId: string | null | undefined, babyId?: string | null) => {
+  if (!userId) return null;
+  const babySuffix = babyId ? `_${babyId}` : '';
+  return `${base}_${userId}${babySuffix}`;
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -514,9 +528,8 @@ const AuraHeroBanner: React.FC<{
   streakDays: number;
   unreadCount: number;
   onProfilePress: () => void;
-  onNotificationPress: () => void;
-  onSettingsPress: () => void;
   onBabyPress: () => void;
+  onFamilyPress: () => void;
   onQuickAction: (action: string) => void;
 }> = React.memo(({
   isDark,
@@ -529,9 +542,8 @@ const AuraHeroBanner: React.FC<{
   streakDays,
   unreadCount,
   onProfilePress,
-  onNotificationPress,
-  onSettingsPress,
   onBabyPress,
+  onFamilyPress,
   onQuickAction,
 }) => {
   return (
@@ -598,19 +610,16 @@ const AuraHeroBanner: React.FC<{
               </View>
             </View>
           </TouchableOpacity>
-          <View style={styles.heroActions}>
-            <TouchableOpacity style={[styles.heroIconBtn, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]} onPress={onNotificationPress}>
-              <Ionicons name="notifications-outline" size={20} color={DS.primary} />
-              {unreadCount > 0 && (
-                <View style={[styles.heroBadge, { backgroundColor: DS.accent }]}>
-                  <Text style={styles.heroBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.heroIconBtn, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]} onPress={onSettingsPress}>
-              <Ionicons name="settings-outline" size={20} color={DS.primary} />
-            </TouchableOpacity>
-          </View>
+          {/* Family shortcut button — the ONLY "open FamilySharing"
+              affordance in the header area now that the sticky-header
+              family icon has been removed. */}
+          <TouchableOpacity
+            style={[styles.heroIconBtn, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}
+            onPress={onFamilyPress}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="people-outline" size={20} color={DS.primary} />
+          </TouchableOpacity>
         </View>
 
         {/* Stats strip */}
@@ -656,15 +665,21 @@ const AuraHeroBanner: React.FC<{
             <Ionicons name="time-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
             <Text style={[styles.heroActionText, { color: isDark ? DS.gray300 : DS.gray600 }]}>Timeline</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.heroActionBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
-            onPress={() => onQuickAction('chat')}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="chatbubbles-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
-            <Text style={[styles.heroActionText, { color: isDark ? DS.gray300 : DS.gray600 }]}>Chat</Text>
-          </TouchableOpacity>
         </View>
+
+        {/* Footer link — "Manage family". Both the small top-right
+            icon and this big tap target route to the same screen.
+            Keeps family management one thumb-tap away. */}
+        <TouchableOpacity
+          onPress={onFamilyPress}
+          activeOpacity={0.7}
+          style={styles.heroFamilyFooter}
+        >
+          <Text style={[styles.heroFamilyFooterText, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+            Manage family & caregivers
+          </Text>
+          <Ionicons name="chevron-forward" size={13} color={isDark ? DS.gray400 : DS.gray500} />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -1257,7 +1272,10 @@ const RecentTimeline: React.FC<{
   onViewAll: () => void;
   onEntryPress: (entry: any) => void;
   borderRadius: number;
-}> = React.memo(({ activities, isDark, theme, onViewAll, onEntryPress, borderRadius }) => {
+  members?: any[];
+  /** Fires when the logger's avatar is tapped. */
+  onAvatarPress?: (targetId: string, member: any) => void;
+}> = React.memo(({ activities, isDark, theme, onViewAll, onEntryPress, borderRadius, members = [], onAvatarPress }) => {
   const groups: DayGroup[] = useMemo(() => {
     const sorted = [...(activities || [])]
       .filter((e: any) => e?.timestamp)
@@ -1344,16 +1362,63 @@ const RecentTimeline: React.FC<{
                           />
                           <View style={styles.entryCardContent}>
                             <View style={styles.entryCardHeader}>
-                              <View style={[styles.entryIconBg, { backgroundColor: `${cfg.color}14` }]}>
-                                <Text style={styles.entryEmoji}>{cfg.emoji}</Text>
-                              </View>
+                              {(() => {
+                                const logger =
+                                  members.find((m: any) => m.userId === event.loggedBy) ||
+                                  members.find((m: any) => m.id === event.loggedBy);
+
+                                // No matching family_member for this logger
+                                // (deleted / never on this baby) → non-interactive emoji.
+                                if (!logger) {
+                                  return (
+                                    <View style={[styles.entryIconBg, { backgroundColor: `${cfg.color}14` }]}>
+                                      <Text style={styles.entryEmoji}>{cfg.emoji}</Text>
+                                    </View>
+                                  );
+                                }
+
+                                // Logger resolved → tappable avatar.
+                                return (
+                                  <TouchableOpacity
+                                    activeOpacity={0.75}
+                                    onPress={() => {
+                                      if (onAvatarPress) {
+                                        onAvatarPress(resolveTargetId(logger), logger);
+                                      }
+                                    }}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                  >
+                                    <View style={styles.entryIconBg}>
+                                      <SafeAvatar
+                                        avatar={logger.avatar}
+                                        size={38}
+                                        fallbackEmoji={cfg.emoji}
+                                        fallbackColor={cfg.color}
+                                      />
+                                    </View>
+                                  </TouchableOpacity>
+                                );
+                              })()}
                               <View style={styles.entryInfo}>
                                 <Text style={[styles.entryTitle, { color: theme.text }]} numberOfLines={1}>
                                   {title}
                                 </Text>
                                 <Text style={[styles.entryMeta, { color: theme.textSecondary }]} numberOfLines={1}>
                                   {fullDate}
-                                  {event?.loggedByName ? ` • by ${event.loggedByName}` : ''}
+                                  {(() => {
+                                    // Resolve the CURRENT name + relationship for
+                                    // the logger, so a rename or role change is
+                                    // reflected on historical entries.
+                                    const logger =
+                                      members.find((m: any) => m.userId === event.loggedBy) ||
+                                      members.find((m: any) => m.id === event.loggedBy);
+                                    const displayName = logger?.fullName || event.loggedByName;
+                                    const displayLabel = logger ? getMemberDisplayLabel({ role: logger.role, relationship: logger.relationship }) : '';
+                                    if (!displayName) return '';
+                                    return displayLabel
+                                      ? ` • ${displayName} (${displayLabel})`
+                                      : ` • ${displayName}`;
+                                  })()}
                                 </Text>
                               </View>
                               <View style={[styles.entryTypeBadge, { backgroundColor: `${cfg.color}12` }]}>
@@ -1541,13 +1606,12 @@ interface StickyAppHeaderProps {
   onBabyPress: () => void;
   onAddBabyPress: () => void;
   unreadCount: number;
-  onSafetyCornerPress: () => void;
-  onSettingsPress: () => void;
+  /** Left-avatar tap → opens MoreScreen (the app "menu"). */
+  onMenuPress: () => void;
   primaryColor: string;
   fullTheme: any;
   fontSizeMultiplier: number;
   compactSpacing: boolean;
-  onProfilePress: () => void;
 }
 
 const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
@@ -1559,13 +1623,11 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
   onBabyPress,
   onAddBabyPress,
   unreadCount,
-  onSafetyCornerPress,
-  onSettingsPress,
+  onMenuPress,
   primaryColor,
   fullTheme,
   fontSizeMultiplier,
   compactSpacing,
-  onProfilePress,
 }) => {
   const insets = useSafeAreaInsets();
   // Respect punch-hole, waterfall, notch, and dynamic island.
@@ -1593,17 +1655,25 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
       <BlurView intensity={isDark ? 90 : 95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
 
       <View style={styles.stickyHeaderContent}>
-        {/* Left: Profile avatar */}
-        <TouchableOpacity style={styles.stickyHeaderLeft} onPress={onProfilePress}>
-          <SafeParentAvatar
-            avatar={userProfile?.avatar}
-            name={userProfile?.fullName || 'Parent'}
-            size={Math.round(36 * fontSizeMultiplier)}
-          />
+        {/* Left: "Menu" button — opens MoreScreen. This is the ONLY
+            entry point for settings-style navigation from Home. */}
+        <TouchableOpacity
+          style={styles.stickyHeaderLeft}
+          onPress={onMenuPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <View
+            style={[
+              styles.headerMenuBtn,
+              { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` },
+            ]}
+          >
+            <Ionicons name="menu" size={Math.round(18 * fontSizeMultiplier)} color={isDark ? DS.primaryLight : DS.primary} />
+          </View>
         </TouchableOpacity>
 
-        {/* Center: Logo with gradient text — absolutely centered so the
-            asymmetric right action row can't push it off-axis */}
+        {/* Center: Logo + current-baby subtitle. Absolutely positioned
+            so the asymmetric action row can't push it off-axis. */}
         <View style={styles.stickyHeaderCenter} pointerEvents="box-none">
           <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>
             LITTLELOOM
@@ -1616,15 +1686,10 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
           </Text>
         </View>
 
-        {/* Right: Actions */}
+        {/* Right: 3 actions — bell · baby avatar · lock. Nothing else.
+            Profile editing is the hero banner. Family is the hero
+            banner. Settings is the ☰ on the left. Safety is in More. */}
         <View style={[styles.stickyHeaderRight, { gap: compactSpacing ? 6 : 8 }]}>
-          {/* Safety corner */}
-          <TouchableOpacity style={styles.headerIconBtn} onPress={onSafetyCornerPress}>
-            <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(220,38,38,0.15)' : 'rgba(220,38,38,0.1)' }]}>
-              <Ionicons name="shield-checkmark-outline" size={18} color={DS.danger} />
-            </View>
-          </TouchableOpacity>
-
           {/* Notifications */}
           <TouchableOpacity style={styles.headerIconBtn} onPress={onNotificationPress}>
             <View style={[styles.headerIconInner, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}>
@@ -1714,21 +1779,38 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // Auth & Contexts
   const { userProfile, isLoading: authLoading } = useAuth();
   const {
+    babies,
     currentBaby,
+    currentBabyId,
+    switchBaby,
     loadBabies,
     getPottyStreak,
     growthData,
     milestones,
     getGrowthData,
   } = useBaby();
+
+  // ── Family members (needed by RecentTimeline for attribution) ──
+  // This is a REAL hook call, not a comment. It supplies `members`
+  // to `<RecentTimeline members={members} />` and to
+  // `todayContributors`, both of which broke with
+  // `ReferenceError: Property 'members' doesn't exist` when this
+  // line was accidentally left inside a JSDoc block.
+  const { members } = useFamily();
+
   const {
-    entries: trackerEntries,
+    entries: trackerEntriesRaw,
     refreshEntries: refreshTrackerEntries,
     isLoading: activitiesLoading,
   } = useTracker();
-  const activities = trackerEntries;
-  const loadActivities = refreshTrackerEntries;
-  const getRecentTimelineEvents = (_limit?: number, _babyId?: string) => trackerEntries;
+
+// NOTE: `trackerEntries` memo has been moved BELOW the `displayedBaby`
+// declaration (see further down). It cannot be defined here because
+// `displayedBaby` is a `const` and is in the temporal dead zone until its
+// declaration runs.
+
+const loadActivities = refreshTrackerEntries;
+
   const { lockApp, getAvailableAuthMethods, getSecuritySnapshot, rehydratePinStatus } = useSecurity();
   const { getUnreadCount } = useCommunity();
   const { getUnreadCount: getFamilyChatUnread } = useFamilyChat();
@@ -1754,52 +1836,144 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const isInitialLoad = useRef(true);
   const dataLoaded = useRef(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [babyJson, actJson] = await Promise.all([
-          AsyncStorage.getItem(CACHE_KEYS.BABY),
-          AsyncStorage.getItem(CACHE_KEYS.ACTIVITIES),
-        ]);
-        if (babyJson) setCachedBaby(JSON.parse(babyJson));
-        if (actJson) {
+// Track the userId we hydrated cache for. If it changes (sign-out → sign-in),
+// we wipe the in-memory cache and reload scoped keys.
+const cacheHydratedForUserRef = useRef<string | null>(null);
+
+useEffect(() => {
+  const userId = userProfile?.id ?? null;
+
+  // Account changed or signed out — hard reset cached in-memory state.
+  if (cacheHydratedForUserRef.current !== userId) {
+    cacheHydratedForUserRef.current = userId;
+    setCachedBaby(null);
+    setCachedActivities([]);
+    setSmartNotifications([]);
+    cacheLoaded.current = false;
+  }
+
+  if (!userId) {
+    // Signed out — nothing to load, and nothing to keep.
+    setIsLoadingInitial(false);
+    return;
+  }
+
+  let cancelled = false;
+  (async () => {
+    try {
+      // Only load the BABY cache keyed by user (baby not yet known here).
+      const babyKey = scopedCacheKey(CACHE_KEYS.BABY, userId);
+      const babyJson = babyKey ? await AsyncStorage.getItem(babyKey) : null;
+
+      // Activities cache is keyed by user + the cached baby's id, so that a
+      // different baby's rows can NEVER leak into this user's session even
+      // if they own multiple babies.
+      let actJson: string | null = null;
+      if (babyJson) {
+        try {
+          const cachedBabyObj = JSON.parse(babyJson);
+          const actKey = scopedCacheKey(CACHE_KEYS.ACTIVITIES, userId, cachedBabyObj?.id ?? null);
+          if (actKey) actJson = await AsyncStorage.getItem(actKey);
+        } catch {}
+      }
+
+      if (cancelled) return;
+      if (babyJson) {
+        try { setCachedBaby(JSON.parse(babyJson)); } catch {}
+      }
+      if (actJson) {
+        try {
           const parsed = JSON.parse(actJson);
           if (Array.isArray(parsed)) setCachedActivities(parsed);
-        }
-      } catch (e) {
-        // ignore — fresh load will handle it
-      } finally {
+        } catch {}
+      }
+    } catch {
+      // ignore — fresh load will handle it
+    } finally {
+      if (!cancelled) {
         cacheLoaded.current = true;
         setIsLoadingInitial(false);
       }
-    })();
-  }, []);
+    }
+  })();
+
+  return () => { cancelled = true; };
+}, [userProfile?.id]);
 
   const displayedBaby = currentBaby || cachedBaby;
   const hasBaby = !!displayedBaby;
 
-  useEffect(() => {
-    if (currentBaby) {
-      AsyncStorage.setItem(CACHE_KEYS.BABY, JSON.stringify(currentBaby)).catch(() => {});
-    }
-  }, [currentBaby]);
+  // HARD BABY SCOPE — the tracker context can briefly hold the *previous*
+  // baby's rows during a switch (setState → await loadEntries). We filter
+  // here so nothing downstream (activityStats, dailySummary, streak,
+  // todayCounts, RecentTimeline) can ever see rows from another baby.
+  // (This memo lives here — not above — because `displayedBaby` must be
+  // declared before this runs.)
+  const trackerEntries = useMemo(() => {
+    const currentId = displayedBaby?.id;
+    if (!currentId) return [];
+    const list = Array.isArray(trackerEntriesRaw) ? trackerEntriesRaw : [];
+    return list.filter((e: any) => e?.babyId === currentId);
+  }, [trackerEntriesRaw, displayedBaby?.id]);
 
-  /* ── Smart notifications: load + persist ── */
-  useEffect(() => {
-    (async () => {
-      try {
-        const savedNotifs = await AsyncStorage.getItem('@littleloom_smart_notifications');
-        if (savedNotifs) {
-          const parsed = JSON.parse(savedNotifs);
-          if (Array.isArray(parsed)) setSmartNotifications(parsed);
-        }
-      } catch (err) { /* ignore */ }
-    })();
-  }, []);
+  const getRecentTimelineEvents = useCallback(
+    (_limit?: number, _babyId?: string) => trackerEntries,
+    [trackerEntries],
+  );
 
-  useEffect(() => {
-    AsyncStorage.setItem('@littleloom_smart_notifications', JSON.stringify(smartNotifications)).catch(() => {});
-  }, [smartNotifications]);
+useEffect(() => {
+  const userId = userProfile?.id;
+  if (!userId || !currentBaby) return;
+
+  const babyKey = scopedCacheKey(CACHE_KEYS.BABY, userId);
+  if (babyKey) {
+    AsyncStorage.setItem(babyKey, JSON.stringify(currentBaby)).catch(() => {});
+  }
+}, [currentBaby, userProfile?.id]);
+
+// Whenever the active baby changes, drop any in-memory activities cache
+// that belonged to the previous baby. This is the last line of defense
+// against showing baby A's entries under baby B.
+useEffect(() => {
+  setCachedActivities([]);
+}, [currentBaby?.id]);
+
+// Smart notifications are scoped by userId so account-switch never inherits
+// the previous account's dismissed + generated entries.
+const smartNotifsHydratedForUserRef = useRef<string | null>(null);
+
+useEffect(() => {
+  const userId = userProfile?.id ?? null;
+
+  if (smartNotifsHydratedForUserRef.current !== userId) {
+    smartNotifsHydratedForUserRef.current = userId;
+    setSmartNotifications([]);
+  }
+
+  if (!userId) return;
+
+  let cancelled = false;
+  (async () => {
+    try {
+      const key = `@littleloom_smart_notifications_${userId}`;
+      const saved = await AsyncStorage.getItem(key);
+      if (cancelled || !saved) return;
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) setSmartNotifications(parsed);
+    } catch {}
+  })();
+
+  return () => { cancelled = true; };
+}, [userProfile?.id]);
+
+useEffect(() => {
+  const userId = userProfile?.id;
+  if (!userId) return;
+  AsyncStorage.setItem(
+    `@littleloom_smart_notifications_${userId}`,
+    JSON.stringify(smartNotifications),
+  ).catch(() => {});
+}, [smartNotifications, userProfile?.id]);
 
   /* ── Generate smart notifications ── */
   useEffect(() => {
@@ -1950,6 +2124,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setShowNotificationChooser(true);
   }, [triggerHaptic]);
 
+  // Single tap target for "Family" everywhere on HomeScreen
+  // (sticky header shortcut, FamilyStack "Manage" footer, hero
+  // banner `onFamilyPress`). Keeps the route + params in one place.
+  const handleNavigateFamily = useCallback(() => {
+    triggerHaptic('light');
+    navigateToScreen('FamilySharing', {});
+  }, [navigateToScreen, triggerHaptic]);
+
   const handleSafetyCornerPress = useCallback(() => {
     triggerHaptic('medium');
     navigateToScreen('SafetyCorner');
@@ -2063,6 +2245,173 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       navigateToScreen('Timeline', {});
     }
   }, [hasBaby, navigateToScreen]);
+  // ── Family member avatar tap (from RecentTimeline) ──────────
+  // This is the second path into the family-management flow — the
+  // first is the "Family" tab inside FamilySharingScreen. But this
+  // path can be tapped by ANY role (Parent 1, Parent 2, Guardian,
+  // Viewer), so we need to route based on WHO is tapped vs. who I
+  // am.
+  //
+  //   • Tapping myself              → EditGuardian (my own profile)
+  //   • Tapping another Parent/     → EditGuardian (guarded: must be a parent)
+  //     Guardian while I'm a parent
+  //   • Tapping anyone else while   → FamilySharing (read-only view)
+  //     I'm a guardian/viewer
+  //
+  // `getMemberNavTarget` centralises the rule so every call site
+  // stays consistent.
+  const handleMemberAvatarPress = useCallback(
+    async (targetId: string, tappedMember?: any) => {
+      // The RecentTimeline callback gives us `targetId` and `member`.
+      // If we don't have the full FamilyMember object (rare — e.g. a
+      // timeline entry whose `loggedBy` UUID has no matching row),
+      // resolve it from `members`.
+      let member = tappedMember;
+      if (!member) {
+        member =
+          members.find((m: any) => (m.userId || m.id) === targetId) ||
+          members.find((m: any) => m.id === targetId);
+      }
+      if (!member) {
+        // No family_members row for this user on the current baby —
+        // they were removed. Send the user to the family view so
+        // they can see who's still around.
+        navigateToScreen('FamilySharing', {});
+        return;
+      }
+
+      // My effective role for the CURRENT baby (not the global hint).
+      const myRoleForBaby =
+        userProfile?.id
+          ? (
+              members.find(
+                (m: any) =>
+                  m.userId === userProfile.id || m.id === userProfile.id,
+              ) as any
+            )?.role ?? null
+          : null;
+
+      const navTarget = getMemberNavTarget(
+        member,
+        userProfile?.id ?? '',
+        myRoleForBaby,
+      );
+
+      // Show the guard message if the user isn't allowed to edit.
+      if (navTarget.readOnlyReason) {
+        // `toast` comes from useSweetAlert(); guard defensively in case
+        // the hook shape ever changes.
+        try {
+          if (typeof toast === 'function') {
+            toast('Read-only', navTarget.readOnlyReason, 'info');
+          } else if (typeof sweetAlert === 'function') {
+            sweetAlert('Read-only', navTarget.readOnlyReason, 'info');
+          }
+        } catch {
+          // Non-critical — swallow.
+        }
+      }
+
+      navigateToScreen(navTarget.screen, navTarget.params);
+    },
+    [members, userProfile?.id, navigateToScreen, toast],
+  );
+
+  // ── Header profile tap → EditGuardian (self) ────────────────
+  // The sticky header's avatar + greeting card both route here.
+  // It MUST mirror the MoreScreen profile-header behaviour:
+  //
+  //   • Parent 1 / Parent 2 → EditGuardian({ guardianId: me.id, mode: 'parent2' })
+  //   • Guardian / Viewer    → EditGuardian({ guardianId: me.id, mode: 'guardian' })
+  //
+  // We resolve the CURRENT baby's role for me (not the global
+  // `userProfile.role` hint) so a Parent1-on-BabyA / Guardian-on-BabyB
+  // user lands on the right editor for the active baby.
+  // ── Header profile tap → EditGuardian (self) ────────────────
+  // This is the ONLY entry point for "tap my avatar". Every header
+  // surface (sticky header, hero banner, settings menu) funnels here
+  // so the routing logic lives in one place.
+  //
+  // Rules (must match MoreScreen / FamilyDashboardScreen):
+  //   • Parent 1 / Parent 2 on the ACTIVE baby → mode 'parent2'
+  //   • Guardian / Viewer on the ACTIVE baby    → mode 'guardian'
+  //
+  // A user who is Parent1-on-Baby-A / Guardian-on-Baby-B must land
+  // on the correct editor for whichever baby is currently active,
+  // so we resolve `myRoleForBaby` from FamilyContext `members` first
+  // (per-baby authoritative), and fall back to the baby's parent
+  // slots only if members hasn't hydrated yet.
+  const handleEditMyProfile = useCallback(() => {
+    const meId = userProfile?.id;
+    if (!meId) {
+      // Auth hasn't hydrated yet — send to the family dashboard so
+      // the user isn't stuck on a dead tap.
+      navigateToScreen('Profile');
+      return;
+    }
+
+    const myMemberRow =
+      members.find((m: any) => m.userId === meId) ||
+      members.find((m: any) => m.id === meId) ||
+      null;
+
+    // Strip `normalizeRole` to a plain lowercase string. Both
+    // 'parent1' / 'parent2' / 'guardian' / 'viewer' and the enum
+    // values (same strings) are handled.
+    const rawRole = String(myMemberRow?.role || '').toLowerCase();
+
+    const myRoleForBaby: string =
+      rawRole ||
+      // Fallback: derive from currentBaby parent slots. Only trust
+      // this when `members` is empty for the current baby (mid-load).
+      (currentBaby?.parent1Id === meId
+        ? 'parent1'
+        : currentBaby?.parent2Id === meId
+        ? 'parent2'
+        : 'guardian');
+
+    const editMode: 'parent2' | 'guardian' =
+      myRoleForBaby === 'parent1' || myRoleForBaby === 'parent2'
+        ? 'parent2'
+        : 'guardian';
+
+    navigateToScreen('EditGuardian', {
+      guardianId: meId,
+      mode: editMode,
+      fromChat: false,
+    });
+  }, [members, userProfile?.id, currentBaby?.parent1Id, currentBaby?.parent2Id, navigateToScreen]);
+
+  // ── Baby avatar / baby-pill tap ─────────────────────────────
+  // The sticky header avatar, the hero-banner stat pill, and the
+  // "switch baby" row in the settings area all funnel here.
+  //
+  // Rules:
+  //   • >1 baby  → open the `SwitchBaby` modal so the user can pick
+  //                the correct baby before editing anything.
+  //   • 1 baby   → open `EditProfile(mode: 'baby')` for that baby.
+  //   • 0 babies → open `CreateBabyProfile`.
+  //
+  // This mirrors `ProfileHeader.handleBabyPress` in MoreScreen
+  // exactly, so both screens behave the same.
+  const handleBabyHeaderPress = useCallback(() => {
+    const totalBabies = Array.isArray(babies) ? babies.length : 0;
+    if (totalBabies > 1) {
+      navigateToScreen('SwitchBaby', {
+        returnTo: 'Main',
+        returnLabel: 'Home',
+      });
+      return;
+    }
+    if (totalBabies === 1 && babies[0]?.id) {
+      navigateToScreen('EditProfile', {
+        mode: 'baby',
+        babyId: babies[0].id,
+      });
+      return;
+    }
+    navigateToScreen('CreateBabyProfile');
+  }, [babies, navigateToScreen]);
 
   /* ── Hero quick actions ── */
   const handleHeroQuickAction = useCallback((action: string) => {
@@ -2085,23 +2434,48 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   }, [requireBaby, navigateToScreen, triggerHaptic]);
 
   /* ── Unified timeline events ── */
-  const allTimelineEvents = useMemo(() => {
-    if (!hasBaby) return [];
-    const trackerList = (trackerEntries || []).filter((e: any) => e?.timestamp);
-    const activityEvents = getRecentTimelineEvents ? getRecentTimelineEvents(50, displayedBaby?.id) : [];
-    const merged = [...trackerList];
-    (activityEvents || []).forEach((ae: any) => {
-      if (ae && !merged.find((me: any) => me?.id === ae.id)) merged.push(ae);
-    });
-    if (merged.length === 0 && cachedActivities.length > 0) return [...cachedActivities].sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0)).slice(0, 50);
-    return merged.slice(0, 50).sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
-  }, [hasBaby, displayedBaby?.id, trackerEntries, getRecentTimelineEvents, cachedActivities]);
+const allTimelineEvents = useMemo(() => {
+  const babyId = displayedBaby?.id;
+  if (!babyId) return [];
 
-  useEffect(() => {
-    if (allTimelineEvents.length > 0) {
-      AsyncStorage.setItem(CACHE_KEYS.ACTIVITIES, JSON.stringify(allTimelineEvents.slice(0, 50))).catch(() => {});
+  // 1) Live tracker rows — already baby-scoped by FIX #4
+  const trackerList = (trackerEntries || []).filter((e: any) => e?.timestamp);
+
+  // 2) Any additional sources — also filtered to this baby
+  const activityEvents = (getRecentTimelineEvents ? getRecentTimelineEvents(50, babyId) : [])
+    .filter((e: any) => e?.babyId === babyId);
+
+  const merged = [...trackerList];
+  activityEvents.forEach((ae: any) => {
+    if (ae && !merged.find((me: any) => me?.id === ae.id)) merged.push(ae);
+  });
+
+  // 3) Offline cache fallback — ONLY if every cached row belongs to this
+  // baby. Without this guard, after a baby switch the cache still holds
+  // the previous baby's rows and they would be rendered as this baby's.
+  if (merged.length === 0 && cachedActivities.length > 0) {
+    const scoped = cachedActivities.filter((e: any) => e?.babyId === babyId);
+    if (scoped.length > 0) {
+      return [...scoped].sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0)).slice(0, 50);
     }
-  }, [allTimelineEvents]);
+  }
+
+  return merged
+    .slice(0, 50)
+    .sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
+}, [hasBaby, displayedBaby?.id, trackerEntries, getRecentTimelineEvents, cachedActivities]);
+
+useEffect(() => {
+  const userId = userProfile?.id;
+  const babyId = displayedBaby?.id;
+  if (!userId || !babyId) return;
+  if (allTimelineEvents.length === 0) return;
+
+  const actKey = scopedCacheKey(CACHE_KEYS.ACTIVITIES, userId, babyId);
+  if (actKey) {
+    AsyncStorage.setItem(actKey, JSON.stringify(allTimelineEvents.slice(0, 50))).catch(() => {});
+  }
+}, [allTimelineEvents, userProfile?.id, displayedBaby?.id]);
 
   /* ── Real per-tracker today counts ── */
   const todayCounts = useMemo(() => {
@@ -2208,11 +2582,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   }, [allTimelineEvents, hasBaby]);
 
   /* ── Growth KPIs ── */
-  const growthStats = useMemo(() => {
-    if (!hasBaby) return null;
-    const result: Record<string, any> = {};
-    (['height', 'weight', 'head'] as const).forEach((type) => {
-      const data = getGrowthData(type as any).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+const growthStats = useMemo(() => {
+  if (!hasBaby) return null;
+  const babyId = displayedBaby?.id;
+  if (!babyId) return null;
+
+  const result: Record<string, any> = {};
+  (['height', 'weight', 'head'] as const).forEach((type) => {
+    const raw = getGrowthData(type as any);
+    // Growth data must belong to the current baby. Any cached / stale
+    // rows from a previous baby get filtered here.
+    const data = (Array.isArray(raw) ? raw : [])
+      .filter((g: any) => !g?.babyId || g.babyId === babyId)
+      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
       const current = data[0];
       const prev = data[1];
       if (current) {
@@ -2225,7 +2608,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       result.bmi = { value: (w / (h * h)).toFixed(1), unit: '' };
     }
     return result;
-  }, [growthData, hasBaby, getGrowthData]);
+  }, [growthData, hasBaby, getGrowthData, displayedBaby?.id]);
 
   const unreadCommunityCount = useMemo(() => getUnreadCount(), [getUnreadCount]);
   const unreadFamilyChatCount = useMemo(() => getFamilyChatUnread?.() || 0, [getFamilyChatUnread]);
@@ -2270,16 +2653,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         userProfile={userProfile}
         onNotificationPress={handleNotificationPress}
         onLockPress={handleLockPress}
-        onBabyPress={() => navigateToScreen('EditProfile', { mode: 'baby', babyId: displayedBaby?.id })}
+        // Baby avatar → SwitchBaby (if >1) or EditProfile (if 1).
+        onBabyPress={handleBabyHeaderPress}
         onAddBabyPress={() => navigateToScreen('CreateBabyProfile')}
         unreadCount={totalUnread}
-        onSafetyCornerPress={handleSafetyCornerPress}
-        onSettingsPress={() => navigateToScreen('More')}
+        // Left ☰ opens MoreScreen — the single entry point for all
+        // settings, safety corner, family, and profile-management
+        // shortcuts. Removes 3 duplicate icons from the header.
+        onMenuPress={() => navigateToScreen('More')}
         primaryColor={primary}
         fullTheme={fullThemeColors || {}}
         fontSizeMultiplier={fontSizeMultiplier}
         compactSpacing={settings.compactSpacing}
-        onProfilePress={() => navigateToScreen('Profile')}
       />
 
       <Animated.ScrollView
@@ -2306,12 +2691,39 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               postsCount={allTimelineEvents.length}
               streakDays={trackingStreakDays}
               unreadCount={totalUnread}
-              onProfilePress={() => navigateToScreen('Profile')}
+              onProfilePress={handleEditMyProfile}
               onNotificationPress={handleNotificationPress}
               onSettingsPress={() => navigateToScreen('More')}
-              onBabyPress={() => navigateToScreen('SwitchBaby', { returnTo: 'Main' })}
+              onBabyPress={handleBabyHeaderPress}
+              onFamilyPress={handleNavigateFamily}
               onQuickAction={handleHeroQuickAction}
             />
+
+            {/* ═══ FAMILY STACK (members list) ═══ */}
+            {/* Mirrors the "Your Family" card from FamilyDashboardScreen
+                so a family can be managed in one tap from HomeScreen. */}
+            {members.length > 0 && (
+              <View style={{ marginBottom: DS.space.md }}>
+                <FamilyStack
+                  members={members}
+                  isDark={isDark}
+                  onPress={() => navigateToScreen('FamilySharing', {})}
+                  onMemberPress={handleMemberAvatarPress}
+                />
+              </View>
+            )}
+
+            {/* ═══ RELATIONSHIP BACKFILL (existing users only) ═══ */}
+            {userProfile?.id && (
+              <RelationshipBackfillBanner
+                isDark={isDark}
+                userId={userProfile.id}
+                onCompleted={() => {
+                  // reload family so the chat header label updates
+                  try { loadBabies(true); } catch {}
+                }}
+              />
+            )}
 
             {/* ═══ AI PREDICTIONS ═══ */}
             {hasBaby && (
@@ -2555,16 +2967,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                   </View>
                 ) : (
                   <RecentTimeline
-                    activities={allTimelineEvents}
-                    isDark={isDark}
-                    theme={theme}
-                    onViewAll={() => {
-                      if (!requireBaby('Timeline', 'Timeline', {})) return;
-                      navigateToScreen('Timeline', {});
-                    }}
-                    onEntryPress={handleEntryPress}
-                    borderRadius={borderRadiusValue}
-                  />
+  activities={allTimelineEvents}
+  isDark={isDark}
+  theme={theme}
+  onViewAll={() => {
+    if (!requireBaby('Timeline', 'Timeline', {})) return;
+    navigateToScreen('Timeline', {});
+  }}
+  onEntryPress={handleEntryPress}
+  borderRadius={borderRadiusValue}
+  members={members}
+  // NEW: avatar tap resolves the correct route + edit mode for
+  // the tapped member based on my role for the current baby.
+  onAvatarPress={handleMemberAvatarPress}
+/>
                 )}
               </View>
             </View>
@@ -2717,6 +3133,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.5,
   },
+  // ☰ button that replaces the old "tap my avatar" affordance. Sized
+  // to match the 36x36 icon-btn row on the right so the header feels
+  // balanced.
+  headerMenuBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   headerSubtitle: { fontSize: 11, fontWeight: '500', marginTop: -2 },
   stickyHeaderRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
@@ -2822,6 +3248,22 @@ const styles = StyleSheet.create({
     borderRadius: DS.radius.full,
   },
   heroActionText: { fontSize: 13, fontWeight: '700', color: DS.white },
+  // Subtle "Manage family & caregivers" footer link inside the hero.
+  // Both the top-right icon and this wide tap target open the same
+  // screen — one for discoverability, one for fat-finger access.
+  heroFamilyFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    marginTop: DS.space.md,
+    paddingVertical: 6,
+  },
+  heroFamilyFooterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
 
   /* ── Glass Card ── */
   glassCard: { overflow: 'hidden', borderWidth: 1, borderRadius: 24 },
