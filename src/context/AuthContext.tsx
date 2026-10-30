@@ -392,16 +392,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ─────────────────────────────────────────────────────────────────
   // TEMP-PASSWORD HELPERS
   // ─────────────────────────────────────────────────────────────────
+  //
+  // This is the ONE place that reads `must_change_password` and its
+  // `temp_password_expires_at` deadline. It is called:
+  //   • During sign-in (performSignInInternal)
+  //   • During cold boot (initAuth)
+  //   • On `SIGNED_IN` (onAuthStateChange listener)
+  //   • From NavigationContent after app foreground (via
+  //     refreshMustChangePassword)
+  //
+  // If the temp password is past its expiry we sign the user out
+  // BEFORE navigation ever routes them to ForcedPasswordChange, so
+  // they can't get stuck on a screen that can't succeed.
   const checkMustChangePassword = useCallback(async (userId?: string): Promise<boolean> => {
     const id = userId ?? stateRef.current.userProfile?.id;
     if (!id) return false;
     try {
       const { data } = await supabase
         .from('profiles')
-        .select('must_change_password')
+        .select('must_change_password, temp_password_expires_at')
         .eq('id', id)
         .maybeSingle();
+
       const flag = data?.must_change_password === true;
+
+      // ── Expiry check ───────────────────────────────────────────
+      if (flag && data?.temp_password_expires_at) {
+        const expires = new Date(data.temp_password_expires_at).getTime();
+        if (!isNaN(expires) && Date.now() > expires) {
+          if (__DEV__) {
+            console.warn('[Auth] Temp password expired — signing out');
+          }
+          // Clear the expired flag so it doesn't loop
+          try {
+            await supabase
+              .from('profiles')
+              .update({
+                must_change_password: false,
+                temp_password_expires_at: null,
+                temp_password_set_at: null,
+                temp_password_set_by: null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', id);
+          } catch {}
+          // Sign out cleanly
+          try {
+            const { signOut } = (AuthContext as any) ?? {};
+            // Use the same signOut path as the rest of the app
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch {}
+          await Promise.all([
+            secureStorage.deleteItem(SECURE_KEYS.AUTH_TOKEN),
+            secureStorage.deleteItem(SECURE_KEYS.USER_PROFILE),
+          ]);
+          clearUserIdCache();
+          if (isMounted.current) {
+            setState(prev => ({
+              ...prev,
+              isAuthenticated: false,
+              userToken: null,
+              userProfile: null,
+              session: null,
+              mustChangePassword: false,
+            }));
+          }
+          return false;
+        }
+      }
+
       if (isMounted.current) {
         setState(prev =>
           prev.mustChangePassword === flag ? prev : { ...prev, mustChangePassword: flag },
@@ -412,6 +471,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return false;
     }
   }, []);
+
+  const refreshMustChangePassword = useCallback(async (): Promise<boolean> => {
+    return await checkMustChangePassword();
+  }, [checkMustChangePassword]);
 
   const refreshMustChangePassword = useCallback(async (): Promise<boolean> => {
     return await checkMustChangePassword();
@@ -2675,12 +2738,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         // 1) Upsert the temp password on the invite_codes audit row is optional.
         // 2) Flag the profile so next login forces a change.
+        // Default: temp password valid for 24 hours. If they don't
+        // use it in time, checkMustChangePassword signs them out
+        // cleanly on next attempt.
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
         const { error: profErr } = await supabase
           .from('profiles')
           .update({
             must_change_password: true,
             temp_password_set_at: new Date().toISOString(),
             temp_password_set_by: stateRef.current.userProfile?.id ?? null,
+            temp_password_expires_at: expiresAt,
             updated_at: new Date().toISOString(),
           })
           .eq('id', memberUserId);
@@ -2785,6 +2854,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               must_change_password: false,
               temp_password_set_at: null,
               temp_password_set_by: null,
+              temp_password_expires_at: null,
               updated_at: new Date().toISOString(),
             })
             .eq('id', current.id);
@@ -3079,25 +3149,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const existingProfile = stateRef.current.userProfile;
         const sameUser = existingProfile?.id === user.id;
 
+        // Derive the fallback name/handle from the session — NEVER
+        // reference `commUsername` or `baseName` here; those are local
+        // to `performSignInInternal` and referencing them throws a
+        // ReferenceError that aborts the SIGNED_IN handler and leaves
+        // Supabase auth in a signed-out state.
+        const fallbackName =
+          userMeta.full_name ||
+          userMeta.fullName ||
+          user.email?.split('@')[0] ||
+          'User';
+        const fallbackHandle = `@${fallbackName
+          .toLowerCase()
+          .replace(/\s+/g, '_')
+          .replace(/[^a-z0-9_]/g, '')}`;
+
         const userProfile: UserProfile = sameUser && existingProfile
           ? existingProfile
           : {
               id: user.id,
-              fullName:
-                userMeta.full_name ||
-                userMeta.fullName ||
-                user.email?.split('@')[0] ||
-                'User',
+              fullName: fallbackName,
               email: user.email || '',
               avatar: userMeta.avatar || '👤',
-                      // `role` here is only a best-effort "primary family" hint.
-        // The authoritative role for any given baby is stored in
-        // `family_members.role` and resolved per-baby by BabyContext
-        // and FamilyContext. Never gate actions on this field alone.
-        role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
-        createdAt: user.created_at || new Date().toISOString(),
-        preferences: { notifications: true, darkMode: false, language: 'en' },
-        communityUsername: commUsername || baseName,
+              // `role` here is only a best-effort "primary family" hint.
+              // The authoritative role for any given baby is stored in
+              // `family_members.role` and resolved per-baby by BabyContext
+              // and FamilyContext. Never gate actions on this field alone.
+              role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
+              createdAt: user.created_at || new Date().toISOString(),
+              preferences: { notifications: true, darkMode: false, language: 'en' },
+              communityUsername: fallbackName,
+              communityHandle: fallbackHandle,
+              communityDisplayName: fallbackName,
+              communityBio: '',
+              communityAvatar: userMeta.avatar || '👤',
+              communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+              communitySelectedTopics: [],
             };
 
         if (isMounted.current) {

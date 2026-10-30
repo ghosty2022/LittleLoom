@@ -217,6 +217,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     findUserByEmail,
     findUserByEmailOrUsername,
     findUserByEmailOrUsernameOrPhone,
+    mustChangePassword,
   } = useAuth();
 
   const {
@@ -476,6 +477,19 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     navigationAttemptedRef.current = true;
 
+    // ── TEMP PASSWORD: block all setup flow until password is reset ──
+    // Navigation also routes to ForcedPasswordChange on its own, but
+    // we short-circuit here so the login screen never briefly flashes
+    // the family setup screens.
+    if (mustChangePassword === true) {
+      const timer = setTimeout(() => {
+        if (!isMounted.current) return;
+        forceUnlock().catch(() => {});
+        navigation.replace('ForcedPasswordChange');
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+
     const parent2Addressed = hasParent2 === true || hasParent2 === 'skipped';
     const babyAddressed = hasBaby === true || hasBaby === 'skipped';
 
@@ -509,6 +523,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     hasBaby,
     navigation,
     forceUnlock,
+    mustChangePassword,
   ]);
 
   useEffect(() => {

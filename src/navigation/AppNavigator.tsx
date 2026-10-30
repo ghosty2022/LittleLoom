@@ -16,6 +16,7 @@ import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ForcedPasswordChangeScreen from '../screens/auth/ForcedPasswordChangeScreen';
 import CoParentInviteScreen from '../screens/baby/CoParentInviteScreen';
 import BabyOnboardingScreen from '../screens/baby/BabyOnboardingScreen';
 import BabyProfileCreateScreen from '../screens/baby/BabyProfileCreateScreen';
@@ -95,7 +96,7 @@ const MAIN_FLOW_SCREENS = new Set([
   'SecureAccessList', 'TimelinePicker',
 ]);
 
-const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassword']);
+const AUTH_FLOW_SCREENS = new Set(['Onboarding', 'Login', 'SignUp', 'ForgotPassword', 'ForcedPasswordChange']);
 const SETUP_FLOW_SCREENS = new Set(['CoParentInviteScreen', 'BabyOptional', 'CreateBabyProfile']);
 const SECURITY_SCREENS = new Set(['SecurityLock', 'BiometricSetup', 'SecurityCenter']);
 
@@ -270,6 +271,7 @@ function NavigationContent({
     hasParent2,
     hasBaby,
     hasSeenOnboarding,
+    mustChangePassword,
   } = useSafeAuth();
 
   const { babies, loadBabies, hasSkippedBaby } = useSafeBaby();
@@ -391,6 +393,21 @@ function NavigationContent({
     if (authLoading || !firstOpenChecked.current || !sessionChecked) return;
     if (isAuthenticated && !babiesReady) return;
 
+    // Forced password change takes priority over all setup flow states
+    if (
+      isAuthenticated &&
+      isValidSession &&
+      mustChangePassword === true &&
+      !isSecurityLocked
+    ) {
+      if (lastNavState.current !== 'FORCED_PASSWORD_CHANGE') {
+        lastNavState.current = 'FORCED_PASSWORD_CHANGE';
+        setNavState('FORCED_PASSWORD_CHANGE' as any);
+      }
+      if (!initialCheckDone) setInitialCheckDone(true);
+      return;
+    }
+
     const newState = getNavState(
       authLoading,
       isAuthenticated,
@@ -429,6 +446,7 @@ function NavigationContent({
     hasSeenOnboarding,
     isFirstOpen,
     babiesReady,
+    mustChangePassword,
   ]);
 
   // ── Load babies once ──────────────────────────────────────────
@@ -653,6 +671,10 @@ function NavigationContent({
     };
 
     switch (navState) {
+      case 'FORCED_PASSWORD_CHANGE':
+        safeNavigateTo('ForcedPasswordChange', true);
+        break;
+
       case 'LOGIN':
         (async () => {
           try {
@@ -773,6 +795,11 @@ function NavigationContent({
               options={{ gestureEnabled: false, animation: 'none' }}
             />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen
+              name="ForcedPasswordChange"
+              component={ForcedPasswordChangeScreen}
+              options={{ gestureEnabled: false, animation: 'fade' }}
+            />
           </Stack.Group>
 
           {/* QR SCANNER */}

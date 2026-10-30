@@ -211,9 +211,11 @@ function useSafeAuth() {
       hasBaby: false,
       availableBiometricTypes: [],
       biometricTypeName: 'Biometric',
-      signIn: async () => false,
-      signUp: async () => false,
-      signInWithSocial: async () => false,
+      session: null,
+      mustChangePassword: false,
+      signIn: async () => ({ success: false, message: 'Not ready' }),
+      signUp: async () => ({ success: false, message: 'Not ready' }),
+      signInWithSocial: async () => ({ success: false, message: 'Not ready' }),
       signOut: async () => {},
       checkBiometricAvailability: async () => false,
       authenticateWithBiometric: async () => ({ success: false, error: 'not_available' }),
@@ -221,11 +223,11 @@ function useSafeAuth() {
       enableBiometricLogin: async () => false,
       disableBiometricLogin: async () => {},
       hasBiometricLoginCredentials: async () => false,
-      loginWithBiometric: async () => false,
+      loginWithBiometric: async () => ({ success: false, message: 'Not ready' }),
       updateUserProfile: async () => false,
       updateUserPreferences: async () => false,
       skipSetup: async () => {},
-      completeSetup: async () => {},
+      completeSetup: async () => false,
       resetSetupFlow: async () => {},
       wasSetupCompleted: async () => ({ hasParent2: false, hasBaby: false, setupComplete: false }),
       setSetupCompleteCallback: () => {},
@@ -243,6 +245,16 @@ function useSafeAuth() {
       isUsernameAvailable: async () => ({ available: true, message: '' }),
       registerCommunityUsername: async () => false,
       updateCommunityAvatar: async () => false,
+      // ── NEW: temp-password APIs ──────────────────────────────
+      generateTemporaryPassword: async () => ({
+        success: false,
+        message: 'Not ready',
+      }),
+      setNewPasswordAfterTemp: async () => ({
+        success: false,
+        message: 'Not ready',
+      }),
+      refreshMustChangePassword: async () => false,
     };
   }
 }

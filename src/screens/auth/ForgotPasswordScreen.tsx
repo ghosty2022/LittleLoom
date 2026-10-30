@@ -234,7 +234,16 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordScree
         setSentEmail(resolvedEmail);
         setRecoveryViaPin(true);
         setSent(true);
-        showSuccess('Password Reset', result.message);
+        // If the backend generated a temp password, show it prominently
+        // so the user can note it down before it disappears.
+        if (result.temporaryPassword) {
+          showSuccess(
+            'Temporary Password Created',
+            `Use this on your next login:\n\n${result.temporaryPassword}\n\nYou'll be asked to set a new password.`,
+          );
+        } else {
+          showSuccess('Password Reset', result.message);
+        }
       } else {
         // result.message is now the REAL server message:
         // "Incorrect PIN. Please try again."
