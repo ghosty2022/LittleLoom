@@ -529,10 +529,6 @@ const AuraHeroBanner: React.FC<{
   unreadCount: number;
   onProfilePress: () => void;
   onBabyPress: () => void;
-  onFamilyPress: () => void;
-  /** Shield-tile tap — opens SafetyCorner. */
-  onSafetyPress: () => void;
-  /** Analytics-tile tap — opens Insights. */
   onInsightsPress: () => void;
   onQuickAction: (action: string) => void;
 }> = React.memo(({
@@ -547,8 +543,6 @@ const AuraHeroBanner: React.FC<{
   unreadCount,
   onProfilePress,
   onBabyPress,
-  onFamilyPress,
-  onSafetyPress,
   onInsightsPress,
   onQuickAction,
 }) => {
@@ -616,16 +610,6 @@ const AuraHeroBanner: React.FC<{
               </View>
             </View>
           </TouchableOpacity>
-          {/* Family shortcut button — the ONLY "open FamilySharing"
-              affordance in the header area now that the sticky-header
-              family icon has been removed. */}
-          <TouchableOpacity
-            style={[styles.heroIconBtn, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}10` }]}
-            onPress={onFamilyPress}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="people-outline" size={20} color={DS.primary} />
-          </TouchableOpacity>
         </View>
 
         {/* Stats strip */}
@@ -653,7 +637,12 @@ const AuraHeroBanner: React.FC<{
           </View>
         </View>
 
-        {/* Quick action buttons */}
+        {/* Primary action row — 3 equal-weight buttons.
+            Insights is the ONLY destination that isn't already
+            reachable from the sticky header (Safety = shield) or
+            the FamilyStack below (Family). So it gets its own
+            primary-weight slot here instead of a redundant tile
+            row that repeated the other two. */}
         <View style={styles.heroActionRow}>
           <TouchableOpacity
             style={[styles.heroActionBtn, { backgroundColor: DS.primary }]}
@@ -671,70 +660,13 @@ const AuraHeroBanner: React.FC<{
             <Ionicons name="time-outline" size={18} color={isDark ? DS.gray300 : DS.gray600} />
             <Text style={[styles.heroActionText, { color: isDark ? DS.gray300 : DS.gray600 }]}>Timeline</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Tile row — Family · Safety · Insights. Each is a fat
-            100×60 tap target in the thumb zone. Safety gets its
-            permanent home here so it's discoverable even after
-            the user scrolls past the sticky header. Family also
-            lives here so the tiny top-right icon is a redundant
-            bonus, not the only path. */}
-        <View style={styles.heroTileRow}>
           <TouchableOpacity
-            style={[
-              styles.heroTile,
-              {
-                backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)',
-                borderColor: isDark ? 'rgba(59,130,246,0.22)' : 'rgba(59,130,246,0.18)',
-              },
-            ]}
-            onPress={onFamilyPress}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.heroTileIcon, { backgroundColor: 'rgba(59,130,246,0.18)' }]}>
-              <Ionicons name="people-outline" size={18} color="#3b82f6" />
-            </View>
-            <Text style={[styles.heroTileLabel, { color: isDark ? DS.gray200 : DS.gray700 }]}>
-              Family
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.heroTile,
-              {
-                backgroundColor: isDark ? 'rgba(220,38,38,0.12)' : 'rgba(220,38,38,0.08)',
-                borderColor: isDark ? 'rgba(220,38,38,0.22)' : 'rgba(220,38,38,0.18)',
-              },
-            ]}
-            onPress={onSafetyPress}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.heroTileIcon, { backgroundColor: 'rgba(220,38,38,0.18)' }]}>
-              <Ionicons name="shield-checkmark-outline" size={18} color={DS.danger} />
-            </View>
-            <Text style={[styles.heroTileLabel, { color: isDark ? DS.gray200 : DS.gray700 }]}>
-              Safety
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.heroTile,
-              {
-                backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.08)',
-                borderColor: isDark ? 'rgba(16,185,129,0.22)' : 'rgba(16,185,129,0.18)',
-              },
-            ]}
+            style={[styles.heroActionBtn, { backgroundColor: isDark ? 'rgba(16,185,129,0.14)' : 'rgba(16,185,129,0.10)' }]}
             onPress={onInsightsPress}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <View style={[styles.heroTileIcon, { backgroundColor: 'rgba(16,185,129,0.18)' }]}>
-              <Ionicons name="analytics-outline" size={18} color={DS.success} />
-            </View>
-            <Text style={[styles.heroTileLabel, { color: isDark ? DS.gray200 : DS.gray700 }]}>
-              Insights
-            </Text>
+            <Ionicons name="analytics-outline" size={18} color={DS.success} />
+            <Text style={[styles.heroActionText, { color: DS.success }]}>Insights</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1716,10 +1648,10 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
       <BlurView intensity={isDark ? 90 : 95} style={StyleSheet.absoluteFill} tint={isDark ? 'dark' : 'light'} />
 
       <View style={styles.stickyHeaderContent}>
-        {/* Left: "Home / More" breadcrumb pill — opens MoreScreen.
-            Replaces the plain hamburger with an on-brand home glyph
-            inside a pill so the tap target is large, modern, and
-            immediately legible ("this goes to the app home"). */}
+        {/* Left: "Settings" pill — opens MoreScreen (which IS the
+            app's settings hub). Gear glyph + explicit "Settings"
+            label so the destination is self-documenting — no
+            ambiguity with the "Home" tab. */}
         <TouchableOpacity
           style={styles.stickyHeaderLeft}
           onPress={onMenuPress}
@@ -1736,7 +1668,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
             ]}
           >
             <Ionicons
-              name="home-outline"
+              name="settings-outline"
               size={Math.round(15 * fontSizeMultiplier)}
               color={isDark ? DS.primaryLight : DS.primary}
             />
@@ -1747,7 +1679,7 @@ const StickyAppHeader: React.FC<StickyAppHeaderProps> = React.memo(({
               ]}
               numberOfLines={1}
             >
-              More
+              Settings
             </Text>
           </View>
         </TouchableOpacity>
@@ -2226,14 +2158,6 @@ useEffect(() => {
     setShowNotificationChooser(true);
   }, [triggerHaptic]);
 
-  // Single tap target for "Family" everywhere on HomeScreen
-  // (sticky header shortcut, FamilyStack "Manage" footer, hero
-  // banner `onFamilyPress`). Keeps the route + params in one place.
-  const handleNavigateFamily = useCallback(() => {
-    triggerHaptic('light');
-    navigateToScreen('FamilySharing', {});
-  }, [navigateToScreen, triggerHaptic]);
-
   const handleSafetyCornerPress = useCallback(() => {
     triggerHaptic('medium');
     navigateToScreen('SafetyCorner');
@@ -2362,8 +2286,45 @@ useEffect(() => {
   //
   // `getMemberNavTarget` centralises the rule so every call site
   // stays consistent.
+  // Synthetic "member" row for the current baby so FamilyStack can
+  // render the baby alongside real family members. `role: 'baby'` is
+  // not a real UserRole — the avatar-tap handler below intercepts it
+  // and routes to the baby profile editor instead of EditGuardian.
+  const babyAsMember = useCallback((baby: any) => ({
+    id: `baby_${baby.id}`,
+    userId: `baby_${baby.id}`,
+    babyId: baby.id,
+    role: 'baby' as any,
+    fullName: baby.name || 'Baby',
+    email: '',
+    avatar: baby.avatar,
+    relationship: 'Baby',
+    permissions: { read: true, write: false, delete: false, manageFamily: false, manageSecurity: false, exportData: false },
+    joinedAt: baby.createdAt || new Date().toISOString(),
+    isActive: true,
+    __isBaby: true,
+    __baby: baby,
+  } as any), []);
+
   const handleMemberAvatarPress = useCallback(
     async (targetId: string, tappedMember?: any) => {
+      // Baby row from the merged FamilyStack list → open the baby
+      // profile editor (NOT SwitchBaby — the sticky header avatar
+      // already handles switching; this is "view/edit this baby").
+      if (
+        tappedMember?.__isBaby ||
+        String(targetId || '').startsWith('baby_')
+      ) {
+        const baby = tappedMember?.__baby || displayedBaby;
+        if (baby?.id) {
+          triggerHaptic('light');
+          navigateToScreen('EditProfile', { mode: 'baby', babyId: baby.id });
+        } else {
+          navigateToScreen('CreateBabyProfile');
+        }
+        return;
+      }
+
       // The RecentTimeline callback gives us `targetId` and `member`.
       // If we don't have the full FamilyMember object (rare — e.g. a
       // timeline entry whose `loggedBy` UUID has no matching row),
@@ -2416,7 +2377,7 @@ useEffect(() => {
 
       navigateToScreen(navTarget.screen, navTarget.params);
     },
-    [members, userProfile?.id, navigateToScreen, toast],
+    [members, userProfile?.id, navigateToScreen, toast, triggerHaptic, displayedBaby],
   );
 
   // ── Header profile tap → EditGuardian (self) ────────────────
@@ -2759,9 +2720,9 @@ const growthStats = useMemo(() => {
         onBabyPress={handleBabyHeaderPress}
         onAddBabyPress={() => navigateToScreen('CreateBabyProfile')}
         unreadCount={totalUnread}
-        // Left breadcrumb "🏠 More" pill → MoreScreen. Single entry
-        // point for all settings, family, and profile-management
-        // shortcuts. Removes 3 duplicate icons from the header.
+        // Left pill "⚙️ Settings" → MoreScreen (the app's settings
+        // hub). Single entry point for all settings, family, and
+        // profile-management shortcuts.
         onMenuPress={() => navigateToScreen('More')}
         // Shield → SafetyCorner. One-tap emergency access. This is
         // the ONLY header icon that isn't a "system" destination —
@@ -2799,22 +2760,24 @@ const growthStats = useMemo(() => {
               streakDays={trackingStreakDays}
               unreadCount={totalUnread}
               onProfilePress={handleEditMyProfile}
-              onNotificationPress={handleNotificationPress}
-              onSettingsPress={() => navigateToScreen('More')}
               onBabyPress={handleBabyHeaderPress}
-              onFamilyPress={handleNavigateFamily}
-              onSafetyPress={handleSafetyCornerPress}
               onInsightsPress={() => navigateToScreen('Insights')}
               onQuickAction={handleHeroQuickAction}
             />
 
-            {/* ═══ FAMILY STACK (members list) ═══ */}
-            {/* Mirrors the "Your Family" card from FamilyDashboardScreen
-                so a family can be managed in one tap from HomeScreen. */}
+            {/* ═══ FAMILY STACK (members list + baby) ═══ */}
+            {/* Shows the current baby first, then every family member.
+                Tapping the baby routes to the baby profile editor;
+                tapping a member routes through handleMemberAvatarPress
+                (which picks EditGuardian / FamilySharing based on role). */}
             {members.length > 0 && (
               <View style={{ marginBottom: DS.space.md }}>
                 <FamilyStack
-                  members={members}
+                  members={
+                    displayedBaby
+                      ? [babyAsMember(displayedBaby), ...members]
+                      : members
+                  }
                   isDark={isDark}
                   onPress={() => navigateToScreen('FamilySharing', {})}
                   onMemberPress={handleMemberAvatarPress}
@@ -3372,33 +3335,9 @@ const styles = StyleSheet.create({
   // Replaces the old "Manage family & caregivers" text link, which was
   // too small to serve as the primary family affordance — and gives
   // Safety + Insights permanent one-tap homes in the hero.
-  heroTileRow: {
-    flexDirection: 'row',
-    gap: DS.space.sm,
-    marginTop: DS.space.md,
-  },
-  heroTile: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 10,
-    borderRadius: DS.radius.md,
-    borderWidth: 1,
-  },
-  heroTileIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroTileLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: -0.1,
-  },
-
+  /* heroTile styles removed — the Family · Safety · Insights tile row
+     was redundant with the sticky-header shield (Safety) and the
+     FamilyStack below (Family). Insights now lives in heroActionRow. */
   /* ── Glass Card ── */
   glassCard: { overflow: 'hidden', borderWidth: 1, borderRadius: 24 },
   glassBorder: { position: 'absolute', top: 0, left: 0, right: 0, height: 1 },
