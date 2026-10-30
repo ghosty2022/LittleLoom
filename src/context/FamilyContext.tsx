@@ -941,14 +941,14 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!currentBaby?.id) return null;
 
     // ── Resolve target by BOTH family_members.id and profiles.id ──
-    let targetRow =
+    // Kept only so we can return a fully-populated FamilyMember
+    // even if the RPC's RETURNING row is partial. `state.members` is
+    // still useful for the fallback merge.
+    const targetRow =
       state.members.find(m => m.id === memberId) ||
       state.members.find(m => (m as any).userId === memberId) ||
       null;
 
-    // Always read the authoritative row from the DB. `state.members`
-    // is a closure captured at call time and is stale after any other
-    // async update (e.g. a previous promote that hasn't committed yet).
     let dbTarget: any = null;
     try {
       const { data } = await supabase
@@ -976,230 +976,43 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (!targetRowId || !targetUserId) return null;
 
-    const nowIso = new Date().toISOString();
-
     const dbRole =
       newRole === UserRole.PARENT_1 ? 'parent1'
       : newRole === UserRole.PARENT_2 ? 'parent2'
       : newRole === UserRole.GUARDIAN ? 'guardian'
       : 'viewer';
 
+    const nowIso = new Date().toISOString();
+
     try {
-      // ── 1. If promoting to PARENT_1, demote the EXISTING parent1
-      //       FIRST. Otherwise the unique-role constraint (or RLS)
-      //       rejects the write. This also keeps `babies.parent1_id`
-      //       consistent with `family_members.role` at every step.
-      //
-      //       IMPORTANT: We re-query the DB here (do NOT trust
-      //       `state.members` — it's a stale closure) AND we do NOT
-      //       filter on `deleted_at IS NULL`, because a soft-deleted
-      //       parent1 row still occupies the unique index slot until
-      //       it's been flipped to `parent2` OR hard-deleted. If we
-      //       skipped it, the promotion write below would hit
-      //       `family_members_one_parent1` (23505).
-      if (newRole === UserRole.PARENT_1) {
-        let otherParent1Rows: any[] = [];
 
-        // 1.0 Authoritative query — any OTHER row claiming parent1,
-        //     INCLUDING soft-deleted ones. The unique index is on
-        //     `(baby_id) WHERE role='parent1'` (or similar), and
-        //     some variants do NOT include `deleted_at IS NULL`,
-        //     so we must demote ALL of them.
-        try {
-          const { data } = await supabase
-            .from('family_members')
-            .select('id, user_id, role, deleted_at')
-            .eq('baby_id', currentBaby.id)
-            .eq('role', 'parent1')
-            .neq('id', targetRowId);
-          if (Array.isArray(data)) otherParent1Rows = data;
-        } catch (e) {
-          if (__DEV__) console.warn('[promoteMember] parent1 lookup failed:', e);
-        }
+      // ── SINGLE ATOMIC RPC — the DB does the cascade for us. ──
+      // One transaction; the intermediate "two parent1" or "two
+      // parent2" states can never exist, so we can never violate
+      // `family_members_one_parent1` OR `family_members_one_parent2`.
+      const { data: rpcRow, error: rpcErr } = await supabase.rpc(
+        'set_family_member_role',
+        {
+          p_baby_id: currentBaby.id,
+          p_target_id: targetRowId,
+          p_new_role: dbRole,
+          p_actor_id: authProfile?.id ?? null,
+        },
+      );
 
-        // 1.1 Fallback ONLY if the DB query genuinely returned
-        //     nothing (e.g. RLS or transient error). This is a last
-        //     resort — the in-memory list may be stale.
-        if (otherParent1Rows.length === 0) {
-          state.members
-            .filter(
-              m => m.role === UserRole.PARENT_1 && (m as any).id !== targetRowId,
-            )
-            .forEach(m =>
-              otherParent1Rows.push({
-                id: m.id,
-                user_id: (m as any).userId,
-                deleted_at: null,
-              }),
-            );
-        }
-
-        // 1.2 Demote every other parent1 row, then VERIFY each write
-        //     actually landed. If a demote fails, we MUST bail out
-        //     before attempting the promotion — otherwise we re-hit
-        //     the unique constraint.
-        for (const other of otherParent1Rows) {
-          const otherUserId = other.user_id;
-          const demotePayload: Record<string, unknown> = {
-            role: 'parent2',
-            can_be_removed: true,
-            updated_at: nowIso,
-          };
-          // Preserve the soft-deleted flag — a previously-removed
-          // parent1 row should stay removed, just no longer parent1.
-          if (other.deleted_at) {
-            demotePayload.deleted_at = other.deleted_at;
-          }
-
-          try {
-            const { error: demoteErr } = await supabase
-              .from('family_members')
-              .update(demotePayload)
-              .eq('id', other.id);
-
-            if (demoteErr) {
-              if (__DEV__) {
-                console.error(
-                  '[promoteMember] demote parent1 failed:',
-                  demoteErr.message,
-                );
-              }
-              // Abort — do NOT proceed to the promotion write. The
-              // caller will see `null` and can retry.
-              return null;
-            }
-          } catch (e) {
-            if (__DEV__) console.error('[promoteMember] demote threw:', e);
-            return null;
-          }
-
-          // 1.3 Mirror to profiles. Best-effort — never blocks.
-          if (otherUserId) {
-            try {
-              await supabase
-                .from('profiles')
-                .update({ role: 'parent2', updated_at: nowIso })
-                .eq('id', otherUserId);
-            } catch {}
-          }
-        }
-
-        // 1.4 Final safety net: after all demotions, confirm ZERO
-        //     other parent1 rows remain. This catches a race where
-        //     a concurrent device re-promoted someone between our
-        //     lookup and write.
-        try {
-          const { count } = await supabase
-            .from('family_members')
-            .select('id', { count: 'exact', head: true })
-            .eq('baby_id', currentBaby.id)
-            .eq('role', 'parent1')
-            .neq('id', targetRowId);
-          if (typeof count === 'number' && count > 0) {
-            if (__DEV__) {
-              console.warn(
-                '[promoteMember] parent1 rows still present after demote; aborting promote',
-                { remaining: count },
-              );
-            }
-            return null;
-          }
-        } catch {}
-
-        // 1.5 Keep babies.parent2_id pointing at whichever demoted
-        //     parent1 user was most recently active (best UX).
-        const demotedUserIds = otherParent1Rows
-          .map(o => o.user_id)
-          .filter(Boolean);
-        for (const otherUserId of demotedUserIds) {
-          try {
-            await supabase
-              .from('babies')
-              .update({ parent2_id: otherUserId, updated_at: nowIso })
-              .eq('id', currentBaby.id);
-          } catch {}
-        }
-      }
-
-      // ── 2. Soft-delete sibling rows for the SAME user ────────────
-      try {
-        await supabase
-          .from('family_members')
-          .update({ deleted_at: nowIso, updated_at: nowIso })
-          .eq('baby_id', currentBaby.id)
-          .eq('user_id', targetUserId)
-          .neq('id', targetRowId)
-          .is('deleted_at', null);
-      } catch {}
-
-      // ── 3. Write family_members.role ─────────────────────────────
-      const fmUpdates: Record<string, unknown> = {
-        role: dbRole,
-        updated_at: nowIso,
-      };
-      if (newRole === UserRole.PARENT_1) fmUpdates.can_be_removed = false;
-      // IMPORTANT: also seed permissions so downstream consumers
-      // (BabyContext.hasPermissionForBaby) see the correct set on
-      // first render, not only after the next loadFamily() normalise.
-      try {
-        const template = ROLE_PERMISSIONS[newRole] as unknown as Record<string, boolean>;
-        if (template) fmUpdates.permissions = template;
-      } catch {}
-
-      let { error: fmErr, data: fmData } = await supabase
-        .from('family_members')
-        .update(fmUpdates)
-        .eq('id', targetRowId)
-        .select('*')
-        .maybeSingle();
-
-      // ── 23505 recovery: another parent1 row snuck in (realtime
-      //    race, second device, or a soft-deleted row the first
-      //    pass didn't see). Demote ALL other parent1 rows now and
-      //    retry the write ONCE.
-      if (fmErr && (fmErr as any).code === '23505' && newRole === UserRole.PARENT_1) {
+      if (rpcErr || !rpcRow) {
         if (__DEV__) {
-          console.warn(
-            '[promoteMember] 23505 on parent1 promote — demoting stragglers and retrying',
-          );
-        }
-        try {
-          const { data: stragglers } = await supabase
-            .from('family_members')
-            .select('id, user_id')
-            .eq('baby_id', currentBaby.id)
-            .eq('role', 'parent1')
-            .neq('id', targetRowId);
-          for (const s of stragglers ?? []) {
-            await supabase
-              .from('family_members')
-              .update({ role: 'parent2', can_be_removed: true, updated_at: nowIso })
-              .eq('id', s.id);
-          }
-        } catch (e) {
-          if (__DEV__) console.warn('[promoteMember] straggler demote failed:', e);
-        }
-        const retry = await supabase
-          .from('family_members')
-          .update(fmUpdates)
-          .eq('id', targetRowId)
-          .select('*')
-          .maybeSingle();
-        fmErr = retry.error as any;
-        fmData = retry.data as any;
-      }
-
-      if (fmErr) {
-        if (__DEV__) {
-          console.error('[promoteMember] family_members write failed:', {
-            code: (fmErr as any).code,
-            message: fmErr.message,
-            details: (fmErr as any).details,
-            hint: (fmErr as any).hint,
+          console.error('[promoteMember] set_family_member_role failed:', {
+            code: (rpcErr as any)?.code,
+            message: rpcErr?.message,
+            details: (rpcErr as any)?.details,
+            hint: (rpcErr as any)?.hint,
           });
         }
         return null;
       }
+
+      const fmData = Array.isArray(rpcRow) ? rpcRow[0] : rpcRow;
 
       // ── 4. Mirror role to profiles ONLY if single-family ───────
       // `profiles.role` is a SINGLE global column. A user can be

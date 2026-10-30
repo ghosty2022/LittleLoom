@@ -2005,3 +2005,28 @@ const styles = StyleSheet.create({
   saveBtn: { paddingVertical: 15, borderRadius: DS.radius.md, alignItems: 'center' },
   saveBtnText: { color: DS.white, fontSize: 15, fontWeight: '700' },
 });
+
+
+// ── FEATURE PLACEMENT — do not violate ───────────────────────────────
+//
+//  On THIS screen (FamilySharing = management hub):
+//    ✅ Tree, member list, invites, add member, roles & permissions
+//    ✅ Family-wide actions: chat, backup, reminders, transfer, leave
+//    ✅ Family count summary card
+//    ❌ Engagement scores, health rings — those are OVERVIEW metrics
+//    ❌ Activity timelines — those are OVERVIEW feeds
+//    ❌ Daily goals — those are TRACKING widgets (HomeScreen)
+//
+//  On FamilyDashboard (Profile = overview):
+//    ✅ Stats strip, family health, today at a glance, activity feed
+//    ✅ Baby card, suggestion, family preview
+//    ❌ Any "do this to change something" action beyond Manage →
+//
+//  On EditGuardian (per-person):
+//    ✅ That person's profile, activity, permissions, settings
+//    ❌ Any other member's data
+//
+//  On HomeScreen:
+//    ✅ Daily summary, per-tracker counts, recent activity timeline
+//    ❌ Family management (that's FamilySharing)
+//    ❌ Family health / engagement scoring (that's FamilyDashboard)

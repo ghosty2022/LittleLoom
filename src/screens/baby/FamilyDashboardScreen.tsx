@@ -375,7 +375,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.pulseTitle}>
-                FAMILY
+                OUR FAMILY
               </GradientText>
               <View style={[styles.pulseLivePill, { backgroundColor: `${DS.success}18` }]}>
                 <PulsingDot color={DS.success} size={6} />
@@ -485,6 +485,60 @@ const TabBar = ({ tabs, activeTab, onChange, isDark }: {
     })}
   </View>
 );
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY HEALTH CARD
+   ═══════════════════════════════════════════════════════════════════════════
+   Restored from FamilySharing's old Members tab. This is an OVERVIEW
+   metric — "how healthy is our family engagement?" — so it belongs here
+   on the FamilyDashboard, not on the management screen.
+*/
+const FamilyHealthCard = React.memo(({ members, isDark }: { members: any[]; isDark: boolean }) => {
+  const score = useMemo(() => {
+    const active = members.filter((m) => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 86400000).length;
+    const total = members.length || 1;
+    const activityScore = Math.round((active / total) * 100);
+    const engagementScore = Math.min(100, members.length * 15);
+    return Math.round(activityScore * 0.6 + engagementScore * 0.4);
+  }, [members]);
+
+  const color = score >= 80 ? DS.success : score >= 50 ? DS.warning : DS.danger;
+  const label = score >= 80 ? 'Thriving' : score >= 50 ? 'Active' : 'Needs Attention';
+
+  return (
+    <Animated.View entering={FadeInUp.delay(60).springify()}>
+      <View style={[styles.healthCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+        <LinearGradient colors={[`${color}10`, `${color}02`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: DS.space.lg }}>
+          <View style={[styles.healthRing, { borderColor: `${color}30` }]}>
+            <View style={[styles.healthRingFill, { borderColor: color, transform: [{ rotate: `${-90 + (score / 100) * 360}deg` }] }]} />
+            <View style={styles.healthRingInner}>
+              <Text style={[styles.healthRingValue, { color }]}>{score}</Text>
+              <Text style={[styles.healthRingMax, { color: isDark ? DS.gray500 : DS.gray400 }]}>/100</Text>
+            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.healthTitle, { color: isDark ? DS.white : DS.gray900 }]}>Family Health</Text>
+            <Text style={[styles.healthLabel, { color }]}>{label}</Text>
+            <View style={styles.healthStatsRow}>
+              {[
+                { label: 'Active', value: members.filter((m) => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 86400000).length, color: DS.success },
+                { label: 'Week', value: members.filter((m) => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 86400000).length, color: DS.warning },
+                { label: 'Pending', value: members.filter((m) => !m.lastActive || m.status === 'pending').length, color: DS.danger },
+              ].map((stat, i) => (
+                <View key={i} style={styles.healthStat}>
+                  <Text style={[styles.healthStatVal, { color: stat.color }]}>{stat.value}</Text>
+                  <Text style={[styles.healthStatLbl, { color: isDark ? DS.gray500 : DS.gray400 }]}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
 
 /* ═══════════════════════════════════════════════════════════════════════════
    FAMILY STATS STRIP
@@ -598,6 +652,115 @@ const ActiveToday = React.memo(({ contributors, isDark, onSeeAll }: {
             <Text style={[styles.contribName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>{c.name}</Text>
             <View style={[styles.contribBadge, { backgroundColor: `${DS.primary}15` }]}>
               <Text style={[styles.contribBadgeText, { color: DS.primary }]}>{c.count} {c.count === 1 ? 'entry' : 'entries'}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </Animated.View>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FAMILY ACTIVITY FEED — compact list of recent family events
+   ═══════════════════════════════════════════════════════════════════════════
+   Restored from the old FamilySharing Activity tab. This is an OVERVIEW
+   feed — "what did the family do lately?" — so it belongs on the
+   dashboard, not on the management screen.
+*/
+interface FamilyActivityEvent {
+  id: string;
+  type: string;
+  title: string;
+  timestamp: number;
+  actorName: string;
+}
+
+const FAMILY_ACTIVITY_ICONS: Record<string, string> = {
+  feed: '🍼',
+  sleep: '😴',
+  potty: '🚽',
+  diaper: '🧷',
+  growth: '📏',
+  medication: '💊',
+  milestone: '🏆',
+  note: '📝',
+};
+
+const formatRelative = (ts: number): string => {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return format(new Date(ts), 'MMM d');
+};
+
+const FamilyActivityFeed = React.memo(({ events, isDark, onSeeAll }: {
+  events: FamilyActivityEvent[];
+  isDark: boolean;
+  onSeeAll: () => void;
+}) => {
+  if (!events.length) return null;
+  return (
+    <Animated.View entering={FadeInUp.delay(200).springify()}>
+      <SectionHeader
+        title="Recent Family Activity"
+        subtitle={`${events.length} event${events.length !== 1 ? 's' : ''}`}
+        icon="pulse-outline"
+        color={DS.info}
+        action={onSeeAll}
+        actionLabel="See All"
+      />
+      <View
+        style={[
+          styles.activityCard,
+          {
+            backgroundColor: isDark ? DS.darkCard : DS.white,
+            borderColor: isDark ? DS.darkBorder : DS.gray200,
+          },
+        ]}
+      >
+        {events.map((e, i) => (
+          <View
+            key={e.id}
+            style={[
+              styles.activityRow,
+              i > 0 && {
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: isDark ? DS.darkBorder : DS.gray200,
+              },
+            ]}
+          >
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100,
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>
+                {FAMILY_ACTIVITY_ICONS[e.type] || '📝'}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[styles.activityTitle, { color: isDark ? DS.white : DS.gray900 }]}
+                numberOfLines={1}
+              >
+                {e.title}
+              </Text>
+              <Text
+                style={[styles.activityMeta, { color: isDark ? DS.gray400 : DS.gray500 }]}
+                numberOfLines={1}
+              >
+                by {e.actorName} · {formatRelative(e.timestamp)}
+              </Text>
             </View>
           </View>
         ))}
@@ -788,7 +951,8 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
   const [activeTab, setActiveTab] = useState<'overview' | 'growth'>('overview');
   const [showBabySelector, setShowBabySelector] = useState(false);
 
-  const effectiveUser = useMemo(() => userProfile || profile, [userProfile, profile]);
+  // `userProfile` / `profile` are still consumed by consumers below.
+  // The old `effectiveUser` variable was unused — removed.
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => { 'worklet'; scrollY.value = event.contentOffset.y; },
@@ -926,6 +1090,32 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
     return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 4);
   }, [trackerEntries, members]);
 
+  // Family activity feed — the last 10 entries across the current
+  // baby, with actor names resolved from members. Restored from the
+  // old FamilySharing Activity tab.
+  const recentFamilyActivity = useMemo<FamilyActivityEvent[]>(() => {
+    if (!trackerEntries) return [];
+    return trackerEntries
+      .filter((e: any) => e?.timestamp && !e.isDeleted)
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 10)
+      .map((e: any, i: number) => {
+        const trackerId = e.trackerId || e.type || 'note';
+        const memberMatch =
+          members.find((m: any) => m.userId === e.loggedBy) ||
+          members.find((m: any) => m.id === e.loggedBy);
+        return {
+          id: e.id || `family-event-${i}`,
+          type: trackerId,
+          title:
+            e.title ||
+            `${trackerId.charAt(0).toUpperCase()}${trackerId.slice(1)} logged`,
+          timestamp: e.timestamp,
+          actorName: memberMatch?.fullName || e.loggedByName || 'Someone',
+        };
+      });
+  }, [trackerEntries, members]);
+
   const handleSuggestionAction = useCallback(() => {
     triggerHaptic('medium');
     if (suggestionOfTheDay.actionLabel === 'View Insights') handleNavigateInsights();
@@ -971,7 +1161,7 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
             <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
           </TouchableOpacity>
           <View style={{ alignItems: 'center' }}>
-            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>FAMILY</GradientText>
+            <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>OUR FAMILY</GradientText>
             <Text style={[styles.headerSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
               {members.length} member{members.length !== 1 ? 's' : ''}
             </Text>
@@ -1018,6 +1208,14 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
           <View style={{ paddingTop: DS.space.md }}>
             <FamilyStatsStrip members={members.length} babies={babies.length} activities={activities.length} milestones={milestones.length} isDark={isDark} />
 
+            {/* Family Health — engagement score ring. Restored from
+                the old FamilySharing Members tab. */}
+            {members.length > 0 && (
+              <View style={{ marginTop: DS.space.md }}>
+                <FamilyHealthCard members={members} isDark={isDark} />
+              </View>
+            )}
+
             <View style={{ marginTop: DS.space.lg }}>
               <TodayAtGlance stats={todayStats} isDark={isDark} onPress={handleTodayStatPress} />
             </View>
@@ -1033,6 +1231,19 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
             <View style={{ marginTop: DS.space.lg }}>
               <ActiveToday contributors={todayContributors} isDark={isDark} onSeeAll={handleNavigateTimeline} />
             </View>
+
+            {/* Family Activity Feed — restored from the old
+                FamilySharing Activity tab. Shows the last 5 events
+                across the whole family. Rendered exactly ONCE. */}
+            {recentFamilyActivity.length > 0 && (
+              <View style={{ marginTop: DS.space.lg }}>
+                <FamilyActivityFeed
+                  events={recentFamilyActivity}
+                  isDark={isDark}
+                  onSeeAll={handleNavigateTimeline}
+                />
+              </View>
+            )}
 
             {/* Family preview — this screen is the OVERVIEW.
                 A full FamilyTree here duplicated FamilySharing and made
@@ -1213,6 +1424,26 @@ const styles = StyleSheet.create({
   statsVal: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   statsLbl: { fontSize: 10, fontWeight: '600', marginTop: 2 },
   statsDiv: { width: 1, height: 26 },
+
+  /* Family health card */
+  healthCard: { marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg, padding: DS.space.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  healthRing: { width: 72, height: 72, borderRadius: 36, borderWidth: 5, alignItems: 'center', justifyContent: 'center' },
+  healthRingFill: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 5, borderTopColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: 'transparent' },
+  healthRingInner: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center' },
+  healthRingValue: { fontSize: 20, fontWeight: '800' },
+  healthRingMax: { fontSize: 9, fontWeight: '600' },
+  healthTitle: { fontSize: 15, fontWeight: '800' },
+  healthLabel: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  healthStatsRow: { flexDirection: 'row', gap: 16, marginTop: 8 },
+  healthStat: { alignItems: 'center' },
+  healthStatVal: { fontSize: 14, fontWeight: '800' },
+  healthStatLbl: { fontSize: 9, fontWeight: '600' },
+
+  /* Family activity feed */
+  activityCard: { marginHorizontal: DS.space.lg, borderRadius: DS.radius.lg, borderWidth: 1, overflow: 'hidden', ...DS.shadow.sm },
+  activityRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.md },
+  activityTitle: { fontSize: 13, fontWeight: '700' },
+  activityMeta: { fontSize: 11, fontWeight: '500', marginTop: 1 },
 
   /* Glance */
   glanceCard: { width: 96, padding: DS.space.md, borderRadius: DS.radius.lg, borderWidth: 1, alignItems: 'center', gap: 4, overflow: 'hidden' },
