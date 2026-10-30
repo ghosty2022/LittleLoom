@@ -365,14 +365,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // ─── Load family with user isolation ──────────────────────────
   const loadFamily = useCallback(async () => {
     if (!currentBaby?.id) {
-      setState({
-        isLoading: false,
-        members: [],
-        parent1: null,
-        parent2: null,
-        guardians: [],
-        pendingInvites: [],
-      });
+      // BabyContext may still be hydrating (cold start, account
+      // switch). Don't wipe — just mark as loading and let the
+      // baby-arrival effect retry.
+      setState(prev => ({ ...prev, isLoading: true }));
       return;
     }
 
@@ -811,7 +807,30 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const profileMirror: Record<string, unknown> = {
             updated_at: new Date().toISOString(),
           };
-          if (memberRow.role) profileMirror.role = memberRow.role;
+          // Do NOT mirror `role` into the global `profiles.role`
+          // unless this user has no other family memberships.
+          // `profiles.role` can hold only ONE value and would corrupt
+          // a Parent1-on-another-baby user if overwritten here.
+          if (memberRow.role) {
+            try {
+              const { data: otherMemberships } = await supabase
+                .from('family_members')
+                .select('role')
+                .eq('user_id', memberRow.user_id)
+                .is('deleted_at', null)
+                .neq('baby_id', currentBaby.id);
+              const hasOtherRoles =
+                Array.isArray(otherMemberships) &&
+                otherMemberships.some(
+                  (r: any) =>
+                    (r.role || '').toLowerCase() !==
+                    (memberRow.role || '').toLowerCase(),
+                );
+              if (!hasOtherRoles) profileMirror.role = memberRow.role;
+            } catch {
+              profileMirror.role = memberRow.role;
+            }
+          }
           if (updates.fullName !== undefined) profileMirror.full_name = updates.fullName;
           if (updates.avatar !== undefined) {
             profileMirror.avatar = updates.avatar;
@@ -1053,23 +1072,44 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return null;
       }
 
-      // ── 4. Mirror to profiles.role ───────────────────────────────
+      // ── 4. Mirror role to profiles ONLY if single-family ───────
+      // `profiles.role` is a SINGLE global column. A user can be
+      // Parent1 on Baby A and Guardian on Baby B. Writing the
+      // Baby-B role here corrupts their Baby-A permission checks
+      // on any screen that reads `profiles.role` directly. So we
+      // only mirror when this is their ONLY membership role.
       try {
-        const mirror: Record<string, unknown> = {
-          role: dbRole,
-          updated_at: nowIso,
-        };
-        // If they were demoted from parent1 and their bio is the
-        // literal default "Primary Parent", swap it to the new label
-        // so consumers that read community_bio as a relationship
-        // fallback still show a sensible value.
-        if (dbTarget?.role === 'parent1' && dbRole !== 'parent1') {
-          mirror.community_bio =
-            dbRole === 'parent2' ? 'Co-Parent'
-            : dbRole === 'guardian' ? 'Guardian'
-            : 'Viewer';
+        const { data: otherMemberships } = await supabase
+          .from('family_members')
+          .select('role')
+          .eq('user_id', targetUserId)
+          .is('deleted_at', null)
+          .neq('baby_id', currentBaby.id);
+
+        const hasOtherRoles =
+          Array.isArray(otherMemberships) &&
+          otherMemberships.some(
+            (r: any) => (r.role || '').toLowerCase() !== dbRole,
+          );
+
+        if (!hasOtherRoles) {
+          const mirror: Record<string, unknown> = {
+            role: dbRole,
+            updated_at: nowIso,
+          };
+          if (dbTarget?.role === 'parent1' && dbRole !== 'parent1') {
+            mirror.community_bio =
+              dbRole === 'parent2' ? 'Co-Parent'
+              : dbRole === 'guardian' ? 'Guardian'
+              : 'Viewer';
+          }
+          await supabase.from('profiles').update(mirror).eq('id', targetUserId);
+        } else if (__DEV__) {
+          console.log(
+            '[FamilyContext] Skipped profiles.role mirror — user has other family roles:',
+            otherMemberships?.map((r: any) => r.role),
+          );
         }
-        await supabase.from('profiles').update(mirror).eq('id', targetUserId);
       } catch {}
 
       // ── 5. Sync babies.parent1_id / parent2_id ───────────────────
@@ -1626,11 +1666,28 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch {}
       }
 
+      // `profiles.role` is a single global column — only write it
+      // when this is the user's ONLY family membership. Otherwise
+      // leave it untouched so we don't corrupt their Parent1 role
+      // on another baby.
       try {
-        await supabase
-          .from('profiles')
-          .update({ role: dbRole, updated_at: nowIso })
-          .eq('id', profile.id);
+        const { data: otherMemberships } = await supabase
+          .from('family_members')
+          .select('role')
+          .eq('user_id', profile.id)
+          .is('deleted_at', null)
+          .neq('baby_id', currentBaby.id);
+        const hasOtherRoles =
+          Array.isArray(otherMemberships) &&
+          otherMemberships.some(
+            (r: any) => (r.role || '').toLowerCase() !== dbRole,
+          );
+        if (!hasOtherRoles) {
+          await supabase
+            .from('profiles')
+            .update({ role: dbRole, updated_at: nowIso })
+            .eq('id', profile.id);
+        }
       } catch {}
 
       try {
@@ -1920,14 +1977,27 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch {}
       }
 
-      // Mirror to profiles.role so the invitee's AuthContext hydrates
-      // with the right role the moment they refresh.
+      // Mirror to profiles.role ONLY when this is the invitee's
+      // ONLY family. See the note in `addMemberDirectly`.
       if (resolvedUserId) {
         try {
-          await supabase
-            .from('profiles')
-            .update({ role: dbRole, updated_at: nowIso })
-            .eq('id', resolvedUserId);
+          const { data: otherMemberships } = await supabase
+            .from('family_members')
+            .select('role')
+            .eq('user_id', resolvedUserId)
+            .is('deleted_at', null)
+            .neq('baby_id', currentBaby.id);
+          const hasOtherRoles =
+            Array.isArray(otherMemberships) &&
+            otherMemberships.some(
+              (r: any) => (r.role || '').toLowerCase() !== dbRole,
+            );
+          if (!hasOtherRoles) {
+            await supabase
+              .from('profiles')
+              .update({ role: dbRole, updated_at: nowIso })
+              .eq('id', resolvedUserId);
+          }
         } catch {}
         try {
           const { broadcastProfileChange } = require('./AuthContext');

@@ -463,18 +463,29 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   /* ─── Load Family Code ──────────────────────────────────────── */
+  // A user can belong to MULTIPLE families (Parent1 on Baby A,
+  // Guardian on Baby B). The family code MUST be derived from the
+  // ACTIVE baby, not stored per-user in `app_settings` — otherwise
+  // switching babies leaves the chat pointing at the previous
+  // family's code and shows the wrong conversation list.
+  //
+  // Canonical derivation (matches signUpWithInviteCode):
+  //   family_code = "FAM-" + first 6 chars of baby.id (uppercased)
+  //
+  // We still READ `app_settings.family_code` when it matches the
+  // active baby, because the inviter's row is authoritative for
+  // legacy codes that don't follow the derivation. If the row's
+  // code does NOT belong to the active baby, we derive it fresh.
   const loadFamilyCode = useCallback(async () => {
     try {
       let userId = userProfileRef.current?.id;
       if (!userId) {
-        // Auth hasn't hydrated yet — read it from the live session.
         try {
           const { data: { session } } = await supabase.auth.getSession();
           userId = session?.user?.id ?? null;
         } catch {}
       }
       if (!userId) {
-        // Try AsyncStorage recovery (mirrors BabyContext behaviour).
         try {
           const keys = await AsyncStorage.getAllKeys();
           const authKey = keys.find(k => k.includes('auth-token') || k.includes('supabase.auth'));
@@ -489,47 +500,105 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       if (!userId) return;
 
+      const activeBabyId: string | null = babyContext?.id ?? null;
+
+      // ── 1. Try to read a per-baby scoped family code first ─────
+      // We use a dedicated app_settings key so a user with multiple
+      // babies can persist a distinct code per baby.
+      if (activeBabyId) {
+        try {
+          const { data: scopedRow } = await supabase
+            .from('app_settings')
+            .select('value')
+            .eq('key', `family_code_${activeBabyId}`)
+            .eq('user_id', userId)
+            .maybeSingle();
+          if (scopedRow?.value) {
+            const code = scopedRow.value;
+            const blockedKey = `@littleloom_blocked_${code}`;
+            const savedBlocked = await AsyncStorage.getItem(blockedKey);
+            const blockedUsers = savedBlocked ? JSON.parse(savedBlocked) : [];
+            if (isMountedRef.current) {
+              familyCodeRef.current = code;
+              setState(prev => ({ ...prev, familyCode: code, blockedUsers }));
+            }
+            return;
+          }
+        } catch {}
+      }
+
+      // ── 2. Fall back to the legacy per-user key, BUT only accept
+      //       it if it matches the active baby's derivation. ─────
+      let derivedFromBaby: string | null = null;
+      if (activeBabyId) {
+        derivedFromBaby = `FAM-${activeBabyId.slice(0, 6).toUpperCase()}`;
+      }
+
       const { data } = await supabase
         .from('app_settings')
-        .select('value, user_id')
+        .select('value')
         .eq('key', 'family_code')
         .eq('user_id', userId)
         .maybeSingle();
 
-      if (data?.value) {
-        const code = data.value;
-        const blockedKey = `@littleloom_blocked_${code}`;
+      let resolvedCode: string | null = null;
+
+      if (data?.value && (!activeBabyId || data.value === derivedFromBaby)) {
+        // Accept legacy code only if it matches the active baby
+        // (or we don't yet know the baby — accept it provisionally).
+        resolvedCode = data.value;
+      } else if (derivedFromBaby) {
+        // The stored code belongs to a DIFFERENT baby — derive
+        // fresh from the active baby and persist it.
+        resolvedCode = derivedFromBaby;
+      }
+
+      if (resolvedCode) {
+        const blockedKey = `@littleloom_blocked_${resolvedCode}`;
         const savedBlocked = await AsyncStorage.getItem(blockedKey);
         const blockedUsers = savedBlocked ? JSON.parse(savedBlocked) : [];
         if (isMountedRef.current) {
-          familyCodeRef.current = code;
-          setState(prev => ({ ...prev, familyCode: code, blockedUsers }));
+          familyCodeRef.current = resolvedCode;
+          setState(prev => ({ ...prev, familyCode: resolvedCode, blockedUsers }));
         }
-        return;
-      }
 
-      if (babyContext) {
-        const newCode = `FAM-${babyContext.id.slice(0, 6).toUpperCase()}`;
-        // Reuse the `userId` we resolved at the top — do NOT fall back
-        // to `userProfileRef.current?.id ?? null`, which writes an
-        // orphan `user_id = null` row that never hydrates.
-        if (userId) {
-          await supabase
-            .from('app_settings')
-            .upsert(
-              {
-                key: 'family_code',
-                value: newCode,
-                user_id: userId,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'key,user_id' },
+        // Persist both keys so subsequent loads are instant:
+        //   • per-baby scoped key (authoritative going forward)
+        //   • legacy per-user key (kept in sync for back-compat)
+        try {
+          const writes: Array<Promise<any>> = [];
+          if (activeBabyId) {
+            writes.push(
+              supabase
+                .from('app_settings')
+                .upsert(
+                  {
+                    key: `family_code_${activeBabyId}`,
+                    value: resolvedCode,
+                    user_id: userId,
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: 'key,user_id' },
+                )
+                .then(({ error }) => { if (error) throw error; }),
             );
-        }
-        if (isMountedRef.current) {
-          familyCodeRef.current = newCode;
-          setState(prev => ({ ...prev, familyCode: newCode }));
-        }
+          }
+          writes.push(
+            supabase
+              .from('app_settings')
+              .upsert(
+                {
+                  key: 'family_code',
+                  value: resolvedCode,
+                  user_id: userId,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'key,user_id' },
+              )
+              .then(({ error }) => { if (error) throw error; }),
+          );
+          await Promise.allSettled(writes);
+        } catch {}
       }
     } catch (error) {
       console.warn('[FamilyChat] Load family code error:', error);
@@ -570,6 +639,37 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       loadFamilyCode().catch(() => {});
     }
   }, [userProfile?.id, loadFamilyCode]);
+
+  // ── Re-derive family code whenever the active BABY changes ───────
+  // Multi-family support: a user can be Parent1 on Baby A and
+  // Guardian on Baby B. Switching babies must re-derive the family
+  // code AND re-run performInitialSync so the chat list reflects
+  // the new family.
+  useEffect(() => {
+    if (!babyContext?.id) return;
+    let cancelled = false;
+    (async () => {
+      // Wipe chat state so the new family's chats hydrate cleanly.
+      if (!cancelled && isMountedRef.current) {
+        isInitializedRef.current = false;
+        chatsRef.current = [];
+        messagesRef.current = {};
+        familyCodeRef.current = null;
+        setState(prev => ({
+          ...prev,
+          chats: [],
+          messages: {},
+          typingUsers: {},
+          familyCode: null,
+          currentChatId: null,
+          isSynced: false,
+          isLoading: true,
+        }));
+      }
+      await loadFamilyCode();
+    })();
+    return () => { cancelled = true; };
+  }, [babyContext?.id, loadFamilyCode]);
 
   /* ─── Initial Device ID + Notification Service ──────────────── */
   useEffect(() => {
@@ -966,13 +1066,42 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const hasChats = (chatsData ?? []).length > 0;
       if (!hasChats && me?.id) {
         try {
-          const { data: myBabySetting } = await supabase
-            .from('app_settings')
-            .select('value')
-            .eq('key', 'current_baby_id')
-            .eq('user_id', me.id)
-            .maybeSingle();
-          const myBabyId = myBabySetting?.value || babyContext?.id || null;
+          // ── Resolve the baby this family code belongs to ────────
+          // `app_settings.current_baby_id` is per-user and can point
+          // at a DIFFERENT baby than the one this family code was
+          // derived from (multi-family users). Prefer the scoped
+          // `family_code_<babyId>` row to find the correct baby.
+          let myBabyId: string | null = babyContext?.id ?? null;
+
+          // If the family code looks like "FAM-XXXXXX", we can find
+          // the baby by prefix match — the canonical derivation in
+          // `signUpWithInviteCode` uses the first 6 chars of baby.id.
+          const codeMatches = /^FAM-([A-Z0-9]{6})$/i.exec(familyCode);
+          if (codeMatches) {
+            const prefix = codeMatches[1].toLowerCase();
+            try {
+              const { data: candidates } = await supabase
+                .from('babies')
+                .select('id')
+                .ilike('id', `${prefix}%`)
+                .limit(5);
+              if (Array.isArray(candidates) && candidates.length === 1) {
+                myBabyId = candidates[0].id;
+              }
+            } catch {}
+          }
+
+          // Fall back to the per-user current_baby_id if we still
+          // don't know which baby this code belongs to.
+          if (!myBabyId) {
+            const { data: myBabySetting } = await supabase
+              .from('app_settings')
+              .select('value')
+              .eq('key', 'current_baby_id')
+              .eq('user_id', me.id)
+              .maybeSingle();
+            myBabyId = myBabySetting?.value || null;
+          }
 
           let seedFamilyMemberRows: any[] = [];
           if (myBabyId) {

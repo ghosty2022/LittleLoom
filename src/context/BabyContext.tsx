@@ -1803,10 +1803,29 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const { data: authUser } = await supabase.auth.getUser();
           const meta: any = authUser?.user?.user_metadata || {};
-          const declaredRelationship: string =
-            (meta.relationship && String(meta.relationship).trim()) ||
-            (meta.full_name ? '' : '') ||
-            '';
+          // The relationship declared at signup is only a fallback —
+          // `profiles.community_bio` may hold a per-baby relationship
+          // the user set during profile creation. Prefer that.
+          let declaredRelationship: string =
+            (meta.relationship && String(meta.relationship).trim()) || '';
+          try {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('community_bio')
+              .eq('id', userId)
+              .maybeSingle();
+            const bioRel = (prof?.community_bio || '').trim();
+            // Only use `community_bio` as a relationship when it looks
+            // like a relationship label (short, no sentence punctuation).
+            if (
+              bioRel &&
+              bioRel.length <= 40 &&
+              !/[.!?]/.test(bioRel) &&
+              /^(mother|father|mom|dad|parent|guardian|grandmother|grandfather|aunt|uncle|sibling|caregiver|nanny|other)$/i.test(bioRel)
+            ) {
+              declaredRelationship = bioRel;
+            }
+          } catch {}
           const seededPermissions = {
             canView: true, canAddEntry: true, canEditEntry: true,
             canEditOthersEntries: true, canDeleteEntry: true,

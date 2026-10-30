@@ -808,13 +808,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (__DEV__) console.warn('[Auth] Auto-seed username failed:', e);
       }
 
+      // ── ROLE IS PER-BABY, NOT GLOBAL ──────────────────────────────
+      // `profiles.role` and `user_metadata.role` are only "primary"
+      // hints. The authoritative role for any given baby lives in
+      // `family_members.role` and is resolved by BabyContext /
+      // FamilyContext per active baby. A user can be Parent1 on one
+      // baby and Guardian on another — so we never promote the
+      // global hint into a hard permission gate here.
+      const globalRoleHint =
+        (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1';
+
       const userProfile: UserProfile = {
         id: user.id,
         fullName: liveFullName,
         email: liveEmail,
         phoneNumber: livePhone,
         avatar: liveAvatar,
-        role: (userMeta.role as 'parent1' | 'parent2' | 'guardian') || 'parent1',
+        role: globalRoleHint,
         createdAt: user.created_at || new Date().toISOString(),
         preferences: { notifications: true, darkMode: false, language: 'en' },
         communityUsername: commUsername || baseName,
@@ -2363,16 +2373,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             familyCode = `FAM-${babyId.slice(0, 6).toUpperCase()}`;
           }
 
+          // Write BOTH the per-baby scoped key (authoritative for
+          // multi-family users) and the legacy per-user key (back-compat
+          // for existing screens that read `family_code`).
           try {
             await supabase
               .from('app_settings')
               .upsert(
-                {
-                  key: 'family_code',
-                  value: familyCode,
-                  user_id: user.id,
-                  updated_at: new Date().toISOString(),
-                },
+                [
+                  {
+                    key: `family_code_${babyId}`,
+                    value: familyCode,
+                    user_id: user.id,
+                    updated_at: new Date().toISOString(),
+                  },
+                  {
+                    key: 'family_code',
+                    value: familyCode,
+                    user_id: user.id,
+                    updated_at: new Date().toISOString(),
+                  },
+                ],
                 { onConflict: 'key,user_id' },
               );
           } catch {}

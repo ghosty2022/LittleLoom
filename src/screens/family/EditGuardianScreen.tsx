@@ -47,6 +47,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { RootStackParamList } from '../../types/navigation';
 import { UserRole, ROLE_LABELS, getMemberDisplayLabel, canonicalizeRelationship } from '../../types/roles';
 import { useFamily, FamilyMember } from '../../context/FamilyContext';
+import type { AddMemberResult } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
 import { useBaby } from '../../context/BabyContext';
 import { useTracker } from '../../hooks/useTrackerContext';
@@ -1407,28 +1408,52 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     setIsAddingMember(true);
     triggerHaptic('medium');
     try {
-      const fresh = await addMemberDirectly(
+      const result: AddMemberResult = await addMemberDirectly(
         identifier,
         addMemberRole,
         addMemberRelationship.trim(),
       );
-      if (fresh) {
+
+      if (result.ok) {
         triggerHaptic('success');
         setShowAddMemberModal(false);
         setAddMemberIdentifier('');
         setAddMemberRelationship('');
         setAddMemberRole(UserRole.GUARDIAN);
-        sweetAlert.success('Member Added', `${fresh.fullName} was added to the family.`);
-        // Navigate back so the family tree / member list reloads
-        // on focus and shows the newly-added person immediately.
-        // Without this, the user has to pull-to-refresh manually.
+
+        // Use the SAME Aura modal that MoreScreen uses, so the whole
+        // app feels consistent. `sweetAlert.success` renders the
+        // blurred capsule with a green checkmark icon.
+        sweetAlert.success(result.title, result.message);
+
+        // After the Aura modal animates in, navigate back so the
+        // family tree reloads on focus and shows the new member.
         setTimeout(() => {
           if (navigation.canGoBack()) navigation.goBack();
-        }, 800);
+        }, 900);
+      } else {
+        // Pick the icon + tint based on the structured code so the
+        // user sees the right visual for "already a member" vs
+        // "not on LittleLoom" vs "database rejected".
+        const icon: any =
+          result.code === 'already_member' || result.code === 'already_you'
+            ? 'people-circle-outline'
+            : result.code === 'not_found'
+            ? 'search-outline'
+            : result.code === 'insert_failed'
+            ? 'cloud-offline-outline'
+            : 'alert-circle-outline';
+
+        if (result.isWarning) {
+          sweetAlert.warning(result.title, result.message);
+        } else {
+          sweetAlert.error(result.title, result.message);
+        }
+        triggerHaptic(result.isWarning ? 'light' : 'error');
       }
     } catch (e) {
       if (__DEV__) console.warn('[handleAddMemberDirectly] error:', e);
-      sweetAlert.error('Error', 'Failed to add member');
+      sweetAlert.error('Something Went Wrong', 'Failed to add member. Please try again.');
     } finally {
       setIsAddingMember(false);
     }

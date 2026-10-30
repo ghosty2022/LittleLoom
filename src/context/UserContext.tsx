@@ -295,12 +295,28 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      // ── PERMISSIONS ARE PER-BABY, NOT GLOBAL ─────────────────────
+      // `profiles.role` is a *primary* role hint and can only hold
+      // ONE value. A user who is Parent1 on Baby A and Guardian on
+      // Baby B would lose Parent1 rights on Baby A if we trusted it
+      // here. The authoritative permission set for the *active* baby
+      // comes from `useBaby().hasPermissionForBaby(babyId, action)`
+      // and `useFamily().getEffectivePermissions()`.
+      //
+      // We still surface a best-effort global permission object for
+      // backwards-compat callers (`hasPermission('manageFamily')` on
+      // a screen not scoped to a baby), but we NEVER let the global
+      // hint downgrade `parent1` or `parent2`.
       const role = profile?.role;
       let permissions: Permission | null = null;
 
       if (role) {
-        const roleKey = typeof role === 'string' ? role : UserRole[role as keyof typeof UserRole];
-        permissions = ROLE_PERMISSIONS[role as UserRole] || ROLE_PERMISSIONS[UserRole.VIEWER];
+        const normalizedRole: UserRole =
+          role === 'parent1' || role === UserRole.PARENT_1 ? UserRole.PARENT_1
+          : role === 'parent2' || role === UserRole.PARENT_2 ? UserRole.PARENT_2
+          : role === 'guardian' || role === UserRole.GUARDIAN ? UserRole.GUARDIAN
+          : UserRole.VIEWER;
+        permissions = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS[UserRole.VIEWER];
       }
 
       setState({
