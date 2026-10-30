@@ -2763,7 +2763,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (profErr) {
           return { success: false, message: profErr.message };
         }
+        // ── Persist the plaintext temp password for the permitted window
+        //    (default: 24h) so the creator can recall / re-share it. ──
+        try {
+          const creatorId =
+  stateRef.current.userProfile?.id ??
+  (await (async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      return user?.id ?? null;
+    } catch { return null; }
+  })());
+          if (creatorId) {
+            // Delete any previous row for this pair so the UNIQUE
+            // constraint doesn't reject the new one.
+            await supabase
+              .from('temp_password_store')
+              .delete()
+              .eq('created_by', creatorId)
+              .eq('target_user_id', memberUserId);
 
+            await supabase.from('temp_password_store').insert({
+              created_by: creatorId,
+              target_user_id: memberUserId,
+              temp_password: temp,
+              created_at: new Date().toISOString(),
+              expires_at: expiresAt,
+            });
+          }
+        } catch (storeErr) {
+          if (__DEV__) {
+            console.warn('[Auth] temp_password_store write failed:', storeErr);
+          }
+        }
         // 3) Set the actual password server-side.
         //    We must use the service-role key via an Edge Function,
         //    because `updateUserById` requires admin scope and cannot

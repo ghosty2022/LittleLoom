@@ -1629,11 +1629,12 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           const me = userProfile?.id;
           if (me) {
             const { data } = await supabase
-              .from('temp_password_store')
-              .select('temp_password, created_at, expires_at')
-              .eq('created_by', me)
-              .eq('target_user_id', memberUserId)
-              .maybeSingle();
+  .from('temp_password_store')
+  .select('temp_password, created_at, expires_at')
+  .eq('target_user_id', memberUserId)
+  .order('created_at', { ascending: false })
+  .limit(1)
+  .maybeSingle();
             if (data && new Date(data.expires_at).getTime() > Date.now()) {
               setRecentTempPassword(data);
             }
