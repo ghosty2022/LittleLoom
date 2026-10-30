@@ -605,12 +605,15 @@ const ValueCell = ({ value, accent, isDark }: { value: FieldValue; accent: strin
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const EntryIntelligencePanel = ({ entry, tracker, allEntries, accent, isDark }: any) => {
+  const safeEntries = Array.isArray(allEntries) ? allEntries : [];
+  const safeTracker = tracker ?? null;
+
   const stats = useMemo(() => {
-    if (!entry || !allEntries?.length) return null;
-    const trackerEntries = allEntries.filter((e: any) => e.trackerId === entry.trackerId).sort((a: any, b: any) => a.timestamp - b.timestamp);
+    if (!entry || safeEntries.length === 0) return null;
+    const trackerEntries = safeEntries.filter((e: any) => e?.trackerId === entry.trackerId).sort((a: any, b: any) => a.timestamp - b.timestamp);
     const entryIndex = trackerEntries.findIndex((e: any) => e.id === entry.id);
     const prevEntry = entryIndex > 0 ? trackerEntries[entryIndex - 1] : null;
-    const sameDay = allEntries.filter((e: any) => e.id !== entry.id && isSameDay(new Date(e.timestamp), new Date(entry.timestamp)));
+    const sameDay = safeEntries.filter((e: any) => e && e.id !== entry.id && isSameDay(new Date(e.timestamp), new Date(entry.timestamp)));
     const valueTrend = trackerEntries.map((e: any) => {
       const val = e.data?.value ?? e.data?.amount ?? e.data?.duration ?? e.data?.temperature ?? 0;
       return safeNum(val, 0);
@@ -637,7 +640,7 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, accent, isDark }: 
       return `${d}d`;
     };
 
-    const dayEntries = allEntries.filter((e: any) => isSameDay(new Date(e.timestamp), new Date(entry.timestamp))).sort((a: any, b: any) => a.timestamp - b.timestamp);
+    const dayEntries = safeEntries.filter((e: any) => e && isSameDay(new Date(e.timestamp), new Date(entry.timestamp))).sort((a: any, b: any) => a.timestamp - b.timestamp);
     const dayIndex = dayEntries.findIndex((e: any) => e.id === entry.id) + 1;
 
     return {
@@ -653,7 +656,7 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, accent, isDark }: 
       thisWeek,
       valueTrend: valueTrend.slice(-7),
     };
-  }, [entry, allEntries]);
+  }, [entry, safeEntries]);
 
   if (!stats) return null;
 
@@ -668,7 +671,7 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, accent, isDark }: 
                 <Ionicons name="list-outline" size={18} color={DS.primary} />
               </View>
               <Text style={[styles.intelValue, { color: isDark ? DS.white : DS.gray900 }]}>{stats.entryNumber}</Text>
-              <Text style={[styles.intelLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>of {stats.totalInTracker} in {tracker?.name || 'tracker'}</Text>
+              <Text style={[styles.intelLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>of {stats.totalInTracker} in {safeTracker?.name || 'tracker'}</Text>
             </View>
             <View style={styles.intelTile}>
               <View style={[styles.intelIconBg, { backgroundColor: `${DS.warning}12` }]}>
@@ -703,7 +706,7 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, accent, isDark }: 
                 <Text style={[styles.trendLabel, { color: isDark ? DS.gray300 : DS.gray700 }]}>Value Trend</Text>
                 <Text style={[styles.trendSub, { color: isDark ? DS.gray500 : DS.gray400 }]}>Last {stats.valueTrend.length} entries</Text>
               </View>
-              <Sparkline data={stats.valueTrend} color={tracker?.gradient?.[0] || accent} />
+              <Sparkline data={stats.valueTrend} color={safeTracker?.gradient?.[0] || accent} />
             </View>
           )}
 
@@ -729,14 +732,37 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, accent, isDark }: 
    Similar Entries
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry, isDark, accent, members = [] }: any) => {
+const SimilarEntriesPanel = ({
+  entry,
+  allEntries,
+  getTracker,
+  onOpenEntry,
+  isDark,
+  accent,
+  members = [],
+}: any) => {
+  // `getTracker` is a required prop, but callers may pass it as
+  // `undefined` if `useTracker()` returned a degraded context
+  // (TrackerProvider not hydrated, or context shape changed).
+  // Fall back to a no-op so `.name` lookups can't crash.
+  const safeGetTracker =
+    typeof getTracker === 'function' ? getTracker : (_id: string) => undefined;
+
+  const safeEntries = Array.isArray(allEntries) ? allEntries : [];
+  const safeMembers = Array.isArray(members) ? members : [];
+
   const similar = useMemo(() => {
     if (!entry) return [];
-    return allEntries
-      .filter((e: any) => e.id !== entry.id && e.trackerId === entry.trackerId)
+    return safeEntries
+      .filter(
+        (e: any) =>
+          e &&
+          e.id !== entry.id &&
+          e.trackerId === entry.trackerId,
+      )
       .slice(0, 3)
       .sort((a: any, b: any) => b.timestamp - a.timestamp);
-  }, [entry, allEntries]);
+  }, [entry, safeEntries]);
 
   if (similar.length === 0) return null;
 
@@ -744,14 +770,14 @@ const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry, isDar
     <Animated.View entering={FadeInUp.delay(300).springify()}>
       <SectionHeader
         title="Recent Similar"
-        subtitle={`Other ${getTracker(entry?.trackerId)?.name || 'entries'}`}
+        subtitle={`Other ${safeGetTracker(entry?.trackerId)?.name || 'entries'}`}
         icon="copy-outline"
         color={accent}
         isDark={isDark}
       />
       <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
         {similar.map((e: any) => {
-          const t = getTracker(e.trackerId);
+          const t = safeGetTracker(e.trackerId);
           const c = t?.gradient?.[0] || t?.color || accent;
           return (
             <PressableScale key={e.id} onPress={() => onOpenEntry(e)} activeScale={0.98}>
@@ -768,8 +794,8 @@ const SimilarEntriesPanel = ({ entry, allEntries, getTracker, onOpenEntry, isDar
                       {safeFmt(e.timestamp, 'MMM d, h:mm a')}
                       {(() => {
                         const logger =
-                          (members.find((m: any) => m.userId === (e as any).loggedBy) ||
-                            members.find((m: any) => m.id === (e as any).loggedBy)) ||
+                          (safeMembers.find((m: any) => m.userId === (e as any).loggedBy) ||
+                            safeMembers.find((m: any) => m.id === (e as any).loggedBy)) ||
                           null;
                         const displayName = logger?.fullName || e.loggedByName;
                         const displayLabel = logger
@@ -817,11 +843,26 @@ export default function EntryDetailScreen() {
     shouldReduceMotion,
   } = useCustomization();
 
-  const {
-    getEntryById, getTracker, getEntries, getEntriesByDate,
-    addEntry, deleteEntry, canEditEntry, canDeleteEntry, canCreateEntry,
-    entries: allEntries,
-  } = useTracker();
+  const trackerCtx = useTracker();
+
+  // ── SAFETY NET ─────────────────────────────────────────────
+  // `useTracker()` may return a degraded context on very first
+  // render (TrackerProvider not yet hydrated), or a fallback that
+  // doesn't define `getTracker`. Destructuring directly would give
+  // `undefined` for every function we call during render — the
+  // exact root cause of `TypeError: Cannot read property 'name'
+  // of undefined` in SimilarEntriesPanel / EntryIntelligencePanel.
+  // We guard each accessor with a safe no-op.
+  const getEntryById = trackerCtx?.getEntryById ?? (() => undefined);
+  const getTracker = trackerCtx?.getTracker ?? (() => undefined);
+  const getEntries = trackerCtx?.getEntries ?? (() => []);
+  const getEntriesByDate = trackerCtx?.getEntriesByDate ?? (() => []);
+  const addEntry = trackerCtx?.addEntry ?? (async () => null);
+  const deleteEntry = trackerCtx?.deleteEntry ?? (async () => false);
+  const canEditEntry = trackerCtx?.canEditEntry ?? (() => false);
+  const canDeleteEntry = trackerCtx?.canDeleteEntry ?? (() => false);
+  const canCreateEntry = trackerCtx?.canCreateEntry ?? (() => false);
+  const allEntries = Array.isArray(trackerCtx?.entries) ? trackerCtx.entries : [];
   const { babies, currentBaby } = useBaby();
   // Pull family members so we can resolve the CURRENT name + role for
   // the logger — same source of truth as HomeScreen's RecentTimeline.
@@ -931,14 +972,21 @@ export default function EntryDetailScreen() {
 
   const sameDayEntries = useMemo(() => {
     if (!entry) return [] as any[];
-    return getEntriesByDate(new Date(entry.timestamp))
-      .filter((e: any) => e.id !== entry.id)
+    if (typeof getEntriesByDate !== 'function') return [] as any[];
+    const list = getEntriesByDate(new Date(entry.timestamp));
+    if (!Array.isArray(list)) return [] as any[];
+    return list
+      .filter((e: any) => e && e.id !== entry.id)
       .slice(0, 8);
   }, [entry, getEntriesByDate]);
 
   const trackerHistory = useMemo(() => {
     if (!entry) return { prev: null as any, next: null as any, index: -1, total: 0 };
-    const list = getEntries(entry.trackerId).slice().sort((a: any, b: any) => a.timestamp - b.timestamp);
+    if (typeof getEntries !== 'function') {
+      return { prev: null as any, next: null as any, index: -1, total: 0 };
+    }
+    const raw = getEntries(entry.trackerId);
+    const list = Array.isArray(raw) ? raw.slice().sort((a: any, b: any) => a.timestamp - b.timestamp) : [];
     const index = list.findIndex((e: any) => e.id === entry.id);
     return {
       prev: index > 0 ? list[index - 1] : null,
@@ -1043,7 +1091,7 @@ export default function EntryDetailScreen() {
     if (entry.notes) lines.push('', `Notes: ${entry.notes}`);
     if (tags.length > 0) lines.push(`Tags: ${tags.map((t: string) => `#${t}`).join(' ')}`);
     if (photos.length > 0) lines.push(`📷 ${photos.length} photo${photos.length > 1 ? 's' : ''} attached`);
-    lines.push('', `Logged by ${loggedByDisplay.name}${loggedByDisplay.label ? ` (${loggedByDisplay.label})` : ''} • LittleLoom`);
+    lines.push('', `Logged by ${loggedByDisplay?.name || 'You'}${loggedByDisplay?.label ? ` (${loggedByDisplay.label})` : ''} • LittleLoom`);
     return lines.join('\n');
   }, [entry, entryDate, detailRows, tracker, tags, photos, loggedByDisplay]);
 
@@ -1160,6 +1208,10 @@ export default function EntryDetailScreen() {
 
   const handleDuplicate = useCallback(async () => {
     if (!entry) return;
+    if (typeof addEntry !== 'function') {
+      if (__DEV__) console.warn('[EntryDetail] addEntry unavailable — cannot duplicate');
+      return;
+    }
     triggerHaptic('medium');
     const copy = await addEntry(entry.trackerId, { ...(entry.data as Record<string, unknown>) }, {
       title: entry.title,
@@ -1175,6 +1227,10 @@ export default function EntryDetailScreen() {
 
   const handleDelete = useCallback(() => {
     if (!entry) return;
+    if (typeof deleteEntry !== 'function') {
+      if (__DEV__) console.warn('[EntryDetail] deleteEntry unavailable');
+      return;
+    }
     triggerHaptic('warning');
     confirm(
       'Delete Entry',
@@ -1200,10 +1256,10 @@ export default function EntryDetailScreen() {
 
   const computedStats = useMemo(() => {
     if (!entry) return { entryNumber: 0, totalInTracker: 0, sameDayCount: 0, sincePrev: null, avgGap: null };
-    const trackerEntries = allEntries.filter((e: any) => e.trackerId === entry.trackerId).sort((a: any, b: any) => a.timestamp - b.timestamp);
+    const trackerEntries = safeEntries.filter((e: any) => e?.trackerId === entry.trackerId).sort((a: any, b: any) => a.timestamp - b.timestamp);
     const entryIndex = trackerEntries.findIndex((e: any) => e.id === entry.id);
     const prevEntry = entryIndex > 0 ? trackerEntries[entryIndex - 1] : null;
-    const sameDay = allEntries.filter((e: any) => e.id !== entry.id && isSameDay(new Date(e.timestamp), new Date(entry.timestamp)));
+    const sameDay = safeEntries.filter((e: any) => e && e.id !== entry.id && isSameDay(new Date(e.timestamp), new Date(entry.timestamp)));
     const gapMs = prevEntry ? entry.timestamp - prevEntry.timestamp : null;
     const avgGapMs = trackerEntries.length >= 2
       ? trackerEntries.reduce((sum: number, e: any, i: number) => {
@@ -1227,7 +1283,7 @@ export default function EntryDetailScreen() {
       sincePrev: gapMs ? fmtGap(gapMs) : null,
       avgGap: avgGapMs ? fmtGap(avgGapMs) : null,
     };
-  }, [entry, allEntries]);
+  }, [entry, safeEntries]);
 
   const topRibbon = useMemo(() => {
     if (!entry) {
@@ -1540,8 +1596,8 @@ export default function EntryDetailScreen() {
                       {/* Show "Name (Relationship)" — same idiom as
                           HomeScreen's RecentTimeline. If there's no
                           relationship, fall back to just the name. */}
-                      {loggedByDisplay.name}
-                      {!!loggedByDisplay.label &&
+                      {loggedByDisplay?.name || 'You'}
+                      {!!loggedByDisplay?.label &&
                         loggedByDisplay.label !== 'Family Member' &&
                         loggedByDisplay.label !== loggedByDisplay.name && (
                           <Text style={{ color: isDark ? DS.gray400 : DS.gray500, fontWeight: '600' }}>
