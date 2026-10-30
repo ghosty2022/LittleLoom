@@ -769,6 +769,12 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const [generatedTempPassword, setGeneratedTempPassword] = useState<string | null>(null);
   const [resetExpiresAt, setResetExpiresAt] = useState<string | null>(null);
   const [hasCopiedTemp, setHasCopiedTemp] = useState(false);
+  const [recentTempPassword, setRecentTempPassword] = useState<{
+    temp_password: string;
+    created_at: string;
+    expires_at: string;
+  } | null>(null);
+  const [isRevokingTemp, setIsRevokingTemp] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [memberActivities, setMemberActivities] = useState<any[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
@@ -1163,6 +1169,102 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     return () => { if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current); };
   }, [member, refreshMemberData]));
 
+  /* ─── LOAD ACTIVE TEMP PASSWORD ─── */
+  const loadRecentTempPassword = useCallback(async () => {
+    if (!member) return;
+    const memberUserId = (member as any).userId || member.id;
+    const me = userProfile?.id;
+    if (!memberUserId || !me || memberUserId === me) {
+      setRecentTempPassword(null);
+      return;
+    }
+    try {
+      const { data } = await supabase
+        .from('temp_password_store')
+        .select('temp_password, created_at, expires_at')
+        .eq('created_by', me)
+        .eq('target_user_id', memberUserId)
+        .maybeSingle();
+      if (data && new Date(data.expires_at).getTime() > Date.now()) {
+        setRecentTempPassword(data);
+      } else {
+        setRecentTempPassword(null);
+      }
+    } catch {
+      setRecentTempPassword(null);
+    }
+  }, [member, userProfile?.id]);
+
+  useEffect(() => {
+    if (!member || activeTab !== 'settings') return;
+    loadRecentTempPassword();
+  }, [activeTab, member?.id, userProfile?.id, loadRecentTempPassword]);
+
+  /* ─── REVOKE ACTIVE TEMP PASSWORD ─── */
+  const handleRevokeTempPassword = useCallback(async () => {
+    if (!member || isRevokingTemp) return;
+    const memberUserId = (member as any).userId || member.id;
+    const me = userProfile?.id;
+    if (!memberUserId || !me) return;
+
+    setIsRevokingTemp(true);
+    triggerHaptic('medium');
+
+    try {
+      // Clear the flag on the target profile so they can log in
+      // normally again (they still need to set a real password if
+      // they were mid-flow, but the forced-change prompt disappears).
+      await supabase
+        .from('profiles')
+        .update({
+          must_change_password: false,
+          temp_password_set_at: null,
+          temp_password_set_by: null,
+          temp_password_expires_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', memberUserId);
+
+      // Delete the plaintext row so it can no longer be revealed.
+      await supabase
+        .from('temp_password_store')
+        .delete()
+        .eq('created_by', me)
+        .eq('target_user_id', memberUserId);
+
+      // Best-effort session kill via edge function (uses admin API).
+      try {
+        await supabase.functions.invoke('admin-set-temp-password', {
+          body: { userId: memberUserId, revokeOnly: true },
+        });
+      } catch {}
+
+      setRecentTempPassword(null);
+      setGeneratedTempPassword(null);
+      setShowResetPasswordModal(false);
+      triggerHaptic('success');
+      sweetAlert.success(
+        'Temp Password Revoked',
+        `${member.fullName} can no longer use the temporary password. If they set a new password already, they'll need to sign in with that.`,
+      );
+    } catch (e: any) {
+      triggerHaptic('error');
+      sweetAlert.error('Revoke Failed', e?.message || 'Please try again.');
+    } finally {
+      setIsRevokingTemp(false);
+    }
+  }, [member, userProfile?.id, isRevokingTemp, triggerHaptic, sweetAlert]);
+
+  /* ─── REGENERATE (opens modal in confirm step) ─── */
+  const handleRegenerateTempPassword = useCallback(() => {
+    triggerHaptic('light');
+    setGeneratedTempPassword(null);
+    setResetExpiresAt(null);
+    setHasCopiedTemp(false);
+    setResetStep('confirm');
+    setShowResetPasswordModal(true);
+  }, [triggerHaptic]);
+
   const verifyPassword = useCallback(async (_password: string): Promise<boolean> => { return true; }, []);
 
   /* ─── HANDLE SAVE ─── */
@@ -1519,6 +1621,23 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         try {
           const { broadcastProfileChange } = require('../../context/AuthContext');
           await broadcastProfileChange({ userId: memberUserId, fields: ['role'] });
+        } catch {}
+
+        // Reload the persisted row so the "Active Temp Password" card
+        // on the Settings tab shows immediately (no need to switch tabs).
+        try {
+          const me = userProfile?.id;
+          if (me) {
+            const { data } = await supabase
+              .from('temp_password_store')
+              .select('temp_password, created_at, expires_at')
+              .eq('created_by', me)
+              .eq('target_user_id', memberUserId)
+              .maybeSingle();
+            if (data && new Date(data.expires_at).getTime() > Date.now()) {
+              setRecentTempPassword(data);
+            }
+          }
         } catch {}
 
         // Best-effort: persist the plaintext temp password for
@@ -2176,7 +2295,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                   </PressableScale>
                 )}
 
-                {/* ── RESET PASSWORD — dedicated section ── */}
+                {/* ── SECURITY — Reset / Recent / Revoke / Regenerate ── */}
                 {canManagePermissions && member && (member as any).userId && !isCurrentUser && (
                   <>
                     <SectionHeader
@@ -2185,6 +2304,8 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                       icon="key-outline"
                       color={DS.warning}
                     />
+
+                    {/* Primary action card */}
                     <PressableScale onPress={openResetPasswordModal} activeScale={0.97}>
                       <LinearGradient
                         colors={[`${DS.warning}18`, `${DS.warning}06`]}
@@ -2206,6 +2327,98 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                         <Ionicons name="chevron-forward" size={18} color={DS.warning} />
                       </LinearGradient>
                     </PressableScale>
+
+                    {/* Active temp password card */}
+                    {recentTempPassword && (
+                      <View style={[styles.activeTempCard, {
+                        backgroundColor: isDark ? 'rgba(245,158,11,0.08)' : 'rgba(245,158,11,0.06)',
+                        borderColor: isDark ? 'rgba(245,158,11,0.30)' : 'rgba(245,158,11,0.25)',
+                      }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                          <View style={[styles.activeTempPill, { backgroundColor: `${DS.warning}22` }]}>
+                            <View style={[styles.activeTempDot, { backgroundColor: DS.warning }]} />
+                            <Text style={[styles.activeTempPillText, { color: DS.warning }]}>ACTIVE</Text>
+                          </View>
+                          <Ionicons name="time-outline" size={12} color={isDark ? DS.gray500 : DS.gray400} />
+                          <Text style={{ fontSize: 10, color: isDark ? DS.gray500 : DS.gray400, fontWeight: '600' }}>
+                            Expires {new Date(recentTempPassword.expires_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                        </View>
+
+                        <Text style={[styles.activeTempLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                          TEMPORARY PASSWORD
+                        </Text>
+                        <View style={styles.activeTempRow}>
+                          <Text
+                            selectable
+                            style={[styles.activeTempValue, { color: isDark ? DS.white : DS.gray900 }]}
+                          >
+                            {recentTempPassword.temp_password}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={async () => {
+                              try {
+                                await Clipboard.setStringAsync(recentTempPassword.temp_password);
+                                triggerHaptic('success');
+                                sweetAlert.toast('Copied', 'Temp password copied');
+                              } catch {}
+                            }}
+                            style={[styles.activeTempIconBtn, { backgroundColor: `${DS.warning}22` }]}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="copy-outline" size={16} color={DS.warning} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={async () => {
+                              if (!member) return;
+                              try {
+                                await Share.share({
+                                  message: `Temporary LittleLoom password for ${member.fullName}:\n\n${recentTempPassword.temp_password}\n\nExpires ${new Date(recentTempPassword.expires_at).toLocaleString()}.`,
+                                });
+                              } catch {}
+                            }}
+                            style={[styles.activeTempIconBtn, { backgroundColor: `${DS.primary}20` }]}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="share-social-outline" size={16} color={DS.primary} />
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Regenerate + Revoke actions */}
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                          <TouchableOpacity
+                            onPress={handleRegenerateTempPassword}
+                            style={[styles.activeTempActionBtn, {
+                              backgroundColor: `${DS.info}18`,
+                              borderColor: `${DS.info}40`,
+                            }]}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="refresh" size={14} color={DS.info} />
+                            <Text style={[styles.activeTempActionText, { color: DS.info }]}>Regenerate</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={handleRevokeTempPassword}
+                            disabled={isRevokingTemp}
+                            style={[styles.activeTempActionBtn, {
+                              backgroundColor: `${DS.danger}15`,
+                              borderColor: `${DS.danger}40`,
+                              opacity: isRevokingTemp ? 0.6 : 1,
+                            }]}
+                            activeOpacity={0.85}
+                          >
+                            {isRevokingTemp ? (
+                              <ActivityIndicator size="small" color={DS.danger} />
+                            ) : (
+                              <Ionicons name="close-circle" size={14} color={DS.danger} />
+                            )}
+                            <Text style={[styles.activeTempActionText, { color: DS.danger }]}>
+                              {isRevokingTemp ? 'Revoking…' : 'Revoke'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
                   </>
                 )}
                 {canRemove && (
@@ -2810,7 +3023,6 @@ const styles = StyleSheet.create({
     padding: DS.space.md,
     borderRadius: DS.radius.lg,
     borderWidth: 1,
-    ...DS.shadow.sm,
   },
   resetPasswordIconWrap: {
     width: 44,
@@ -2827,7 +3039,6 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     borderRadius: 28,
     padding: 22,
-    ...DS.shadow.lg,
     overflow: 'hidden',
   },
   resetPasswordIconBig: {
@@ -2910,6 +3121,67 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  /* Active temp password card */
+  activeTempCard: {
+    borderRadius: DS.radius.lg,
+    borderWidth: 1,
+    padding: DS.space.md,
+    marginTop: 10,
+  },
+  activeTempPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  activeTempDot: { width: 6, height: 6, borderRadius: 3 },
+  activeTempPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  activeTempLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  activeTempRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  activeTempValue: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 1,
+    fontVariant: ['tabular-nums'],
+  },
+  activeTempIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeTempActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  activeTempActionText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   modalCard: { width: '100%', maxWidth: 400, borderRadius: DS.radius['2xl'], padding: DS.space.lg, ...DS.shadow.lg, overflow: 'hidden' },
