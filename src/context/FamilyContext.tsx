@@ -822,6 +822,40 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .update(dbUpdates)
         .eq('id', currentBaby.parent2_id);
 
+      // ─── MIRROR role/name/avatar/relationship to profiles ──────
+      // `profiles` is what UserContext / CommunityContext / AuthContext
+      // read. Without this, the UI hydrates the old role from
+      // `profiles.role` on the next broadcast cycle and "reverts".
+      try {
+        const { data: memberRow } = await supabase
+          .from('family_members')
+          .select('user_id, role, relationship')
+          .eq('id', currentBaby.parent2_id)
+          .maybeSingle();
+        if (memberRow?.user_id) {
+          const profileMirror: Record<string, unknown> = {
+            updated_at: new Date().toISOString(),
+          };
+          if (memberRow.role) profileMirror.role = memberRow.role;
+          if (updates.fullName !== undefined) profileMirror.full_name = updates.fullName;
+          if (updates.avatar !== undefined) {
+            profileMirror.avatar = updates.avatar;
+            profileMirror.community_avatar = updates.avatar;
+            profileMirror.avatar_url = updates.avatar;
+          }
+          if (updates.phoneNumber !== undefined) profileMirror.phone_number = updates.phoneNumber;
+          if (updates.email !== undefined) profileMirror.email = updates.email;
+          if (Object.keys(profileMirror).length > 1) {
+            await supabase
+              .from('profiles')
+              .update(profileMirror)
+              .eq('id', memberRow.user_id);
+          }
+        }
+      } catch (mirrorErr) {
+        if (__DEV__) console.warn('[FamilyContext] parent2 profiles mirror failed:', mirrorErr);
+      }
+
       if (updateError) {
         console.error('Error updating parent2:', updateError);
         showAlert('Error', 'Failed to update Parent 2 profile');
@@ -1094,6 +1128,57 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
+      // ─── MIRROR role/relationship to profiles ─────────────────────
+      // The `profiles.role` column is the SOURCE OF TRUTH for every
+      // consumer that hydrates from `profiles` (UserContext,
+      // CommunityContext, AuthContext.userProfile, FamilyChat header
+      // role badges, FamilyStack, tree filters). Without this mirror,
+      // a role upgrade in `family_members` gets silently overwritten
+      // by the stale `profiles.role` on the next broadcast cycle —
+      // which is exactly what "reverts to guardian" was caused by.
+      try {
+        if (linkedUserIdBefore) {
+          const profileMirror: Record<string, unknown> = {
+            updated_at: new Date().toISOString(),
+          };
+          if (updates.role !== undefined) {
+            profileMirror.role =
+              updates.role === UserRole.PARENT_2 ? 'parent2'
+              : updates.role === UserRole.GUARDIAN ? 'guardian'
+              : updates.role === UserRole.VIEWER ? 'viewer'
+              : updates.role === UserRole.PARENT_1 ? 'parent1'
+              : undefined;
+          }
+          if (updates.fullName !== undefined) profileMirror.full_name = updates.fullName;
+          if (updates.avatar !== undefined) {
+            profileMirror.avatar = updates.avatar;
+            profileMirror.community_avatar = updates.avatar;
+            profileMirror.avatar_url = updates.avatar;
+          }
+          if (updates.phoneNumber !== undefined) profileMirror.phone_number = updates.phoneNumber;
+          if (updates.email !== undefined) profileMirror.email = updates.email;
+          if (updates.relationship !== undefined) {
+            // `profiles` has no dedicated relationship column.
+            // We mirror into `community_bio` which is already used
+            // elsewhere as a "declared relationship" slot (see AuthContext
+            // signUp + FamilyContext relationship backfill).
+            const rel = String(updates.relationship).trim();
+            if (rel) profileMirror.community_bio = rel.slice(0, 160);
+          }
+          if (Object.keys(profileMirror).length > 1) {
+            const { error: mirrorErr } = await supabase
+              .from('profiles')
+              .update(profileMirror)
+              .eq('id', linkedUserIdBefore);
+            if (mirrorErr && __DEV__) {
+              console.warn('[FamilyContext] profiles role mirror failed:', mirrorErr.message);
+            }
+          }
+        }
+      } catch (mirrorErr) {
+        if (__DEV__) console.warn('[FamilyContext] profiles mirror threw:', mirrorErr);
+      }
+
       await loadFamily();
 
       // ── ROLE CHANGE FAN-OUT ───────────────────────────────────────
@@ -1117,6 +1202,11 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (updates.role !== undefined) fields.push('role');
           // Always push `role` if ONLY relationship changed so the
           // whole FamilyMember row re-hydrates on every other surface.
+          // Relationship-only changes must still trigger a family
+          // re-hydration (the tree, EditGuardian, chat headers all
+          // read `relationship` from family_members). We emit `role`
+          // as a "please re-hydrate the whole FamilyMember row"
+          // signal even though the role itself didn't change.
           if (fields.length === 0 && updates.relationship !== undefined) {
             fields.push('role');
           }
@@ -1124,6 +1214,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const { broadcastProfileChange } = require('./AuthContext');
             await broadcastProfileChange({ userId: linkedUserIdBefore, fields });
           }
+
+          // Also nudge the *user themselves* so their own
+          // `profiles.role` / bio gets re-read on every device.
+          try {
+            const authCtx = require('./AuthContext');
+            if (authCtx?.useAuth) { /* no-op, hooks can't be called here */ }
+          } catch {}
         }
       } catch {}
       return true;

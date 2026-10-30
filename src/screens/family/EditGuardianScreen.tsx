@@ -1070,6 +1070,14 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     if (formData.avatar !== originalData.avatar) { updates.avatar = formData.avatar; if (linkedProfileId) { profileUpdates.avatar = formData.avatar; profileUpdates.avatar_url = formData.avatar; profileUpdates.community_avatar = formData.avatar; } }
     if (formData.notificationsEnabled !== originalData.notificationsEnabled) { updates.notificationsEnabled = formData.notificationsEnabled; if (linkedProfileId) profileUpdates.notifications_enabled = formData.notificationsEnabled; }
 
+    // ── ROLE UPGRADE GUARD ────────────────────────────────────────
+    // The role picker (`handleRoleChange`) writes `family_members.role`
+    // AND `profiles.role`. If this save path also writes `updates.role`
+    // we'd be fighting the picker. So do NOT touch role here — the
+    // only way to change role is via the "Manage Role & Permissions"
+    // button, which calls `updateGuardianProfile(member.id, { role })`
+    // directly.
+
     if (Object.keys(updates).length === 0) { sweetAlert.toast('No Changes', 'No changes were made'); setIsEditing(false); setIsSaving(false); saveConfirmOpenRef.current = false; return; }
 
     try {
@@ -1095,12 +1103,17 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           const { broadcastProfileChange } = require('../../context/AuthContext');
           const linkedUserId = (member as any).userId || member.id;
           if (linkedUserId) {
-          const fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'phone' | 'email' | 'role'> = [];
-          if (updates.fullName !== undefined) fields.push('fullName');
-          if (updates.avatar !== undefined) fields.push('avatar');
-          if (updates.phoneNumber !== undefined) fields.push('phone');
-          if (updates.email !== undefined) fields.push('email');
-          if (updates.role !== undefined) fields.push('role');
+            const fields: Array<'fullName' | 'avatar' | 'bio' | 'handle' | 'displayName' | 'phone' | 'email' | 'role'> = [];
+            if (updates.fullName !== undefined) fields.push('fullName');
+            if (updates.avatar !== undefined) fields.push('avatar');
+            if (updates.phoneNumber !== undefined) fields.push('phone');
+            if (updates.email !== undefined) fields.push('email');
+            // A relationship change must also re-hydrate every
+            // FamilyMember consumer — they read `relationship` from
+            // family_members and show it in chats / tree / headers.
+            if (updates.relationship !== undefined && fields.length === 0) {
+              fields.push('role');
+            }
             if (fields.length > 0) {
               await broadcastProfileChange({ userId: linkedUserId, fields });
             }
@@ -1215,8 +1228,36 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     sweetAlert.confirm('Change Role', `Change ${member.fullName} to ${roleConfigLocal.label}?`, async () => {
       setIsSaving(true);
       try {
+        // ── ROLE CHANGE — optimistic + verify ────────────────────
+        // Persist the new role, then RE-READ it from the DB. If
+        // the round-trip shows the old role (RLS dropped the
+        // write, or `profiles.role` mirror overwrote it), surface
+        // the failure instead of silently reverting in the UI.
         const success = await updateGuardianProfile(member.id, { role: newRole });
         if (success) {
+          // Verify the write actually landed.
+          let persistedRole: UserRole | null = null;
+          try {
+            const { data: verifyRow } = await supabase
+              .from('family_members')
+              .select('role')
+              .eq('id', member.id)
+              .maybeSingle();
+            const r = String(verifyRow?.role || '').toLowerCase();
+            persistedRole =
+              r === 'parent1' ? UserRole.PARENT_1
+              : r === 'parent2' ? UserRole.PARENT_2
+              : r === 'guardian' ? UserRole.GUARDIAN
+              : r === 'viewer' ? UserRole.VIEWER
+              : null;
+          } catch {}
+          if (persistedRole && persistedRole !== newRole) {
+            if (__DEV__) console.warn('[EditGuardian] Role write was rejected/overwritten by DB. Persisted:', persistedRole, 'Wanted:', newRole);
+            sweetAlert.error(
+              'Role Not Applied',
+              `The database kept "${ROLE_CONFIG[persistedRole].label}". Check that your account still has Parent 1 permission and try again.`,
+            );
+          }
           setMember(prev => prev ? { ...prev, role: newRole } : null);
           // updateGuardianProfile already broadcasts, but we ALSO re-broadcast
           // here to guarantee every subscribed surface (including this
@@ -1281,7 +1322,28 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   /* ─── RIBBON ─── */
   const topRibbon = useMemo(() => {
     if (!member || !roleConfig) return { icon: 'information-circle-outline' as const, color: DS.info, label: 'No data', text: 'Loading member...' };
-    if (memberActivities.length === 0) return { icon: 'sparkles-outline' as const, color: DS.primary, label: 'New member', text: `Invite ${member.fullName.split(' ')[0]} to start logging entries`, onPress: () => handleTabChange('permissions') };
+    // Only show "Invite to start logging" if they haven't finished
+    // accepting AND the family is genuinely empty. Once anyone is
+    // invited/accepted, this becomes a "No activity yet" nudge.
+    const isPendingMember = !member.lastActive || member.status === 'pending';
+    if (memberActivities.length === 0) {
+      if (isPendingMember) {
+        return {
+          icon: 'mail-outline' as const,
+          color: DS.warning,
+          label: 'Pending invite',
+          text: `Waiting for ${member.fullName.split(' ')[0]} to accept the invitation`,
+          onPress: () => handleTabChange('permissions'),
+        };
+      }
+      return {
+        icon: 'sparkles-outline' as const,
+        color: DS.primary,
+        label: 'New member',
+        text: `${member.fullName.split(' ')[0]} hasn't logged any entries yet — nudge them to start`,
+        onPress: () => handleTabChange('activity'),
+      };
+    }
     const daysSince = member?.lastActive ? Math.floor((Date.now() - new Date(member.lastActive).getTime()) / (24 * 60 * 60 * 1000)) : 0;
     if (daysSince > 7) return { icon: 'alarm-outline' as const, color: DS.warning, label: 'Inactive', text: `Last active ${daysSince} days ago`, onPress: () => handleTabChange('activity') };
     if (canManagePermissions) return { icon: 'shield-checkmark-outline' as const, color: roleConfig.color, label: 'Access', text: `${roleConfig.permissions.length} permissions granted · Tap to manage`, onPress: () => handleTabChange('permissions') };

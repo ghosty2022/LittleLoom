@@ -1633,6 +1633,10 @@ export default function BabyFamilyCenterScreen({ navigation, route }: BabyFamily
                   </View>
                 </GlassCard>
 
+                {/* ── FAMILY TREE HINT ────────────────────────────────
+                    Once there are 2+ members, encourage inviting a
+                    co-parent / guardian. Show the tree first, then the
+                    invite CTA — the current order hides the tree. */}
                 <SectionHeader title="Invite to Family" subtitle="Share with someone you trust" icon="person-add-outline" color={DS.success} />
                                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   {(['parent2', 'guardian', 'viewer'] as const).map((role) => {

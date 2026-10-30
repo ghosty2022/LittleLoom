@@ -344,10 +344,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Debounce: multiple fields in one save fire once, but a burst
       // of updates (avatar then name) shouldn't trigger N reloads.
       if (loadUserDebounce.current) clearTimeout(loadUserDebounce.current);
+      // Longer debounce for role changes because the profiles.role
+      // mirror write races with the family_members.role write. 400 ms
+      // is enough for the mirror to land on slow networks.
+      const isRoleChange = Array.isArray(payload.fields) && payload.fields.includes('role');
       loadUserDebounce.current = setTimeout(() => {
         loadUserDebounce.current = null;
         loadUser().catch(() => {});
-      }, 120);
+      }, isRoleChange ? 400 : 120);
     });
 
     return unsub;
