@@ -498,38 +498,65 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
   }, [navigation, route]);
 
   const handleSwitchBaby = useCallback(async (babyId: string) => {
-    if (babyId === currentBabyId) { safeGoBack(); return; }
+    // Read the ACTIVE id from the context object at call time, not
+    // from the closure. `currentBabyId` captured in `useCallback`
+    // can be stale if the context re-hydrated after this callback
+    // was memoised — that staleness is what made
+    // "switch to already-active baby" succeed as a no-op.
+    const liveActiveId = babies.find((b: any) => b.isActive)?.id ?? currentBabyId;
+    if (babyId === liveActiveId) {
+      // Already active — just close the sheet. No toast.
+      safeGoBack();
+      return;
+    }
+
     HAPTIC_MEDIUM();
     setIsProcessing(true);
     setSelectedId(babyId);
+
     try {
-      const success = await switchBaby(babyId);
-      if (success) {
-        // `switchBaby` already updates `currentBabyId` and broadcasts;
-        // a full `loadBabies()` here causes a redundant re-fetch. The
-        // baby-change listeners (FamilyContext, FamilyChatContext,
-        // TrackerContext) already re-hydrate from the broadcast.
+      const ok = await switchBaby(babyId);
+
+      // Trust but verify: after switchBaby resolves, give the
+      // BabyContext one tick to flush, then re-read the ACTIVE id
+      // straight from `babies`. If it didn't flip, force a re-fetch
+      // and try once more (some backends need a second commit).
+      await new Promise((r) => setTimeout(r, 50));
+      let confirmed = babies.find((b: any) => b.isActive)?.id === babyId;
+
+      if (!ok || !confirmed) {
+        try { await loadBabies(); } catch {}
+        await new Promise((r) => setTimeout(r, 100));
+        confirmed = babies.find((b: any) => b.isActive)?.id === babyId;
+      }
+
+      if (ok || confirmed) {
         sweetAlert.success('Switched', 'Baby profile updated');
         setTimeout(() => {
           if (!hasNavigated.current && isMounted.current) {
             hasNavigated.current = true;
             safeGoBack();
           }
-        }, 400);
+        }, 350);
       } else {
-        sweetAlert.error('Error', 'Failed to switch baby profile');
+        sweetAlert.error(
+          'Switch Incomplete',
+          'The baby profile could not be switched. Please try again.',
+        );
         setIsProcessing(false);
         setSelectedId(null);
       }
-    } catch {
+    } catch (err) {
+      if (__DEV__) console.warn('[BabySelector] switchBaby threw:', err);
       sweetAlert.error('Error', 'An unexpected error occurred');
       setIsProcessing(false);
       setSelectedId(null);
     }
-  }, [currentBabyId, switchBaby, loadBabies, sweetAlert, safeGoBack]);
+  }, [babies, currentBabyId, switchBaby, loadBabies, sweetAlert, safeGoBack]);
 
   const handleDeleteBaby = useCallback((babyId: string, babyName: string) => {
     if (isProcessing) return;
+    // Re-check against the live list rather than the closure value.
     if (babies.length <= 1) {
       sweetAlert.alert('Cannot Delete', 'You must have at least one baby profile', 'warning');
       return;
@@ -559,7 +586,7 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
       'Cancel',
       true,
     );
-  }, [babies.length, deleteBaby, loadBabies, sweetAlert, isProcessing]);
+  }, [babies, deleteBaby, loadBabies, sweetAlert, isProcessing]);
 
   const handleAddBaby = useCallback(() => {
     HAPTIC_LIGHT();
@@ -625,17 +652,39 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
       >
         <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <View style={styles.headerInner}>
-          <TouchableOpacity onPress={handleBackPress} style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
-            <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
+          {/* Labeled back pill — matches the "More" breadcrumb pill
+              idiom on HomeScreen. A bare arrow icon is harder to hit
+              one-handed and less self-documenting. */}
+          <TouchableOpacity
+            onPress={handleBackPress}
+            style={[
+              styles.headerBackPill,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 },
+            ]}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="chevron-back" size={16} color={isDark ? DS.white : DS.gray800} />
+            <Text style={[styles.headerBackText, { color: isDark ? DS.white : DS.gray800 }]}>
+              Back
+            </Text>
           </TouchableOpacity>
+
           <View style={{ alignItems: 'center' }}>
             <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>SWITCH</GradientText>
             <Text style={[styles.headerSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
               {babies.length} {babies.length === 1 ? 'profile' : 'profiles'}
             </Text>
           </View>
-          <TouchableOpacity onPress={handleAddBaby} style={[styles.headerIconBtn, { backgroundColor: DS.primary }]}>
-            <Ionicons name="add" size={22} color={DS.white} />
+
+          <TouchableOpacity
+            onPress={handleAddBaby}
+            style={[styles.headerAddPill, { backgroundColor: DS.primary }]}
+            activeOpacity={0.85}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="add" size={16} color={DS.white} />
+            <Text style={styles.headerAddText}>Add</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -664,20 +713,29 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
 
         {/* Baby list */}
         <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.sm, gap: 10 }}>
-          {babies.map((baby, index) => (
-            <BabyCard
-              key={baby.id}
-              baby={baby}
-              isSelected={baby.id === currentBabyId}
-              isDark={isDark}
-              isProcessing={isProcessing}
-              canDelete={hasMultipleBabies}
-              onSelect={handleSwitchBaby}
-              onDelete={handleDeleteBaby}
-              onEdit={handleEdit}
-              index={index}
-            />
-          ))}
+          {babies.map((baby, index) => {
+            // Prefer the authoritative flag on the baby row (set by
+            // `switchBaby`), with `currentBabyId` as fallback so the
+            // very first render (before the flag is written) still
+            // highlights something. Without this, a stale
+            // `currentBabyId` closure paints the wrong card "Active".
+            const isActive =
+              (baby as any).isActive === true || baby.id === currentBabyId;
+            return (
+              <BabyCard
+                key={baby.id}
+                baby={baby}
+                isSelected={isActive}
+                isDark={isDark}
+                isProcessing={isProcessing}
+                canDelete={hasMultipleBabies}
+                onSelect={handleSwitchBaby}
+                onDelete={handleDeleteBaby}
+                onEdit={handleEdit}
+                index={index}
+              />
+            );
+          })}
         </View>
 
         {/* Add new baby card */}
@@ -754,6 +812,65 @@ export default function BabySelectorScreen({ navigation, route }: BabySelectorSc
           </PressableScale>
         </Animated.View>
 
+        {/* Quick-nav footer — Safety + Family. Mirrors the hero
+            tile row on HomeScreen so a user who gets here from
+            Home always has the same two shortcuts in reach. */}
+        <Animated.View
+          entering={FadeInUp.delay(450 + babies.length * 60).springify()}
+          style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md, flexDirection: 'row', gap: DS.space.sm }}
+        >
+          <PressableScale
+            onPress={() => {
+              HAPTIC_LIGHT();
+              navigation.navigate('SafetyCorner');
+            }}
+            activeScale={0.97}
+            style={{ flex: 1 }}
+          >
+            <View
+              style={[
+                styles.footerTile,
+                {
+                  backgroundColor: isDark ? 'rgba(220,38,38,0.12)' : 'rgba(220,38,38,0.08)',
+                  borderColor: isDark ? 'rgba(220,38,38,0.22)' : 'rgba(220,38,38,0.18)',
+                },
+              ]}
+            >
+              <View style={[styles.footerTileIcon, { backgroundColor: 'rgba(220,38,38,0.18)' }]}>
+                <Ionicons name="shield-checkmark-outline" size={16} color={DS.danger} />
+              </View>
+              <Text style={[styles.footerTileLabel, { color: isDark ? DS.gray200 : DS.gray700 }]}>
+                Safety
+              </Text>
+            </View>
+          </PressableScale>
+          <PressableScale
+            onPress={() => {
+              HAPTIC_LIGHT();
+              navigation.navigate('FamilySharing');
+            }}
+            activeScale={0.97}
+            style={{ flex: 1 }}
+          >
+            <View
+              style={[
+                styles.footerTile,
+                {
+                  backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.08)',
+                  borderColor: isDark ? 'rgba(59,130,246,0.22)' : 'rgba(59,130,246,0.18)',
+                },
+              ]}
+            >
+              <View style={[styles.footerTileIcon, { backgroundColor: 'rgba(59,130,246,0.18)' }]}>
+                <Ionicons name="people-outline" size={16} color="#3b82f6" />
+              </View>
+              <Text style={[styles.footerTileLabel, { color: isDark ? DS.gray200 : DS.gray700 }]}>
+                Family
+              </Text>
+            </View>
+          </PressableScale>
+        </Animated.View>
+
         <View style={{ height: 40 }} />
       </Animated.ScrollView>
     </View>
@@ -777,6 +894,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: DS.space.lg, height: 48,
   },
   headerIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  // Labeled back pill — matches HomeScreen's "More" breadcrumb pill.
+  headerBackPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingLeft: 4,
+    paddingRight: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  headerBackText: { fontSize: 12, fontWeight: '700' },
+  // Labeled add pill — fatter tap target, consistent with the
+  // Family/Safety hero tiles on HomeScreen.
+  headerAddPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingLeft: 6,
+    paddingRight: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  headerAddText: { color: DS.white, fontSize: 12, fontWeight: '800' },
   headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
   headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
 
@@ -867,7 +1007,28 @@ const styles = StyleSheet.create({
     ...DS.shadow.md,
   },
   continueText: { color: DS.white, fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
-    roleBadge: {
+
+  /* Footer quick-nav tiles — Safety + Family. Mirrors HomeScreen hero
+     tile row so the visual language is consistent across screens. */
+  footerTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: DS.radius.md,
+    borderWidth: 1,
+  },
+  footerTileIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerTileLabel: { fontSize: 12, fontWeight: '700' },
+
+  roleBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
   },
