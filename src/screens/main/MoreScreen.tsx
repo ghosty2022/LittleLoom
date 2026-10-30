@@ -1420,6 +1420,7 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
       guardianId: meId,
       mode: editMode,
       fromChat: false,
+      fromFamily: true,
     });
   }, [
     userProfile,
@@ -1443,6 +1444,7 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
         guardianId: targetId,
         mode: 'parent2',
         fromChat: false,
+        fromFamily: true,
       });
     } else {
       navigation.navigate('CoParentInviteScreen');
@@ -1466,6 +1468,7 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
         guardianId: targetId,
         mode: 'guardian',
         fromChat: false,
+        fromFamily: true,
       });
     },
     [hapticFeedback, triggerHaptic, navigation]
@@ -1583,7 +1586,9 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
           label="Family"
           color="#11998e"
           isDark={isDark}
-          onPress={() => navigation.navigate('FamilySharing')}
+          // Quick action from the MoreScreen profile row → the family
+          // OVERVIEW (Profile / FamilyDashboard). Not the management hub.
+          onPress={() => navigation.navigate('Profile')}
         />
         <QuickAction
           icon="notifications-outline"
@@ -2624,7 +2629,21 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             <MenuItem
               icon="people-outline"
               title="Family Dashboard"
-              subtitle="Manage co-parents and guardians"
+              subtitle="Overview of everyone in the family"
+              // "Family Dashboard" is the OVERVIEW screen (`Profile`).
+              // Per-person taps inside that screen go to EditGuardian.
+              // Invite / tree / transfer actions live in FamilySharing —
+              // which is reachable from the dashboard's "Manage" affordance
+              // and from the standalone menu item below.
+              onPress={() => navigation.navigate('Profile')}
+              color={secondary}
+              isDark={isDark}
+              showArrow
+            />
+            <MenuItem
+              icon="settings-outline"
+              title="Manage Family"
+              subtitle="Invites, roles, and family tree"
               onPress={() => navigation.navigate('FamilySharing')}
               color={secondary}
               isDark={isDark}
@@ -2911,6 +2930,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               guardianId,
               mode: 'parent2',
               fromChat: false,
+              fromFamily: true,
             });
           }}
           onCommunityPress={() => navigation.navigate('CommunityProfile', { userId: userProfile?.id })}

@@ -14,7 +14,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import FamilyTree from '../../components/FamilyTree';
+// FamilyTree import removed — this screen now uses the compact
+// FamilyStack preview. The full tree lives in FamilySharing only.
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { differenceInMonths, format, formatDistanceToNow } from 'date-fns';
@@ -659,7 +660,7 @@ const QuickActions = React.memo(({ isDark, onNavigate }: {
     { id: 'timeline', label: 'Timeline', icon: 'time-outline' as const, color: DS.success, screen: 'Timeline' },
     { id: 'achievements', label: 'Milestones', icon: 'trophy-outline' as const, color: DS.warning, screen: 'Achievements' },
     { id: 'growth', label: 'Growth', icon: 'trending-up-outline' as const, color: DS.primary, screen: 'GrowthDashboard' },
-    { id: 'settings', label: 'Settings', icon: 'settings-outline' as const, color: '#8b5cf6', screen: 'FamilySharing' },
+    { id: 'family', label: 'Family', icon: 'people-outline' as const, color: '#8b5cf6', screen: 'FamilySharing' },
   ];
   return (
     <Animated.View entering={FadeInUp.delay(300).springify()}>
@@ -814,6 +815,33 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
     navigation.navigate('EditProfile', { mode: 'baby', babyId });
   }, [navigation]);
 
+  // Single source of truth for "tap a person" across this screen.
+  // Routes to EditGuardianScreen for THAT person — never back into
+  // FamilySharing (that's the management hub, not a profile viewer).
+  const handleMemberTap = useCallback(
+    (member: any) => {
+      const targetId = member?.userId || member?.id;
+      if (!targetId) {
+        triggerHaptic('error');
+        sweetAlert.toast('Cannot Open', 'This member has no linked profile.', 'info');
+        return;
+      }
+      triggerHaptic('light');
+      navigation.navigate('EditGuardian' as never, {
+        guardianId: targetId,
+        mode:
+          member.role === UserRole.PARENT_2
+            ? 'parent2'
+            : member.role === UserRole.VIEWER
+            ? 'viewer'
+            : 'guardian',
+        fromChat: false,
+        fromFamily: true,
+      } as never);
+    },
+    [navigation, sweetAlert, triggerHaptic],
+  );
+
   const handleNavigateFamily = useCallback(() => navigation.navigate('FamilySharing'), [navigation]);
   const handleNavigateTimeline = useCallback(() => navigation.navigate('Timeline'), [navigation]);
   const handleNavigateAchievements = useCallback(() => navigation.navigate('Achievements'), [navigation]);
@@ -912,10 +940,12 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
   }, [navigation, triggerHaptic]);
 
   const handleBabyPress = useCallback(() => {
-    if (babies.length > 1) setShowBabySelector(true);
-    else if (currentBaby) handleBabyEdit(currentBaby.id);
+    // Tapping the baby chip opens THIS baby's profile. The "switch
+    // babies" flow stays on the dedicated SwitchBaby button inside
+    // the selector modal (and on the sticky header avatar).
+    if (currentBaby) handleBabyEdit(currentBaby.id);
     else handleNavigateCreateBaby();
-  }, [babies.length, currentBaby, handleBabyEdit, handleNavigateCreateBaby]);
+  }, [currentBaby, handleBabyEdit, handleNavigateCreateBaby]);
 
   const topRibbon = useMemo(() => {
     if (todayContributors.length > 1) return { icon: 'people-outline' as const, color: DS.success, label: 'Teamwork', text: `${todayContributors.length} family members logged today`, onPress: handleNavigateTimeline };
@@ -1004,28 +1034,64 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
               <ActiveToday contributors={todayContributors} isDark={isDark} onSeeAll={handleNavigateTimeline} />
             </View>
 
-            <View style={{ marginTop: DS.space.lg }}>
-              <FamilyTree
-                members={members}
-                currentBaby={currentBaby}
-                isDark={isDark}
-                onManage={handleNavigateFamily}
-                onMemberPress={(m) => {
-                  const targetId = (m as any).userId || m.id;
-                  if (targetId) {
-                    navigation.navigate('EditGuardian', {
-                      guardianId: targetId,
-                      mode: 'guardian',
-                      fromChat: false,
-                    });
-                  } else {
-                    handleNavigateFamily();
-                  }
-                }}
-                onAddCoParent={() => navigation.navigate('CoParentInviteScreen')}
-                onAddGuardian={() => navigation.navigate('CoParentInviteScreen')}
+            {/* Family preview — this screen is the OVERVIEW.
+                A full FamilyTree here duplicated FamilySharing and made
+                the two screens feel identical. FamilyStack shows the
+                current baby + every member as a compact scroll, with a
+                "Manage →" tap that opens FamilySharing.
+
+                Tap a member → EditGuardian (their profile).
+                Tap "Manage" → FamilySharing (management hub).
+                Tap the baby → EditProfile (this baby's profile). */}
+            <Animated.View entering={FadeInUp.delay(220).springify()}>
+              <SectionHeader
+                title="Your Family"
+                subtitle={`${members.length} member${members.length !== 1 ? 's' : ''}`}
+                icon="people-outline"
+                color={DS.primary}
+                action={handleNavigateFamily}
+                actionLabel="Manage"
               />
-            </View>
+              <FamilyStack
+                members={
+                  currentBaby
+                    ? [
+                        {
+                          id: `baby_${currentBaby.id}`,
+                          userId: `baby_${currentBaby.id}`,
+                          babyId: currentBaby.id,
+                          role: 'baby' as any,
+                          fullName: currentBaby.name || 'Baby',
+                          email: '',
+                          avatar: currentBaby.avatar,
+                          relationship: 'Baby',
+                          permissions: {
+                            read: true, write: false, delete: false,
+                            manageFamily: false, manageSecurity: false, exportData: false,
+                          },
+                          joinedAt: currentBaby.createdAt || new Date().toISOString(),
+                          isActive: true,
+                          __isBaby: true,
+                          __baby: currentBaby,
+                        } as any,
+                        ...members,
+                      ]
+                    : members
+                }
+                isDark={isDark}
+                onPress={handleNavigateFamily}
+                onMemberPress={(m: any) => {
+                  // Baby chip → baby profile editor.
+                  if (m?.__isBaby || String(m?.id || '').startsWith('baby_')) {
+                    const baby = m?.__baby || currentBaby;
+                    if (baby?.id) handleBabyEdit(baby.id);
+                    return;
+                  }
+                  // Every real member → their EditGuardian profile.
+                  handleMemberTap(m);
+                }}
+              />
+            </Animated.View>
 
             <View style={{ marginTop: DS.space.lg }}>
               <QuickActions isDark={isDark} onNavigate={(screen) => navigation.navigate(screen as never)} />

@@ -989,41 +989,91 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       //       FIRST. Otherwise the unique-role constraint (or RLS)
       //       rejects the write. This also keeps `babies.parent1_id`
       //       consistent with `family_members.role` at every step.
+      //
+      //       IMPORTANT: We re-query the DB here (do NOT trust
+      //       `state.members` — it's a stale closure) AND we do NOT
+      //       filter on `deleted_at IS NULL`, because a soft-deleted
+      //       parent1 row still occupies the unique index slot until
+      //       it's been flipped to `parent2` OR hard-deleted. If we
+      //       skipped it, the promotion write below would hit
+      //       `family_members_one_parent1` (23505).
       if (newRole === UserRole.PARENT_1) {
-        const otherParent1Rows: any[] = [];
-        // Prefer DB rows — state.members may not include the current
-        // parent1 if they were re-invited and deduped.
+        let otherParent1Rows: any[] = [];
+
+        // 1.0 Authoritative query — any OTHER row claiming parent1,
+        //     INCLUDING soft-deleted ones. The unique index is on
+        //     `(baby_id) WHERE role='parent1'` (or similar), and
+        //     some variants do NOT include `deleted_at IS NULL`,
+        //     so we must demote ALL of them.
         try {
           const { data } = await supabase
             .from('family_members')
-            .select('id, user_id, role')
+            .select('id, user_id, role, deleted_at')
             .eq('baby_id', currentBaby.id)
             .eq('role', 'parent1')
-            .neq('id', targetRowId)
-            .is('deleted_at', null);
-          if (Array.isArray(data)) otherParent1Rows.push(...data);
-        } catch {}
-        // Fallback to in-memory members
+            .neq('id', targetRowId);
+          if (Array.isArray(data)) otherParent1Rows = data;
+        } catch (e) {
+          if (__DEV__) console.warn('[promoteMember] parent1 lookup failed:', e);
+        }
+
+        // 1.1 Fallback ONLY if the DB query genuinely returned
+        //     nothing (e.g. RLS or transient error). This is a last
+        //     resort — the in-memory list may be stale.
         if (otherParent1Rows.length === 0) {
           state.members
             .filter(
               m => m.role === UserRole.PARENT_1 && (m as any).id !== targetRowId,
             )
-            .forEach(m => otherParent1Rows.push({ id: m.id, user_id: (m as any).userId }));
+            .forEach(m =>
+              otherParent1Rows.push({
+                id: m.id,
+                user_id: (m as any).userId,
+                deleted_at: null,
+              }),
+            );
         }
 
+        // 1.2 Demote every other parent1 row, then VERIFY each write
+        //     actually landed. If a demote fails, we MUST bail out
+        //     before attempting the promotion — otherwise we re-hit
+        //     the unique constraint.
         for (const other of otherParent1Rows) {
           const otherUserId = other.user_id;
-          // 1a. Demote the family_members row
-          try {
-            await supabase
-              .from('family_members')
-              .update({ role: 'parent2', can_be_removed: true, updated_at: nowIso })
-              .eq('id', other.id);
-          } catch (e) {
-            if (__DEV__) console.warn('[promoteMember] demote parent1 failed:', e);
+          const demotePayload: Record<string, unknown> = {
+            role: 'parent2',
+            can_be_removed: true,
+            updated_at: nowIso,
+          };
+          // Preserve the soft-deleted flag — a previously-removed
+          // parent1 row should stay removed, just no longer parent1.
+          if (other.deleted_at) {
+            demotePayload.deleted_at = other.deleted_at;
           }
-          // 1b. Mirror to profiles
+
+          try {
+            const { error: demoteErr } = await supabase
+              .from('family_members')
+              .update(demotePayload)
+              .eq('id', other.id);
+
+            if (demoteErr) {
+              if (__DEV__) {
+                console.error(
+                  '[promoteMember] demote parent1 failed:',
+                  demoteErr.message,
+                );
+              }
+              // Abort — do NOT proceed to the promotion write. The
+              // caller will see `null` and can retry.
+              return null;
+            }
+          } catch (e) {
+            if (__DEV__) console.error('[promoteMember] demote threw:', e);
+            return null;
+          }
+
+          // 1.3 Mirror to profiles. Best-effort — never blocks.
           if (otherUserId) {
             try {
               await supabase
@@ -1032,8 +1082,36 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 .eq('id', otherUserId);
             } catch {}
           }
-          // 1c. Keep babies.parent2_id in sync so the demoted parent
-          //     still sees the baby via the parent2_id query path.
+        }
+
+        // 1.4 Final safety net: after all demotions, confirm ZERO
+        //     other parent1 rows remain. This catches a race where
+        //     a concurrent device re-promoted someone between our
+        //     lookup and write.
+        try {
+          const { count } = await supabase
+            .from('family_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('baby_id', currentBaby.id)
+            .eq('role', 'parent1')
+            .neq('id', targetRowId);
+          if (typeof count === 'number' && count > 0) {
+            if (__DEV__) {
+              console.warn(
+                '[promoteMember] parent1 rows still present after demote; aborting promote',
+                { remaining: count },
+              );
+            }
+            return null;
+          }
+        } catch {}
+
+        // 1.5 Keep babies.parent2_id pointing at whichever demoted
+        //     parent1 user was most recently active (best UX).
+        const demotedUserIds = otherParent1Rows
+          .map(o => o.user_id)
+          .filter(Boolean);
+        for (const otherUserId of demotedUserIds) {
           try {
             await supabase
               .from('babies')
@@ -1068,12 +1146,48 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (template) fmUpdates.permissions = template;
       } catch {}
 
-      const { error: fmErr, data: fmData } = await supabase
+      let { error: fmErr, data: fmData } = await supabase
         .from('family_members')
         .update(fmUpdates)
         .eq('id', targetRowId)
         .select('*')
         .maybeSingle();
+
+      // ── 23505 recovery: another parent1 row snuck in (realtime
+      //    race, second device, or a soft-deleted row the first
+      //    pass didn't see). Demote ALL other parent1 rows now and
+      //    retry the write ONCE.
+      if (fmErr && (fmErr as any).code === '23505' && newRole === UserRole.PARENT_1) {
+        if (__DEV__) {
+          console.warn(
+            '[promoteMember] 23505 on parent1 promote — demoting stragglers and retrying',
+          );
+        }
+        try {
+          const { data: stragglers } = await supabase
+            .from('family_members')
+            .select('id, user_id')
+            .eq('baby_id', currentBaby.id)
+            .eq('role', 'parent1')
+            .neq('id', targetRowId);
+          for (const s of stragglers ?? []) {
+            await supabase
+              .from('family_members')
+              .update({ role: 'parent2', can_be_removed: true, updated_at: nowIso })
+              .eq('id', s.id);
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[promoteMember] straggler demote failed:', e);
+        }
+        const retry = await supabase
+          .from('family_members')
+          .update(fmUpdates)
+          .eq('id', targetRowId)
+          .select('*')
+          .maybeSingle();
+        fmErr = retry.error as any;
+        fmData = retry.data as any;
+      }
 
       if (fmErr) {
         if (__DEV__) {

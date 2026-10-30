@@ -717,12 +717,14 @@ const EmojiPickerModal = React.memo(({ visible, onClose, onSelect, isDark }: any
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function EditGuardianScreen({ navigation, route }: EditGuardianScreenProps) {
-  const params = (route.params ?? {}) as {
+    const params = (route.params ?? {}) as {
     guardianId?: string;
     memberId?: string;
     mode?: 'guardian' | 'parent2' | 'viewer';
     fromChat?: boolean;
+    fromFamily?: boolean;
   };
+  const cameFromFamily = params.fromFamily === true;
   const guardianId = params.guardianId ?? params.memberId ?? '';
   const mode = params.mode ?? 'guardian';
 
@@ -1376,7 +1378,17 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
             // Do NOT call refreshMemberData() — it would read from a
             // stale `members` closure and clobber the fresh value.
           } else {
-            sweetAlert.error('Error', 'Failed to update role');
+            // Most common cause: another device promoted someone
+            // simultaneously, or a soft-deleted parent1 row still
+            // occupies the unique slot. Re-sync so the UI shows the
+            // real DB state, then let the user retry.
+            await refreshMemberData();
+            sweetAlert.error(
+              'Role Change Failed',
+              newRole === UserRole.PARENT_1
+                ? 'Another Primary Parent exists. Transfer ownership first, then try again.'
+                : 'Could not update the role. Please try again.',
+            );
           }
         } catch {
           sweetAlert.error('Error', 'An error occurred');
@@ -1642,13 +1654,42 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         </Text>
       </Animated.View>
 
-      {/* Back button */}
+      {/* Back button + optional breadcrumb when arriving from the
+          family view, so the navigation story is visible:
+          "Family → Jane Doe". Without `fromFamily`, no breadcrumb. */}
       <Animated.View entering={FadeInDown.springify()} style={[styles.topHeader, { paddingTop: insets.top + 12 }]} pointerEvents="box-none">
         <PressableScale onPress={() => navigation.goBack()} activeScale={0.92}>
           <View style={[styles.backBtn, { backgroundColor: isDark ? 'rgba(15,15,30,0.55)' : 'rgba(255,255,255,0.85)', borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)' }]}>
             <Ionicons name="arrow-back" size={22} color={isDark ? DS.white : DS.gray800} />
           </View>
         </PressableScale>
+        {cameFromFamily && member && (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.85)',
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.05)',
+            }}
+          >
+            <Ionicons name="people-outline" size={12} color={isDark ? DS.gray400 : DS.gray500} />
+            <Text style={{ fontSize: 11, fontWeight: '600', color: isDark ? DS.gray400 : DS.gray500 }}>
+              Family
+            </Text>
+            <Ionicons name="chevron-forward" size={10} color={isDark ? DS.gray500 : DS.gray400} />
+            <Text
+              style={{ fontSize: 11, fontWeight: '800', color: isDark ? DS.white : DS.gray900 }}
+              numberOfLines={1}
+            >
+              {member.fullName?.split(' ')[0] || 'Member'}
+            </Text>
+          </View>
+        )}
       </Animated.View>
 
       <Animated.ScrollView
