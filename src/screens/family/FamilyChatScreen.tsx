@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { getMemberDisplayLabel } from '../../types/roles';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1137,12 +1138,9 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     const member = otherId ? getMemberById(otherId) : undefined;
     // Show the human relationship (Mother / Father / Grandma …), falling
     // back to the role label only when no relationship was entered.
-    const status =
-      (member?.relationship && member.relationship.trim()) ||
-      (member?.role === 'parent1' ? 'Primary Parent'
-        : member?.role === 'parent2' ? 'Co-Parent'
-        : member?.role === 'guardian' ? 'Guardian'
-        : 'Family Member');
+    const status = member
+      ? getMemberDisplayLabel({ role: member.role, relationship: member.relationship })
+      : 'Family Member';
     return {
       name: member?.fullName || memberName || 'Unknown',
       avatar: member?.avatar || memberAvatar || '👤',

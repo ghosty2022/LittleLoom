@@ -205,7 +205,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     const q = searchQuery.toLowerCase();
     return sortedChats.filter((c: FamilyChat) => {
       const otherId = c.participants.find((p) => p !== currentUserId);
-      const participant = otherId ? getUserById(otherId) : null;
+      const isDeactivatedPeer = !!otherId && !participant;
       const name = participant?.displayName || c.name || '';
       return (
         name.toLowerCase().includes(q) ||
@@ -233,7 +233,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const renderChat = ({ item, index }: { item: FamilyChat; index: number }) => {
     const lastMessage = item.lastMessage;
     const otherId = item.participants.find((p) => p !== currentUserId);
-    const participant = otherId ? getUserById(otherId) : null;
+    const isDeactivatedPeer = !!otherId && !participant;
     const isMyMessage = lastMessage?.senderId === currentUserId;
     const isOnline = participant?.onlineStatus === 'online';
     const liveRoleBadge = otherId ? (roleLabelsRef.current[otherId] || '') : '';
@@ -310,12 +310,24 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
 
           <View style={styles.chatInfo}>
             <View style={styles.nameRow}>
-              <Text
-                style={[styles.name, { color: isDark ? LL.white : LL.gray900 }]}
-                numberOfLines={1}
-              >
-                {participant?.displayName || item.name || 'Conversation'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                <Text
+                  style={[styles.name, { color: isDark ? LL.white : LL.gray900 }]}
+                  numberOfLines={1}
+                >
+                  {participant?.displayName || item.name || 'Conversation'}
+                </Text>
+                {isDeactivatedPeer && (
+                  <View style={{
+                    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
+                    backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
+                  }}>
+                    <Text style={{ fontSize: 8, fontWeight: '800', color: LL.error, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+                      Inactive
+                    </Text>
+                  </View>
+                )}
+              </View>
               {!!liveRoleBadge && (
                 <View
                   style={[

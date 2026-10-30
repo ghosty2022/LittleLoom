@@ -919,7 +919,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [currentBaby, authProfile, state.members, loadFamily]);
 
   // ─── Update Guardian Profile ───────────────────────────────────────────
-  const updateGuardianProfile = useCallback(async (memberId: string, updates: Partial<FamilyMember>): Promise<boolean> => {
+  const updateGuardianProfile = useCallback(async (memberId: string, updates: Partial<FamilyMember>): Promise<FamilyMember | null> => {
     // ── SELF-SERVE RELATIONSHIP EDIT ──────────────────────────────
     // A member editing THEIR OWN relationship (Mother/Father/etc.)
     // is always allowed — that's the "who am I to this child" label.
@@ -1181,10 +1181,26 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       await loadFamily();
 
+      // Build the updated member from the DB-verified values.
+      // This is what the caller will use to replace its local state
+      // so the UI never flashes back to the old role.
+      const updatedRoleEnum: UserRole =
+        updates.role !== undefined
+          ? updates.role
+          : (memberRowBefore?.role as UserRole) || UserRole.GUARDIAN;
+      const freshMember: FamilyMember = {
+        ...(memberRowBefore as FamilyMember),
+        role: updatedRoleEnum,
+        fullName: updates.fullName ?? memberRowBefore?.fullName ?? '',
+        relationship: updates.relationship ?? memberRowBefore?.relationship ?? '',
+        avatar: updates.avatar ?? memberRowBefore?.avatar,
+        phoneNumber: updates.phoneNumber ?? memberRowBefore?.phoneNumber,
+        email: updates.email ?? memberRowBefore?.email ?? '',
+        notificationsEnabled:
+          updates.notificationsEnabled ?? memberRowBefore?.notificationsEnabled ?? true,
+      };
+
       // ── ROLE CHANGE FAN-OUT ───────────────────────────────────────
-      // Any consumer (chats, EditGuardian, FamilySharing, Community,
-      // header role badges) must re-hydrate the moment a member's
-      // role, name, avatar, or contact info changes.
       try {
         if (linkedUserIdBefore) {
           // NOTE: `relationship` is NOT part of `ProfileChangePayload['fields']`

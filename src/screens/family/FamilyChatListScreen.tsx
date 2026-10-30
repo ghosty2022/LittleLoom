@@ -21,6 +21,7 @@ import {
   View,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { getMemberDisplayLabel, canonicalizeRelationship } from '../../types/roles';
 import UniversalSpinner from '../../components/UniversalSpinner';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -563,6 +564,13 @@ const ChatListItem: React.FC<{
   const liveMember = otherMembers?.find(
     (m) => m.id === otherParticipantId || (m as any).userId === otherParticipantId,
   );
+  // If the peer has a userId but no family_members row AND no profile,
+  // they are no longer on the platform (deleted account).
+  const isDeactivatedPeer =
+    isDirect &&
+    !!otherParticipantId &&
+    !liveMember &&
+    !chat.participantNames?.[otherParticipantId];
   const otherAvatar = liveMember?.avatar
     ?? (otherParticipantId ? chat.participantAvatars?.[otherParticipantId] : null);
   const otherRole = liveMember?.role
@@ -571,12 +579,11 @@ const ChatListItem: React.FC<{
 
   const otherRelationship = liveMember?.relationship;
   const subtitle = isDirect
-    ? (otherRelationship && otherRelationship.trim()
-        ? otherRelationship
-        : otherRole === 'parent1' ? 'Primary Parent'
-        : otherRole === 'parent2' ? 'Co-Parent'
-        : otherRole === 'guardian' ? 'Guardian'
-        : 'Direct Message')
+    ? (liveMember
+        ? getMemberDisplayLabel({ role: liveMember.role, relationship: liveMember.relationship })
+        : otherRelationship && otherRelationship.trim()
+          ? canonicalizeRelationship(otherRelationship)
+          : 'Family Member')
     : `${chat.participants?.length || 0} family members`;
 
   const timeStr = (() => {
@@ -634,9 +641,21 @@ const ChatListItem: React.FC<{
 
         <View style={{ flex: 1, marginLeft: DS.space.md }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={[styles.chatName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
-              {chat.name}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+              <Text style={[styles.chatName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
+                {chat.name}
+              </Text>
+              {isDeactivatedPeer && (
+                <View style={{
+                  paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
+                  backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
+                }}>
+                  <Text style={{ fontSize: 8, fontWeight: '800', color: DS.danger, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+                    Inactive
+                  </Text>
+                </View>
+              )}
+            </View>
             {chat.lastMessage && (
               <Text style={[styles.chatTime, { color: unreadCount > 0 ? DS.primary : (isDark ? DS.gray500 : DS.gray400), fontWeight: unreadCount > 0 ? '700' : '500' }]}>
                 {timeStr}

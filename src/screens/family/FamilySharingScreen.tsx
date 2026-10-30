@@ -60,7 +60,7 @@ const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 const FAMILY_IMAGES_DIR = FileSystem.documentDirectory + 'family_images/';
 
 type FamilySharingScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilySharing'>;
-type TabKey = 'members' | 'activity' | 'access' | 'settings';
+type TabKey = 'tree' | 'members' | 'activity' | 'access' | 'settings';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    DESIGN SYSTEM — Aura (aligned with Home / Community / More / Timeline)
@@ -1129,9 +1129,19 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
   // EditGuardian / another device reflect immediately.
   useFocusEffect(
     useCallback(() => {
-      loadFamily().catch(() => {});
+      // Force a fresh fetch every time this screen gains focus.
+      // This is what makes a role change from EditGuardian show up
+      // in the tree immediately when the user navigates back.
+      const reload = async () => {
+        await loadFamily();
+        // Also re-derive activeCodes so the invite list is fresh.
+        if (isPrimaryParent && currentBaby) {
+          loadActiveCodes().catch(() => {});
+        }
+      };
+      reload().catch(() => {});
       return () => {};
-    }, [loadFamily]),
+    }, [loadFamily, isPrimaryParent, currentBaby, loadActiveCodes]),
   );
 
   const loadActiveCodes = useCallback(async () => {
@@ -1361,6 +1371,7 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
   /* ─── Tabs ──────────────────────────────────────────────────────── */
   const tabs = [
+    { key: 'tree' as TabKey, label: 'Tree', icon: 'git-network-outline' as const },
     { key: 'members' as TabKey, label: 'Members', icon: 'people-outline' as const },
     { key: 'activity' as TabKey, label: 'Activity', icon: 'pulse-outline' as const },
     { key: 'access' as TabKey, label: 'Access', icon: 'shield-checkmark-outline' as const },

@@ -1233,36 +1233,13 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
         // the round-trip shows the old role (RLS dropped the
         // write, or `profiles.role` mirror overwrote it), surface
         // the failure instead of silently reverting in the UI.
-        const success = await updateGuardianProfile(member.id, { role: newRole });
-        if (success) {
-          // Verify the write actually landed.
-          let persistedRole: UserRole | null = null;
-          try {
-            const { data: verifyRow } = await supabase
-              .from('family_members')
-              .select('role')
-              .eq('id', member.id)
-              .maybeSingle();
-            const r = String(verifyRow?.role || '').toLowerCase();
-            persistedRole =
-              r === 'parent1' ? UserRole.PARENT_1
-              : r === 'parent2' ? UserRole.PARENT_2
-              : r === 'guardian' ? UserRole.GUARDIAN
-              : r === 'viewer' ? UserRole.VIEWER
-              : null;
-          } catch {}
-          if (persistedRole && persistedRole !== newRole) {
-            if (__DEV__) console.warn('[EditGuardian] Role write was rejected/overwritten by DB. Persisted:', persistedRole, 'Wanted:', newRole);
-            sweetAlert.error(
-              'Role Not Applied',
-              `The database kept "${ROLE_CONFIG[persistedRole].label}". Check that your account still has Parent 1 permission and try again.`,
-            );
-          }
-          setMember(prev => prev ? { ...prev, role: newRole } : null);
-          // updateGuardianProfile already broadcasts, but we ALSO re-broadcast
-          // here to guarantee every subscribed surface (including this
-          // screen's own family list) picks up the change even if the
-          // FamilyContext broadcast was skipped due to an early return.
+        const freshMember = await updateGuardianProfile(member.id, { role: newRole });
+        if (freshMember) {
+          // Use the DB-verified member returned by updateGuardianProfile.
+          // This is the single source of truth — no stale `members` closure,
+          // no re-query race, no revert.
+          setMember(freshMember);
+          // Clear the cached role so `roleConfig` re-derives from the new role.
           try {
             const { broadcastProfileChange } = require('../../context/AuthContext');
             const linkedUserId = (member as any).userId || member.id;
@@ -1270,8 +1247,11 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
               await broadcastProfileChange({ userId: linkedUserId, fields: ['role'] });
             }
           } catch {}
-          sweetAlert.success('Role Updated', `${member.fullName} is now a ${roleConfigLocal.label}`);
-          await refreshMemberData();
+          sweetAlert.success('Role Updated', `${member.fullName} is now a ${ROLE_CONFIG[newRole].label}`);
+          // Do NOT call refreshMemberData() here — it re-reads from the
+          // stale `members` prop and can overwrite the fresh member.
+          // The FamilyContext realtime subscription will refresh the list
+          // in the background; this screen already has the truth.
         }
         else sweetAlert.error('Error', 'Failed to update role');
       } catch { sweetAlert.error('Error', 'An error occurred'); }
@@ -1326,6 +1306,10 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     // accepting AND the family is genuinely empty. Once anyone is
     // invited/accepted, this becomes a "No activity yet" nudge.
     const isPendingMember = !member.lastActive || member.status === 'pending';
+    // If they were JUST promoted to parent1/parent2, they are no longer
+    // a "new member" regardless of activity count.
+    const isParentRole =
+      member.role === UserRole.PARENT_1 || member.role === UserRole.PARENT_2;
     if (memberActivities.length === 0) {
       if (isPendingMember) {
         return {
@@ -1333,6 +1317,15 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
           color: DS.warning,
           label: 'Pending invite',
           text: `Waiting for ${member.fullName.split(' ')[0]} to accept the invitation`,
+          onPress: () => handleTabChange('permissions'),
+        };
+      }
+      if (isParentRole) {
+        return {
+          icon: 'shield-checkmark-outline' as const,
+          color: ROLE_CONFIG[member.role].color,
+          label: ROLE_CONFIG[member.role].label,
+          text: `${member.fullName.split(' ')[0]} is now ${getMemberDisplayLabel({ role: member.role, relationship: member.relationship })} · ${ROLE_CONFIG[member.role].permissions.length} permissions`,
           onPress: () => handleTabChange('permissions'),
         };
       }
