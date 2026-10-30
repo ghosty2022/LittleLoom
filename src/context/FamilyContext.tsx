@@ -26,6 +26,15 @@ interface FamilyState {
 interface FamilyContextType extends FamilyState {
   loadFamily: () => Promise<void>;
   refreshFamily: () => Promise<void>;
+  /**
+   * Invite a member.
+   *
+   * `email` may be an email address, a @username, a bare username, or a
+   * phone number. We resolve it against `profiles` before inserting, so
+   * an existing account is linked IMMEDIATELY (`user_id` + `status:
+   * 'active'`) instead of sitting in the pending list until they happen
+   * to re-open the app.
+   */
   inviteMember: (email: string, role: UserRole, relationship: string) => Promise<boolean>;
   removeMember: (memberId: string) => Promise<boolean>;
   getEffectivePermissions: (userId?: string) => Permission;
@@ -519,14 +528,43 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           byKey.set(key, m);
           continue;
         }
-        // Keep whichever row was updated most recently. Timestamps
-        // are the ONLY tiebreaker; role priority does NOT decide.
         if (rowUpdatedAt(m) > rowUpdatedAt(existing)) {
           byKey.set(key, m);
         }
       }
+
+      // ── ROLE UNIQUENESS PASS ─────────────────────────────────────
+      // parent1 is a singleton per baby. If two rows claim parent1
+      // (legacy data, or an interrupted promote), the DB authoritatively
+      // says only ONE can be parent1: whichever matches
+      // `babies.parent1_id`. Any other parent1 row is demoted to parent2.
+      // This keeps the tree honest without crashing.
+      let dedupedMembers = Array.from(byKey.values());
+      const parent1Candidates = dedupedMembers.filter(
+        m => m.role === UserRole.PARENT_1,
+      );
+      if (parent1Candidates.length > 1) {
+        const trueParent1UserId = currentBaby?.parent1_id;
+        const keeper =
+          parent1Candidates.find(
+            m => (m.userId || m.id) === trueParent1UserId,
+          ) || parent1Candidates[0];
+        dedupedMembers = dedupedMembers.map(m => {
+          if (
+            m.role === UserRole.PARENT_1 &&
+            (m.userId || m.id) !== (keeper.userId || keeper.id)
+          ) {
+            // Demote in memory — the DB will be reconciled on the next
+            // promote/demote call. This prevents the tree from showing
+            // two "Primary Parent" cards while the write is in flight.
+            return { ...m, role: UserRole.PARENT_2 };
+          }
+          return m;
+        });
+      }
+
       // Sort for display only: parent1 → parent2 → guardian → viewer.
-      const uniqueMembers = Array.from(byKey.values()).sort(
+      const uniqueMembers = dedupedMembers.sort(
         (a, b) => (priority[a.role] ?? 4) - (priority[b.role] ?? 4),
       );
 
@@ -801,31 +839,42 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   ): Promise<FamilyMember | null> => {
     if (!currentBaby?.id) return null;
 
-    // Resolve target by BOTH id and userId
+    // ── Resolve target by BOTH family_members.id and profiles.id ──
     let targetRow =
       state.members.find(m => m.id === memberId) ||
       state.members.find(m => (m as any).userId === memberId) ||
       null;
-    if (!targetRow) {
+
+    // Always read the authoritative row from the DB. `state.members`
+    // is a closure captured at call time and is stale after any other
+    // async update (e.g. a previous promote that hasn't committed yet).
+    let dbTarget: any = null;
+    try {
       const { data } = await supabase
         .from('family_members')
         .select('*')
         .eq('baby_id', currentBaby.id)
         .or(`id.eq.${memberId},user_id.eq.${memberId}`)
         .is('deleted_at', null)
+        .order('updated_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
-      if (!data) return null;
-      targetRow = {
-        id: data.id,
-        userId: data.user_id,
-        fullName: data.full_name,
-        role: data.role,
-      } as FamilyMember;
+      dbTarget = data;
+    } catch (e) {
+      if (__DEV__) console.warn('[promoteMember] target lookup failed:', e);
     }
 
-    const targetRowId = (targetRow as any).id as string;
+    if (!dbTarget && !targetRow) {
+      if (__DEV__) console.warn('[promoteMember] target not found:', memberId);
+      return null;
+    }
+
+    const targetRowId: string = dbTarget?.id || (targetRow as any)?.id;
     const targetUserId: string =
-      (targetRow as any).userId || (targetRow as any).id;
+      dbTarget?.user_id || (targetRow as any)?.userId || targetRow?.id;
+
+    if (!targetRowId || !targetUserId) return null;
+
     const nowIso = new Date().toISOString();
 
     const dbRole =
@@ -835,30 +884,65 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       : 'viewer';
 
     try {
-      // ── 1. If promoting to PARENT_1 and there's already a DIFFERENT
-      //       parent1 row, demote that row to parent2 FIRST. ──────
+      // ── 1. If promoting to PARENT_1, demote the EXISTING parent1
+      //       FIRST. Otherwise the unique-role constraint (or RLS)
+      //       rejects the write. This also keeps `babies.parent1_id`
+      //       consistent with `family_members.role` at every step.
       if (newRole === UserRole.PARENT_1) {
-        const otherParent1 = state.members.find(
-          m => m.role === UserRole.PARENT_1 && (m as any).userId !== targetUserId,
-        );
-        if (otherParent1) {
-          await supabase
+        const otherParent1Rows: any[] = [];
+        // Prefer DB rows — state.members may not include the current
+        // parent1 if they were re-invited and deduped.
+        try {
+          const { data } = await supabase
             .from('family_members')
-            .update({ role: 'parent2', updated_at: nowIso })
-            .eq('id', (otherParent1 as any).id);
-          // Mirror to profiles
+            .select('id, user_id, role')
+            .eq('baby_id', currentBaby.id)
+            .eq('role', 'parent1')
+            .neq('id', targetRowId)
+            .is('deleted_at', null);
+          if (Array.isArray(data)) otherParent1Rows.push(...data);
+        } catch {}
+        // Fallback to in-memory members
+        if (otherParent1Rows.length === 0) {
+          state.members
+            .filter(
+              m => m.role === UserRole.PARENT_1 && (m as any).id !== targetRowId,
+            )
+            .forEach(m => otherParent1Rows.push({ id: m.id, user_id: (m as any).userId }));
+        }
+
+        for (const other of otherParent1Rows) {
+          const otherUserId = other.user_id;
+          // 1a. Demote the family_members row
           try {
-            const otherUserId = (otherParent1 as any).userId || (otherParent1 as any).id;
-            if (otherUserId) {
-              await supabase.from('profiles')
+            await supabase
+              .from('family_members')
+              .update({ role: 'parent2', can_be_removed: true, updated_at: nowIso })
+              .eq('id', other.id);
+          } catch (e) {
+            if (__DEV__) console.warn('[promoteMember] demote parent1 failed:', e);
+          }
+          // 1b. Mirror to profiles
+          if (otherUserId) {
+            try {
+              await supabase
+                .from('profiles')
                 .update({ role: 'parent2', updated_at: nowIso })
                 .eq('id', otherUserId);
-            }
+            } catch {}
+          }
+          // 1c. Keep babies.parent2_id in sync so the demoted parent
+          //     still sees the baby via the parent2_id query path.
+          try {
+            await supabase
+              .from('babies')
+              .update({ parent2_id: otherUserId, updated_at: nowIso })
+              .eq('id', currentBaby.id);
           } catch {}
         }
       }
 
-      // ── 2. Soft-delete sibling rows for the SAME user (dupes) ─────
+      // ── 2. Soft-delete sibling rows for the SAME user ────────────
       try {
         await supabase
           .from('family_members')
@@ -870,61 +954,143 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch {}
 
       // ── 3. Write family_members.role ─────────────────────────────
-      const fmUpdates: Record<string, unknown> = { role: dbRole, updated_at: nowIso };
+      const fmUpdates: Record<string, unknown> = {
+        role: dbRole,
+        updated_at: nowIso,
+      };
       if (newRole === UserRole.PARENT_1) fmUpdates.can_be_removed = false;
-      const { error: fmErr } = await supabase
+      // IMPORTANT: also seed permissions so downstream consumers
+      // (BabyContext.hasPermissionForBaby) see the correct set on
+      // first render, not only after the next loadFamily() normalise.
+      try {
+        const template = ROLE_PERMISSIONS[newRole] as unknown as Record<string, boolean>;
+        if (template) fmUpdates.permissions = template;
+      } catch {}
+
+      const { error: fmErr, data: fmData } = await supabase
         .from('family_members')
         .update(fmUpdates)
-        .eq('id', targetRowId);
+        .eq('id', targetRowId)
+        .select('*')
+        .maybeSingle();
+
       if (fmErr) {
-        if (__DEV__) console.warn('[promoteMember] family_members write failed:', fmErr.message);
+        if (__DEV__) {
+          console.error('[promoteMember] family_members write failed:', {
+            code: (fmErr as any).code,
+            message: fmErr.message,
+            details: (fmErr as any).details,
+            hint: (fmErr as any).hint,
+          });
+        }
         return null;
       }
 
       // ── 4. Mirror to profiles.role ───────────────────────────────
       try {
-        await supabase.from('profiles')
-          .update({ role: dbRole, updated_at: nowIso })
-          .eq('id', targetUserId);
+        const mirror: Record<string, unknown> = {
+          role: dbRole,
+          updated_at: nowIso,
+        };
+        // If they were demoted from parent1 and their bio is the
+        // literal default "Primary Parent", swap it to the new label
+        // so consumers that read community_bio as a relationship
+        // fallback still show a sensible value.
+        if (dbTarget?.role === 'parent1' && dbRole !== 'parent1') {
+          mirror.community_bio =
+            dbRole === 'parent2' ? 'Co-Parent'
+            : dbRole === 'guardian' ? 'Guardian'
+            : 'Viewer';
+        }
+        await supabase.from('profiles').update(mirror).eq('id', targetUserId);
       } catch {}
 
       // ── 5. Sync babies.parent1_id / parent2_id ───────────────────
       const babyUpdates: Record<string, unknown> = { updated_at: nowIso };
       if (newRole === UserRole.PARENT_1) {
         babyUpdates.parent1_id = targetUserId;
+        // If the target was previously parent2, clear it so we don't
+        // end up with the same user in both slots (unique constraint).
         if (currentBaby.parent2_id === targetUserId) babyUpdates.parent2_id = null;
       } else if (newRole === UserRole.PARENT_2) {
         babyUpdates.parent2_id = targetUserId;
         if (currentBaby.parent1_id === targetUserId) babyUpdates.parent1_id = null;
       } else {
-        // Demoted to guardian/viewer — only clear parent2 (never parent1).
         if (currentBaby.parent2_id === targetUserId) babyUpdates.parent2_id = null;
       }
       try {
         await supabase.from('babies').update(babyUpdates).eq('id', currentBaby.id);
-      } catch {}
+      } catch (e) {
+        if (__DEV__) console.warn('[promoteMember] babies sync failed:', e);
+      }
 
-      // ── 6. Fresh load, bypass in-progress guard ─────────────────
+      // ── 6. Fresh load — bypass the in-progress guard ────────────
       familyLoadInProgress.current = false;
       await loadFamily();
 
-      // ── 7. Broadcast + return fresh ─────────────────────────────
+      // ── 7. Broadcast + build the return object from the DB row we
+      //       just wrote (NOT from the stale `state.members` closure).
       try {
         const { broadcastProfileChange } = require('./AuthContext');
         await broadcastProfileChange({ userId: targetUserId, fields: ['role'] });
       } catch {}
 
-      const fresh =
-        state.members.find(
-          m => m.id === targetRowId || (m as any).userId === targetUserId,
-        ) || ({ ...(targetRow as FamilyMember), role: newRole } as FamilyMember);
-      return { ...fresh, role: newRole };
+      // Use the row we wrote (fmData) as the source of truth.
+      // Merge it with the live profile so the caller gets a complete
+      // object with fullName / email / avatar populated.
+      let liveProfile: any = null;
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('full_name, email, phone_number, community_avatar, avatar_url, avatar')
+          .eq('id', targetUserId)
+          .maybeSingle();
+        liveProfile = data;
+      } catch {}
+
+      const written = fmData || {
+        id: targetRowId,
+        user_id: targetUserId,
+        role: dbRole,
+        updated_at: nowIso,
+      };
+
+      const fresh: FamilyMember = {
+        id: written.id,
+        userId: written.user_id || targetUserId,
+        fullName:
+          liveProfile?.full_name ||
+          written.full_name ||
+          (targetRow as any)?.fullName ||
+          'Family Member',
+        email:
+          liveProfile?.email || written.email || (targetRow as any)?.email || '',
+        avatar:
+          liveProfile?.community_avatar ||
+          liveProfile?.avatar_url ||
+          liveProfile?.avatar ||
+          written.avatar ||
+          (targetRow as any)?.avatar,
+        role: newRole,
+        relationship: written.relationship ?? (targetRow as any)?.relationship ?? '',
+        permissions:
+          (written.permissions as Permission) ||
+          ROLE_PERMISSIONS[newRole],
+        addedAt: written.added_at || (targetRow as any)?.addedAt || nowIso,
+        addedBy: written.added_by || (targetRow as any)?.addedBy || '',
+        canBeRemoved: written.can_be_removed !== false,
+        lastActive: written.last_active || nowIso,
+        phoneNumber: liveProfile?.phone_number || written.phone_number || undefined,
+        notificationsEnabled: written.notifications_enabled !== false,
+        status: written.status || 'active',
+      };
+
+      return fresh;
     } catch (e) {
       if (__DEV__) console.error('[promoteMember] threw:', e);
       return null;
     }
   }, [currentBaby, state.members, loadFamily]);
-
   // ─── Update Guardian Profile ───────────────────────────────────────────
   // Returns the FRESH FamilyMember on success (or null on failure).
   // The caller (EditGuardianScreen) MUST use the return value — it is
@@ -1169,72 +1335,226 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return false;
     }
 
-    if (!EMAIL_REGEX.test(email)) {
-      showAlert('Invalid Email', 'Please enter a valid email address');
+    const raw = (email || '').trim();
+    if (!raw) {
+      showAlert('Invalid Invite', 'Enter an email, username, or phone number');
       return false;
     }
 
-    try {
-      const { data: existing } = await supabase
-  .from('family_members')
-  .select('id')
-  .eq('baby_id', currentBaby.id)
-  .eq('email', email.toLowerCase())
-  .is('deleted_at', null)
-  .maybeSingle();
+    // ── Accept email, @username, bare username, or phone ────────
+    const looksLikeEmail = EMAIL_REGEX.test(raw);
+    const looksLikePhone = /^\+?[\d\s\-()]{7,}$/.test(raw);
+    const handleBare = raw.replace(/^@+/, '').toLowerCase();
 
-      if (existing) {
-        showAlert('Duplicate Invite', 'An invitation has already been sent to this email');
-        return false;
+    let resolvedUserId: string | null = null;
+    let resolvedEmail: string | null = looksLikeEmail ? raw.toLowerCase() : null;
+    let resolvedPhone: string | null = looksLikePhone ? raw : null;
+    let resolvedName: string | null = null;
+
+    try {
+      if (looksLikeEmail) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone_number')
+          .eq('email', raw.toLowerCase())
+          .maybeSingle();
+        if (data) {
+          resolvedUserId = data.id;
+          resolvedEmail = data.email || resolvedEmail;
+          resolvedPhone = data.phone_number || resolvedPhone;
+          resolvedName = data.full_name || null;
+        }
+      } else if (looksLikePhone) {
+        const digits = raw.replace(/[^\d]/g, '');
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone_number')
+          .not('phone_number', 'is', null)
+          .ilike('phone_number', `%${digits.slice(-7)}%`)
+          .limit(1)
+          .maybeSingle();
+        if (data) {
+          resolvedUserId = data.id;
+          resolvedEmail = data.email || resolvedEmail;
+          resolvedPhone = data.phone_number || resolvedPhone;
+          resolvedName = data.full_name || null;
+        }
+      } else {
+        // username / @handle
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone_number, community_handle, community_username')
+          .or(`community_handle.eq.@${handleBare},community_username.eq.${handleBare}`)
+          .maybeSingle();
+        if (data) {
+          resolvedUserId = data.id;
+          resolvedEmail = data.email || resolvedEmail;
+          resolvedPhone = data.phone_number || resolvedPhone;
+                    resolvedName = data.full_name || null;
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[inviteMember] resolve failed:', e);
+    }
+
+    // ── Duplicate check: match by any of email / phone / user_id ──
+    try {
+      const orParts: string[] = [];
+      if (resolvedEmail) orParts.push(`email.eq.${resolvedEmail}`);
+      if (resolvedPhone) orParts.push(`phone_number.eq.${resolvedPhone}`);
+      if (resolvedUserId) orParts.push(`user_id.eq.${resolvedUserId}`);
+      // Always also check the literal raw input for a username-style
+      // family_members row that was seeded earlier without a user_id.
+      if (!looksLikeEmail && !looksLikePhone) {
+        orParts.push(`email.eq.${raw.toLowerCase()}`);
       }
 
-      const newId = generateId();
-      const dbRole = role === UserRole.PARENT_2 ? 'parent2'
-        : role === UserRole.GUARDIAN ? 'guardian'
-        : 'viewer';
+      if (orParts.length > 0) {
+        const { data: existing } = await supabase
+          .from('family_members')
+          .select('id, status, user_id')
+          .eq('baby_id', currentBaby.id)
+          .is('deleted_at', null)
+          .or(orParts.join(','))
+          .maybeSingle();
 
-      const { data: userData } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email.toLowerCase())
-        .maybeSingle();
+        if (existing) {
+          // If the invite is pending but the user now has an account,
+          // LINK it instead of refusing. This is the key upgrade: a
+          // pending invite becomes an active membership the moment
+          // the invitee signs up, with no re-invite needed.
+          if (
+            existing.status === 'pending' &&
+            !existing.user_id &&
+            resolvedUserId
+          ) {
+            const { error: linkErr } = await supabase
+              .from('family_members')
+              .update({
+                user_id: resolvedUserId,
+                status: 'active',
+                full_name: resolvedName || undefined,
+                email: resolvedEmail || undefined,
+                phone_number: resolvedPhone || undefined,
+                last_active: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existing.id);
 
+            if (linkErr) {
+              if (__DEV__) console.warn('[inviteMember] link failed:', linkErr.message);
+              showAlert('Error', 'Failed to link existing invite');
+              return false;
+            }
+
+            // Sync parent2 slot on the baby row if the role requires it.
+            if (role === UserRole.PARENT_2) {
+              try {
+                await supabase
+                  .from('babies')
+                  .update({ parent2_id: resolvedUserId, updated_at: new Date().toISOString() })
+                  .eq('id', currentBaby.id);
+              } catch {}
+            }
+
+            await loadFamily();
+            showAlert('Member Added', `${resolvedName || 'Member'} joined the family`);
+            return true;
+          }
+
+          showAlert('Duplicate Invite', 'This person is already part of this family');
+          return false;
+        }
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[inviteMember] dup check failed:', e);
+    }
+
+    // ── Insert: existing account → active; unknown → pending ─────
+    const newId = generateId();
+    const dbRole =
+      role === UserRole.PARENT_2 ? 'parent2'
+      : role === UserRole.GUARDIAN ? 'guardian'
+      : 'viewer';
+    const isExistingAccount = !!resolvedUserId;
+    const nowIso = new Date().toISOString();
+
+    try {
       const { error: insertError } = await supabase
         .from('family_members')
         .insert({
           id: newId,
           baby_id: currentBaby.id,
-          user_id: userData?.id || null,
-          email: email.toLowerCase(),
-          full_name: 'Pending Invitation',
+          user_id: resolvedUserId,
+          email: resolvedEmail || (!looksLikeEmail && !looksLikePhone ? raw.toLowerCase() : null),
+          phone_number: resolvedPhone,
+          full_name: resolvedName || (isExistingAccount ? 'Family Member' : 'Pending Invitation'),
           role: dbRole,
           relationship,
           permissions: ROLE_PERMISSIONS[role] as Record<string, boolean>,
           added_by: authProfile.id,
           can_be_removed: true,
           notifications_enabled: true,
-          status: 'pending',
-          added_at: new Date().toISOString(),
+          status: isExistingAccount ? 'active' : 'pending',
+          last_active: isExistingAccount ? nowIso : null,
+          added_at: nowIso,
+          updated_at: nowIso,
         });
 
       if (insertError) {
-        console.error('Error creating invitation:', insertError);
-        showAlert('Error', 'Failed to send invitation');
+        console.error('[inviteMember] insert failed:', insertError);
+        showAlert('Error', 'Failed to add family member');
         return false;
       }
 
-      const guardianIds = [...(currentBaby.guardian_ids || []), newId];
-      await supabase
-        .from('babies')
-        .update({ guardian_ids: guardianIds })
-        .eq('id', currentBaby.id);
+      // ── If this is parent2 and the account exists, sync the baby ─
+      if (role === UserRole.PARENT_2 && resolvedUserId) {
+        try {
+          await supabase
+            .from('babies')
+            .update({ parent2_id: resolvedUserId, updated_at: nowIso })
+            .eq('id', currentBaby.id);
+        } catch {}
+      }
 
+      // Mirror to profiles.role so the invitee's AuthContext hydrates
+      // with the right role the moment they refresh.
+      if (resolvedUserId) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({ role: dbRole, updated_at: nowIso })
+            .eq('id', resolvedUserId);
+        } catch {}
+        try {
+          const { broadcastProfileChange } = require('./AuthContext');
+          await broadcastProfileChange({ userId: resolvedUserId, fields: ['role'] });
+        } catch {}
+      }
+
+      // Keep the legacy guardian_ids mirror intact for callers that
+      // still read it, but never let a failed write block the invite.
+      try {
+        const guardianIds = [...(currentBaby.guardian_ids || []), newId];
+        await supabase
+          .from('babies')
+          .update({ guardian_ids: guardianIds })
+          .eq('id', currentBaby.id);
+      } catch {}
+
+      familyLoadInProgress.current = false;
       await loadFamily();
-      showAlert('Invitation Sent', 'Family member has been invited');
+
+      showAlert(
+        isExistingAccount ? 'Member Added' : 'Invitation Sent',
+        isExistingAccount
+          ? `${resolvedName || 'They'} joined the family immediately`
+          : 'A pending invite was created — it will auto-link when they sign up',
+      );
       return true;
     } catch (error) {
-      console.error('Error sending invitation:', error);
-      showAlert('Error', 'Failed to send invitation');
+      console.error('[inviteMember] threw:', error);
+      showAlert('Error', 'Failed to add family member');
       return false;
     }
   }, [isOwner, authProfile, currentBaby, loadFamily]);
@@ -1358,9 +1678,27 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (currentBaby.parent2_id === removedUserId) {
         babyUpdates.parent2_id = null;
       }
-      // Never clear parent1_id here — ownership transfer is a
-      // separate flow. If a Parent1 truly wants to leave, they
-      // must transfer ownership first.
+      // Clear parent1_id ONLY if:
+      //   • the removed user is currently parent1, AND
+      //   • I am removing myself (i.e. I am the owner leaving), OR
+      //   • the "abandoned parent1" rule fired above (90+ days inactive)
+      //
+      // Otherwise, ownership must be transferred first — which is
+      // guarded earlier in this function.
+      const removedWasParent1 = currentBaby.parent1_id === removedUserId;
+      const removingSelf = authProfile?.id === removedUserId;
+      if (removedWasParent1 && (removingSelf || currentBaby.parent1_id !== authProfile?.id)) {
+        // Only allow when I'm not an upgraded parent trying to strip
+        // the owner; the earlier abandoned-parent check already
+        // enforced the 90-day rule.
+        const me = state.members.find(
+          (m) => m.userId === authProfile?.id || m.id === authProfile?.id,
+        );
+        const iAmTrueParent1 = currentBaby.parent1_id === authProfile?.id;
+        if (removingSelf || !iAmTrueParent1) {
+          babyUpdates.parent1_id = null;
+        }
+      }
       if (Object.keys(babyUpdates).length > 1) {
         try {
           await supabase

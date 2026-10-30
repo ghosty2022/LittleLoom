@@ -126,6 +126,39 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.VIEWER]: 'Viewer',
 };
 
+/**
+ * Coerce any role-ish value into a canonical `UserRole`.
+ *
+ * Handles:
+ *   • the enum itself ('parent1', 'guardian', …)
+ *   • casing variants ('Parent 1', 'PARENT1')
+ *   • separator variants ('parent_1', 'parent-1')
+ *   • human labels ('Primary Parent', 'Co-Parent', 'Owner')
+ *   • legacy / corrupted values → VIEWER (never throws)
+ */
+export const normalizeRole = (raw: unknown): UserRole => {
+  if (raw == null) return UserRole.VIEWER;
+  const s = String(raw).toLowerCase().replace(/[\s_-]+/g, '');
+  switch (s) {
+    case 'parent1':
+    case 'primaryparent':
+    case 'owner':
+    case 'primary':
+      return UserRole.PARENT_1;
+    case 'parent2':
+    case 'coparent':
+    case 'secondary':
+      return UserRole.PARENT_2;
+    case 'guardian':
+      return UserRole.GUARDIAN;
+    case 'viewer':
+    case 'guest':
+      return UserRole.VIEWER;
+    default:
+      return UserRole.VIEWER;
+  }
+};
+
 export const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.PARENT_1]: '#667eea',
   [UserRole.PARENT_2]: '#fa709a',

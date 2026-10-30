@@ -43,7 +43,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useFamily } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
-import { UserRole, getMemberDisplayLabel } from '../../types/roles';
+import { UserRole, getMemberDisplayLabel, normalizeRole } from '../../types/roles';
 import { useBaby } from '../../context/BabyContext';
 import { useTracker } from '../../hooks/useTrackerContext';
 import OptimizedImage from '../../components/OptimizedImage';
@@ -659,9 +659,11 @@ const FamilyStack = React.memo(({ members, isDark, onPress, onMemberPress }: {
   // but we defensively re-sort so a stale order can't hide the owner.
   const ordered = useMemo(() => {
     const rank: Record<string, number> = { parent1: 0, parent2: 1, guardian: 2, viewer: 3 };
-    return [...members].sort(
-      (a, b) => (rank[a.role as string] ?? 4) - (rank[b.role as string] ?? 4),
-    );
+    return [...members].sort((a, b) => {
+      const ra = rank[normalizeRole((a as any).role)] ?? 4;
+      const rb = rank[normalizeRole((b as any).role)] ?? 4;
+      return ra - rb;
+    });
   }, [members]);
 
   return (

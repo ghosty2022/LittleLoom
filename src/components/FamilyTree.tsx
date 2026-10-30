@@ -392,13 +392,40 @@ export default function FamilyTree({
   //    The tree renders in this order: parents → connectors → guardians
   //    → connectors → viewers. We never mix tiers.
   const { parent1, parent2, guardians, viewers, total } = useMemo(() => {
+    // ── NORMALISE ROLE ──────────────────────────────────────────
+    // `family_members.role` is technically a string. Legacy rows may
+    // hold 'parent1', 'Parent 1', 'parent_1', or even the enum value.
+    // Normalise before bucketing so a role value mismatch never hides
+    // a member from the tree (this was the guardian-invisible bug).
+    const normalise = (raw: unknown): UserRole => {
+      const s = String(raw || '').toLowerCase().replace(/[\s_-]+/g, '');
+      if (s === 'parent1' || s === 'primaryparent' || s === 'owner') return UserRole.PARENT_1;
+      if (s === 'parent2' || s === 'coparent') return UserRole.PARENT_2;
+      if (s === 'guardian') return UserRole.GUARDIAN;
+      if (s === 'viewer') return UserRole.VIEWER;
+      return UserRole.VIEWER;
+    };
+
+    const normalised: FamilyMember[] = members
+      .map((m) => ({ ...m, role: normalise((m as any).role) }))
+      // Drop non-real rows (invite placeholders with no userId AND no
+      // lastActive are not yet a family member — they belong in the
+      // invite list, not the tree).
+      .filter((m) => !!(m as any).userId || !!m.id);
+
     const p1: FamilyMember | null =
-      members.find((m) => m.role === UserRole.PARENT_1) || null;
+      normalised.find((m) => m.role === UserRole.PARENT_1) || null;
     const p2: FamilyMember | null =
-      members.find((m) => m.role === UserRole.PARENT_2) || null;
-    const gs = members.filter((m) => m.role === UserRole.GUARDIAN);
-    const vs = members.filter((m) => m.role === UserRole.VIEWER);
-    return { parent1: p1, parent2: p2, guardians: gs, viewers: vs, total: members.length };
+      normalised.find((m) => m.role === UserRole.PARENT_2) || null;
+    const gs = normalised.filter((m) => m.role === UserRole.GUARDIAN);
+    const vs = normalised.filter((m) => m.role === UserRole.VIEWER);
+    return {
+      parent1: p1,
+      parent2: p2,
+      guardians: gs,
+      viewers: vs,
+      total: normalised.length,
+    };
   }, [members]);
 
   const babyName = currentBaby?.name || 'your baby';

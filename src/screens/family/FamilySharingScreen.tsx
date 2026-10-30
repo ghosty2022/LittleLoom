@@ -44,7 +44,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
-import { UserRole, FamilyMember, getMemberDisplayLabel, canonicalizeRelationship } from '../../types/roles';
+import { UserRole, FamilyMember, getMemberDisplayLabel, canonicalizeRelationship, normalizeRole } from '../../types/roles';
 import FamilyTree from '../../components/FamilyTree';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
@@ -1488,21 +1488,19 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
             <View style={{ marginTop: DS.space.lg, paddingHorizontal: DS.space.lg }}>
               {renderMemberSection(
                 'Primary Parent',
-                members.filter(m => m.role === UserRole.PARENT_1),
+                members.filter((m) => normalizeRole((m as any).role) === UserRole.PARENT_1),
               )}
               {renderMemberSection(
                 'Co-Parent',
-                members.filter(m => m.role === UserRole.PARENT_2),
-                // Only show the "no co-parent yet" CTA when the WHOLE
-                // family is empty — otherwise it reads like a bug.
+                members.filter((m) => normalizeRole((m as any).role) === UserRole.PARENT_2),
                 members.length === 0 ? 'Invite a co-parent to share tracking' : undefined,
               )}
               {renderMemberSection(
                 'Guardians & Viewers',
-                members.filter(
-                  m =>
-                    m.role === UserRole.GUARDIAN || m.role === UserRole.VIEWER,
-                ),
+                members.filter((m) => {
+                  const r = normalizeRole((m as any).role);
+                  return r === UserRole.GUARDIAN || r === UserRole.VIEWER;
+                }),
                 members.length === 0 ? 'Invite a guardian to help out' : undefined,
               )}
 
