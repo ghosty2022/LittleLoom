@@ -1340,6 +1340,9 @@ interface ProfileHeaderProps {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
+  /** All family members for the current baby. Used to resolve my
+   *  effective role for the "You" chip. */
+  members?: any[];
 }
 
 const ProfileHeader = React.memo<ProfileHeaderProps>(({
@@ -1354,6 +1357,7 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
   primaryColor,
   secondaryColor,
   accentColor,
+  members = [],
 }) => {
   const safeBabies = babies || [];
   const hasMultipleBabies = safeBabies.length > 1;
@@ -1361,24 +1365,64 @@ const ProfileHeader = React.memo<ProfileHeaderProps>(({
 
   const handleBabyPress = useCallback(() => {
     if (hapticFeedback) triggerHaptic('light').catch(() => {});
-    if (safeBabies.length === 1 && currentBaby) {
-      navigation.navigate('EditProfile', { mode: 'baby', babyId: currentBaby.id });
-    } else if (safeBabies.length > 1) {
+    if (safeBabies.length > 1) {
+      // Prefer the switcher — user gets to pick before editing.
       navigation.navigate('SwitchBaby', { returnTo: 'Main', returnLabel: 'Settings' });
-    } else {
-      navigation.navigate('CreateBabyProfile');
+      return;
     }
-  }, [safeBabies.length, currentBaby, hapticFeedback, triggerHaptic, navigation]);
+    // Single baby (or fallback to the first element) — edit it.
+    const onlyBaby = safeBabies.length === 1 ? safeBabies[0] : currentBaby;
+    if (onlyBaby?.id) {
+      navigation.navigate('EditProfile', { mode: 'baby', babyId: onlyBaby.id });
+      return;
+    }
+    navigation.navigate('CreateBabyProfile');
+  }, [safeBabies, currentBaby, hapticFeedback, triggerHaptic, navigation]);
 
   const handleCurrentUserPress = useCallback(() => {
     if (hapticFeedback) triggerHaptic('light').catch(() => {});
-    const guardianId = userProfile?.id || userProfile?.uid || 'parent1';
+    const meId = userProfile?.id || userProfile?.uid;
+    if (!meId) {
+      // Auth hasn't hydrated — fall back to the dashboard.
+      navigation.navigate('Main');
+      return;
+    }
+
+    // Resolve MY role for the CURRENT baby so a Parent1-on-Baby-A /
+    // Guardian-on-Baby-B user lands on the right editor. Mirrors
+    // HomeScreen.handleEditMyProfile.
+    const myMemberRow =
+      members.find((m: any) => m.userId === meId) ||
+      members.find((m: any) => m.id === meId) ||
+      null;
+    const rawRole = String(myMemberRow?.role || '').toLowerCase();
+    const myRoleForBaby: string =
+      rawRole ||
+      (currentBaby?.parent1Id === meId
+        ? 'parent1'
+        : currentBaby?.parent2Id === meId
+        ? 'parent2'
+        : 'guardian');
+
+    const editMode: 'parent2' | 'guardian' =
+      myRoleForBaby === 'parent1' || myRoleForBaby === 'parent2'
+        ? 'parent2'
+        : 'guardian';
+
     navigation.navigate('EditGuardian', {
-      guardianId,
-      mode: 'parent2',
+      guardianId: meId,
+      mode: editMode,
       fromChat: false,
     });
-  }, [userProfile, hapticFeedback, triggerHaptic, navigation]);
+  }, [
+    userProfile,
+    hapticFeedback,
+    triggerHaptic,
+    navigation,
+    members,
+    currentBaby?.parent1Id,
+    currentBaby?.parent2Id,
+  ]);
 
   const handleParent2Press = useCallback(() => {
     if (hapticFeedback) triggerHaptic('light').catch(() => {});
@@ -1581,7 +1625,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     rehydratePinStatus,
   } = useSecurity();
   const { profile: userContextProfile } = useUser();
-  const { guardians, parent2: parent2Profile } = useFamily();
+  const { guardians, parent2: parent2Profile, members: familyMembersAll } = useFamily();
   const { entries, loadEntries } = useActivity();
   const tracker = useTracker();
   const refreshTrackerEntries = tracker?.refreshEntries;
@@ -2868,6 +2912,9 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             primaryColor={primary}
             secondaryColor={secondary}
             accentColor={accent}
+            // Used by ProfileHeader to resolve MY effective role for
+            // the current baby (see `handleCurrentUserPress`).
+            members={familyMembersAll || []}
           />
         </Animated.View>
 

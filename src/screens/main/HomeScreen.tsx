@@ -64,6 +64,7 @@ import { useApp } from '../../context/AppContext';
 import CorrelationCard from '../../components/trackers/CorrelationCard';
 import PredictionCard from '../../components/trackers/PredictionCard';
 import { SafeAvatar, SafeBabyAvatar, SafeParentAvatar } from '../../components/SafeAvatar';
+import FamilyStack from '../../components/FamilyStack';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { ShimmerLoader } from '../../components/UniversalSpinner';
 import { RelationshipBackfillBanner } from '../../components/RelationshipBackfillBanner';
@@ -1606,6 +1607,7 @@ interface StickyAppHeaderProps {
   unreadCount: number;
   onSafetyCornerPress: () => void;
   onSettingsPress: () => void;
+  onFamilyPress: () => void;
   primaryColor: string;
   fullTheme: any;
   fontSizeMultiplier: number;
@@ -2314,11 +2316,25 @@ useEffect(() => {
   // We resolve the CURRENT baby's role for me (not the global
   // `userProfile.role` hint) so a Parent1-on-BabyA / Guardian-on-BabyB
   // user lands on the right editor for the active baby.
+  // ── Header profile tap → EditGuardian (self) ────────────────
+  // This is the ONLY entry point for "tap my avatar". Every header
+  // surface (sticky header, hero banner, settings menu) funnels here
+  // so the routing logic lives in one place.
+  //
+  // Rules (must match MoreScreen / FamilyDashboardScreen):
+  //   • Parent 1 / Parent 2 on the ACTIVE baby → mode 'parent2'
+  //   • Guardian / Viewer on the ACTIVE baby    → mode 'guardian'
+  //
+  // A user who is Parent1-on-Baby-A / Guardian-on-Baby-B must land
+  // on the correct editor for whichever baby is currently active,
+  // so we resolve `myRoleForBaby` from FamilyContext `members` first
+  // (per-baby authoritative), and fall back to the baby's parent
+  // slots only if members hasn't hydrated yet.
   const handleEditMyProfile = useCallback(() => {
     const meId = userProfile?.id;
     if (!meId) {
-      // Fall back to the family dashboard when auth hasn't hydrated
-      // yet — still safer than a no-op.
+      // Auth hasn't hydrated yet — send to the family dashboard so
+      // the user isn't stuck on a dead tap.
       navigateToScreen('Profile');
       return;
     }
@@ -2328,11 +2344,15 @@ useEffect(() => {
       members.find((m: any) => m.id === meId) ||
       null;
 
-    const myRoleForBaby =
-      (myMemberRow?.role as string | undefined) ||
-      // Fallback: if I'm not in `members` yet (FamilyContext still
-      // loading), derive from the current baby's parent slots so we
-      // don't fall through to `viewer` incorrectly.
+    // Strip `normalizeRole` to a plain lowercase string. Both
+    // 'parent1' / 'parent2' / 'guardian' / 'viewer' and the enum
+    // values (same strings) are handled.
+    const rawRole = String(myMemberRow?.role || '').toLowerCase();
+
+    const myRoleForBaby: string =
+      rawRole ||
+      // Fallback: derive from currentBaby parent slots. Only trust
+      // this when `members` is empty for the current baby (mid-load).
       (currentBaby?.parent1Id === meId
         ? 'parent1'
         : currentBaby?.parent2Id === meId
@@ -2350,6 +2370,37 @@ useEffect(() => {
       fromChat: false,
     });
   }, [members, userProfile?.id, currentBaby?.parent1Id, currentBaby?.parent2Id, navigateToScreen]);
+
+  // ── Baby avatar / baby-pill tap ─────────────────────────────
+  // The sticky header avatar, the hero-banner stat pill, and the
+  // "switch baby" row in the settings area all funnel here.
+  //
+  // Rules:
+  //   • >1 baby  → open the `SwitchBaby` modal so the user can pick
+  //                the correct baby before editing anything.
+  //   • 1 baby   → open `EditProfile(mode: 'baby')` for that baby.
+  //   • 0 babies → open `CreateBabyProfile`.
+  //
+  // This mirrors `ProfileHeader.handleBabyPress` in MoreScreen
+  // exactly, so both screens behave the same.
+  const handleBabyHeaderPress = useCallback(() => {
+    const totalBabies = Array.isArray(babies) ? babies.length : 0;
+    if (totalBabies > 1) {
+      navigateToScreen('SwitchBaby', {
+        returnTo: 'Main',
+        returnLabel: 'Home',
+      });
+      return;
+    }
+    if (totalBabies === 1 && babies[0]?.id) {
+      navigateToScreen('EditProfile', {
+        mode: 'baby',
+        babyId: babies[0].id,
+      });
+      return;
+    }
+    navigateToScreen('CreateBabyProfile');
+  }, [babies, navigateToScreen]);
 
   /* ── Hero quick actions ── */
   const handleHeroQuickAction = useCallback((action: string) => {
@@ -2591,7 +2642,10 @@ const growthStats = useMemo(() => {
         userProfile={userProfile}
         onNotificationPress={handleNotificationPress}
         onLockPress={handleLockPress}
-        onBabyPress={() => navigateToScreen('EditProfile', { mode: 'baby', babyId: displayedBaby?.id })}
+        // Tapping the baby avatar in the sticky header must respect
+        // the multi-baby case — otherwise a Parent 1 of 2 babies
+        // can never reach the switcher from HomeScreen.
+        onBabyPress={handleBabyHeaderPress}
         onAddBabyPress={() => navigateToScreen('CreateBabyProfile')}
         unreadCount={totalUnread}
         onSafetyCornerPress={handleSafetyCornerPress}
@@ -2633,9 +2687,23 @@ const growthStats = useMemo(() => {
               onProfilePress={handleEditMyProfile}
               onNotificationPress={handleNotificationPress}
               onSettingsPress={() => navigateToScreen('More')}
-              onBabyPress={() => navigateToScreen('SwitchBaby', { returnTo: 'Main' })}
+              onBabyPress={handleBabyHeaderPress}
               onQuickAction={handleHeroQuickAction}
             />
+
+            {/* ═══ FAMILY STACK (members list) ═══ */}
+            {/* Mirrors the "Your Family" card from FamilyDashboardScreen
+                so a family can be managed in one tap from HomeScreen. */}
+            {members.length > 0 && (
+              <View style={{ marginBottom: DS.space.md }}>
+                <FamilyStack
+                  members={members}
+                  isDark={isDark}
+                  onPress={() => navigateToScreen('FamilySharing', {})}
+                  onMemberPress={handleMemberAvatarPress}
+                />
+              </View>
+            )}
 
             {/* ═══ RELATIONSHIP BACKFILL (existing users only) ═══ */}
             {userProfile?.id && (
