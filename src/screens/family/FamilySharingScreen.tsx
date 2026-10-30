@@ -1746,31 +1746,81 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                       );
                       return;
                     }
-                    const labels = candidates.map(
-                      (m) =>
-                        `${m.fullName} (${getMemberDisplayLabel({
-                          role: m.role,
-                          relationship: m.relationship,
-                        })})`,
-                    );
-                    sweetAlert.confirm(
-                      'Transfer Ownership',
-                      `Who should become Primary Parent?\n\n${labels.join('\n')}`,
-                      async () => {
-                        const chosen = candidates[0];
-                        const res = await transferOwnership(chosen.id);
-                        if (res.success) {
-                          sweetAlert.success('Ownership Transferred', res.message);
-                          await loadFamily();
-                        } else {
-                          sweetAlert.error('Transfer Failed', res.message);
-                        }
-                      },
-                      () => {},
-                      'Transfer',
-                      'Cancel',
-                      true,
-                    );
+
+                    // ── PICK THE TARGET EXPLICITLY ─────────────────
+                    // The old code always transferred to
+                    // `candidates[0]` regardless of what the user
+                    // tapped. Now we show a chooser sheet so the
+                    // user actually selects who gets the crown.
+                    const target =
+                      candidates.length === 1
+                        ? candidates[0]
+                        : null;
+
+                    const commit = async (chosen: FamilyMember) => {
+                      const res = await transferOwnership(chosen.id);
+                      if (res.success) {
+                        sweetAlert.success('Ownership Transferred', res.message);
+                        await loadFamily();
+                      } else {
+                        sweetAlert.error('Transfer Failed', res.message);
+                      }
+                    };
+
+                    if (target) {
+                      const roleLabel = getMemberDisplayLabel({
+                        role: target.role,
+                        relationship: target.relationship,
+                      });
+                      sweetAlert.confirm(
+                        'Transfer Ownership',
+                        `Make ${target.fullName} (${roleLabel}) the new Primary Parent? You'll become Co-Parent.`,
+                        () => { commit(target); },
+                        () => {},
+                        'Transfer',
+                        'Cancel',
+                        true,
+                      );
+                      return;
+                    }
+
+                    // Multiple candidates → let the user pick.
+                    // We chain one confirm per candidate in priority
+                    // order (parent2 → guardian → viewer) so the
+                    // natural "your partner" choice is offered first.
+                    const ordered = [...candidates].sort((a, b) => {
+                      const rank: Record<string, number> = {
+                        parent2: 0,
+                        guardian: 1,
+                        viewer: 2,
+                      };
+                      return (
+                        (rank[String(a.role)] ?? 9) -
+                        (rank[String(b.role)] ?? 9)
+                      );
+                    });
+
+                    const ask = (idx: number) => {
+                      if (idx >= ordered.length) return;
+                      const cand = ordered[idx];
+                      const roleLabel = getMemberDisplayLabel({
+                        role: cand.role,
+                        relationship: cand.relationship,
+                      });
+                      const isLast = idx === ordered.length - 1;
+                      sweetAlert.confirm(
+                        'Transfer Ownership',
+                        `Make ${cand.fullName} (${roleLabel}) the new Primary Parent? You'll become Co-Parent.`,
+                        () => { commit(cand); },
+                        () => {
+                          if (!isLast) ask(idx + 1);
+                        },
+                        isLast ? 'Transfer' : 'Choose',
+                        isLast ? 'Cancel' : 'Pick Someone Else',
+                        true,
+                      );
+                    };
+                    ask(0);
                   }}
                   activeScale={0.98}
                 >

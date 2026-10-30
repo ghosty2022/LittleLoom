@@ -1445,6 +1445,16 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [authProfile, currentBaby, state.members, loadFamily, promoteMember]);
   // ─── Transfer Ownership ────────────────────────────────────────────────
+  // Delegates to the atomic `transfer_ownership` RPC. The old client
+  // sequence (demote me → promote target) always failed when the target
+  // was already `parent2`, because demoting the current parent1 to
+  // `parent2` collided with the existing parent2 row on the
+  // `family_members_one_parent2` unique index — surfacing as
+  // `23505 duplicate key value violates unique constraint`.
+  //
+  // The RPC swaps roles inside a single transaction so the unique
+  // constraints are re-checked between statements and can never both
+  // be "violated" at once.
   const transferOwnership = useCallback(async (
     newParent1MemberId: string
   ): Promise<{ success: boolean; message: string }> => {
@@ -1475,51 +1485,59 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return { success: false, message: 'That member is already Primary Parent' };
     }
 
+    const targetUserId = (target as any).userId || target.id;
+
     try {
-      const nowIso = new Date().toISOString();
-      const targetUserId = (target as any).userId || target.id;
+      // ── SINGLE ATOMIC RPC — the DB does the swap in one transaction ──
+      const { data: rpcRow, error: rpcErr } = await supabase.rpc(
+        'transfer_ownership',
+        {
+          p_baby_id: currentBaby.id,
+          p_target_row_id: target.id,
+          p_actor_id: authProfile.id,
+        },
+      );
 
-      // 1) Demote myself (Parent1 → Parent2) — do NOT remove the row,
-      //    just change the role so history is preserved.
-      const { error: demoteErr } = await supabase
-        .from('family_members')
-        .update({ role: 'parent2', updated_at: nowIso })
-        .eq('id', me.id);
+      if (rpcErr) {
+        if (__DEV__) {
+          console.error('[transferOwnership] RPC failed:', {
+            code: (rpcErr as any)?.code,
+            message: rpcErr.message,
+            details: (rpcErr as any)?.details,
+            hint: (rpcErr as any)?.hint,
+          });
+        }
 
-      if (demoteErr) {
-        return { success: false, message: `Failed to demote current owner: ${demoteErr.message}` };
+        // Friendlier messages for the common failure modes.
+        const code = (rpcErr as any)?.code;
+        if (code === '23505') {
+          return {
+            success: false,
+            message:
+              'Another member already holds that role. Refresh the family and try again.',
+          };
+        }
+        if (code === '42501' || code === '28000') {
+          return {
+            success: false,
+            message: 'You do not have permission to transfer ownership.',
+          };
+        }
+        if (code === 'P0002') {
+          return {
+            success: false,
+            message: 'That member is no longer in this family.',
+          };
+        }
+        return { success: false, message: rpcErr.message || 'Ownership transfer failed' };
       }
 
-      // 2) Promote target to Parent1
-      const { error: promoteErr } = await supabase
-        .from('family_members')
-        .update({ role: 'parent1', can_be_removed: false, updated_at: nowIso })
-        .eq('id', newParent1MemberId);
-
-      if (promoteErr) {
-        // Roll back the demotion so we don't end up with 0 parents.
-        await supabase
-          .from('family_members')
-          .update({ role: 'parent1', updated_at: nowIso })
-          .eq('id', me.id);
-        return { success: false, message: `Failed to promote target: ${promoteErr.message}` };
+      if (!rpcRow) {
+        return { success: false, message: 'Ownership transfer failed — no row returned' };
       }
 
-      // 3) Update babies.parent1_id / parent2_id to match
-      const { error: babyErr } = await supabase
-        .from('babies')
-        .update({
-          parent1_id: targetUserId,
-          parent2_id: authProfile.id,
-          updated_at: nowIso,
-        })
-        .eq('id', currentBaby.id);
-
-      if (babyErr && __DEV__) {
-        console.warn('[FamilyContext] transferOwnership baby sync failed:', babyErr.message);
-      }
-
-      // 4) Re-load + broadcast so every device picks up the change
+      // ── Fresh reload + fan-out ───────────────────────────────
+      familyLoadInProgress.current = false;
       await loadFamily();
       try {
         const { broadcastProfileChange } = require('./AuthContext');
@@ -1532,6 +1550,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         message: `${target.fullName} is now Primary Parent. You are now Co-Parent.`,
       };
     } catch (e: any) {
+      if (__DEV__) console.error('[transferOwnership] threw:', e);
       return { success: false, message: e?.message || 'Ownership transfer failed' };
     }
   }, [currentBaby, authProfile, state.members, loadFamily]);
