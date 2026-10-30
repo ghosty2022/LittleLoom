@@ -564,8 +564,10 @@ const ChatListItem: React.FC<{
   const liveMember = otherMembers?.find(
     (m) => m.id === otherParticipantId || (m as any).userId === otherParticipantId,
   );
-  // If the peer has a userId but no family_members row AND no profile,
-  // they are no longer on the platform (deleted account).
+  // The peer is inactive if they're a direct-chat partner with NO
+  // family_members row AND NO cached participant name. A peer who
+  // merely has no live avatar is still active; only a missing name
+  // (written at chat-creation time) signals they were never resolvable.
   const isDeactivatedPeer =
     isDirect &&
     !!otherParticipantId &&
@@ -836,14 +838,25 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     HAPTIC_LIGHT();
     if (chat.type === 'direct') {
       const otherId = chat.participants.find((p) => p !== userProfile?.id);
-      // `chat.participants` holds *user ids* (profiles.id), but
-      // `members[].id` is usually the `family_members.id` row id —
-      // which is different. Match either column so parent1 and
-      // invite-added members resolve correctly.
       const member =
         (otherId && members.find((m: any) => m.id === otherId)) ||
         (otherId && members.find((m: any) => m.userId === otherId)) ||
         undefined;
+
+      // ── GUARD: peer no longer on platform ──────────────────────
+      // If we can't find a family_members row AND there's no cached
+      // participant name, the peer was deleted / removed. Show a
+      // toast instead of opening a broken chat.
+      const hasCachedName = !!otherId && !!chat.participantNames?.[otherId];
+      if (otherId && !member && !hasCachedName) {
+        showSweetAlert(
+          'warning',
+          'Member Inactive',
+          'This family member is no longer active on the platform.',
+        );
+        return;
+      }
+
       navigation.navigate('FamilyChat', {
         chatId: chat.id,
         memberId: member?.id || otherId,
