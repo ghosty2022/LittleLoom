@@ -17,6 +17,7 @@ import {
   Platform,
   Modal,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,6 +35,7 @@ import {
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { useBaby } from '../../context/BabyContext';
+import { useTracker } from '../../hooks/useTrackerContext';
 import {
   TrackerProgressiveState,
   ProgressiveSuggestion,
@@ -2017,8 +2019,15 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     triggerHaptic,
   } = useCustomization();
   const { error, info } = useSweetAlert();
+  const { savingTrackerId } = useTracker();
 
   const { currentBaby } = useBaby();
+
+  // True while `TrackerContext.handleAddEntry` is in flight for THIS
+  // tracker. Used to disable the Save button + show a spinner so the
+  // user doesn't tap again out of confusion (which was the root cause
+  // of the 5-tap oral_hygiene duplicate incident).
+  const isSavingFromContext = savingTrackerId === tracker.id;
 
   const currentBabyAgeMonths = useMemo(() => {
     if (!currentBaby?.birthDate) return 0;
@@ -2082,6 +2091,11 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [photoAiTags, setPhotoAiTags] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Combined flag: local submit-in-progress OR context-level save.
+  // The form uses this everywhere it currently checks `isSubmitting`
+  // so the button/spinner are disabled for the whole window, not just
+  // the synchronous part.
+  const submitInProgress = isSubmitting || isSavingFromContext;
   const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(
     new Set()
   );
@@ -2201,7 +2215,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
   }, [tracker.fields, data, currentBabyAgeMonths, tracker.id]);
 
   const handleSubmit = useCallback(async () => {
-    if (isSubmitting) return;
+    if (submitInProgress) return;
 
     if (!validate()) {
       triggerHaptic('error');
@@ -2314,7 +2328,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
     triggerHaptic,
     error,
     linkedEntryId,
-    isSubmitting,
+    submitInProgress,
     tracker.id,
     photoAiTags,
   ]);
@@ -2532,7 +2546,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         suggestion,
         yesterdayValue,
         trend,
-        editable: !isSubmitting,
+        editable: !submitInProgress,
       };
 
       switch (field.type) {
@@ -2561,7 +2575,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 fontSizeMultiplier={fontSizeMultiplier}
                 borderRadiusValue={borderRadiusValue}
                 isStart={field.id === 'startTime'}
-                editable={!isSubmitting}
+                editable={!submitInProgress}
               />,
               field.id
             );
@@ -2579,7 +2593,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               colors={fullThemeColors}
               fontSizeMultiplier={fontSizeMultiplier}
               borderRadiusValue={borderRadiusValue}
-              editable={!isSubmitting}
+              editable={!submitInProgress}
             />,
             field.id
           );
@@ -2604,7 +2618,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 {field.label}
               </Text>
               <Switch
-                disabled={isSubmitting}
+                disabled={submitInProgress}
                 value={Boolean(data[field.id])}
                 onValueChange={(value) => updateField(field.id, value)}
                 trackColor={{
@@ -2634,7 +2648,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 {Array.from({ length: max }, (_, i) => i + 1).map((star) => (
                   <TouchableOpacity
                     key={star}
-                    disabled={isSubmitting}
+                    disabled={submitInProgress}
                     onPress={() => updateField(field.id, star)}
                   >
                     <Ionicons
@@ -2662,7 +2676,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 fontSizeMultiplier={fontSizeMultiplier}
               />
               <TextInput
-                editable={!isSubmitting}
+                editable={!submitInProgress}
                 style={[
                   styles.input,
                   styles.textarea,
@@ -2675,7 +2689,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                     color: fullThemeColors.text,
                     fontSize: 16 * fontSizeMultiplier,
                     minHeight: 100 * fontSizeMultiplier,
-                    opacity: isSubmitting ? 0.7 : 1,
+                    opacity: submitInProgress ? 0.7 : 1,
                   },
                 ]}
                 multiline
@@ -2737,7 +2751,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 </Text>
               </View>
               <Slider
-                disabled={isSubmitting}
+                disabled={submitInProgress}
                 style={styles.slider}
                 minimumValue={sliderMin}
                 maximumValue={sliderMax}
@@ -2762,7 +2776,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               colors={fullThemeColors}
               fontSizeMultiplier={fontSizeMultiplier}
               borderRadiusValue={borderRadiusValue}
-              editable={!isSubmitting}
+              editable={!submitInProgress}
             />,
             field.id
           );
@@ -2834,7 +2848,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               tracker={tracker}
               borderRadiusValue={borderRadiusValue}
               fontSizeMultiplier={fontSizeMultiplier}
-              editable={!isSubmitting}
+              editable={!submitInProgress}
             />,
             field.id
           );
@@ -2850,7 +2864,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               tracker={tracker}
               borderRadiusValue={borderRadiusValue}
               fontSizeMultiplier={fontSizeMultiplier}
-              editable={!isSubmitting}
+              editable={!submitInProgress}
             />,
             field.id
           );
@@ -2872,7 +2886,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
       timeContext,
       updateField,
       photoUris,
-      isSubmitting,
+      submitInProgress,
     ]
   );
 
@@ -2917,18 +2931,22 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
           <TouchableOpacity
             style={[styles.quickSubmit, { borderRadius: borderRadiusValue }]}
             onPress={handleSubmit}
-            disabled={isSubmitting}
+            disabled={submitInProgress}
             activeOpacity={0.85}
           >
             <LinearGradient
-              colors={[AURA.primary, AURA.accent]}
+              colors={submitInProgress ? [AURA.gray400, AURA.gray500] : [AURA.primary, AURA.accent]}
               style={[styles.quickSubmitInner, { borderRadius: borderRadiusValue }]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Text style={styles.quickSubmitText}>
-                {isSubmitting ? 'Saving...' : `Save ${tracker.emoji}`}
-              </Text>
+              {submitInProgress ? (
+                <ActivityIndicator color={AURA.white} />
+              ) : (
+                <Text style={styles.quickSubmitText}>
+                  Save {tracker.emoji}
+                </Text>
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </ScrollView>
@@ -3229,7 +3247,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             Additional Notes
           </Text>
           <TextInput
-            editable={!isSubmitting}
+            editable={!submitInProgress}
             style={[
               styles.input,
               styles.textarea,
@@ -3240,7 +3258,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                 color: fullThemeColors.text,
                 fontSize: 16 * fontSizeMultiplier,
                 minHeight: 100 * fontSizeMultiplier,
-                opacity: isSubmitting ? 0.7 : 1,
+                opacity: submitInProgress ? 0.7 : 1,
               },
             ]}
             multiline
@@ -3268,7 +3286,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               {tracker.quickTags.map((tag) => (
                 <TouchableOpacity
                   key={tag}
-                  disabled={isSubmitting}
+                  disabled={submitInProgress}
                   style={[
                     styles.tagChip,
                     {
@@ -3279,7 +3297,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
                         ? AURA.primary
                         : fullThemeColors.border,
                       borderRadius: borderRadiusValue,
-                      opacity: isSubmitting ? 0.7 : 1,
+                      opacity: submitInProgress ? 0.7 : 1,
                     },
                   ]}
                   onPress={() => {
@@ -3314,7 +3332,7 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
         <View style={styles.buttonRow}>
           {onCancel && (
             <TouchableOpacity
-              disabled={isSubmitting}
+              disabled={submitInProgress}
               style={[
                 styles.cancelBtn,
                 {
@@ -3344,24 +3362,28 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
               styles.submitBtn,
               {
                 borderRadius: borderRadiusValue,
-                opacity: isSubmitting ? 0.7 : 1,
+                opacity: submitInProgress ? 0.7 : 1,
                 overflow: 'hidden',
                 padding: 0,
               },
             ]}
             onPress={handleSubmit}
-            disabled={isSubmitting}
+            disabled={submitInProgress}
             activeOpacity={0.85}
           >
             <LinearGradient
-              colors={[AURA.primary, AURA.accent]}
+              colors={submitInProgress ? [AURA.gray400, AURA.gray500] : [AURA.primary, AURA.accent]}
               style={[styles.submitGradient, { borderRadius: borderRadiusValue }]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Text style={[styles.submitText, { fontSize: 16 * fontSizeMultiplier }]}>
-                {isSubmitting ? 'Saving...' : `Save ${tracker.emoji}`}
-              </Text>
+              {submitInProgress ? (
+                <ActivityIndicator color={AURA.white} />
+              ) : (
+                <Text style={[styles.submitText, { fontSize: 16 * fontSizeMultiplier }]}>
+                  Save {tracker.emoji}
+                </Text>
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </View>

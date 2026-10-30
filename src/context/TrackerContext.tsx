@@ -71,6 +71,8 @@ interface TrackerState {
 }
 
 interface TrackerContextType extends Omit<TrackerState, 'currentBabyId'> {
+  /** Which tracker is currently saving, or `null` when idle. */
+  savingTrackerId: string | null;
   getTracker: (id: string) => UnifiedTrackerConfig | undefined;
   getTrackersByCategory: (category: TrackerCategory) => UnifiedTrackerConfig[];
   searchTrackers: (query: string) => UnifiedTrackerConfig[];
@@ -603,6 +605,13 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
   });
 
+  // ── Which tracker is currently saving ──────────────────────────────
+  // Public so form screens can disable the Save button and show a
+  // spinner while `handleAddEntry` is in flight. This is the
+  // user-facing half of the re-entrancy guard: without it, the guard
+  // silently drops the 2nd/3rd tap and the user keeps tapping.
+  const [savingTrackerId, setSavingTrackerId] = useState<string | null>(null);
+
   const initRef = useRef(false);
   const dismissedInsightIdsRef = useRef<Set<string>>(new Set());
   const currentBabyIdRef = useRef<string | null>(null);
@@ -617,7 +626,19 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [userProfile?.id]);
 
   const loadedForBabyIdRef = useRef<string | null>(null);
-  
+
+  // ── Re-entrancy guard for handleAddEntry ──────────────────────
+  // Prevents double/triple-tap on "Save" from firing overlapping
+  // `EntryService.saveEntry` calls. Without this, each tap calls
+  // `generateId()` at a slightly different `Date.now()` and inserts
+  // its own row — producing 2-5 duplicate `tracker_entries` per tap
+  // (e.g. the 5-tap oral_hygiene incident on 2026-09-23 19:47:58).
+  //
+  // Keyed by `trackerId` so logging a feed and a sleep at the same
+  // time still works, but the same tracker can't be saved twice
+  // before the first save resolves.
+  const addEntryLockRef = useRef<Set<string>>(new Set());
+
   const [currentBabyIdState, setCurrentBabyIdState] = useState<string | null>(
     () => getBabyIdFromContext()
   );
@@ -1357,6 +1378,27 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       aiTags?: string[];
     }
   ): Promise<TrackerEntry | null> => {
+    // ── Re-entrancy guard ────────────────────────────────────────
+    // A user can double/triple-tap "Save" faster than the first
+    // `EntryService.saveEntry` completes. Each tap would call
+    // `generateId()` at a slightly different `Date.now()` (200 ms apart),
+    // producing three DIFFERENT ids for what the user intended as ONE
+    // entry — the exact `mvv92eps-*` / `mvv92eqz-*` / `mvv92evz-*` triple
+    // observed for the "both Change" diaper on 2026-10-30.
+    //
+    // The lock also drives `savingTrackerId`, which the form uses to
+    // disable the Save button and show a spinner so users don't tap
+    // again out of confusion.
+    const lockKey = trackerId;
+    if (addEntryLockRef.current.has(lockKey)) {
+      if (__DEV__) {
+        console.log('[TrackerContext] Duplicate addEntry ignored for', lockKey);
+      }
+      return null;
+    }
+    addEntryLockRef.current.add(lockKey);
+    setSavingTrackerId(lockKey);
+    try {
     const babyId = getCurrentBabyId();
     if (!babyId) {
       sweetAlert('Error', 'No baby profile selected. Please select a baby first.', 'warning');
@@ -1570,6 +1612,10 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.error('Failed to add entry:', error);
       sweetAlert('Error', 'Failed to save entry', 'warning');
       return null;
+    }
+    } finally {
+      addEntryLockRef.current.delete(lockKey);
+      setSavingTrackerId((prev) => (prev === lockKey ? null : prev));
     }
   }, [
     canCreateEntry,
@@ -2085,6 +2131,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const value = useMemo<TrackerContextType>(() => ({
     isLoading: state.isLoading,
+    savingTrackerId,
     trackers: state.trackers,
     customTrackers: state.customTrackers,
     entries: state.entries,
@@ -2131,6 +2178,7 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     getCurrentBabyId,
   }), [
     state,
+    savingTrackerId,
     currentBabyIdState,
     getTracker,
     getTrackersByCategory,
