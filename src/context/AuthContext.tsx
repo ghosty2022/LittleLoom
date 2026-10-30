@@ -7,7 +7,8 @@ import { SocialUser } from '../hooks/useSocialAuth';
 import { supabase } from '@/utils/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import { clearUserIdCache } from '@/database/dbHelpers';
-
+import Constants from 'expo-constants';
+import * as AuthSession from 'expo-auth-session';
 export const ONBOARDING_KEY = '@littleloom_onboarding_complete_v3';
 export const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
 
@@ -2060,8 +2061,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true, message: 'If an account exists, a reset link was sent.' };
       }
 
+      // The redirect URI must be on Supabase's allowlist (Dashboard →
+      // Authentication → URL Configuration → Redirect URLs).
+      // In Expo Go (`exp://`) the URI is generated dynamically; in a
+      // standalone build it's `littleloom://reset-password`.
+      const isExpoGo = (Constants as any)?.appOwnership === 'expo';
+      const redirectTo = isExpoGo
+        ? AuthSession.makeRedirectUri({ scheme: 'exp', path: 'reset-password' })
+        : 'littleloom://reset-password';
+
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: 'littleloom://reset-password',
+        redirectTo,
       });
       if (error) {
         return { success: false, message: error.message };

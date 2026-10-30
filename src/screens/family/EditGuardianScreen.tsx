@@ -54,6 +54,7 @@ import { useTracker } from '../../hooks/useTrackerContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../../utils/supabase';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
@@ -763,6 +764,11 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const [addMemberRole, setAddMemberRole] = useState<UserRole>(UserRole.GUARDIAN);
   const [addMemberRelationship, setAddMemberRelationship] = useState('');
   const [isAddingMember, setIsAddingMember] = useState(false);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [resetStep, setResetStep] = useState<'confirm' | 'generating' | 'success'>('confirm');
+  const [generatedTempPassword, setGeneratedTempPassword] = useState<string | null>(null);
+  const [resetExpiresAt, setResetExpiresAt] = useState<string | null>(null);
+  const [hasCopiedTemp, setHasCopiedTemp] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [memberActivities, setMemberActivities] = useState<any[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
@@ -1472,7 +1478,16 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   }, [isAddingMember, addMemberIdentifier, addMemberRelationship, addMemberRole, addMemberDirectly, sweetAlert, triggerHaptic, navigation]);
 
   
-  /* ─── GENERATE TEMP PASSWORD ─── */
+  /* ─── GENERATE TEMP PASSWORD (Aura modal) ─── */
+  const openResetPasswordModal = useCallback(() => {
+    triggerHaptic('light');
+    setGeneratedTempPassword(null);
+    setResetExpiresAt(null);
+    setHasCopiedTemp(false);
+    setResetStep('confirm');
+    setShowResetPasswordModal(true);
+  }, [triggerHaptic]);
+
   const handleGenerateTempPassword = useCallback(async () => {
     if (!member) return;
     const memberUserId = (member as any).userId || member.id;
@@ -1485,46 +1500,91 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
       return;
     }
 
-    sweetAlert.confirm(
-      'Generate Temporary Password?',
-      `${member.fullName} will be signed out of any active sessions and forced to choose a new password on next login.`,
-      async () => {
-        setIsSaving(true);
-        triggerHaptic('medium');
+    setResetStep('generating');
+    triggerHaptic('medium');
+
+    try {
+      const result = await generateTemporaryPassword(memberUserId);
+      if (result.success && result.tempPassword) {
+        triggerHaptic('success');
+        setGeneratedTempPassword(result.tempPassword);
+        // 24 hours from now, matching `generateTemporaryPassword`.
+        setResetExpiresAt(
+          new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        );
+        setResetStep('success');
+
+        // Fan out so the target's devices re-hydrate and force the
+        // change on their next interaction.
         try {
-          const result = await generateTemporaryPassword(memberUserId);
-          if (result.success && result.tempPassword) {
-            triggerHaptic('success');
-            // Show the temp password ONCE in a modal the admin can copy.
-            sweetAlert.success(
-              'Temporary Password Generated',
-              `Share this with ${member.fullName.split(' ')[0]}:\n\n` +
-                `${result.tempPassword}\n\n` +
-                `They must change it on first login.`,
-            );
-            // Optionally: broadcast so this member's other devices
-            // re-fetch and lock instantly.
-            try {
-              const { broadcastProfileChange } = require('../../context/AuthContext');
-              await broadcastProfileChange({ userId: memberUserId, fields: ['role'] });
-            } catch {}
-          } else {
-            triggerHaptic('error');
-            sweetAlert.error('Could Not Generate', result.message || 'Please try again.');
-          }
-        } catch (e: any) {
-          triggerHaptic('error');
-          sweetAlert.error('Error', e?.message || 'Failed to generate temp password.');
-        } finally {
-          setIsSaving(false);
-        }
-      },
-      () => {},
-      'Generate',
-      'Cancel',
-    );
+          const { broadcastProfileChange } = require('../../context/AuthContext');
+          await broadcastProfileChange({ userId: memberUserId, fields: ['role'] });
+        } catch {}
+
+        // Best-effort: persist the plaintext temp password for
+        // the creator to view later inside the permitted window.
+        // (See Fix 3 below for the RLS grants.)
+        try {
+          await supabase
+            .from('invite_codes')
+            .update({
+              temp_password_plain: result.tempPassword,
+              temp_password_hash: result.tempPassword, // replace with real hash if you generate one
+            })
+            .eq('creator_id', userProfile?.id || '')
+            .eq('used_by', memberUserId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+        } catch {}
+      } else {
+        triggerHaptic('error');
+        setShowResetPasswordModal(false);
+        sweetAlert.error(
+          'Could Not Generate',
+          result.message || 'Please try again.',
+        );
+        setResetStep('confirm');
+      }
+    } catch (e: any) {
+      triggerHaptic('error');
+      setShowResetPasswordModal(false);
+      sweetAlert.error('Error', e?.message || 'Failed to generate temp password.');
+      setResetStep('confirm');
+    }
   }, [member, userProfile, generateTemporaryPassword, sweetAlert, triggerHaptic]);
 
+  const copyTempPassword = useCallback(async () => {
+    if (!generatedTempPassword) return;
+    try {
+      await Clipboard.setStringAsync(generatedTempPassword);
+      triggerHaptic('success');
+      setHasCopiedTemp(true);
+      sweetAlert.toast('Copied', 'Temporary password copied to clipboard');
+    } catch {
+      sweetAlert.error('Copy Failed', 'Could not copy to clipboard.');
+    }
+  }, [generatedTempPassword, triggerHaptic, sweetAlert]);
+
+  const shareTempPassword = useCallback(async () => {
+    if (!generatedTempPassword || !member) return;
+    try {
+      triggerHaptic('medium');
+      const message =
+        `Hi ${member.fullName.split(' ')[0]},\n\n` +
+        `Your LittleLoom password has been reset.\n\n` +
+        `Temporary password:\n${generatedTempPassword}\n\n` +
+        (resetExpiresAt
+          ? `This expires on ${new Date(resetExpiresAt).toLocaleString()}.\n\n`
+          : '') +
+        `When you sign in, you'll be asked to set a new password.`;
+      await Share.share({
+        message,
+        title: 'LittleLoom temporary password',
+      });
+    } catch (e) {
+      if (__DEV__) console.warn('[shareTempPassword]', e);
+    }
+  }, [generatedTempPassword, member, resetExpiresAt, triggerHaptic]);
   /* ─── ACTIONS ─── */
   const handleCall = async () => {
     if (!member?.phoneNumber) { sweetAlert.alert('No Phone Number', 'No phone number on file.', 'warning'); return; }
@@ -1971,18 +2031,7 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                     Generates a temp password + forces change on next
                     login via profiles.must_change_password. Parent
                     sees the temp password ONCE to share manually. */}
-                {canManagePermissions && member && (member as any).userId && (
-                  <PressableScale
-                    onPress={() => { triggerHaptic('light'); handleGenerateTempPassword(); }}
-                    activeScale={0.97}
-                  >
-                    <View style={[styles.managePermBtn, { backgroundColor: `${DS.warning}12`, borderColor: `${DS.warning}30` }]}>
-                      <Ionicons name="key" size={18} color={DS.warning} />
-                      <Text style={[styles.managePermText, { color: DS.warning }]}>Reset Password</Text>
-                      <Ionicons name="chevron-forward" size={18} color={DS.warning} />
-                    </View>
-                  </PressableScale>
-                )}
+
 
             {/* ─── SETTINGS ─── */}
             {activeTab === 'settings' && (
@@ -2127,6 +2176,38 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
                   </PressableScale>
                 )}
 
+                {/* ── RESET PASSWORD — dedicated section ── */}
+                {canManagePermissions && member && (member as any).userId && !isCurrentUser && (
+                  <>
+                    <SectionHeader
+                      title="Security"
+                      subtitle="Manage this member's password"
+                      icon="key-outline"
+                      color={DS.warning}
+                    />
+                    <PressableScale onPress={openResetPasswordModal} activeScale={0.97}>
+                      <LinearGradient
+                        colors={[`${DS.warning}18`, `${DS.warning}06`]}
+                        style={[styles.resetPasswordCard, { borderColor: `${DS.warning}40` }]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      >
+                        <View style={[styles.resetPasswordIconWrap, { backgroundColor: `${DS.warning}22` }]}>
+                          <Ionicons name="key" size={22} color={DS.warning} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.resetPasswordTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                            Reset Password
+                          </Text>
+                          <Text style={[styles.resetPasswordSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                            Generate a temporary password · forces change on next login
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={DS.warning} />
+                      </LinearGradient>
+                    </PressableScale>
+                  </>
+                )}
                 {canRemove && (
                   <>
                     <SectionHeader title="Danger Zone" subtitle="Irreversible actions" icon="warning-outline" color={DS.danger} />
@@ -2345,6 +2426,226 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
 
       {/* Emoji Picker */}
       <EmojiPickerModal visible={showEmojiPicker} onClose={() => setShowEmojiPicker(false)} onSelect={(emoji: string) => setFormData(p => ({ ...p, avatar: emoji }))} isDark={isDark} />
+
+      {/* ── RESET PASSWORD MODAL ───────────────────────────────── */}
+      <Modal
+        visible={showResetPasswordModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (resetStep !== 'generating') setShowResetPasswordModal(false);
+        }}
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              if (resetStep !== 'generating') setShowResetPasswordModal(false);
+            }}
+            activeOpacity={1}
+          />
+          <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          <Animated.View
+            entering={FadeInUp.springify()}
+            style={[
+              styles.resetPasswordModal,
+              {
+                backgroundColor: isDark ? DS.darkCard : DS.white,
+              },
+            ]}
+          >
+            {/* Drag handle */}
+            <View style={styles.modalDrag}>
+              <View
+                style={[
+                  styles.dragIndicator,
+                  { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)' },
+                ]}
+              />
+            </View>
+
+            {resetStep === 'confirm' && (
+              <>
+                <View style={styles.resetPasswordIconBig}>
+                  <LinearGradient
+                    colors={[DS.warning, '#d97706']}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                  <Ionicons name="key" size={42} color={DS.white} />
+                </View>
+
+                <Text style={[styles.resetPasswordModalTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                  Reset {member?.fullName?.split(' ')[0]}'s Password
+                </Text>
+                <Text style={[styles.resetPasswordModalSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                  A temporary password will be generated and shown to you once. You can copy or share it directly from the next screen. The member will be forced to set a new password the next time they sign in.
+                </Text>
+
+                <View style={[styles.resetInfoBox, { backgroundColor: `${DS.info}12` }]}>
+                  <Ionicons name="information-circle-outline" size={16} color={DS.info} />
+                  <Text style={[styles.resetInfoText, { color: isDark ? DS.gray300 : DS.gray700 }]}>
+                    All active sessions for this member will be signed out. The temporary password expires in 24 hours.
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+                  <TouchableOpacity
+                    style={[styles.resetModalBtn, styles.resetModalBtnGhost, {
+                      borderColor: isDark ? 'rgba(255,255,255,0.15)' : DS.gray200,
+                    }]}
+                    onPress={() => setShowResetPasswordModal(false)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.resetModalBtnGhostText, { color: isDark ? DS.gray300 : DS.gray700 }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.resetModalBtn, styles.resetModalBtnPrimary]}
+                    onPress={handleGenerateTempPassword}
+                    activeOpacity={0.9}
+                  >
+                    <LinearGradient
+                      colors={[DS.warning, '#d97706']}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    />
+                    <Ionicons name="sparkles" size={16} color={DS.white} />
+                    <Text style={styles.resetModalBtnPrimaryText}>Generate</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {resetStep === 'generating' && (
+              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                <ActivityIndicator size="large" color={DS.warning} />
+                <Text style={[styles.resetPasswordModalTitle, { color: isDark ? DS.white : DS.gray900, marginTop: 18 }]}>
+                  Generating…
+                </Text>
+                <Text style={[styles.resetPasswordModalSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                  Setting the temporary password and locking existing sessions.
+                </Text>
+              </View>
+            )}
+
+            {resetStep === 'success' && generatedTempPassword && (
+              <>
+                <View style={styles.resetPasswordIconBig}>
+                  <LinearGradient
+                    colors={[DS.success, '#059669']}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                  <Ionicons name="checkmark" size={48} color={DS.white} />
+                </View>
+
+                <Text style={[styles.resetPasswordModalTitle, { color: isDark ? DS.white : DS.gray900 }]}>
+                  Temporary Password Ready
+                </Text>
+                <Text style={[styles.resetPasswordModalSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>
+                  Share this with {member?.fullName?.split(' ')[0]}. This is the only time it will be shown — but it's also saved in your account for 24 hours.
+                </Text>
+
+                {/* Password display — big, selectable, copyable */}
+                <View
+                  style={[
+                    styles.tempPasswordDisplay,
+                    {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : `${DS.success}10`,
+                      borderColor: `${DS.success}40`,
+                    },
+                  ]}
+                >
+                  <Text
+                    selectable
+                    style={[
+                      styles.tempPasswordText,
+                      { color: isDark ? DS.white : DS.gray900 },
+                    ]}
+                  >
+                    {generatedTempPassword}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={copyTempPassword}
+                    style={[styles.tempPasswordCopyBtn, { backgroundColor: `${DS.success}22` }]}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons
+                      name={hasCopiedTemp ? 'checkmark' : 'copy-outline'}
+                      size={18}
+                      color={DS.success}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Expiry chip */}
+                {resetExpiresAt && (
+                  <View style={[styles.resetInfoBox, { backgroundColor: `${DS.warning}12`, marginTop: 12 }]}>
+                    <Ionicons name="time-outline" size={16} color={DS.warning} />
+                    <Text style={[styles.resetInfoText, { color: isDark ? DS.gray300 : DS.gray700 }]}>
+                      Expires {new Date(resetExpiresAt).toLocaleString()}. If not used by then, the member will need another reset.
+                    </Text>
+                  </View>
+                )}
+
+                {/* Action buttons */}
+                <TouchableOpacity
+                  style={[styles.resetModalBtn, styles.resetModalBtnPrimary, { marginTop: 18 }]}
+                  onPress={shareTempPassword}
+                  activeOpacity={0.9}
+                >
+                  <LinearGradient
+                    colors={[DS.primary, DS.accent]}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  />
+                  <Ionicons name="share-social-outline" size={18} color={DS.white} />
+                  <Text style={styles.resetModalBtnPrimaryText}>Share</Text>
+                </TouchableOpacity>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                  <TouchableOpacity
+                    style={[styles.resetModalBtn, styles.resetModalBtnGhost, {
+                      flex: 1,
+                      borderColor: isDark ? 'rgba(255,255,255,0.15)' : DS.gray200,
+                    }]}
+                    onPress={copyTempPassword}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="copy-outline" size={16} color={isDark ? DS.gray300 : DS.gray700} />
+                    <Text style={[styles.resetModalBtnGhostText, { color: isDark ? DS.gray300 : DS.gray700 }]}>
+                      Copy
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.resetModalBtn, {
+                      flex: 1,
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100,
+                    }]}
+                    onPress={() => {
+                      setShowResetPasswordModal(false);
+                      setGeneratedTempPassword(null);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.resetModalBtnGhostText, { color: isDark ? DS.gray300 : DS.gray700 }]}>
+                      Done
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2501,7 +2802,115 @@ const styles = StyleSheet.create({
   roleIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   roleTitle: { fontSize: 13, fontWeight: '700' },
   roleDesc: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  /* Reset password section + modal */
+  resetPasswordCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DS.space.md,
+    padding: DS.space.md,
+    borderRadius: DS.radius.lg,
+    borderWidth: 1,
+    ...DS.shadow.sm,
+  },
+  resetPasswordIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetPasswordTitle: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
+  resetPasswordSub: { fontSize: 11, fontWeight: '500', marginTop: 2, lineHeight: 15 },
 
+  resetPasswordModal: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 28,
+    padding: 22,
+    ...DS.shadow.lg,
+    overflow: 'hidden',
+  },
+  resetPasswordIconBig: {
+    width: 84,
+    height: 84,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    overflow: 'hidden',
+    marginBottom: 18,
+    marginTop: 6,
+  },
+  resetPasswordModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  resetPasswordModalSub: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    paddingHorizontal: 6,
+  },
+  resetInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  resetInfoText: { fontSize: 11, lineHeight: 16, flex: 1, fontWeight: '500' },
+  resetModalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  resetModalBtnGhost: {
+    flex: 1,
+    borderWidth: 1,
+  },
+  resetModalBtnGhostText: { fontSize: 14, fontWeight: '700' },
+  resetModalBtnPrimary: {
+    flex: 1.6,
+    backgroundColor: DS.warning,
+  },
+  resetModalBtnPrimaryText: {
+    color: DS.white,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  tempPasswordDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 16,
+  },
+  tempPasswordText: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    fontVariant: ['tabular-nums'],
+  },
+  tempPasswordCopyBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   modalCard: { width: '100%', maxWidth: 400, borderRadius: DS.radius['2xl'], padding: DS.space.lg, ...DS.shadow.lg, overflow: 'hidden' },
   modalDrag: { alignItems: 'center', paddingVertical: 6 },

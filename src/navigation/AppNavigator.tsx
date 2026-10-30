@@ -79,6 +79,7 @@ const NAV_INITIALIZED_KEY = '@littleloom_nav_initialized_v1';
 
 const MAIN_FLOW_SCREENS = new Set([
   'Main', 'Home', 'Track', 'Timeline', 'Grow', 'Connect', 'More',
+  'ForcedPasswordChange',
   'CommunityMain', 'Topic', 'CreatePost', 'PostDetail', 'CommunityMemberProfile',
   'Chat', 'ChatList', 'Notifications', 'CommunityProfile', 'CommunityVerification',
   'CommunityOnboarding', 'Followers', 'Following', 'Report', 'TopicMembers',

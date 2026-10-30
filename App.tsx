@@ -42,6 +42,9 @@ import { setSweetAlert } from '@/utils/imageUtils';
 import { useSweetAlert } from '@/components/SweetAlert';
 
 import { notificationService } from '@/services/NotificationService';
+import * as Linking from 'expo-linking';
+import { supabase } from '@/utils/supabase';
+import { navigationRef } from '@/navigation/navigationRef';
 
 LogBox.ignoreLogs([
   'Non-serializable values were found in the navigation state',
@@ -63,6 +66,7 @@ const ESSENTIAL_FONTS = {
 
 const NON_RESTORABLE_ROUTES = new Set([
   'SecurityLock', 'Login', 'SignUp', 'ForgotPassword', 'Onboarding',
+  'ForcedPasswordChange',
 ]);
 
 const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';
@@ -300,6 +304,8 @@ export default function App(): React.ReactElement | null {
   const splashHiddenRef = useRef(false);
   const notificationInitRef = useRef(false);
   const sessionCleanupDoneRef = useRef(false);
+  const recoveryHandledRef = useRef(false);
+  const pendingRecoveryRef = useRef(false);
 
   /* ── Session cleanup ── */
   useEffect(() => {
@@ -345,6 +351,142 @@ export default function App(): React.ReactElement | null {
       }
     };
     clearCorruptedSession();
+  }, []);
+
+  /* ── Password recovery deep link ──────────────────────────────────
+     Supabase recovery emails redirect to:
+       littleloom://reset-password#access_token=…&refresh_token=…&type=recovery
+
+     We must:
+       1) Parse the tokens out of the fragment (not the query string).
+       2) Call supabase.auth.setSession({ access_token, refresh_token }) —
+          Supabase does NOT auto-install the session from the fragment in
+          React Native, unlike on web.
+       3) Once navigationRef is ready, reset to ForcedPasswordChange so
+          the user is forced to set a new password.
+   ────────────────────────────────────────────────────────────────── */
+  const handleRecoveryUrl = useCallback(async (url: string) => {
+    if (!url) return;
+
+    // Accept both the deep link and a raw fragment.
+    const hashIdx = url.indexOf('#');
+    if (hashIdx === -1 && !url.includes('type=recovery')) return;
+
+    const fragment = hashIdx >= 0 ? url.slice(hashIdx + 1) : '';
+    const params = new URLSearchParams(fragment);
+    const access_token = params.get('access_token');
+    const refresh_token = params.get('refresh_token');
+    const type = params.get('type');
+
+    // Also support the PKCE `code` flow (newer Supabase projects).
+    const code = new URL(url.replace('#', '?')).searchParams.get('code');
+
+    if (type !== 'recovery' && !code) return;
+    if (recoveryHandledRef.current) return;
+    recoveryHandledRef.current = true;
+    pendingRecoveryRef.current = true;
+
+    try {
+      if (code) {
+        // PKCE exchange — Supabase puts a short-lived code in the URL.
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) {
+          console.warn('[App] Recovery code exchange failed:', error.message);
+          pendingRecoveryRef.current = false;
+          return;
+        }
+      } else if (access_token && refresh_token) {
+        // Legacy fragment flow.
+        const { error } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+        if (error) {
+          console.warn('[App] Recovery setSession failed:', error.message);
+          pendingRecoveryRef.current = false;
+          return;
+        }
+      } else {
+        // No usable tokens — nothing we can do.
+        console.warn('[App] Recovery URL missing tokens');
+        pendingRecoveryRef.current = false;
+        return;
+      }
+
+      // The NavigationContainer may not be mounted on cold start yet.
+      // Poll briefly until the ref is ready, then reset.
+      const tryNavigate = () => {
+        if (navigationRef.current?.isReady()) {
+          navigationRef.current.reset({
+            index: 0,
+            routes: [{ name: 'ForcedPasswordChange' as never }],
+          });
+          pendingRecoveryRef.current = false;
+        } else {
+          setTimeout(tryNavigate, 150);
+        }
+      };
+      tryNavigate();
+    } catch (e) {
+      console.warn('[App] Recovery handler error:', e);
+      pendingRecoveryRef.current = false;
+    }
+  }, []);
+
+  /* Listen for recovery URLs while the app is running, and once on cold
+     start for the URL that launched the app. */
+  useEffect(() => {
+    let cancelled = false;
+
+    const onWarmStart = (event: { url: string }) => {
+      if (cancelled) return;
+      handleRecoveryUrl(event.url).catch(() => {});
+    };
+
+    const sub = Linking.addEventListener('url', onWarmStart);
+
+    (async () => {
+      try {
+        const initial = await Linking.getInitialURL();
+        if (!cancelled && initial) {
+          await handleRecoveryUrl(initial);
+        }
+      } catch (e) {
+        console.warn('[App] initialURL read failed:', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [handleRecoveryUrl]);
+
+  /* Supabase also emits PASSWORD_RECOVERY when the session is installed
+     from a recovery link. If the nav reset above ran too early, we catch
+     it here and finish the job. */
+  useEffect(() => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' && session) {
+        recoveryHandledRef.current = true;
+        pendingRecoveryRef.current = true;
+        const tryNavigate = () => {
+          if (navigationRef.current?.isReady()) {
+            navigationRef.current.reset({
+              index: 0,
+              routes: [{ name: 'ForcedPasswordChange' as never }],
+            });
+            pendingRecoveryRef.current = false;
+          } else {
+            setTimeout(tryNavigate, 150);
+          }
+        };
+        tryNavigate();
+      }
+    });
+    return () => {
+      listener?.subscription.unsubscribe();
+    };
   }, []);
 
   /* ── Theme load + initial route pre-check ── */
@@ -495,6 +637,14 @@ export default function App(): React.ReactElement | null {
       // gets its nav state restored — the SecurityLock modal sits on top
       // of it, so the user returns to the same screen after unlocking.
       if (!setupDone) {
+        if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
+          await statePersistence.clearNavigationState();
+        }
+        return;
+      }
+
+      // If we're mid-recovery, don't restore a stale nav state on top.
+      if (recoveryHandledRef.current || pendingRecoveryRef.current) {
         if (statePersistence && typeof statePersistence.clearNavigationState === 'function') {
           await statePersistence.clearNavigationState();
         }
