@@ -2390,6 +2390,9 @@ useEffect(() => {
             ? 'viewer'
             : 'guardian',
         fromChat: false,
+        // Show the "Family → Name" breadcrumb so it's obvious this is
+        // the per-person profile, not the family screen.
+        fromFamily: true,
       });
     },
     [members, navigateToScreen, triggerHaptic, displayedBaby],
@@ -2457,6 +2460,7 @@ useEffect(() => {
       guardianId: meId,
       mode: editMode,
       fromChat: false,
+      fromFamily: true,
     });
   }, [members, userProfile?.id, currentBaby?.parent1Id, currentBaby?.parent2Id, navigateToScreen]);
 
@@ -2794,7 +2798,10 @@ const growthStats = useMemo(() => {
                       : members
                   }
                   isDark={isDark}
-                  onPress={() => navigateToScreen('FamilySharing', {})}
+                  // The FamilyStack "Manage" affordance → family OVERVIEW
+                  // (Profile / FamilyDashboard). Management actions
+                  // (invites, tree, roles) are one tap further in.
+                  onPress={() => navigateToScreen('Profile', {})}
                   onMemberPress={handleMemberAvatarPress}
                 />
               </View>

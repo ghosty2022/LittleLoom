@@ -1371,7 +1371,21 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       >
         <BlurView intensity={isDark ? 90 : 95} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <View style={styles.headerInner}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+          <TouchableOpacity
+            onPress={() => {
+              // Prefer "Back" — the user came from wherever they came
+              // from. But if the previous screen is the tab navigator
+              // (i.e. we arrived via `navigate('FamilySharing')` from
+              // a deep link or quick action with no explicit parent),
+              // land on the Family OVERVIEW instead of exiting the app.
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation.navigate('Profile' as never);
+              }
+            }}
+            style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}
+          >
             <Ionicons name="arrow-back" size={20} color={isDark ? DS.white : DS.gray800} />
           </TouchableOpacity>
           <View style={{ alignItems: 'center' }}>
@@ -1380,16 +1394,34 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               {members.length} member{members.length !== 1 ? 's' : ''}
             </Text>
           </View>
-          {isPrimaryParent ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {/* Family Chat — a management shortcut surfaced in the
+                header so users can message the family without leaving
+                the management screen. */}
             <TouchableOpacity
-              onPress={() => navigation.navigate('CoParentInviteScreen')}
-              style={[styles.headerIconBtn, { backgroundColor: DS.primary }]}
+              onPress={() => navigation.navigate('FamilyChatList' as never)}
+              style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(236,72,153,0.15)' : `${DS.accent}12` }]}
             >
-              <Ionicons name="person-add" size={18} color={DS.white} />
+              <Ionicons name="chatbubbles-outline" size={18} color={DS.accent} />
             </TouchableOpacity>
-          ) : (
-            <View style={{ width: 38 }} />
-          )}
+            {/* Jump back to the Family OVERVIEW from the management hub. */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Profile' as never)}
+              style={[styles.headerIconBtn, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : `${DS.primary}12` }]}
+            >
+              <Ionicons name="home-outline" size={18} color={isDark ? DS.primaryLight : DS.primary} />
+            </TouchableOpacity>
+            {isPrimaryParent ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate('CoParentInviteScreen')}
+                style={[styles.headerIconBtn, { backgroundColor: DS.primary }]}
+              >
+                <Ionicons name="person-add" size={18} color={DS.white} />
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 38 }} />
+            )}
+          </View>
         </View>
       </Animated.View>
 
@@ -1411,8 +1443,19 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
           isPrimaryParent={isPrimaryParent}
           onBack={() => navigation.goBack()}
           onBabyPress={() => {
-            if (babies && babies.length > 1) navigation.navigate('SwitchBaby', { returnTo: 'FamilySharing', returnLabel: 'Family' });
-            else navigation.navigate('CreateBabyProfile');
+            // Tapping the baby in the header → the baby's OWN profile.
+            // Switching babies is a separate affordance (the sticky
+            // header avatar and the Select Baby modal). This keeps the
+            // interaction consistent with HomeScreen + MoreScreen:
+            //   baby chip tap = "edit THIS baby"
+            if (currentBaby?.id) {
+              navigation.navigate('EditProfile' as never, {
+                mode: 'baby',
+                babyId: currentBaby.id,
+              } as never);
+              return;
+            }
+            navigation.navigate('CreateBabyProfile' as never);
           }}
           onInvite={() => navigation.navigate('CoParentInviteScreen')}
           onChat={() => navigation.navigate('FamilyChatList')}
@@ -1474,6 +1517,35 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
                 </Text>
               </View>
             )}
+
+            {/* ── SUMMARY CARD ────────────────────────────────
+                Family-management stats: how many members, whether a
+                co-parent exists, how many guardians. Moved here from
+                the old Settings tab so the management screen opens
+                with an at-a-glance count. */}
+            <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+              <View style={[styles.summaryCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                <LinearGradient colors={[`${DS.primary}10`, `${DS.accent}06`]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+                <View style={styles.summaryRow}>
+                  <View style={styles.summaryItem}>
+                    <Text style={[styles.summaryVal, { color: DS.primary }]}>{familyCount}</Text>
+                    <Text style={[styles.summaryLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>Members</Text>
+                  </View>
+                  <View style={[styles.summaryDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+                  <View style={styles.summaryItem}>
+                    <Text style={[styles.summaryVal, { color: DS.accent }]}>{hasCoParent ? 'Yes' : 'No'}</Text>
+                    <Text style={[styles.summaryLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>Co-Parent</Text>
+                  </View>
+                  <View style={[styles.summaryDiv, { backgroundColor: isDark ? DS.darkBorder : DS.gray200 }]} />
+                  <View style={styles.summaryItem}>
+                    <Text style={[styles.summaryVal, { color: DS.success }]}>
+                      {members.filter(m => m.role === UserRole.GUARDIAN).length}
+                    </Text>
+                    <Text style={[styles.summaryLbl, { color: isDark ? DS.gray400 : DS.gray500 }]}>Guardians</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
 
             <View style={{ marginTop: DS.space.lg, paddingHorizontal: DS.space.lg }}>
               {renderMemberSection(
@@ -1586,9 +1658,75 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
               onMemberPress={openMemberProfile}
             />
 
-            {/* Danger-zone: previously in the (now-removed) Settings tab.
-                Kept here so nothing is lost — it lives with the other
-                family-management tools, not with app preferences. */}
+            {/* ─── COMMUNICATION ───────────────────────────────
+                Family Chat is a family-management action: you reach
+                for it when you need to talk to the people here. It
+                lives in Access with the other management tools. */}
+            <View style={{ marginTop: DS.space.lg, gap: 10 }}>
+              <SectionHeader title="Communication" icon="chatbubbles-outline" color={DS.accent} />
+              <PressableScale
+                onPress={() => navigation.navigate('FamilyChatList' as never)}
+                activeScale={0.98}
+              >
+                <View style={[styles.setRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                  <View style={[styles.setIcon, { backgroundColor: `${DS.accent}15` }]}>
+                    <Ionicons name="chatbubbles-outline" size={20} color={DS.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.setTitle, { color: isDark ? DS.white : DS.gray900 }]}>Family Chat</Text>
+                    <Text style={[styles.setSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                      {unreadChat > 0 ? `${unreadChat} unread messages` : 'Message your family'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+                </View>
+              </PressableScale>
+            </View>
+
+            {/* ─── FAMILY DATA ────────────────────────────────
+                Export + reminders used to live in the old Settings tab.
+                They belong here in Access — they touch the whole
+                family, not one member. Backup & notifications are
+                *family-wide* tools. */}
+            <View style={{ marginTop: DS.space.lg, gap: 10 }}>
+              <SectionHeader title="Family Data" icon="cloud-upload-outline" color={DS.info} />
+              <PressableScale
+                onPress={() => navigation.navigate('BackupRestore' as never)}
+                activeScale={0.98}
+              >
+                <View style={[styles.setRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                  <View style={[styles.setIcon, { backgroundColor: `${DS.success}15` }]}>
+                    <Ionicons name="cloud-upload-outline" size={20} color={DS.success} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.setTitle, { color: isDark ? DS.white : DS.gray900 }]}>Export & Backup</Text>
+                    <Text style={[styles.setSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                      Backup and restore family records
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+                </View>
+              </PressableScale>
+              <PressableScale
+                onPress={() => navigation.navigate('TrackerReminders' as never)}
+                activeScale={0.98}
+              >
+                <View style={[styles.setRow, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
+                  <View style={[styles.setIcon, { backgroundColor: `${DS.info}15` }]}>
+                    <Ionicons name="notifications-outline" size={20} color={DS.info} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.setTitle, { color: isDark ? DS.white : DS.gray900 }]}>Notifications & Reminders</Text>
+                    <Text style={[styles.setSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
+                      Alerts for family activity
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+                </View>
+              </PressableScale>
+            </View>
+
+            {/* ─── DANGER ZONE ─────────────────────────────── */}
             <View style={{ marginTop: DS.space.lg, gap: 10 }}>
               <SectionHeader title="Danger Zone" icon="warning-outline" color={DS.danger} />
               {isPrimaryParent && (
