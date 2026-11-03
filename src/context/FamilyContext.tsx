@@ -681,7 +681,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // "add member → still see empty list" bug.
     if (familyLoadInProgress.current) {
       if (__DEV__) console.log('[FamilyContext] loadFamily queued (in progress)');
-      familyLoadQueueRef.current = true;
+      loadFamilyQueueRef.current = true;
       return;
     }
     familyLoadInProgress.current = true;
@@ -975,8 +975,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setState(prev => ({ ...prev, isLoading: false }));
     } finally {
       familyLoadInProgress.current = false;
-      if (familyLoadQueueRef.current) {
-        familyLoadQueueRef.current = false;
+      if (loadFamilyQueueRef.current) {
+        loadFamilyQueueRef.current = false;
         // Microtask so we don't recurse inside the current call stack
         setTimeout(() => {
           loadFamilyRef.current?.().catch(() => {});
