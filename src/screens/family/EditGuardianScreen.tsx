@@ -863,128 +863,197 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
     finally { if (isMountedRef.current) setIsLoadingActivities(false); }
   }, [currentBaby, trackerEntries]);
 
-  /* ─── LOAD MEMBER DATA ─── */
-  const loadMemberData = useCallback(async () => {
-    if (isLoadingRef.current) return;
-    isLoadingRef.current = true;
-    setIsHydrating(true);
-    try {
-      await loadFamily();
-      // `guardianId` may be either a `family_members.id` OR a `profiles.id`
-      // (userId). The chat screen passes a participant userId, so match both.
-      let found =
-        members.find(m => m.id === guardianId) ||
-        members.find(m => (m as any).userId === guardianId);
-      if (!found) {
-        const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
-        // Only synthesise a PARENT_1 card when the viewer is the
-        // ACTUAL owner of `currentBaby`. A guardian / viewer who was
-        // added directly would otherwise see themselves as "Primary
-        // Parent" because `guardianId` equals their own id.
-        const isActualOwner = currentBaby?.parent1_id === currentUserIdLocal;
-        if (
-          (guardianId === currentUserIdLocal && isActualOwner) ||
-          guardianId === 'parent1'
-        ) {
-          found = {
-            id: currentUserIdLocal || 'parent1',
-            userId: currentUserIdLocal || 'parent1',
-            fullName: userProfile?.fullName || profile?.fullName || 'Primary Parent',
-            email: userProfile?.email || profile?.email || '',
-            phoneNumber: userProfile?.phoneNumber || profile?.phoneNumber || '',
-            avatar: userProfile?.avatar || profile?.avatar || '',
-            role: UserRole.PARENT_1,
-            relationship: '',
-            addedAt: new Date().toISOString(),
-            lastActive: new Date().toISOString(),
-            notificationsEnabled: true,
-            canBeRemove: false,
-            canEdit: false,
-          } as FamilyMember;
-        }
+/* ─── LOAD MEMBER DATA — DB-FIRST ─── */
+const loadMemberData = useCallback(async () => {
+  if (isLoadingRef.current) return;
+  isLoadingRef.current = true;
+  setIsHydrating(true);
+  try {
+    await loadFamily();
+
+    const babyId = currentBaby?.id || '';
+
+    // ── 1. Authoritative read from family_members ─────────────
+    // `guardianId` is whatever the caller passed — could be:
+    //   • family_members.id  ("mvuxvayn-...")
+    //   • profiles.id  / user_id  (UUID)
+    let dbRow: any = null;
+    if (babyId && guardianId) {
+      try {
+        const { data } = await supabase
+          .from('family_members')
+          .select('*')
+          .eq('baby_id', babyId)
+          .or(`id.eq.${guardianId},user_id.eq.${guardianId}`)
+          .is('deleted_at', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        dbRow = data || null;
+      } catch (e) {
+        if (__DEV__) console.warn('[EditGuardian] family_members read failed:', e);
       }
-      if (found && isMountedRef.current) {
-        setMember(found);
-        let username = '';
-        let canonicalAvatar = '';
-        let verifiedFromDb = false;
-        const profileIdForLookup = found.id === (userProfile?.id || userProfile?.uid || profile?.id)
-          ? (userProfile?.id || userProfile?.uid || profile?.id)
-          : (found as any).userId;
-        if (profileIdForLookup) {
-          try {
-            const { data } = await supabase.from('profiles').select('community_handle, community_username, community_avatar, avatar_url, is_verified').eq('id', profileIdForLookup).maybeSingle();
-            if (data) {
-              username = (data.community_handle || '').replace(/^@/, '') || (data.community_username || '');
-              canonicalAvatar = data.community_avatar || data.avatar_url || '';
-              verifiedFromDb = data.is_verified === true;
-            }
-          } catch {}
-        }
-        if (isMountedRef.current) setIsMemberVerified(verifiedFromDb);
-        const resolvedAvatar = canonicalAvatar || found.avatar || '';
-        const initialData = {
-          fullName: found.fullName || '', email: found.email || '', phoneNumber: found.phoneNumber || '',
-          relationship: found.relationship || '', username, avatar: resolvedAvatar, notificationsEnabled: found.notificationsEnabled ?? true,
-        };
-        setFormData(initialData);
-        setOriginalData(initialData);
-        if (currentBaby) await loadMemberActivities(found.id, found.userId, found.fullName);
-      } else if (isMountedRef.current) {
-        // Fallback: `members` can be empty if the current user has no
-        // family_members row (parent1 often doesn't). Query profiles
-        // + family_members directly so the chat tap still works.
-        if (guardianId) {
-          try {
-            const { data: prof } = await supabase
-              .from('profiles')
-              .select('id, full_name, email, phone_number, avatar_url, community_avatar')
-              .eq('id', guardianId)
-              .maybeSingle();
-            if (prof && isMountedRef.current) {
-              const fallback: FamilyMember = {
-                id: prof.id,
-                userId: prof.id,
-                fullName: prof.full_name || 'Family Member',
-                email: prof.email || '',
-                phoneNumber: prof.phone_number || '',
-                avatar: prof.community_avatar || prof.avatar_url || '',
-                role: UserRole.GUARDIAN,
-                relationship: '',
-                addedAt: new Date().toISOString(),
-                lastActive: new Date().toISOString(),
-                notificationsEnabled: true,
-                canBeRemove: false,
-                canEdit: true,
-              } as FamilyMember;
-              setMember(fallback);
-              const initialData = {
-                fullName: fallback.fullName,
-                email: fallback.email,
-                phoneNumber: fallback.phoneNumber,
-                relationship: '',
-                username: '',
-                avatar: fallback.avatar,
-                notificationsEnabled: true,
-              };
-              setFormData(initialData);
-              setOriginalData(initialData);
-              return;
-            }
-          } catch (e) {
-            if (__DEV__) console.warn('[EditGuardian] profile fallback failed:', e);
-          }
-        }
+    }
+
+    // ── 2. If not in family_members, try profiles by id ───────
+    // Covers the case where the invite hasn't been accepted yet
+    // and only a stub family_members row exists, OR the user
+    // opened this screen from a chat participant list.
+    let profileFallback: any = null;
+    if (!dbRow && guardianId) {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone_number, community_avatar, avatar_url, avatar')
+          .eq('id', guardianId)
+          .maybeSingle();
+        profileFallback = data || null;
+      } catch {}
+    }
+
+    // ── 3. Synthesise the PARENT_1 self-card ONLY when the
+    //      viewer truly owns the current baby. Same guard as before.
+    let resolvedMember: FamilyMember | null = null;
+    if (dbRow) {
+      const rawRole = String(dbRow.role || 'viewer').toLowerCase();
+      const enumRole =
+        rawRole === 'parent1' ? UserRole.PARENT_1
+        : rawRole === 'parent2' ? UserRole.PARENT_2
+        : rawRole === 'guardian' ? UserRole.GUARDIAN
+        : UserRole.VIEWER;
+      resolvedMember = {
+        id: dbRow.id,
+        userId: dbRow.user_id || dbRow.id,
+        fullName: dbRow.full_name || 'Family Member',
+        email: dbRow.email || '',
+        phoneNumber: dbRow.phone_number || '',
+        avatar: dbRow.avatar || '',
+        role: enumRole,
+        relationship: dbRow.relationship || '',
+        permissions: dbRow.permissions || ROLE_PERMISSIONS[enumRole],
+        addedAt: dbRow.added_at || dbRow.created_at || new Date().toISOString(),
+        addedBy: dbRow.added_by || '',
+        canBeRemoved: dbRow.can_be_removed !== false,
+        lastActive: dbRow.last_active || undefined,
+        notificationsEnabled: dbRow.notifications_enabled !== false,
+        status: dbRow.status || 'active',
+      } as FamilyMember;
+    } else if (profileFallback) {
+      resolvedMember = {
+        id: profileFallback.id,
+        userId: profileFallback.id,
+        fullName: profileFallback.full_name || 'Family Member',
+        email: profileFallback.email || '',
+        phoneNumber: profileFallback.phone_number || '',
+        avatar: profileFallback.community_avatar || profileFallback.avatar_url || profileFallback.avatar || '',
+        role: UserRole.GUARDIAN,          // provisional — real role loads once accepted
+        relationship: '',
+        permissions: ROLE_PERMISSIONS[UserRole.GUARDIAN],
+        addedAt: new Date().toISOString(),
+        addedBy: '',
+        canBeRemoved: true,
+        notificationsEnabled: true,
+        status: 'pending',
+      } as FamilyMember;
+    } else {
+      // Last resort: parent1 self-card
+      const currentUserIdLocal = userProfile?.id || userProfile?.uid || profile?.id;
+      const isActualOwner = currentBaby?.parent1_id === currentUserIdLocal;
+      if (
+        (guardianId === currentUserIdLocal && isActualOwner) ||
+        guardianId === 'parent1'
+      ) {
+        resolvedMember = {
+          id: currentUserIdLocal || 'parent1',
+          userId: currentUserIdLocal || 'parent1',
+          fullName: userProfile?.fullName || profile?.fullName || 'Primary Parent',
+          email: userProfile?.email || profile?.email || '',
+          phoneNumber: userProfile?.phoneNumber || profile?.phoneNumber || '',
+          avatar: userProfile?.avatar || profile?.avatar || '',
+          role: UserRole.PARENT_1,
+          relationship: '',
+          permissions: ROLE_PERMISSIONS[UserRole.PARENT_1],
+          addedAt: currentBaby?.created_at || new Date().toISOString(),
+          addedBy: '',
+          canBeRemoved: false,
+          notificationsEnabled: true,
+          status: 'active',
+        } as FamilyMember;
+      }
+    }
+
+    if (!resolvedMember) {
+      if (isMountedRef.current) {
         sweetAlert.error(
           'Member Not Found',
           !guardianId ? 'No member ID provided.' : 'Could not find this member.',
         );
       }
-    } catch (error) { if (__DEV__) console.warn('[EditGuardian] load error:', error); }
-    finally { isLoadingRef.current = false; if (isMountedRef.current) setIsHydrating(false); }
-  }, [guardianId, members, loadFamily, userProfile, profile, currentBaby, sweetAlert, loadMemberActivities]);
+      return;
+    }
 
-  /* ─── REFRESH MEMBER DATA ─── */
+    if (isMountedRef.current) setMember(resolvedMember);
+
+    // ── 4. Hydrate community handle / verified / avatar ───────
+    let username = '';
+    let canonicalAvatar = resolvedMember.avatar || '';
+    let verifiedFromDb = false;
+    const profileIdForLookup =
+      (resolvedMember as any).userId || resolvedMember.id;
+    if (profileIdForLookup) {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('community_handle, community_username, community_avatar, avatar_url, is_verified')
+          .eq('id', profileIdForLookup)
+          .maybeSingle();
+        if (data) {
+          username = (data.community_handle || '').replace(/^@/, '') || data.community_username || '';
+          canonicalAvatar = data.community_avatar || data.avatar_url || canonicalAvatar;
+          verifiedFromDb = data.is_verified === true;
+        }
+      } catch {}
+    }
+    if (isMountedRef.current) setIsMemberVerified(verifiedFromDb);
+
+    // ── 5. Seed form state with EVERY field from the DB row ──
+    const initialData = {
+      fullName: resolvedMember.fullName || '',
+      email: resolvedMember.email || '',
+      phoneNumber: resolvedMember.phoneNumber || '',
+      relationship: resolvedMember.relationship || '',
+      username,
+      avatar: canonicalAvatar,
+      notificationsEnabled: resolvedMember.notificationsEnabled ?? true,
+    };
+    setFormData(initialData);
+    setOriginalData(initialData);
+
+    // ── 6. Load activities scoped to this member ─────────────
+    if (currentBaby) {
+      await loadMemberActivities(
+        resolvedMember.id,
+        (resolvedMember as any).userId,
+        resolvedMember.fullName,
+      );
+    }
+  } catch (error) {
+    if (__DEV__) console.warn('[EditGuardian] load error:', error);
+  } finally {
+    isLoadingRef.current = false;
+    if (isMountedRef.current) setIsHydrating(false);
+  }
+}, [
+  guardianId,
+  members,
+  loadFamily,
+  userProfile,
+  profile,
+  currentBaby,
+  sweetAlert,
+  loadMemberActivities,
+]);
+
   /* ─── REFRESH MEMBER DATA ─── */
   const refreshMemberData = useCallback(async () => {
     if (isLoadingRef.current || !member) return;
