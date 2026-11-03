@@ -1093,7 +1093,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // It is ALSO mirrored to `profiles.community_bio` (as a fallback
             // via UserContext.loadUser) and to `family_members.relationship`
             // when the baby is created.
-            relationship: (arguments as any)?.[3]?.relationship ?? '',
+            //
+            // NOTE: use the actual `relationship` parameter — `arguments`
+            // inside an arrow function refers to the enclosing `signUp`
+            // function's arguments, not to this call, and is always
+            // `undefined` in this scope.
+            relationship: relationship ?? '',
           },
         },
       });

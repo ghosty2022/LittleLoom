@@ -902,13 +902,12 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // newest. `.maybeSingle()` would error with PGRST116 when a
           // user has accepted more than one invite; `.order()` + array
           // handles that case.
-          const { data: inviteRows, error: inviteError } = await supabase
+            const { data: inviteRows, error: inviteError } = await supabase
             .from('invite_codes')
             .select('code, family_id, role, signup_completed, used, used_at')
             .eq('used_by', userId)
             .eq('signup_completed', true)
             .order('used_at', { ascending: false });
-
           if (inviteError) {
             if (__DEV__) console.warn('[BabyContext] invite_codes fallback error:', inviteError.message);
           } else if (Array.isArray(inviteRows) && inviteRows.length > 0) {
@@ -925,6 +924,9 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
               // matches, so use a limit-1 array read.
               let babyRow: any = null;
               try {
+                // `.maybeSingle()` throws PGRST116 when RLS hides the
+                // row AND a second matching row exists. Use a
+                // limit-1 array read instead.
                 const { data: directRows } = await supabase
                   .from('babies')
                   .select('*')
