@@ -20,9 +20,8 @@ import { useBaby } from '../../context/BabyContext';
 
 import { useTracker } from '../../hooks/useTrackerContext';
 import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
-import { computeStreak } from '../../hooks/useTrackerAchievements';
 import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
-import { useTrackerAchievements, computeStreak } from '../../hooks/useTrackerAchievements';
+import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
 import { useWHOGrowthCalculator } from '../../hooks/useWHOGrowthCalculator';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1055,11 +1054,14 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     const avg = Math.round(total / 7);
     const maxDay = weeklyPattern.reduce((max, d) => d.total > max.total ? d : max, weeklyPattern[0]);
 
-    let streak = 0;
-    for (let i = weeklyPattern.length - 1; i >= 0; i--) {
-      if (weeklyPattern[i].total > 0) streak++;
-      else break;
-    }
+    // Unified streak — same source of truth as Hub, Timeline, Reminders.
+    const streak = currentBaby
+      ? computeStreak(
+          trackerEntries.filter(
+            (e: any) => e.babyId === currentBaby.id && !e.isDeleted,
+          ),
+        ).currentStreak
+      : 0;
 
     const catCounts: Record<string, number> = {};
     weeklyPattern.forEach(d => {
