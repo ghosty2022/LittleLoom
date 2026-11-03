@@ -14,7 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
-import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
+import { useTrackerAchievements, computeStreak } from '../../hooks/useTrackerAchievements';
 import { useTracker } from '../../hooks/useTrackerContext';
 import { formatTimeShort, formatDateShort } from '@/utils/time';
 import { useCustomization } from '../../hooks/useCustomization';

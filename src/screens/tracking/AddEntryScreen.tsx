@@ -1017,7 +1017,12 @@ function TrackerContent({
   const buildTitle = useCallback((data: Record<string, unknown>): string => {
     if (!tracker) return 'Entry';
     const d = data;
-    const dur = formatDuration(d.duration);
+    const dur = formatDuration(
+      d.duration ??
+      (d.startTime && d.endTime
+        ? (new Date(String(d.endTime)).getTime() - new Date(String(d.startTime)).getTime()) / 1000
+        : undefined)
+    );
     switch (tracker.id) {
       case 'potty': return `${d.type || 'Potty'}${d.successful ? ' ✓' : ''}`;
       case 'feed': {

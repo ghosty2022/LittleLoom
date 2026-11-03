@@ -60,7 +60,7 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { TimelinePicker } from '../../components/trackers/TimelinePicker';
 import { usePredictiveReminders, PredictiveReminder } from '../../hooks/usePredictiveReminders';
 import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
-import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
+import { useTrackerAchievements, computeStreak } from '../../hooks/useTrackerAchievements';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
 import { TimelineCorrelation } from '../../components/trackers/TrackerCorrelationBadge';
@@ -890,21 +890,10 @@ export default function TimelineScreen() {
       const e = s + 86400000;
       spark.push(allEntries.filter(x => x.timestamp >= s && x.timestamp < e).length);
     }
-    const dayKeys = new Set<string>();
-    allEntries.forEach(a => {
-      if (!a?.timestamp) return;
-      const d = new Date(a.timestamp);
-      d.setHours(0, 0, 0, 0);
-      dayKeys.add(String(d.getTime()));
-    });
-    let streakCount = 0;
-    let cursor = todayStart;
-    while (dayKeys.has(String(cursor))) {
-      streakCount++;
-      cursor -= 86400000;
-    }
-    return { todayCount: today, weekCount: week, streak: streakCount, weekSpark: spark };
-  }, [allEntries]);
+    const babyEntries = allEntries.filter((e: any) => e.babyId === currentBaby?.id && !e.isDeleted);
+    const streakVal = computeStreak(babyEntries).currentStreak;
+    return { todayCount: today, weekCount: week, streak: streakVal, weekSpark: spark };
+  }, [allEntries, currentBaby?.id]);
 
   /* Smart sections */
   const smartSections = useMemo((): SmartSection[] => {

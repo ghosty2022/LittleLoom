@@ -42,7 +42,7 @@ const formatDuration = (value: unknown): string | null => {
   }
   const s = Number(value);
   if (!Number.isFinite(s) || s <= 0) return null;
-  if (s > 86400) return null;
+  if (s > 86400 || s < 0) return null;
   const mins = Math.floor(s / 60);
   if (mins === 0) {
     const secs = Math.floor(s);

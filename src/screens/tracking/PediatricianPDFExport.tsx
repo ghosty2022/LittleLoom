@@ -1292,12 +1292,26 @@ export const PediatricianPDFExport: React.FC = () => {
         }
         if (raw === null) {
           const legacy = growthEntries.find((e) => {
-            const v = parseFloat(String(e.data?.[metric] ?? ''));
-            return Number.isFinite(v) && v > 0;
+            const candidates = [
+              e.data?.[metric],
+              e.data?.[`${metric}_${metric === 'weight' ? 'kg' : 'cm'}`],
+              e.data?.[`${metric}_value`],
+            ];
+            return candidates.some((v) => {
+              const n = parseFloat(String(v ?? ''));
+              return Number.isFinite(n) && n > 0;
+            });
           });
           if (legacy) {
-            raw = parseFloat(String(legacy.data[metric]));
-            if (legacy.data?.unit) unit = String(legacy.data.unit);
+            const candidate =
+              legacy.data?.[metric] ??
+              legacy.data?.[`${metric}_${metric === 'weight' ? 'kg' : 'cm'}`] ??
+              legacy.data?.[`${metric}_value`];
+            const parsed = parseFloat(String(candidate ?? ''));
+            if (Number.isFinite(parsed) && parsed > 0) {
+              raw = parsed;
+              if (legacy.data?.unit) unit = String(legacy.data.unit);
+            }
           }
         }
         if (raw === null) return;
@@ -1357,6 +1371,140 @@ export const PediatricianPDFExport: React.FC = () => {
       return `<div class="section"><h2>📋 Visit Summary</h2><p style="color:#64748b;font-size:13px;margin-bottom:16px;">Report period: <strong>${rangeLabel}</strong> | Generated: ${format(new Date(), 'MMM d, yyyy h:mm a')}</p><div class="grid-2"><div class="card"><strong>Total Entries</strong><br/><span style="font-size:24px;font-weight:800;color:#667eea;">${filteredEntries.length}</span></div><div class="card"><strong>Health Events</strong><br/><span style="font-size:24px;font-weight:800;color:#ef4444;">${recentVisits.length}</span></div><div class="card"><strong>Medications</strong><br/><span style="font-size:24px;font-weight:800;color:#f59e0b;">${recentMeds.length}</span></div><div class="card"><strong>Symptoms</strong><br/><span style="font-size:24px;font-weight:800;color:#8b5cf6;">${recentSymptoms.length}</span></div></div></div>`;
     };
 
+    const sleepHTML = () => {
+      const sleepEntries = filteredEntries.filter(
+        (e) => e.trackerId === 'sleep' && Number.isFinite(Number(e.data?.duration ?? e.duration)),
+      );
+      if (sleepEntries.length === 0) {
+        return '<p class="muted">No sleep entries in this period.</p>';
+      }
+      const totalMins = sleepEntries.reduce((sum, e) => {
+        const raw = Number(e.data?.duration ?? e.duration);
+        return sum + (Number.isFinite(raw) && raw > 0 ? raw : 0);
+      }, 0);
+      const daysTracked = new Set(
+        sleepEntries.map((e) => new Date(e.timestamp).toISOString().slice(0, 10)),
+      ).size;
+      const avgMinsPerDay = daysTracked > 0 ? totalMins / daysTracked : 0;
+      const avgHours = (avgMinsPerDay / 60).toFixed(1);
+      const nights = sleepEntries.filter((e) => String(e.data?.sleepType) === 'night').length;
+      const naps = sleepEntries.filter((e) => String(e.data?.sleepType) === 'nap').length;
+      return `
+        <div class="grid-3">
+          <div class="metric"><div class="metric-value">${avgHours}h</div><div class="metric-label">Avg / Day</div></div>
+          <div class="metric"><div class="metric-value">${nights}</div><div class="metric-label">Night Sleeps</div></div>
+          <div class="metric"><div class="metric-value">${naps}</div><div class="metric-label">Naps</div></div>
+        </div>
+        <p style="margin-top:10px;color:#64748b;font-size:12px;">
+          ${sleepEntries.length} sessions across ${daysTracked} day${daysTracked === 1 ? '' : 's'}.
+        </p>
+      `;
+    };
+
+    const feedHTML = () => {
+      const feedEntries = filteredEntries.filter((e) => e.trackerId === 'feed');
+      if (feedEntries.length === 0) {
+        return '<p class="muted">No feeding entries in this period.</p>';
+      }
+      const dailyMl: Record<string, number> = {};
+      feedEntries.forEach((e) => {
+        const day = new Date(e.timestamp).toISOString().slice(0, 10);
+        const feedType = String(e.data?.feedType ?? '').toLowerCase();
+        if (feedType === 'solid' || feedType === 'water') return;
+        const rawAmt = Number(e.data?.bottleAmount ?? e.data?.amount ?? e.amount ?? 0);
+        if (!Number.isFinite(rawAmt) || rawAmt <= 0) return;
+        const unit = String(
+          e.data?.bottleAmount_unit ?? e.data?.amount_unit ?? 'ml',
+        ).toLowerCase();
+        const ml = unit === 'oz' ? rawAmt * 29.5735 : rawAmt;
+        dailyMl[day] = (dailyMl[day] ?? 0) + ml;
+      });
+      const daysWithVolume = Object.keys(dailyMl).length;
+      const avgDailyMl = daysWithVolume > 0
+        ? Object.values(dailyMl).reduce((a, b) => a + b, 0) / daysWithVolume
+        : 0;
+      const breast = feedEntries.filter((e) => {
+        const t = String(e.data?.feedType ?? '').toLowerCase();
+        return t === 'breast' || t === 'breastfeeding';
+      }).length;
+      const bottle = feedEntries.filter((e) => String(e.data?.feedType) === 'bottle').length;
+      const solid = feedEntries.filter((e) => String(e.data?.feedType) === 'solid').length;
+      return `
+        <div class="grid-3">
+          <div class="metric"><div class="metric-value">${Math.round(avgDailyMl)}ml</div><div class="metric-label">Avg / Day</div></div>
+          <div class="metric"><div class="metric-value">${breast}</div><div class="metric-label">Breastfeeds</div></div>
+          <div class="metric"><div class="metric-value">${bottle}</div><div class="metric-label">Bottles</div></div>
+        </div>
+        <p style="margin-top:10px;color:#64748b;font-size:12px;">
+          ${feedEntries.length} total · ${solid} solid-food entries · ${daysWithVolume} day${daysWithVolume === 1 ? '' : 's'} with measured volume.
+        </p>
+      `;
+    };
+
+    const healthHTML = () => {
+      const tempEntries = filteredEntries.filter((e) => e.trackerId === 'temperature');
+      const symptomEntries = filteredEntries.filter((e) => e.trackerId === 'symptom');
+      const medEntries = filteredEntries.filter((e) => e.trackerId === 'medication');
+      if (tempEntries.length === 0 && symptomEntries.length === 0 && medEntries.length === 0) {
+        return '<p class="muted">No health events in this period.</p>';
+      }
+      const feverCount = tempEntries.filter((e) => {
+        const val = Number(e.data?.value ?? 0);
+        const unit = String(e.data?.unit ?? 'celsius');
+        const c = unit === 'fahrenheit' ? ((val - 32) * 5) / 9 : val;
+        return Number.isFinite(c) && c > 38;
+      }).length;
+      const symptomDays = new Set(
+        symptomEntries.map((e) => new Date(e.timestamp).toISOString().slice(0, 10)),
+      ).size;
+      return `
+        <div class="grid-3">
+          <div class="metric"><div class="metric-value">${tempEntries.length}</div><div class="metric-label">Temps Logged</div></div>
+          <div class="metric"><div class="metric-value">${feverCount}</div><div class="metric-label">Fevers &gt;38°C</div></div>
+          <div class="metric"><div class="metric-value">${symptomDays}</div><div class="metric-label">Symptom Days</div></div>
+        </div>
+        ${symptomEntries.length > 0 ? `<p style="margin-top:10px;color:#64748b;font-size:12px;">${symptomEntries.length} symptom record${symptomEntries.length === 1 ? '' : 's'} across ${symptomDays} day${symptomDays === 1 ? '' : 's'}.</p>` : ''}
+      `;
+    };
+
+    const medsHTML = () => {
+      const medEntries = filteredEntries.filter((e) => e.trackerId === 'medication');
+      if (medEntries.length === 0) {
+        return '<p class="muted">No medication entries in this period.</p>';
+      }
+      const byName: Record<string, { count: number; lastAt: number }> = {};
+      medEntries.forEach((e) => {
+        const name = String(e.data?.name ?? e.data?.medication ?? 'Unnamed').trim() || 'Unnamed';
+        if (!byName[name]) byName[name] = { count: 0, lastAt: 0 };
+        byName[name].count++;
+        const ts = new Date(e.timestamp).getTime();
+        if (Number.isFinite(ts) && ts > byName[name].lastAt) byName[name].lastAt = ts;
+      });
+      const rows = Object.entries(byName)
+        .sort(([, a], [, b]) => b.lastAt - a.lastAt)
+        .map(
+          ([name, info]) =>
+            `<tr>` +
+              `<td style="padding:8px;border:1px solid #e2e8f0;"><strong>${escapeHtml(name)}</strong></td>` +
+              `<td style="padding:8px;border:1px solid #e2e8f0;">${info.count}</td>` +
+              `<td style="padding:8px;border:1px solid #e2e8f0;">${info.lastAt ? format(new Date(info.lastAt), 'MMM d, h:mm a') : '—'}</td>` +
+            `</tr>`,
+        )
+        .join('');
+      return `
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Medication</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Doses</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Last Given</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    };
+
     const notesHTML = customNotes.trim()
       ? `<div class="section"><h2>📝 Notes for Pediatrician</h2><div class="info-box" style="white-space:pre-wrap;">${escapeHtml(customNotes)}</div></div>`
       : '';
@@ -1366,6 +1514,10 @@ export const PediatricianPDFExport: React.FC = () => {
       enabledIds.has('babyInfo') ? `<div class="section"><h2>👶 Child Profile</h2>${babyProfileHTML()}</div>` : '',
       enabledIds.has('family') ? `<div class="section"><h2>👨‍👩‍👧 Family Contacts</h2>${familyHTML()}</div>` : '',
       (enabledIds.has('growth') || enabledIds.has('percentiles')) ? `<div class="section"><h2>📈 Growth & WHO Percentiles</h2>${growthPercentileHTML()}</div>` : '',
+      enabledIds.has('sleep') ? `<div class="section"><h2>😴 Sleep Analysis</h2>${sleepHTML()}</div>` : '',
+      enabledIds.has('feeding') ? `<div class="section"><h2>🍼 Feeding & Nutrition</h2>${feedHTML()}</div>` : '',
+      enabledIds.has('health') ? `<div class="section"><h2>🏥 Health Events</h2>${healthHTML()}</div>` : '',
+      enabledIds.has('medications') ? `<div class="section"><h2>💊 Medications</h2>${medsHTML()}</div>` : '',
       enabledIds.has('notes') ? notesHTML : '',
     ].filter(Boolean).join('');
 

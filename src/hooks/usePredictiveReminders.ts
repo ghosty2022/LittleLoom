@@ -42,7 +42,7 @@ function sliceOf(gi: GrowthIndex): CachedGrowthSlice {
     compositeIndex: gi?.compositeIndex ?? 0,
     restScore: gi?.restScore?.value ?? 0,
     healthStability: gi?.healthStability?.value ?? 0,
-    milestoneReadiness: gi?.milestoneReadiness ?? [],
+    milestoneReadiness: [], // NEVER cache — recomputed per call
   };
 }
 
@@ -77,7 +77,9 @@ export function getCachedGrowthIntelligence(
           ...fresh.growthIndex.healthStability,
           value: _giCache.slice.healthStability,
         },
-        milestoneReadiness: _giCache.slice.milestoneReadiness,
+        // milestoneReadiness is intentionally left as `fresh.growthIndex.milestoneReadiness`.
+        // Caching it caused the downstream reminders memo to skip recompute when a
+        // milestone was newly achieved while the cache was warm.
       },
       ageInMonths: _giCache.ageInMonths,
     };

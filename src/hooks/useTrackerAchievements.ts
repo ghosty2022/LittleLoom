@@ -13,7 +13,7 @@ import { useGrowthIntelligence } from './useGrowthIntelligence';
 import { usePredictiveReminders } from './usePredictiveReminders';
 
 
-const computeStreak = (
+export const computeStreak = (
   entries: any[],
   trackerId?: string
 ): { currentStreak: number; longestStreak: number; lastLoggedAt: number; isAtRisk: boolean } => {

@@ -909,11 +909,9 @@ export default function RemindersScreen({ navigation, route }: Props) {
     if (!baby) { setDailyInsights([]); return; }
     const list: DailyInsight[] = [];
     const now = new Date();
-    const babyActs = activities.filter(a => a.babyId === baby.id);
-    let streak = 0, d = new Date();
-    while (true) {
-      if (babyActs.some(a => isSameDay(new Date(a.timestamp), d))) { streak++; d = addDays(d, -1); } else break;
-    }
+    const babyActs = activities.filter((a: any) => a.babyId === baby.id);
+    const s = computeStreak(babyActs);
+    const streak = s.currentStreak;
     if (streak >= 3) list.push({ id: 'streak-insight', type: 'streak', title: `${streak}-Day Streak!`, message: "You're on fire!", emoji: '🔥', color: DS.warning, actionLabel: 'Quick Log', actionScreen: 'Timeline' });
     const overdue = reminders.filter(r => {
       const [h, m] = r.time.split(':').map(Number);
@@ -931,13 +929,12 @@ export default function RemindersScreen({ navigation, route }: Props) {
 
   const checkStreakStatus = useCallback(() => {
     if (!baby) return;
-    const babyActs = activities.filter(a => a.babyId === baby.id);
-    let streak = 0, d = new Date();
-    while (true) { if (babyActs.some(a => isSameDay(new Date(a.timestamp), d))) { streak++; d = addDays(d, -1); } else break; }
-    const today = babyActs.some(a => isSameDay(new Date(a.timestamp), new Date()));
+    const babyActs = activities.filter((a: any) => a.babyId === baby.id);
+    const s = computeStreak(babyActs);
+    const today = babyActs.some((a: any) => isSameDay(new Date(a.timestamp), new Date()));
     const hour = new Date().getHours();
-    const atRisk = !today && hour >= 18 && streak > 0;
-    setStreakData({ current: streak, atRisk, hoursLeft: atRisk ? 24 - hour : 0 });
+    const atRisk = !today && hour >= 18 && s.currentStreak > 0;
+    setStreakData({ current: s.currentStreak, atRisk, hoursLeft: atRisk ? 24 - hour : 0 });
   }, [baby, activities]);
 
   const handleAchievementSuggestion = () => {

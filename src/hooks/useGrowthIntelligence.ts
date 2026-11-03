@@ -763,18 +763,24 @@ export const useGrowthIntelligence = () => {
 
   const SLEEP_HISTORY_KEY = '@littleloom_sleep_score_history';
   const [sleepHistory, setSleepHistory] = useState<number[]>([]);
+  const lastWrittenDay = useRef<string | null>(null);
 
   useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    if (lastWrittenDay.current === today) return;
+    lastWrittenDay.current = today;
     let cancelled = false;
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(SLEEP_HISTORY_KEY);
         const rows: { date: string; value: number }[] = raw ? JSON.parse(raw) : [];
-        const today = new Date().toISOString().slice(0, 10);
         const next = [...rows.filter(r => r.date !== today), { date: today, value: restScore.value }].slice(-30);
         await AsyncStorage.setItem(SLEEP_HISTORY_KEY, JSON.stringify(next));
         if (!cancelled) setSleepHistory(next.map(r => r.value));
-      } catch { /* non-fatal */ }
+      } catch {
+        // Reset the guard so a transient failure doesn't lock us out for the day.
+        lastWrittenDay.current = null;
+      }
     })();
     return () => { cancelled = true; };
   }, [restScore.value]);

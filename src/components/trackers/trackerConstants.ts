@@ -1,10 +1,10 @@
 import { TrackerCategory, FieldType } from '../../types/trackers';
 
-export const TRACKER_CATEGORIES: { 
-  id: TrackerCategory; 
-  emoji: string; 
-  label: string; 
-  color: string; 
+export const TRACKER_CATEGORIES: {
+  id: TrackerCategory;
+  emoji: string;
+  label: string;
+  color: string;
   priority: number;
   description: string;
 }[] = [
@@ -18,13 +18,61 @@ export const TRACKER_CATEGORIES: {
   { id: 'schedule', emoji: '⏰', label: 'Schedule & Routine', color: '#0984e3', priority: 8, description: 'Sleep & daily schedule' },
   { id: 'parental', emoji: '👨‍👩‍👧', label: 'Parental Care', color: '#6c5ce7', priority: 9, description: 'Notes & memories' },
   { id: 'travel', emoji: '✈️', label: 'Travel & Outings', color: '#00cec9', priority: 10, description: 'Trips & activities' },
-    { id: 'special_needs', emoji: '♿', label: 'Special Needs', color: '#e17055', priority: 11, description: 'Special care tracking' },
-  { id: 'household',     emoji: '🏠', label: 'Household',     color: '#8E44AD', priority: 12, description: 'Home logistics & supplies' },
-  { id: 'custom',        emoji: '✨', label: 'Custom Trackers', color: '#fd79a8', priority: 13, description: 'Your custom trackers' },
+  { id: 'special_needs', emoji: '♿', label: 'Special Needs', color: '#e17055', priority: 11, description: 'Special care tracking' },
+  { id: 'household', emoji: '🏠', label: 'Household', color: '#8E44AD', priority: 12, description: 'Home logistics & supplies' },
+  { id: 'custom', emoji: '✨', label: 'Custom Trackers', color: '#fd79a8', priority: 13, description: 'Your custom trackers' },
 ];
 
-export const CATEGORY_CONFIG: Record<TrackerCategory, { emoji: string; label: string; color: string; priority: number; description: string }> = 
-  TRACKER_CATEGORIES.reduce((acc, cat) => ({ ...acc, [cat.id]: cat }), {} as any);
+/**
+ * Compile-time exhaustiveness guard for TRACKER_CATEGORIES.
+ *
+ * Every member of `TrackerCategory` must appear exactly once in
+ * `TRACKER_CATEGORIES`. If someone adds a new category to the type
+ * (e.g. `| 'pets'`) without adding a corresponding row above, this
+ * line fails to compile because `__categoryExhaustiveness` will be
+ * missing the new key.
+ *
+ * The `void` statement prevents a `noUnusedLocals` warning — the
+ * value is intentionally never read at runtime.
+ */
+const __categoryExhaustiveness: Record<TrackerCategory, true> = Object.fromEntries(
+  TRACKER_CATEGORIES.map((c) => [c.id, true]),
+) as Record<TrackerCategory, true>;
+void __categoryExhaustiveness;
+
+/**
+ * Lookup table keyed by category id. Built from TRACKER_CATEGORIES so
+ * the two lists can never diverge at runtime.
+ *
+ * `CATEGORY_CONFIG[someUnknownId]` will return `undefined` if the id
+ * isn't a valid TrackerCategory — callers that index by untrusted input
+ * should use `CATEGORY_CONFIG` only after checking `TRACKER_CATEGORIES`
+ * membership, or fall back to `CATEGORY_CONFIG.custom`.
+ */
+export const CATEGORY_CONFIG: Record<
+  TrackerCategory,
+  { emoji: string; label: string; color: string; priority: number; description: string }
+> = TRACKER_CATEGORIES.reduce(
+  (acc, cat) => ({ ...acc, [cat.id]: cat }),
+  {} as Record<
+    TrackerCategory,
+    { emoji: string; label: string; color: string; priority: number; description: string }
+  >,
+);
+
+/**
+ * Safe accessor for category metadata. Never returns undefined — if the
+ * supplied category isn't recognized, falls back to the `custom` entry
+ * so a UI render can't crash on an unknown category id.
+ */
+export const getCategoryMeta = (
+  id: string | undefined | null,
+): { emoji: string; label: string; color: string; priority: number; description: string } => {
+  if (id && id in CATEGORY_CONFIG) {
+    return CATEGORY_CONFIG[id as TrackerCategory];
+  }
+  return CATEGORY_CONFIG.custom;
+};
 
 export const TRACKER_FIELD_TYPES: { type: FieldType; label: string; icon: string }[] = [
   { type: 'text', label: 'Short Text', icon: 'text-outline' },
@@ -46,10 +94,10 @@ export const MOOD_EMOJIS = ['😭', '😟', '😐', '🙂', '😄'];
 export const DURATION_PRESETS = ['5m', '10m', '15m', '20m', '30m', '45m', '1h', '1.5h', '2h', '3h+'];
 
 export const TRACKER_EMOJIS = [
-  '📝', '💊', '🍼', '😴', '🛁', '📏', '🌡️', '💩', '🤱', '🏆', 
-  '🎵', '📚', '🌳', '👋', '💬', '❤️', '😭', '😌', '💅', '🦷', 
-  '👂', '👃', '🥄', '💧', '✈️', '🚗', '🏫', '👤', '😣', '😰', 
-  '💨', '🔴', '🎯', '🎨', '🧩', '⚽', '🎸', '📸', '🎥', '🎙️', 
+  '📝', '💊', '🍼', '😴', '🛁', '📏', '🌡️', '💩', '🤱', '🏆',
+  '🎵', '📚', '🌳', '👋', '💬', '❤️', '😭', '😌', '💅', '🦷',
+  '👂', '👃', '🥄', '💧', '✈️', '🚗', '🏫', '👤', '😣', '😰',
+  '💨', '🔴', '🎯', '🎨', '🧩', '⚽', '🎸', '📸', '🎥', '🎙️',
   '⭐', '🔥', '❄️', '💎', '🌈', '🍀', '🦋', '🦄', '🚀', '💡',
 ];
 

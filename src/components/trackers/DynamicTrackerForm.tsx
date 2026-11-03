@@ -2290,7 +2290,13 @@ export const DynamicTrackerForm: React.FC<DynamicTrackerFormProps> = ({
             if (secs >= 60 && secs <= 86400) {
               finalData.duration = secs;
               finalData.status = 'completed';
+            } else if (secs >= 0 && secs < 60) {
+              // Sub-minute duration — intentionally dropped, but valid.
+              delete finalData.duration;
+              finalData.status = 'completed';
             } else {
+              // Non-finite or > 24h: discard + log so we can spot bad data.
+              if (__DEV__) console.warn('[Form] Invalid duration discarded:', secs);
               delete finalData.duration;
               finalData.status = 'completed';
             }

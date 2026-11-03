@@ -608,7 +608,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
 
   const processPhoto = useCallback(
     async (rawUri: string, exif: any, isFromCamera: boolean = false) => {
-      if (isProcessingRef.current) return;
+      if (isProcessingRef.current || isProcessing || uploading) return;
       if (!mountedRef.current) return;
 
       isProcessingRef.current = true;
@@ -726,7 +726,7 @@ const SmartPhotoField: React.FC<SmartPhotoFieldProps> = ({
         }
       }
     },
-    [photos, maxPhotos, autoAnalyze, trackerContext, onChange, uploadToSupabase, babyId, onAnalysis]
+    [photos, maxPhotos, autoAnalyze, trackerContext, onChange, uploadToSupabase, babyId, onAnalysis, isProcessing, uploading]
   );
 
   const takePhoto = useCallback(async () => {

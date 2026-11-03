@@ -944,7 +944,7 @@ const AddMeasurementModal = memo(({ visible, onClose, onSave, type, previousValu
 
   useEffect(() => {
     if (visible) { setValue(''); setNotes(''); setDate(format(new Date(), 'yyyy-MM-dd')); }
-  }, [visible]);
+  }, [visible, type]);
 
   const handleSave = useCallback(() => {
     const num = parseFloat(value);

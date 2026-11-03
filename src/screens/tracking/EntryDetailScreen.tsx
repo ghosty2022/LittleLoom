@@ -758,10 +758,11 @@ const SimilarEntriesPanel = ({
         (e: any) =>
           e &&
           e.id !== entry.id &&
-          e.trackerId === entry.trackerId,
+          e.trackerId === entry.trackerId &&
+          e.babyId === entry.babyId,
       )
-      .slice(0, 3)
-      .sort((a: any, b: any) => b.timestamp - a.timestamp);
+      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .slice(0, 3);
   }, [entry, safeEntries]);
 
   if (similar.length === 0) return null;

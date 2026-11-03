@@ -20,8 +20,9 @@ import { useBaby } from '../../context/BabyContext';
 
 import { useTracker } from '../../hooks/useTrackerContext';
 import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
+import { computeStreak } from '../../hooks/useTrackerAchievements';
 import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
-import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
+import { useTrackerAchievements, computeStreak } from '../../hooks/useTrackerAchievements';
 import { useWHOGrowthCalculator } from '../../hooks/useWHOGrowthCalculator';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';

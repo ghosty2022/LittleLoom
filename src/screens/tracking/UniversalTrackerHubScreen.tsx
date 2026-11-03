@@ -56,7 +56,7 @@ import { useBaby, type BabyProfile } from '../../context/BabyContext';
 import { SafeBabyAvatar, SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
+import { useTrackerAchievements, computeStreak } from '../../hooks/useTrackerAchievements';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -1174,60 +1174,91 @@ SleepQualityAnalyzer.displayName = 'SleepQualityAnalyzer';
 const FeedingPatternCard = React.memo(({ entries, onPress }: { entries: any[]; onPress: () => void }) => {
   const theme = useHubTheme();
 
-  const pattern = useMemo(() => {
-    const list = Array.isArray(entries) ? entries : [];
-    const feedEntries = list
-      .filter((e: any) => e.trackerId === 'feed' && e.timestamp && typeof e.timestamp === 'number' && !isNaN(e.timestamp))
-      .sort((a: any, b: any) => b.timestamp - a.timestamp)
-      .slice(0, 10);
+const pattern = useMemo(() => {
+  const list = Array.isArray(entries) ? entries : [];
+  const feedEntries = list
+    .filter(
+      (e: any) =>
+        e.trackerId === 'feed' &&
+        e.timestamp &&
+        typeof e.timestamp === 'number' &&
+        !isNaN(e.timestamp),
+    )
+    .sort((a: any, b: any) => b.timestamp - a.timestamp)
+    .slice(0, 10);
 
-    if (feedEntries.length < 2) return null;
+  if (feedEntries.length < 2) return null;
 
-    const intervals: number[] = [];
-    for (let i = 0; i < feedEntries.length - 1; i++) {
-      const diff = (feedEntries[i].timestamp - feedEntries[i + 1].timestamp) / 3600000;
-      if (diff > 0 && diff < 12) intervals.push(diff);
-    }
+  const intervals: number[] = [];
+  for (let i = 0; i < feedEntries.length - 1; i++) {
+    const diff = (feedEntries[i].timestamp - feedEntries[i + 1].timestamp) / 3600000;
+    if (diff > 0 && diff < 12) intervals.push(diff);
+  }
 
-    const avgInterval =
-      intervals.length > 0
-        ? Math.round((intervals.reduce((a, b) => a + b, 0) / intervals.length) * 10) / 10
-        : 3;
-    // Only sum volumes that were actually entered. Do NOT default to 120.
-const totalVolume = feedEntries.reduce((sum: number, e: any) => {
-  const amt = Number(e?.data?.bottleAmount ?? e?.data?.amount ?? e?.amount ?? e?.value);
-  if (!Number.isFinite(amt) || amt <= 0) return sum;
-  const unit = String(e?.data?.bottleAmount_unit ?? e?.data?.amount_unit ?? 'ml').toLowerCase();
-  return sum + (unit === 'oz' ? amt * 29.5735 : amt);
-}, 0);
-const totalVolumeLabel = totalVolume > 0 ? `${Math.round(totalVolume)}ml` : '—';
-const hasVolumeData = totalVolume > 0;
+  const avgInterval =
+    intervals.length > 0
+      ? Math.round((intervals.reduce((a, b) => a + b, 0) / intervals.length) * 10) / 10
+      : 3;
 
-    const lastEntry = feedEntries[0];
-    if (!lastEntry) return null;
+  // Only sum volumes that were actually entered. Do NOT default to 120.
+  const totalVolume = feedEntries.reduce((sum: number, e: any) => {
+    const amt = Number(e?.data?.bottleAmount ?? e?.data?.amount ?? e?.amount ?? e?.value);
+    if (!Number.isFinite(amt) || amt <= 0) return sum;
+    const unit = String(
+      e?.data?.bottleAmount_unit ?? e?.data?.amount_unit ?? 'ml',
+    ).toLowerCase();
+    return sum + (unit === 'oz' ? amt * 29.5735 : amt);
+  }, 0);
 
-    const lastSide =
-      lastEntry?.presetData?.side === 'left' ? 'left' :
-      lastEntry?.presetData?.side === 'right' ? 'right' :
-      lastEntry?.presetData?.feedType === 'bottle' ? 'bottle' :
-      lastEntry?.presetData?.feedType === 'solid' ? 'solid' :
-      'left';
+  const totalVolumeLabel = totalVolume > 0 ? `${Math.round(totalVolume)}ml` : '—';
+  const hasVolumeData = totalVolume > 0;
 
-    let nextFeedEstimate = '--:--';
+  const lastEntry = feedEntries[0];
+  if (!lastEntry) return null;
+
+  const lastSide =
+    lastEntry?.presetData?.side === 'left'
+      ? 'left'
+      : lastEntry?.presetData?.side === 'right'
+      ? 'right'
+      : lastEntry?.presetData?.feedType === 'bottle'
+      ? 'bottle'
+      : lastEntry?.presetData?.feedType === 'solid'
+      ? 'solid'
+      : 'left';
+
+  let nextFeedEstimate = '—';
+  if (intervals.length >= 3) {
     try {
       const nextFeed = new Date(lastEntry.timestamp + avgInterval * 3600000);
-      if (!isNaN(nextFeed.getTime())) {
-        let nextFeedEstimate = '—';
-if (intervals.length >= 3) {
-  try {
-    const nextFeed = new Date(lastEntry.timestamp + avgInterval * 3600000);
-    if (!isNaN(nextFeed.getTime())) nextFeedEstimate = format(nextFeed, 'h:mm a');
-  } catch {}
-}
+      if (!isNaN(nextFeed.getTime())) nextFeedEstimate = format(nextFeed, 'h:mm a');
+    } catch {
+      // keep default
+    }
+  }
 
-    return { avgInterval, totalVolume, lastSide, nextFeedEstimate };
-  }, [entries]);
+  // Consistency = how much intervals vary (lower stddev = more consistent).
+  // Only computed when we have at least 3 intervals; otherwise unknown.
+  let consistencyPct: number | null = null;
+  if (intervals.length >= 3) {
+    const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    const variance =
+      intervals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / intervals.length;
+    const stddev = Math.sqrt(variance);
+    const ratio = Math.min(1, stddev / Math.max(mean, 0.1));
+    consistencyPct = Math.round((1 - ratio) * 100);
+  }
 
+  return {
+    avgInterval,
+    totalVolume,
+    totalVolumeLabel,
+    hasVolumeData,
+    lastSide,
+    nextFeedEstimate,
+    consistencyPct,
+  };
+}, [entries]);
   if (!pattern) return null;
 
   const sideEmoji: Record<string, string> = { left: '⬅️', right: '➡️', both: '↔️', bottle: '🍼', solid: '🥣' };
@@ -1260,14 +1291,43 @@ if (intervals.length >= 3) {
             </View>
             <View style={[styles.feedingStatDivider, { backgroundColor: theme.surface.border }]} />
             <View style={styles.feedingStat}>
-              <Text style={[styles.feedingStatValue, { color: theme.text.primary }]}>{pattern.totalVolume}ml</Text>
-              <Text style={[styles.feedingStatLabel, { color: theme.text.muted }]}>Total (10 feeds)</Text>
+              <Text style={[styles.feedingStatValue, { color: theme.text.primary }]}>
+                {pattern.totalVolumeLabel}
+              </Text>
+              <Text style={[styles.feedingStatLabel, { color: theme.text.muted }]}>
+                {pattern.hasVolumeData ? 'Total (10 feeds)' : 'No volume logged'}
+              </Text>
             </View>
           </View>
           <View style={[styles.feedingBarBg, { backgroundColor: `${theme.primary}08` }]}>
-            <View style={[styles.feedingBarFill, { width: '60%', backgroundColor: theme.primary }]} />
+            <View
+              style={[
+                styles.feedingBarFill,
+                {
+                  width: `${pattern.consistencyPct ?? 0}%`,
+                  backgroundColor:
+                    pattern.consistencyPct === null
+                      ? `${theme.primary}40`
+                      : pattern.consistencyPct >= 70
+                      ? DS.success
+                      : pattern.consistencyPct >= 40
+                      ? DS.warning
+                      : DS.danger,
+                },
+              ]}
+            />
           </View>
-          <Text style={[styles.feedingBarLabel, { color: theme.text.muted }]}>Feeding consistency: Good</Text>
+          <Text style={[styles.feedingBarLabel, { color: theme.text.muted }]}>
+            {pattern.consistencyPct === null
+              ? 'Not enough feeds to assess consistency'
+              : `Feeding consistency: ${
+                  pattern.consistencyPct >= 70
+                    ? 'Good'
+                    : pattern.consistencyPct >= 40
+                    ? 'Fair'
+                    : 'Irregular'
+                } (${pattern.consistencyPct}%)`}
+          </Text>
         </View>
       </GlassCard>
     </Animated.View>
@@ -2454,23 +2514,8 @@ export default function UniversalTrackerHubScreen() {
 
   const trackingStreak = useMemo(() => {
     if (!currentBaby || !entries || entries.length === 0) return 0;
-    const dayKeys = new Set<string>();
-    entries.forEach((a: any) => {
-      if (!a?.timestamp) return;
-      const d = new Date(a.timestamp);
-      d.setHours(0, 0, 0, 0);
-      dayKeys.add(String(d.getTime()));
-    });
-    if (dayKeys.size === 0) return 0;
-    const todayTime = startOfDay(new Date()).getTime();
-    let cursor = dayKeys.has(String(todayTime)) ? todayTime : todayTime - 86400000;
-    if (!dayKeys.has(String(cursor))) return 0;
-    let streak = 0;
-    while (dayKeys.has(String(cursor))) {
-      streak++;
-      cursor -= 86400000;
-    }
-    return streak;
+    const babyEntries = entries.filter((e: any) => e.babyId === currentBaby.id && !e.isDeleted);
+    return computeStreak(babyEntries).currentStreak;
   }, [entries, currentBaby]);
 
   const weekSpark = useMemo(() => {

@@ -58,7 +58,7 @@ export const formatFieldValue = (key: string, value: unknown): string | null => 
 
 export const formatDuration = (seconds: unknown): string => {
   const s = Number(seconds);
-  if (!Number.isFinite(s) || s <= 0 || s > 86400) return '';
+  if (!Number.isFinite(s) || s <= 0 || s > 86400 || s < 0) return '';
   const mins = Math.floor(s / 60);
   if (mins < 60) return `${mins}m`;
   const h = Math.floor(mins / 60);
