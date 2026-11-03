@@ -208,7 +208,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // mid-flight baby switches without a stale closure.
   const currentBabyRef = useRef<any>(currentBaby);
   currentBabyRef.current = currentBaby;
-
   // ─── Realtime: reload family when members change on any device ──
   // ── Realtime: reload family when members change on any device ──
   // Debounced to 200ms so a batch of inserts (e.g. the Parent-1 seed
