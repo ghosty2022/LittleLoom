@@ -1650,6 +1650,18 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
 
   const ageMonths = useMemo(() => currentBaby ? safeDiffMonths(new Date(), currentBaby.birthDate) : 0, [currentBaby]);
 
+  // Auto-show the "baby required" modal when there is no active baby.
+  // This mirrors TimelineScreen / TrackerRemindersScreen / AddEntryScreen:
+  // a dismissible modal, not a full-screen block. The user can close it
+  // and still see the (empty) dashboard while the baby list hydrates.
+  useEffect(() => {
+    if (!currentBaby) {
+      const t = setTimeout(() => setShowBabyRequiredModal(true), 500);
+      return () => clearTimeout(t);
+    }
+    setShowBabyRequiredModal(false);
+  }, [currentBaby]);
+
   /* ── Ribbon ── */
   const topRibbon = useMemo(() => {
     if (!currentBaby) {

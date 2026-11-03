@@ -63,6 +63,18 @@ export interface BabyProfile {
   createdAt: string;
   lastUpdated?: string;
 }
+export interface GrowthMeasurement {
+  id: string;
+  babyId: string;
+  type: 'height' | 'weight' | 'head' | 'bmi' | string;
+  value: number;
+  unit: string;
+  date: string;
+  notes?: string;
+  recordedBy?: string;
+  percentile?: number;
+  createdAt?: string;
+}
 
 export interface ActivityEntry {
   id: string;
@@ -673,6 +685,23 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       currentUserIdRef.current = userId;
 
+      // ── DIAGNOSTIC: dump what the DB actually has ─────────────
+      if (__DEV__) {
+        try {
+          const { data: diag } = await supabase
+            .from('babies')
+            .select('id, name, parent1_id, parent2_id, parent_id')
+            .limit(20);
+          console.log('[BabyContext] DIAGNOSTIC babies table:', {
+            count: diag?.length ?? 0,
+            rows: diag,
+            queryUserId: userId,
+          });
+        } catch (e) {
+          console.log('[BabyContext] DIAGNOSTIC failed:', e);
+        }
+      }
+
       let allBabies: any[] = [];
       const userRoles: Record<
         string,
@@ -944,8 +973,6 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // ─── FAMILY LABELS ───────────────────────────────────────────────
-      
       // ── Family labels ─────────────────────────────────────────
       // A user can belong to multiple families (Parent1 on Baby A,
       // Guardian on Baby B). The switcher shows "Sarah's family" for

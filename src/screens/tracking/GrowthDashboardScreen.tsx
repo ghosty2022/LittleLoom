@@ -56,7 +56,8 @@ import { useTimelineCorrelations } from '@/hooks/useTimelineCorrelations';
 import { useTrackerAchievements } from '@/hooks/useTrackerAchievements';
 import { useTrackerProgressive } from '@/hooks/useTrackerProgressive';
 import { useWHOGrowthCalculator, predictGrowth } from '@/hooks/useWHOGrowthCalculator';
-import type { GrowthMeasurement, BabyProfile } from '@/types';
+import type { BabyProfile } from '@/context/BabyContext';
+import type { GrowthMeasurement } from '@/context/BabyContext';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -1005,7 +1006,15 @@ const AddMeasurementModal = memo(({ visible, onClose, onSave, type, previousValu
 export default function GrowthDashboardScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const theme = useDashboardTheme();
-  const { currentBaby, growthData, milestones, addGrowthMeasurement, getGrowthData } = useBaby();
+  const {
+    currentBaby,
+    growthData,
+    milestones,
+    addGrowthMeasurement,
+    getGrowthData,
+    loadBabies,
+    forceRefresh,
+  } = useBaby();
   const { userProfile } = useAuth();
   const { entries: trackerEntries } = useTracker();
   const { growthIndex } = useGrowthIntelligence();
@@ -1020,12 +1029,25 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const [chartMode, setChartMode] = useState<ChartMode>('trend');
   const [showAddModal, setShowAddModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { 'worklet'; scrollY.value = e.contentOffset.y; } });
   const headerAnim = useAnimatedStyle(() => ({ opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP) }));
 
   const ageMonths = useMemo(() => currentBaby ? safeDiffMonths(new Date(), currentBaby.birthDate) : 0, [currentBaby]);
+
+  // Auto-show the "baby required" modal when there is no active baby.
+  // This mirrors TimelineScreen / TrackerRemindersScreen / AddEntryScreen:
+  // a dismissible modal, not a full-screen block. The user can close it
+  // and still see the (empty) dashboard while the baby list hydrates.
+  useEffect(() => {
+    if (!currentBaby) {
+      const t = setTimeout(() => setShowBabyRequiredModal(true), 500);
+      return () => clearTimeout(t);
+    }
+    setShowBabyRequiredModal(false);
+  }, [currentBaby]);
 
   const stats = useMemo(() => {
     if (!currentBaby) return null;
@@ -1132,6 +1154,15 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      // Force BabyContext to re-fetch babies from the DB. This is
+      // what recovers from a "user owns babies in DB but app is
+      // showing empty" state, which happens after running the
+      // reclaim SQL while the app is already running.
+      if (typeof forceRefresh === 'function') {
+        await forceRefresh();
+      } else if (typeof loadBabies === 'function') {
+        await loadBabies(true);   // `true` = force, bypass in-progress guard
+      }
       (['height', 'weight', 'head'] as MetricType[]).forEach((m) => {
         getGrowthData(m);
       });
@@ -1140,7 +1171,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     } finally {
       setRefreshing(false);
     }
-  }, [getGrowthData]);
+  }, [getGrowthData, forceRefresh, loadBabies]);
 
   const handleAddMeasurement = useCallback(async (data: Partial<GrowthMeasurement>) => {
     if (!currentBaby) return;
@@ -1169,22 +1200,11 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     HAPTIC_LIGHT();
   }, []);
 
-  if (!currentBaby) {
-    return (
-      <View style={[styles.container, { backgroundColor: isDarkBg(theme) ? DS.darkBg : DS.gray50 }, { alignItems: 'center', justifyContent: 'center' }]}>
-        <StatusBar barStyle={isDarkBg(theme) ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
-        <LinearGradient colors={isDarkBg(theme) ? ['#0c0a09', '#12121e'] : ['#f8faff', '#eef0f5']} style={StyleSheet.absoluteFill} />
-        <Ionicons name="person-add" size={64} color={theme.primary} style={{ marginBottom: 16 }} />
-        <Text style={[styles.noDataTitle, { color: theme.text.primary }]}>No Baby Profile</Text>
-        <Text style={[styles.noDataText, { color: theme.text.secondary }]}>Create a profile to start tracking growth</Text>
-        <PressableScale onPress={() => navigation.navigate('CreateBabyProfile')} activeScale={0.97}>
-          <LinearGradient colors={[DS.primary, DS.accent]} style={styles.createBtn}>
-            <Text style={styles.createBtnText}>Create Profile</Text>
-          </LinearGradient>
-        </PressableScale>
-      </View>
-    );
-  }
+  // No full-screen block for "no baby". The modal at the bottom of the
+  // render tree handles it. If there's no baby we still render the
+  // (mostly empty) dashboard so the user can see the UI, tap the
+  // sticky-header baby avatar, or hit the "Create profile" button
+  // inside the modal.
 
   const tabs = [
     { key: 'overview' as DashboardTab, label: 'Overview', icon: 'grid-outline' as const },
@@ -1214,7 +1234,9 @@ export default function GrowthDashboardScreen({ navigation }: any) {
           </TouchableOpacity>
           <View style={{ alignItems: 'center' }}>
             <GradientText colors={['#667eea', '#764ba2', '#f093fb']} style={styles.headerTitle}>GROWTH</GradientText>
-            <Text style={[styles.headerSub, { color: isDarkBg(theme) ? DS.gray400 : DS.gray500 }]}>{currentBaby.name}</Text>
+            <Text style={[styles.headerSub, { color: isDarkBg(theme) ? DS.gray400 : DS.gray500 }]}>
+              {currentBaby?.name || 'Growth'}
+            </Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('Achievements')} style={[styles.headerIconBtn, { backgroundColor: isDarkBg(theme) ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
             <Ionicons name="trophy-outline" size={20} color={isDarkBg(theme) ? DS.white : DS.gray800} />
@@ -1229,23 +1251,27 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} colors={[theme.primary, theme.secondary]} progressViewOffset={HEADER_TOTAL_HEIGHT} />}
       >
-        {/* Pulse Header */}
-        <GrowthPulse
-          isDark={isDarkBg(theme)}
-          baby={currentBaby}
-          ageMonths={ageMonths}
-          composite={growthIndex?.compositeIndex || 0}
-          topMetrics={{ height: stats?.height?.value, weight: stats?.weight?.value, head: stats?.head?.value }}
-          todayLogs={todayLogs}
-          onBabyPress={() => navigation.navigate('SwitchBaby', { returnTo: 'GrowthDashboard', returnLabel: 'Growth' })}
-          onPDF={() => navigation.navigate('PediatricianPDFExport')}
-          onAdd={() => setShowAddModal(true)}
-        />
+        {/* Pulse Header — only when we have a baby */}
+        {currentBaby && (
+          <GrowthPulse
+            isDark={isDarkBg(theme)}
+            baby={currentBaby}
+            ageMonths={ageMonths}
+            composite={growthIndex?.compositeIndex || 0}
+            topMetrics={{ height: stats?.height?.value, weight: stats?.weight?.value, head: stats?.head?.value }}
+            todayLogs={todayLogs}
+            onBabyPress={() => navigation.navigate('SwitchBaby', { returnTo: 'GrowthDashboard', returnLabel: 'Growth' })}
+            onPDF={() => navigation.navigate('PediatricianPDFExport')}
+            onAdd={() => setShowAddModal(true)}
+          />
+        )}
 
         {/* Ribbon */}
-        <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
-          <AuraRibbon isDark={isDarkBg(theme)} {...topRibbon} />
-        </View>
+        {currentBaby && (
+          <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+            <AuraRibbon isDark={isDarkBg(theme)} {...topRibbon} />
+          </View>
+        )}
 
         {/* Tab bar */}
         <View style={{ marginTop: DS.space.md }}>
@@ -1253,7 +1279,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         </View>
 
         {/* ═══ OVERVIEW ═══ */}
-        {activeTab === 'overview' && (
+        {activeTab === 'overview' && currentBaby && (
           <>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
               {[
@@ -1320,7 +1346,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         )}
 
         {/* ═══ GROWTH ═══ */}
-        {activeTab === 'growth' && (
+        {activeTab === 'growth' && currentBaby && (
           <View style={{ marginTop: DS.space.md, gap: 12 }}>
             <PercentileRadar stats={stats} />
 
@@ -1431,7 +1457,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         )}
 
         {/* ═══ MILESTONES ═══ */}
-        {activeTab === 'milestones' && (
+        {activeTab === 'milestones' && currentBaby && (
           <View style={{ marginTop: DS.space.md, gap: 12 }}>
             {growthIndex?.milestoneReadiness && growthIndex.milestoneReadiness.length > 0 && (
               <View>
@@ -1482,7 +1508,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         )}
 
         {/* ═══ INSIGHTS ═══ */}
-        {activeTab === 'insights' && (
+        {activeTab === 'insights' && currentBaby && (
           <View style={{ marginTop: DS.space.md, gap: 12, paddingHorizontal: DS.space.lg }}>
             <SectionHeader title="Quick Insights" subtitle={`${smartInsights.length} items`} icon="bulb-outline" color={DS.accent} action={() => navigation.navigate('Insights')} actionLabel="View All" />
             {smartInsights.length > 0 ? smartInsights.map((insight, i) => (
@@ -1520,7 +1546,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         )}
 
         {/* ═══ PHOTOS ═══ */}
-        {activeTab === 'photos' && (
+        {activeTab === 'photos' && currentBaby && (
           <View style={{ marginTop: DS.space.md }}>
             <SectionHeader title="Growth Memories" subtitle="Photos tied to measurements" icon="images-outline" color={DS.success} />
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: DS.space.lg, gap: 10 }}>
@@ -1556,6 +1582,152 @@ export default function GrowthDashboardScreen({ navigation }: any) {
         type={activeMetric}
         previousValue={getPreviousValue()}
       />
+
+      {/* ═══ Baby Required Modal (dismissible) ═══ */}
+      <Modal
+        visible={showBabyRequiredModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBabyRequiredModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}
+          onPress={() => setShowBabyRequiredModal(false)}
+        >
+          <View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: isDarkBg(theme) ? DS.darkCard : DS.white,
+                alignItems: 'center',
+                paddingVertical: 28,
+                paddingHorizontal: 24,
+              },
+            ]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 22,
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                marginBottom: 16,
+              }}
+            >
+              <LinearGradient
+                colors={[DS.primary, DS.accent]}
+                style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Ionicons name="person-add" size={30} color={DS.white} />
+              </LinearGradient>
+            </View>
+
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: '800',
+                color: theme.text.primary,
+                textAlign: 'center',
+                marginBottom: 8,
+                letterSpacing: -0.3,
+              }}
+            >
+              No Baby Profile
+            </Text>
+            <Text
+              style={{
+                fontSize: 13,
+                lineHeight: 19,
+                fontWeight: '500',
+                color: theme.text.secondary,
+                textAlign: 'center',
+                marginBottom: 20,
+              }}
+            >
+              Create a baby profile to start tracking growth measurements, milestones, and insights.
+            </Text>
+
+            <PressableScale
+              onPress={() => {
+                setShowBabyRequiredModal(false);
+                navigation.navigate('CreateBabyProfile');
+              }}
+              activeScale={0.97}
+              style={{ width: '100%' }}
+            >
+              <LinearGradient
+                colors={[DS.primary, DS.accent]}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  paddingVertical: 14,
+                  borderRadius: DS.radius.md,
+                }}
+              >
+                <Text style={{ color: DS.white, fontSize: 14, fontWeight: '700' }}>
+                  Create Baby Profile
+                </Text>
+                <Ionicons name="arrow-forward" size={16} color={DS.white} />
+              </LinearGradient>
+            </PressableScale>
+
+            {/* Reload button — recovers from "app is running but DB was updated" */}
+            <PressableScale
+              onPress={async () => {
+                setShowBabyRequiredModal(false);
+                setRefreshing(true);
+                try {
+                  if (typeof forceRefresh === 'function') await forceRefresh();
+                  else if (typeof loadBabies === 'function') await loadBabies(true);
+                } catch {}
+                setRefreshing(false);
+                if (__DEV__) console.log('[GrowthDashboard] Manual reload triggered');
+              }}
+              activeScale={0.97}
+              style={{ width: '100%', marginTop: 10 }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  paddingVertical: 12,
+                  borderRadius: DS.radius.md,
+                  borderWidth: 1.5,
+                  borderColor: DS.primary + '40',
+                  backgroundColor: DS.primary + '08',
+                }}
+              >
+                <Ionicons name="refresh" size={16} color={DS.primary} />
+                <Text style={{ color: DS.primary, fontSize: 14, fontWeight: '700' }}>
+                  Reload Babies
+                </Text>
+              </View>
+            </PressableScale>
+
+            <TouchableOpacity
+              onPress={() => setShowBabyRequiredModal(false)}
+              style={{ paddingVertical: 10, marginTop: 4 }}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '600',
+                  color: isDarkBg(theme) ? DS.gray500 : DS.gray400,
+                }}
+              >
+                Maybe later
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
