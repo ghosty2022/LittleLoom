@@ -1,14 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
 export enum UserRole {
   PARENT_1 = 'parent1',
   PARENT_2 = 'parent2',
@@ -16,13 +5,7 @@ export enum UserRole {
   VIEWER = 'viewer',
 }
 
-
-
-
-
-
 export interface Permission {
-  
   read: boolean;
   write: boolean;
   delete: boolean;
@@ -30,7 +13,6 @@ export interface Permission {
   manageSecurity: boolean;
   exportData: boolean;
 
-  
   canView?: boolean;
   canAddEntry?: boolean;
   canEditEntry?: boolean;
@@ -42,18 +24,14 @@ export interface Permission {
   canManageFamily?: boolean;
 }
 
-
-
 export const ROLE_PERMISSIONS: Record<UserRole, Permission> = {
   [UserRole.PARENT_1]: {
-    
     read: true,
     write: true,
     delete: true,
     manageFamily: true,
     manageSecurity: true,
     exportData: true,
-    
     canView: true,
     canAddEntry: true,
     canEditEntry: true,
@@ -117,8 +95,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission> = {
   },
 };
 
-
-
 export const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.PARENT_1]: 'Primary Parent',
   [UserRole.PARENT_2]: 'Co-Parent',
@@ -165,8 +141,6 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.GUARDIAN]: '#11998e',
   [UserRole.VIEWER]: '#64748b',
 };
-
-
 
 export interface FamilyMember {
   id: string;
@@ -232,32 +206,32 @@ const RELATIONSHIP_CANONICAL: Record<string, string> = {
   grandmother: 'Grandmother',
   grandma: 'Grandmother',
   granny: 'Grandmother',
-  'nana': 'Grandmother',
-  'nan': 'Grandmother',
-  'mimi': 'Grandmother',
-  'oma': 'Grandmother',
+  nana: 'Grandmother',
+  nan: 'Grandmother',
+  mimi: 'Grandmother',
+  oma: 'Grandmother',
   grandfather: 'Grandfather',
   grandpa: 'Grandfather',
   'papa bear': 'Grandfather',
-  'pops': 'Grandfather',
-  'opa': 'Grandfather',
+  pops: 'Grandfather',
+  opa: 'Grandfather',
   grandparent: 'Grandparent',
   'great-grandmother': 'Great-Grandmother',
   'great-grandfather': 'Great-Grandfather',
   // ── Extended family ──────────────────────────────────
   aunt: 'Aunt',
   auntie: 'Aunt',
-  'aunty': 'Aunt',
+  aunty: 'Aunt',
   uncle: 'Uncle',
-  'unc': 'Uncle',
+  unc: 'Uncle',
   sister: 'Sister',
   brother: 'Brother',
   cousin: 'Cousin',
   niece: 'Niece',
   nephew: 'Nephew',
-  'godmother': 'Godmother',
-  'godfather': 'Godfather',
-  'godparent': 'Godparent',
+  godmother: 'Godmother',
+  godfather: 'Godfather',
+  godparent: 'Godparent',
   // ── In-laws ──────────────────────────────────────────
   'mother-in-law': 'Mother-in-law',
   'mom-in-law': 'Mother-in-law',
@@ -270,7 +244,7 @@ const RELATIONSHIP_CANONICAL: Record<string, string> = {
   nanny: 'Nanny',
   'nanny share': 'Nanny',
   caregiver: 'Caregiver',
-  'carer': 'Caregiver',
+  carer: 'Caregiver',
   sitter: 'Babysitter',
   babysitter: 'Babysitter',
   'baby sitter': 'Babysitter',
@@ -283,7 +257,7 @@ const RELATIONSHIP_CANONICAL: Record<string, string> = {
   // ── Others ───────────────────────────────────────────
   friend: 'Family Friend',
   'family friend': 'Family Friend',
-  'neighbor': 'Neighbor',
+  neighbor: 'Neighbor',
   other: 'Family Member',
   relative: 'Relative',
   // ── Co-parent role labels (when relationship is empty) ─
@@ -295,12 +269,21 @@ const RELATIONSHIP_CANONICAL: Record<string, string> = {
 export const canonicalizeRelationship = (raw?: string | null): string => {
   if (!raw) return '';
   const key = raw.trim().toLowerCase();
-  return RELATIONSHIP_CANONICAL[key] || (raw.trim().charAt(0).toUpperCase() + raw.trim().slice(1));
+  return (
+    RELATIONSHIP_CANONICAL[key] ||
+    raw.trim().charAt(0).toUpperCase() + raw.trim().slice(1)
+  );
 };
 
 /**
  * The label to display for a member in ANY UI. Uses the human relationship
  * ("Mother", "Father", "Grandma") and never "Parent 1".
+ *
+ * IMPORTANT: If the relationship string happens to be one of the *role*
+ * names (e.g. the user tapped "Guardian" in the quick-pick chips, or an
+ * old migration wrote "Primary Parent" as the relationship), we DON'T
+ * return that string — because then a real parent1 would display as
+ * "Guardian" everywhere. We fall back to the actual role label instead.
  */
 export const getMemberDisplayLabel = (member: {
   role?: UserRole | string;
@@ -328,11 +311,6 @@ export const getMemberDisplayLabel = (member: {
   const relationship = canonicalizeRelationship(member?.relationship);
 
   // ── ROLE-LABEL GUARD ──────────────────────────────────────────────
-  // If the user's "relationship" string is actually one of the role
-  // names (because the Settings quick-pick lets them choose
-  // 'Guardian' as a relationship), DON'T show that string as the
-  // badge — it would make a Primary Parent appear to be a Guardian.
-  // Fall back to the actual role label instead.
   const roleWordSet = new Set([
     'primary parent',
     'co-parent',
@@ -341,23 +319,12 @@ export const getMemberDisplayLabel = (member: {
     'parent1',
     'parent2',
   ]);
+
   if (relationship && !roleWordSet.has(relationship.toLowerCase())) {
     return relationship;
   }
 
   return roleLabel;
-};    case UserRole.PARENT_2:
-    case 'parent2':
-      return 'Co-Parent';
-    case UserRole.GUARDIAN:
-    case 'guardian':
-      return 'Guardian';
-    case UserRole.VIEWER:
-    case 'viewer':
-      return 'Viewer';
-    default:
-      return 'Family Member';
-  }
 };
 
 /**
@@ -371,17 +338,20 @@ export const getMemberDisplayLabel = (member: {
  *   • Guardian / Viewer → cannot remove anyone.
  */
 export const canRoleRemove = (actorRole: UserRole | string): boolean => {
-  return actorRole === UserRole.PARENT_1 || actorRole === UserRole.PARENT_2 ||
-    actorRole === 'parent1' || actorRole === 'parent2';
+  return (
+    actorRole === UserRole.PARENT_1 ||
+    actorRole === UserRole.PARENT_2 ||
+    actorRole === 'parent1' ||
+    actorRole === 'parent2'
+  );
 };
 
 export const canRoleChangeRoles = (actorRole: UserRole | string): boolean => {
   return actorRole === UserRole.PARENT_1 || actorRole === 'parent1';
 };
+
 // ─────────────────────────────────────────────────────────────────────
-// ROLE → BADGE COLOR — used everywhere a role chip appears so the
-// color of "Primary Parent", "Co-Parent", "Guardian", "Viewer" is
-// always consistent (chat list, family tree, member cards, etc.).
+// ROLE → BADGE COLOR
 // ─────────────────────────────────────────────────────────────────────
 export const getMemberRoleBadgeColor = (member: {
   role?: UserRole | string;
@@ -459,7 +429,9 @@ export const resolveProfileByIdentifier = async (
   try {
     let query = supabaseClient
       .from('profiles')
-      .select('id, full_name, email, phone_number, community_avatar, avatar_url, community_handle, community_username');
+      .select(
+        'id, full_name, email, phone_number, community_avatar, avatar_url, community_handle, community_username',
+      );
 
     if (looksLikeEmail) {
       query = query.eq('email', raw.toLowerCase());
