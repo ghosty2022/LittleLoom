@@ -497,6 +497,50 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch {}
       }
 
+      // ── Path 2b: parent1_id / parent2_id / parent_id queries ────
+      // If app_settings and family_members both failed, try the
+      // baby table directly. This covers cases where the row was
+      // inserted with only `parent_id` (legacy) or RLS blocks
+      // `family_members` but allows `babies`.
+      if (!resolvedBabyId) {
+        try {
+          const { data: b1 } = await supabase
+            .from('babies')
+            .select('id')
+            .eq('parent1_id', uid)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          if (b1?.id) resolvedBabyId = b1.id;
+        } catch {}
+
+        if (!resolvedBabyId) {
+          try {
+            const { data: b2 } = await supabase
+              .from('babies')
+              .select('id')
+              .eq('parent2_id', uid)
+              .eq('is_active', true)
+              .limit(1)
+              .maybeSingle();
+            if (b2?.id) resolvedBabyId = b2.id;
+          } catch {}
+        }
+
+        if (!resolvedBabyId) {
+          try {
+            const { data: bp } = await supabase
+              .from('babies')
+              .select('id')
+              .eq('parent_id', uid)
+              .eq('is_active', true)
+              .limit(1)
+              .maybeSingle();
+            if (bp?.id) resolvedBabyId = bp.id;
+          } catch {}
+        }
+      }
+
       if (!resolvedBabyId) {
         // Retry with backoff — BabyContext may not have hydrated yet.
         // Cold start on a slow device + RLS-protected reads can take
@@ -511,13 +555,16 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // has 0 babies — in that case BabyContext's own
         // `isInitialized` will be true and it won't emit
         // `currentBaby` for us. See the guard below.
+        // Reduce retry frequency to avoid log spam. 5 retries with
+        // 1s spacing is enough to cover the BabyContext hydration
+        // window without flooding the logs.
         const attempt = (loadFamilyRetryCount.current ?? 0) + 1;
         loadFamilyRetryCount.current = attempt;
-        if (attempt <= 8) {
-          const delay = Math.min(200 * attempt, 1000);
-          if (__DEV__) {
+        if (attempt <= 5) {
+          const delay = 1000;
+          if (__DEV__ && attempt === 1) {
             console.log(
-              `[FamilyContext] loadFamily: no baby yet (attempt ${attempt}), retrying in ${delay}ms`,
+              `[FamilyContext] loadFamily: no baby yet, retrying ${5 - attempt} more times...`,
             );
           }
           setTimeout(() => {

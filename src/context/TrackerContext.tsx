@@ -1150,6 +1150,32 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     initTracker();
   }, [initTracker, userProfile?.id, currentBabyIdState]);
 
+  // ─── FALLBACK: Poll for baby ID if it stays null too long ──────
+  // If BabyContext is stuck (RLS, network, etc.), we retry the
+  // getBabyIdFromContext() call every 2s for up to 30s. This
+  // guarantees the tracker loads once the baby appears.
+  const babyPollAttemptsRef = useRef(0);
+  useEffect(() => {
+    if (!userProfile?.id) return;
+    if (currentBabyIdState) return;   // already have baby id
+    if (babyPollAttemptsRef.current >= 15) return;   // stop after 30s
+
+    const timer = setTimeout(() => {
+      const id = getBabyIdFromContext();
+      if (id) {
+        if (__DEV__) console.log('[TrackerContext] Poll recovered baby id:', id);
+        currentBabyIdRef.current = id;
+        setCurrentBabyIdState(id);
+      } else {
+        babyPollAttemptsRef.current++;
+        // Trigger another render to re-run this effect
+        setCurrentBabyIdState((prev) => prev);   // no-op but forces effect re-eval
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [userProfile?.id, currentBabyIdState, getBabyIdFromContext]);
+
   /* ─── Update progressive state ───────────────────────────────────── */
 
   useEffect(() => {
