@@ -52,6 +52,7 @@ import OptimizedImage from '../../components/OptimizedImage';
 // and FamilyDashboardScreen render the same member row.
 // See `src/components/FamilyStack.tsx`.
 import FamilyStack from '../../components/FamilyStack';
+import { scopedEntries, countToday } from '../../utils/entrySelectors';
 
 const AnimatedScrollView = Animated.ScrollView;
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
