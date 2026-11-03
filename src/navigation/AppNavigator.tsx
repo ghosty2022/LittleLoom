@@ -242,38 +242,16 @@ function getNavState(
   if (isLocked && securityOn) return 'SECURITY_LOCK';
 
   // ── HARD GATE: 0 babies + setup not REALLY done → setup flow ──
-  //
-  // The previous logic trusted `hasBaby === 'skipped'` / `setupDone`
-  // unconditionally. On a fresh sign-up on a device that previously
-  // hosted a fully-set-up account, those AsyncStorage flags leaked
-  // from the OLD account and made the new user skip BabyOptional /
-  // CoParentInviteScreen entirely.
-  //
-  // The authoritative signal is `babyCount > 0`. If the user has
-  // zero babies AND `hasBaby` is anything other than an explicit
-  // `true` (i.e. they actually created one), we MUST route to the
-  // setup flow — never straight to Main.
   if (babyCount === 0) {
-    if (hasBaby === true) {
-      // They marked "baby done" but have no baby in the DB yet —
-      // BabyContext hasn't hydrated. Give MAIN a chance; the setup
-      // flow will be re-entered if hydration confirms 0.
-      return 'MAIN';
-    }
+    if (hasBaby === true) return 'MAIN';
     if (!setupDone) {
-      // Brand new / unfinished account → setup flow.
       const p2Addressed = hasP2 === true || hasP2 === 'skipped';
       if (!p2Addressed) return 'SETUP_PARENT2';
-      // Parent2 addressed → baby step is next.
       return 'SETUP_BABY';
     }
-    // `setupDone === true` but babyCount === 0. This is the classic
-    // leak-from-prior-account case. Route through setup anyway.
     return 'SETUP_BABY';
   }
 
-  // 1+ babies → Main flow. `setupDone` is not required if a baby
-  // exists (they own a baby — clearly set up).
   return 'MAIN';
 }
 
@@ -324,6 +302,17 @@ function NavigationContent({
   const isMounted = useRef(true);
   const navReadyCalled = useRef(false);
 
+  // ── SINGLE declaration of every ref used below. ──────────────
+  // Order matters: `inviteProbeCacheRef` and `lastInviteProbeUserId`
+  // MUST be declared before the "Invite-probe cache reset" effect
+  // references them, otherwise the effect body hits a temporal-dead-
+  // zone ReferenceError on first mount. `hasSkippedBabyRef` is
+  // declared exactly once.
+  const babyCountRef = useRef(0);
+  const hasSkippedBabyRef = useRef(false);
+  const inviteProbeCacheRef = useRef<boolean | null>(null);
+  const lastInviteProbeUserId = useRef<string | null>(null);
+
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -345,18 +334,6 @@ function NavigationContent({
     })();
   }, [isAuthenticated]);
 
-    const babyCountRef = useRef(0);
-  const hasSkippedBabyRef = useRef(false);
-  // ── Invite-probe cache ─────────────────────────────────────
-  // The invite_codes probe is fired by the resolver effect and
-  // the hydration re-evaluate effect. Without a cache, that's
-  // 2+ Supabase round-trips per session just to decide which
-  // stack to render. Probe ONCE per session, reset on user-id
-  // change.
-  const inviteProbeCacheRef = useRef<boolean | null>(null);
-  const lastInviteProbeUserId = useRef<string | null>(null);
-  const hasSkippedBabyRef = useRef(false);
-
   const securityOn = useMemo(() =>
     !!(secSettings?.isPinEnabled || secSettings?.isBiometricEnabled || secSettings?.isAppLockEnabled),
     [secSettings?.isPinEnabled, secSettings?.isBiometricEnabled, secSettings?.isAppLockEnabled]
@@ -373,9 +350,7 @@ function NavigationContent({
     if (currentRoute === 'Login' || currentRoute === 'SignUp' || currentRoute === 'Onboarding') return;
 
     const now = Date.now();
-    if (now - lastNavTime.current < 2000) {
-      return;
-    }
+    if (now - lastNavTime.current < 2000) return;
 
     lastNavTime.current = now;
     navRef.current?.reset({
@@ -450,7 +425,6 @@ function NavigationContent({
     if (authLoading || !firstOpenChecked.current || !sessionChecked) return;
     if (isAuthenticated && !babiesReady) return;
 
-    // Forced password change takes priority over all setup flow states
     if (
       isAuthenticated &&
       isValidSession &&
@@ -465,14 +439,6 @@ function NavigationContent({
       return;
     }
 
-    // ── Invite-accept short-circuit ─────────────────────────────
-    // `signUpWithInviteCode` writes the family_members row + the
-    // app_settings.current_baby_id via a SECURITY DEFINER RPC. That
-    // means the invitee ALREADY has a baby — even if BabyContext
-    // hasn't hydrated and hasBaby/setupDone are stale from a prior
-    // account on this device.
-    //
-    // Probe invite_codes and force MAIN if the user is a joiner.
     let cancelledLocal = false;
 
     (async () => {
@@ -492,11 +458,6 @@ function NavigationContent({
         return;
       }
 
-      // ── Invite-accept short-circuit (cached) ──────────────
-      // Probe AT MOST once per session and only when the user
-      // genuinely has 0 babies. The resolver re-fires on focus,
-      // on baby hydration, and on every AppState change, so
-      // without the cache we'd burn a Supabase query each time.
       let joinedViaInvite = false;
       if (babyCountRef.current === 0) {
         if (inviteProbeCacheRef.current === null) {
@@ -531,19 +492,8 @@ function NavigationContent({
         return;
       }
 
-      // ── DEFENSIVE: don't latch to SETUP_BABY while BabyContext
-      //    might still be hydrating. If babyCount is 0 but we
-      //    haven't yet given loadBabies a chance (e.g. cold boot
-      //    with slow network), wait for babiesReady to settle.
-      //
-      //    `babiesReady` is set to true once loadBabies resolves
-      //    (success OR failure), so this just postpones the
-      //    decision until BabyContext has genuinely reported its
-      //    final count.
       const babiesSettled = babiesReady || !isAuthenticated;
-      if (!babiesSettled) {
-        return; // resolver re-fires when babiesReady flips
-      }
+      if (!babiesSettled) return;
 
       const s = getNavState(
         authLoading,
@@ -606,23 +556,12 @@ function NavigationContent({
   }, [isAuthenticated, isValidSession, authLoading, loadBabies]);
 
   // ── RE-EVALUATE ON BABY HYDRATION ─────────────────────────────
-  // When `loadBabies` finishes and the count goes from 0 → N (or
-  // stays 0), re-run the navState resolver. Without this, a fresh
-  // signup would race: navState latches to MAIN using stale
-  // `setupDone`/`hasBaby` flags before BabyContext reports "0
-  // babies", and NavigationContainer resets the stack onto Main.
   useEffect(() => {
     if (!isAuthenticated || !isValidSession) return;
     if (authLoading) return;
 
-    // Nudge the resolver by touching the babyCount ref and forcing
-    // a re-run of the main resolver effect.
     babyCountRef.current = babies?.length || 0;
 
-    // ── Invite short-circuit on hydration ─────────────────────
-    // During the RPC-commit window, babies may still be [] AND
-    // hasBaby may still be false. Don't latch to SETUP_BABY if the
-    // user is actually a joiner.
     let cancelledLocal = false;
 
     (async () => {
@@ -646,9 +585,6 @@ function NavigationContent({
       } catch {}
     })();
 
-    // Force re-evaluation by re-computing navState with the latest
-    // counts. This deliberately mimics the resolver effect's body
-    // so we don't have to over-parameterise it.
     if (mustChangePassword === true && !isSecurityLocked) {
       if (lastNavState.current !== 'FORCED_PASSWORD_CHANGE') {
         lastNavState.current = 'FORCED_PASSWORD_CHANGE';
@@ -881,9 +817,7 @@ function NavigationContent({
     }
 
     const safeNavigateTo = (routeName: keyof RootStackParamList, useReset = false) => {
-      if (currentRoute === routeName) {
-        return;
-      }
+      if (currentRoute === routeName) return;
 
       const now = Date.now();
       if (now - lastNavTime.current < 250) return;
@@ -947,15 +881,6 @@ function NavigationContent({
       }
 
       case 'MAIN':
-        // ── MULTI-BABY COLD-START GUARD ──────────────────────────
-        // On cold boot, `babies` may not be hydrated yet when this
-        // effect first runs. We defer the SwitchBaby decision to a
-        // dedicated effect below (`useEffect` after this switch)
-        // which awaits both `babies` AND the session flag.
-        //
-        // This case only handles the "already in a main-flow screen"
-        // shortcut — if we're already inside Main/SwitchBaby, do
-        // nothing.
         if (currentRoute && MAIN_FLOW_SCREENS.has(currentRoute)) return;
 
         if (currentRoute && SETUP_FLOW_SCREENS.has(currentRoute)) {
@@ -987,17 +912,6 @@ function NavigationContent({
   ]);
 
   // ── MULTI-BABY COLD-START SELECTION ─────────────────────────────
-  // After login OR cold boot, if the user belongs to 2+ babies and
-  // hasn't chosen one THIS SESSION, push them to SwitchBaby before
-  // Main. This is the missing piece that let a 2-baby user land
-  // silently on the "priority" baby without ever being asked.
-  //
-  // We only fire when:
-  //   • navState is MAIN (auth OK, setup done)
-  //   • babies has hydrated (length > 1)
-  //   • the current route is Main (not already SwitchBaby / a sub-
-  //     flow screen)
-  //   • the session flag is absent
   const multiBabyCheckedRef = useRef(false);
   const multiBabySettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -1008,9 +922,6 @@ function NavigationContent({
 
     const babiesArr = Array.isArray(babies) ? babies : [];
 
-    // If we're in the ambiguity window (0 or 1 babies right now),
-    // don't latch yet — a second baby may still be hydrating from
-    // the DB. Give `loadBabies` 500 ms to settle before deciding.
     if (babiesArr.length <= 1) {
       if (multiBabySettleTimerRef.current) {
         clearTimeout(multiBabySettleTimerRef.current);
@@ -1018,9 +929,6 @@ function NavigationContent({
       multiBabySettleTimerRef.current = setTimeout(() => {
         multiBabySettleTimerRef.current = null;
         if (multiBabyCheckedRef.current) return;
-        // Read the LIVE count from `babyCountRef`, kept current by
-        // the "Baby count tracking" effect — the closure's
-        // `babies` value is stale by the time the timer fires.
         if ((babyCountRef.current ?? 0) <= 1) {
           multiBabyCheckedRef.current = true;
         }
@@ -1033,14 +941,11 @@ function NavigationContent({
       };
     }
 
-
     const currentRoute = navRef.current.getCurrentRoute()?.name;
     if (currentRoute === 'SwitchBaby') {
       multiBabyCheckedRef.current = true;
       return;
     }
-    // Only intervene from the MAIN tab root — never yank a user
-    // mid-flow (AddEntry, FamilyChat, etc.).
     if (currentRoute && currentRoute !== 'Main') {
       multiBabyCheckedRef.current = true;
       return;
@@ -1079,9 +984,6 @@ function NavigationContent({
     return <AppLoadingScreen />;
   }
 
-  // Resolve the navigator's initial route:
-  // - If App.tsx passed one, use it (skips Splash route entirely on cold boot).
-  // - Otherwise fall back to a sensible default.
   const resolvedInitialRoute =
     propInitialRoute && propInitialRoute !== 'Splash'
       ? propInitialRoute
@@ -1102,7 +1004,6 @@ function NavigationContent({
           initialRouteName={resolvedInitialRoute as any}
           screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
         >
-          {/* AUTH FLOW */}
           <Stack.Screen
             name="Onboarding"
             component={OnboardingScreen}
@@ -1127,7 +1028,6 @@ function NavigationContent({
             />
           </Stack.Group>
 
-          {/* QR SCANNER */}
           <Stack.Screen
             name="QRScanner"
             component={QRScannerScreen}
@@ -1138,17 +1038,14 @@ function NavigationContent({
             }}
           />
 
-          {/* SETUP FLOW */}
           <Stack.Group screenOptions={{ animation: 'slide_from_right' }}>
             <Stack.Screen name="CoParentInviteScreen" component={CoParentInviteScreen} options={{ gestureEnabled: false }} />
             <Stack.Screen name="BabyOptional" component={BabyOnboardingScreen} options={{ gestureEnabled: false }} />
             <Stack.Screen name="CreateBabyProfile" component={BabyProfileCreateScreen} options={{ gestureEnabled: false }} />
           </Stack.Group>
 
-          {/* MAIN TAB */}
           <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade', gestureEnabled: false }} />
 
-          {/* MAIN FLOW */}
           <Stack.Screen name="Timeline" component={TimelineScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="EntryDetail" component={EntryDetailScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="PottyTracker" component={TimelineScreen} options={{ animation: 'none' }} />
