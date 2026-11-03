@@ -488,7 +488,30 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
               relationship: result.data.relationship,
               isPartial: result.data.isPartial || false,
             });
-            showInfo('Valid Code!', `You'll join as ${result.data.role === 'parent2' ? 'Parent 2' : result.data.role === 'guardian' ? 'Guardian' : 'Viewer'}`);
+
+            // ── Prefill from the invite row ──────────────────────────
+            // The inviter may have pre-typed the invitee's name / email /
+            // phone when generating the code. Copy them into the form so
+            // the joiner doesn't retype what the inviter already knows.
+            const d: any = result.data;
+            if (!joinEmail.trim() && d.used_by_email) setJoinEmail(String(d.used_by_email));
+            if (!joinPhone.trim() && d.used_by_phone) setJoinPhone(String(d.used_by_phone));
+            if (!joinFullName.trim() && d.used_by_name) setJoinFullName(String(d.used_by_name));
+
+            // If the inviter declared a relationship on the code row,
+            // honour it (e.g. "Uncle"). The relationship is stored on
+            // `family_members` server-side by `accept_invite_code`, so
+            // the joiner doesn't need to re-enter it.
+            showInfo(
+              'Valid Code!',
+              `You'll join as ${
+                d.role === 'parent2'
+                  ? 'Parent 2'
+                  : d.role === 'guardian'
+                  ? 'Guardian'
+                  : 'Viewer'
+              }${d.relationship ? ` (${d.relationship})` : ''}`,
+            );
           } else {
             setCodeValidated(false);
             setCodeInfo(null);
@@ -504,7 +527,12 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
         if (isMounted.current) setIsValidatingCode(false);
       }
     }, 500);
-  }, [inviteCode, activeTab, validateInviteCodeFromFamily, getPartialSignupInfo]);
+  }, [
+    inviteCode,
+    activeTab,
+    validateInviteCodeFromFamily,
+    getPartialSignupInfo,
+  ]);
 
   const handlePartialSignupRecovery = useCallback(async () => {
     if (isProcessing || authLoading) return;

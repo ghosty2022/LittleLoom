@@ -2455,9 +2455,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
+      // ── 3b. Ensure the family_members row carries the inviter
+      //        and the relationship the inviter declared on the code.
+      //        MUST run AFTER `babyId` is resolved (below) so it
+      //        targets the correct row.
       const babyId = result.baby_id || inviteRow.family_id;
       const role = result.role || inviteRow.role || 'viewer';
       const relationship = inviteRow.relationship || 'Family Member';
+
+      try {
+        const { data: createdRow } = await supabase
+          .from('family_members')
+          .select('id, added_by, relationship')
+          .eq('baby_id', babyId)
+          .eq('user_id', user.id)
+          .is('deleted_at', null)
+          .maybeSingle();
+
+        if (createdRow) {
+          const patch: Record<string, unknown> = {};
+          if (!createdRow.added_by && inviteRow.creator_id) {
+            patch.added_by = inviteRow.creator_id;
+          }
+          if (
+            inviteRow.relationship &&
+            (!createdRow.relationship || createdRow.relationship === 'Parent')
+          ) {
+            patch.relationship = inviteRow.relationship;
+          }
+          if (Object.keys(patch).length > 0) {
+            patch.updated_at = new Date().toISOString();
+            await supabase.from('family_members').update(patch).eq('id', createdRow.id);
+          }
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Auth] family_members post-patch failed:', e);
+      }
 
       // ── 4. Best-effort secondary setup (NON-BLOCKING)
       //        Everything below is "nice to have". If any of it
@@ -2494,18 +2527,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const familyCode = `FAM-${String(babyId).slice(0, 6).toUpperCase()}`;
 
       // 4b. Mirror `profiles` fields (name / avatar / role hint)
-      try {
-        await supabase
-          .from('profiles')
-          .update({
-            full_name: fullName.trim(),
-            email: email.trim().toLowerCase(),
-            role,
-            community_display_name: fullName.trim(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', user.id);
-      } catch {}
+try {
+  await supabase
+    .from('profiles')
+    .update({
+      full_name: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      // Do NOT overwrite `role` here — the RPC already wrote
+      // `family_members.role`; writing `profiles.role` globally
+      // would corrupt any other family this user belongs to.
+      // Only set it if the user has no other memberships.
+      community_display_name: fullName.trim(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.id);
+} catch {}
 
       // 4c. Ensure family group chat exists + add invitee
       try {

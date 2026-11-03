@@ -45,7 +45,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
-import { UserRole, ROLE_LABELS, getMemberDisplayLabel, canonicalizeRelationship } from '../../types/roles';
+import { UserRole, ROLE_LABELS, ROLE_PERMISSIONS, getMemberDisplayLabel, canonicalizeRelationship } from '../../types/roles';
 import { useFamily, FamilyMember } from '../../context/FamilyContext';
 import type { AddMemberResult } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
@@ -80,6 +80,34 @@ const IS_FABRIC =
 if (Platform.OS === 'android' && !IS_FABRIC && typeof UIManager.setLayoutAnimationEnabledExperimental === 'function') {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+/** Normalize any date-ish field to an epoch-ms number (0 if invalid). */
+const toEpoch = (raw: unknown): number => {
+  if (raw == null || raw === '') return 0;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  const s = String(raw).trim();
+  if (!s) return 0;
+  if (/^\d+$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return s.length <= 10 ? n * 1000 : n;
+  }
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+
+const formatMemberSince = (raw: unknown): string => {
+  const t = toEpoch(raw);
+  if (!t) return 'Unknown';
+  try {
+    return new Date(t).toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+  } catch {
+    return 'Unknown';
+  }
+};
 
 type EditGuardianScreenProps = NativeStackScreenProps<RootStackParamList, 'EditGuardian'>;
 type ActivityEntry = { type: string; timestamp: number; [k: string]: any };
@@ -575,7 +603,7 @@ const SmartRoleRecommendations = React.memo(({ member, activities, onRoleChange,
 const EngagementTimeline = React.memo(({ member, activities, milestones, isDark }: any) => {
   const timelineItems = useMemo(() => {
     const items: any[] = [];
-    if (member?.addedAt) items.push({ date: member.addedAt, title: 'Joined Family', desc: `Added as ${ROLE_CONFIG[member.role]?.label || member.role}`, emoji: '👋', color: DS.primary });
+    if (toEpoch(member?.addedAt)) items.push({ date: member.addedAt, title: 'Joined Family', desc: `Added as ${ROLE_CONFIG[member.role]?.label || member.role}`, emoji: '👋', color: DS.primary });
     const firstActivity = [...activities].sort((a, b) => a.timestamp - b.timestamp)[0];
     if (firstActivity) { const cfg = ACTIVITY_CONFIG[firstActivity.type] || ACTIVITY_CONFIG.default; items.push({ date: new Date(firstActivity.timestamp).toISOString(), title: 'First Activity', desc: `Logged ${cfg.label}`, emoji: '🎯', color: DS.success }); }
     const milestonesByMember = milestones?.filter((m: any) => m.loggedBy === member?.id || m.loggedByName === member?.fullName).slice(0, 2);
@@ -601,7 +629,11 @@ const EngagementTimeline = React.memo(({ member, activities, milestones, isDark 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={[styles.timelineTitle, { color: isDark ? DS.white : DS.gray900 }]}>{item.title}</Text>
                 <Text style={[styles.timelineDate, { color: isDark ? DS.gray500 : DS.gray400 }]}>
-                  {new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {(() => {
+                    const t = toEpoch(item.date);
+                    if (!t) return '—';
+                    return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  })()}
                 </Text>
               </View>
               <Text style={[styles.timelineDesc, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>{item.desc}</Text>
@@ -630,7 +662,11 @@ const ActivityRow = React.memo<any>(({ activity, index, isDark }) => {
             <Text style={[styles.activityNotes, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>{activity.details}</Text>
           )}
           <Text style={[styles.activityTime, { color: isDark ? DS.gray500 : DS.gray400 }]}>
-            {new Date(activity.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            {(() => {
+              const t = toEpoch(activity.timestamp);
+              if (!t) return '—';
+              return new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            })()}
           </Text>
         </View>
         <View style={[styles.activityBadge, { backgroundColor: `${cfg.color}15` }]}>
@@ -779,10 +815,60 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const [memberActivities, setMemberActivities] = useState<any[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
   const [isMemberVerified, setIsMemberVerified] = useState(false);
-
+  const [inviter, setInviter] = useState<{ fullName: string; avatar?: string; role?: string; relationship?: string; userId?: string } | null>(null);
   const [formData, setFormData] = useState({ fullName: '', email: '', phoneNumber: '', relationship: '', username: '', avatar: '', notificationsEnabled: true });
   const [originalData, setOriginalData] = useState({ fullName: '', email: '', phoneNumber: '', relationship: '', username: '', avatar: '', notificationsEnabled: true });
-
+/* ─── LOAD INVITER (added_by → profiles) ─── */
+const loadInviter = useCallback(async (addedBy: string | undefined | null) => {
+  if (!addedBy) { setInviter(null); return; }
+  try {
+    // `added_by` may be a `family_members.user_id` (UUID) OR a
+    // `family_members.id`. Try the UUID lookup first.
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, community_display_name, community_avatar, avatar_url, avatar, role')
+      .eq('id', addedBy)
+      .maybeSingle();
+    if (data) {
+      setInviter({
+        userId: data.id,
+        fullName: data.community_display_name || data.full_name || 'Family Member',
+        avatar: data.community_avatar || data.avatar_url || data.avatar || undefined,
+        role: data.role,
+      });
+      return;
+    }
+    // Fallback: look up the family_members row that owns this id
+    // (some legacy rows stored `added_by` as family_members.id).
+    if (currentBaby?.id) {
+      const { data: fmRow } = await supabase
+        .from('family_members')
+        .select('user_id, full_name, avatar, role, relationship')
+        .eq('baby_id', currentBaby.id)
+        .or(`id.eq.${addedBy},user_id.eq.${addedBy}`)
+        .limit(1)
+        .maybeSingle();
+      if (fmRow?.user_id) {
+        const { data: p } = await supabase
+          .from('profiles')
+          .select('id, full_name, community_display_name, community_avatar, avatar_url, avatar, role')
+          .eq('id', fmRow.user_id)
+          .maybeSingle();
+        if (p) {
+          setInviter({
+            userId: p.id,
+            fullName: p.community_display_name || p.full_name || fmRow.full_name || 'Family Member',
+            avatar: p.community_avatar || p.avatar_url || p.avatar || fmRow.avatar || undefined,
+            role: p.role || fmRow.role,
+            relationship: fmRow.relationship,
+          });
+        }
+      }
+    }
+  } catch {
+    setInviter(null);
+  }
+}, [currentBaby?.id]);
   const [usernameCheck, setUsernameCheck] = useState<{ available: boolean; message: string } | null>(null);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const usernameDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -1016,6 +1102,11 @@ const loadMemberData = useCallback(async () => {
     }
     if (isMountedRef.current) setIsMemberVerified(verifiedFromDb);
 
+    // ── 4b. Resolve the inviter (added_by → profiles.full_name) ──
+    // Runs AFTER `resolvedMember` exists so we can safely read
+    // `resolvedMember.addedBy`.
+    await loadInviter((resolvedMember as any).addedBy || null);
+
     // ── 5. Seed form state with EVERY field from the DB row ──
     const initialData = {
       fullName: resolvedMember.fullName || '',
@@ -1052,6 +1143,7 @@ const loadMemberData = useCallback(async () => {
   currentBaby,
   sweetAlert,
   loadMemberActivities,
+  loadInviter,
 ]);
 
   /* ─── REFRESH MEMBER DATA ─── */
@@ -1181,6 +1273,9 @@ const loadMemberData = useCallback(async () => {
         };
         setFormData(initialData);
         setOriginalData(initialData);
+        // Re-resolve the inviter so the ribbon stays accurate after
+        // any profile change on the other device.
+        await loadInviter((resolvedMember as any).addedBy || null);
         if (currentBaby) {
           await loadMemberActivities(
             resolvedMember.id,
@@ -1201,6 +1296,7 @@ const loadMemberData = useCallback(async () => {
     refreshBabyData,
     currentBaby,
     loadMemberActivities,
+    loadInviter,
     formData.username,
     userProfile,
     profile,
@@ -1407,7 +1503,13 @@ const loadMemberData = useCallback(async () => {
       if (isCurrentUserLocal) {
         try { await updateProfile({ phoneNumber: formData.phoneNumber, email: formData.email, avatar: formData.avatar }); } catch {}
       }
-      const success = await updateGuardianProfile(member.id, updates);
+      // Prefer the stable profile UUID (`userId`) over the
+// `family_members.id`, which can change if a member is
+// removed and re-invited. The DB update path in FamilyContext
+// accepts both, but `userId` is what every other consumer
+// (chat, tree, inviter lookup) keys on.
+const targetMemberId = (member as any).userId || member.id;
+const success = await updateGuardianProfile(targetMemberId, updates);
       if (success) {
         triggerHaptic('success');
         setIsEditing(false);
@@ -1823,7 +1925,6 @@ const loadMemberData = useCallback(async () => {
     triggerHaptic('light');
   }, [triggerHaptic]);
 
-  /* ─── RIBBON ─── */
   /* ─── RIBBON — fully role-aware ─── */
   const topRibbon = useMemo(() => {
     if (!member || !roleConfig) {
@@ -2035,7 +2136,46 @@ const loadMemberData = useCallback(async () => {
             />
           )}
         </View>
-
+{inviter && (
+  <Animated.View entering={FadeInUp.delay(60).springify()}>
+    <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
+      <PressableScale
+        onPress={() => {
+          if (!inviter.userId) return;
+          navigation.push('EditGuardian' as never, {
+            guardianId: inviter.userId,
+            mode: 'parent2',
+            fromFamily: true,
+          } as never);
+        }}
+        activeScale={0.98}
+      >
+        <View
+          style={[
+            styles.ribbon,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white,
+              borderColor: isDark ? DS.darkBorder : DS.gray200,
+            },
+          ]}
+        >
+          <SafeAvatar avatar={inviter.avatar} size={36} fallbackIcon="person-add" fallbackColor={DS.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.ribbonLabel, { color: DS.primary }]}>INVITED BY</Text>
+            <Text
+              style={[styles.ribbonText, { color: isDark ? DS.gray300 : DS.gray700 }]}
+              numberOfLines={1}
+            >
+              {inviter.fullName}
+              {inviter.relationship ? ` · ${canonicalizeRelationship(inviter.relationship)}` : ''}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
+        </View>
+      </PressableScale>
+    </View>
+  </Animated.View>
+)}
         {/* Insight Ribbon */}
         <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
           <InsightRibbon isDark={isDark} {...topRibbon} />
@@ -2104,8 +2244,8 @@ const loadMemberData = useCallback(async () => {
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.contactLabel, { color: isDark ? DS.gray500 : DS.gray400 }]}>Member Since</Text>
                         <Text style={[styles.contactValue, { color: isDark ? DS.white : DS.gray900 }]}>
-                          {member.addedAt ? new Date(member.addedAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Unknown'}
-                        </Text>
+  {formatMemberSince(member.addedAt)}
+</Text>
                       </View>
                     </View>
                   </View>
