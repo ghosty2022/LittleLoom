@@ -109,6 +109,33 @@ const formatMemberSince = (raw: unknown): string => {
   }
 };
 
+/**
+ * Normalise any date-ish value (ISO string, SQL timestamp, integer
+ * epoch seconds/millis, or — the current RPC output — a stringified
+ * decimal epoch like "1730592000000.5") into an ISO-8601 string.
+ * Returns `undefined` when the value cannot be trusted so callers
+ * can render "Unknown" honestly instead of a false date.
+ */
+const toIsoOrUndefined = (raw: unknown): string | undefined => {
+  if (raw == null || raw === '') return undefined;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const ms = raw <= 1e12 ? raw * 1000 : raw;
+    return new Date(ms).toISOString();
+  }
+  const s = String(raw).trim();
+  if (!s || s === '0' || s.toLowerCase() === 'null') return undefined;
+  // Decimal or integer epoch (the /^\d+(\.\d+)?$/ branch catches
+  // "1730592000000.5" which the old /^\d+$/ regex missed).
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const n = parseFloat(s);
+    if (!Number.isFinite(n) || n <= 0) return undefined;
+    const ms = n <= 1e12 ? n * 1000 : n;
+    return new Date(ms).toISOString();
+  }
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
+};
+
 type EditGuardianScreenProps = NativeStackScreenProps<RootStackParamList, 'EditGuardian'>;
 type ActivityEntry = { type: string; timestamp: number; [k: string]: any };
 type ProfileTab = 'overview' | 'activity' | 'permissions' | 'settings';
@@ -763,7 +790,9 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   };
   const cameFromFamily = params.fromFamily === true;
   const guardianId = params.guardianId ?? params.memberId ?? '';
-  const mode = params.mode ?? 'guardian';
+  // `mode` is intentionally NOT read here — the DB row's role is
+  // authoritative. The `mode` param is set by callers as a hint but
+  // is never trusted, so we don't pull it out of route params.
 
   const { members, updateGuardianProfile, promoteMember, removeMember, loadFamily, refreshFamily, addMemberDirectly } = useFamily();
   const { hasPermission, profile, updateProfile } = useUser();
@@ -820,8 +849,28 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const [originalData, setOriginalData] = useState({ fullName: '', email: '', phoneNumber: '', relationship: '', username: '', avatar: '', notificationsEnabled: true });
 /* ─── LOAD INVITER (added_by → profiles, with invite_codes fallback) ─── */
 const loadInviter = useCallback(async (addedBy: string | undefined | null) => {
+  // ── SELF-GUARD ─────────────────────────────────────────────────
+  // Some legacy rows have `added_by = the new user's own id`
+  // (a bad migration wrote it that way). Resolving that would show
+  // "Invited by <me>" — which is nonsense AND, worse, would skip
+  // the invite_codes fallback below, hiding the REAL inviter. So
+  // when `added_by` matches the currently-viewed member, treat it
+  // as absent and go straight to Path 3.
+  const meId =
+    userProfile?.id ||
+    userProfile?.uid ||
+    profile?.id ||
+    '';
+  const memberUserId =
+    (member as any)?.userId || (member as any)?.id || '';
+  const addedByIsSelf =
+    !!addedBy && (
+      addedBy === meId ||
+      addedBy === memberUserId
+    );
+
   // ── Path 1: `added_by` set → resolve it against profiles ────────
-  if (addedBy) {
+  if (addedBy && !addedByIsSelf) {
     try {
       const { data } = await supabase
         .from('profiles')
@@ -848,7 +897,7 @@ const loadInviter = useCallback(async (addedBy: string | undefined | null) => {
         .is('deleted_at', null)
         .limit(1)
         .maybeSingle();
-      if (fmRow?.user_id) {
+      if (fmRow?.user_id && fmRow.user_id !== meId && fmRow.user_id !== memberUserId) {
         const { data: p } = await supabase
           .from('profiles')
           .select('id, full_name, community_display_name, community_avatar, avatar_url, avatar, role')
@@ -891,7 +940,7 @@ const loadInviter = useCallback(async (addedBy: string | undefined | null) => {
       .limit(1)
       .maybeSingle();
 
-    if (codeRow?.creator_id) {
+    if (codeRow?.creator_id && codeRow.creator_id !== meId && codeRow.creator_id !== memberUserId) {
       const { data: p } = await supabase
         .from('profiles')
         .select('id, full_name, community_display_name, community_avatar, avatar_url, avatar, role')
@@ -912,7 +961,7 @@ const loadInviter = useCallback(async (addedBy: string | undefined | null) => {
   }
 
   setInviter(null);
-}, [member, currentBaby?.id]);
+}, [member, currentBaby?.id, userProfile?.id, userProfile?.uid, profile?.id]);
   const [usernameCheck, setUsernameCheck] = useState<{ available: boolean; message: string } | null>(null);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const usernameDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -1045,6 +1094,29 @@ const loadMemberData = useCallback(async () => {
     //      viewer truly owns the current baby. Same guard as before.
       let resolvedMember: FamilyMember | null = null;
       if (dbRow) {
+        // Normalise date-ish fields — DB stores `added_at` and
+        // `last_active` as TEXT and the RPC writes them as a
+        // stringified decimal epoch ("1730592000000.5"), which
+        // `new Date()` can't parse. Emit ISO so `toEpoch` and
+        // `formatMemberSince` both work.
+        const isoOrUndefined = (raw: unknown): string | undefined => {
+          if (raw == null || raw === '') return undefined;
+          if (typeof raw === 'number' && Number.isFinite(raw)) {
+            const ms = raw <= 1e12 ? raw * 1000 : raw;
+            return new Date(ms).toISOString();
+          }
+          const s = String(raw).trim();
+          if (!s || s === '0' || s.toLowerCase() === 'null') return undefined;
+          if (/^\d+(\.\d+)?$/.test(s)) {
+            const n = parseFloat(s);
+            if (!Number.isFinite(n) || n <= 0) return undefined;
+            const ms = n <= 1e12 ? n * 1000 : n;
+            return new Date(ms).toISOString();
+          }
+          const t = new Date(s).getTime();
+          return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
+        };
+
         resolvedMember = {
           id: dbRow.id,
           userId: dbRow.user_id,
@@ -1058,10 +1130,10 @@ const loadMemberData = useCallback(async () => {
           role: normalizeRole(dbRow.role),
           relationship: dbRow.relationship,
           permissions: dbRow.permissions,
-          addedAt: dbRow.added_at,
+          addedAt: isoOrUndefined(dbRow.added_at),
           addedBy: dbRow.added_by,
           canBeRemoved: dbRow.can_be_removed !== false,
-          lastActive: dbRow.last_active,
+          lastActive: isoOrUndefined(dbRow.last_active),
           phoneNumber: dbRow.phone_number,
           notificationsEnabled: dbRow.notifications_enabled !== false,
           status: dbRow.status || 'active',
@@ -1227,13 +1299,14 @@ const loadMemberData = useCallback(async () => {
           fullName: dbRow.full_name,
           email: dbRow.email,
           avatar: dbRow.avatar,
-          role: dbRow.role,
+          // Normalise the role (legacy rows may hold 'Primary Parent').
+          role: normalizeRole(dbRow.role),
           relationship: dbRow.relationship,
           permissions: dbRow.permissions,
-          addedAt: dbRow.added_at,
+          addedAt: toIsoOrUndefined(dbRow.added_at),
           addedBy: dbRow.added_by,
           canBeRemoved: dbRow.can_be_removed !== false,
-          lastActive: dbRow.last_active,
+          lastActive: toIsoOrUndefined(dbRow.last_active),
           phoneNumber: dbRow.phone_number,
           notificationsEnabled: dbRow.notifications_enabled !== false,
           status: dbRow.status || 'active',
@@ -1268,10 +1341,10 @@ const loadMemberData = useCallback(async () => {
               role: normalizeRole(row.role),
               relationship: row.relationship,
               permissions: row.permissions,
-              addedAt: row.added_at,
+              addedAt: toIsoOrUndefined(row.added_at),
               addedBy: row.added_by,
               canBeRemoved: row.can_be_removed !== false,
-              lastActive: row.last_active,
+              lastActive: toIsoOrUndefined(row.last_active),
               phoneNumber: row.phone_number,
               notificationsEnabled: row.notifications_enabled !== false,
               status: row.status || 'active',
@@ -2179,7 +2252,15 @@ const success = await updateGuardianProfile(targetMemberId, updates);
             />
           )}
         </View>
-{inviter && (
+{/* Show the INVITED BY ribbon ONLY when the inviter is a different
+    person from the one whose card we're viewing. Showing "invited by
+    yourself" is a data-integrity artifact (an old migration wrote
+    `added_by = the new user's own id` on some rows). Rather than
+    expose that in the UI, we hide it here — and we ALSO strip it in
+    `loadInviter` below so the state itself is clean. */}
+{inviter &&
+  inviter.userId &&
+  inviter.userId !== currentUserId && (
   <Animated.View entering={FadeInUp.delay(60).springify()}>
     <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
       <PressableScale
@@ -2520,7 +2601,7 @@ const success = await updateGuardianProfile(targetMemberId, updates);
                     {/* Quick-pick chips so users don't have to type */}
                     {isEditing && (isCurrentUser || canEdit) && (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                        {['Mother', 'Father', 'Parent', 'Guardian', 'Grandmother', 'Grandfather', 'Nanny', 'Caregiver'].map((rel) => (
+                        {['Mother', 'Father', 'Parent', 'Step-Mother', 'Step-Father', 'Grandmother', 'Grandfather', 'Aunt', 'Uncle', 'Nanny', 'Caregiver'].map((rel) => (
                           <TouchableOpacity
                             key={rel}
                             onPress={() => setFormData((p) => ({ ...p, relationship: rel }))}

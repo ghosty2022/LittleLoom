@@ -177,7 +177,10 @@ export interface FamilyMember {
   role: UserRole;
   relationship: string;
   permissions: Permission;
-  addedAt: string;
+  /** Optional because legacy `family_members.added_at` rows may be
+   *  unparseable (stringified decimals, 'null', '0', etc.). The UI
+   *  shows "Unknown" instead of a false date. */
+  addedAt?: string;
   addedBy: string;
   lastActive?: string;
   canBeRemoved: boolean;
@@ -303,13 +306,47 @@ export const getMemberDisplayLabel = (member: {
   role?: UserRole | string;
   relationship?: string;
 }): string => {
+  const roleLabel = (() => {
+    switch (member?.role) {
+      case UserRole.PARENT_1:
+      case 'parent1':
+        return 'Primary Parent';
+      case UserRole.PARENT_2:
+      case 'parent2':
+        return 'Co-Parent';
+      case UserRole.GUARDIAN:
+      case 'guardian':
+        return 'Guardian';
+      case UserRole.VIEWER:
+      case 'viewer':
+        return 'Viewer';
+      default:
+        return 'Family Member';
+    }
+  })();
+
   const relationship = canonicalizeRelationship(member?.relationship);
-  if (relationship) return relationship;
-  switch (member?.role) {
-    case UserRole.PARENT_1:
-    case 'parent1':
-      return 'Primary Parent';
-    case UserRole.PARENT_2:
+
+  // ── ROLE-LABEL GUARD ──────────────────────────────────────────────
+  // If the user's "relationship" string is actually one of the role
+  // names (because the Settings quick-pick lets them choose
+  // 'Guardian' as a relationship), DON'T show that string as the
+  // badge — it would make a Primary Parent appear to be a Guardian.
+  // Fall back to the actual role label instead.
+  const roleWordSet = new Set([
+    'primary parent',
+    'co-parent',
+    'guardian',
+    'viewer',
+    'parent1',
+    'parent2',
+  ]);
+  if (relationship && !roleWordSet.has(relationship.toLowerCase())) {
+    return relationship;
+  }
+
+  return roleLabel;
+};    case UserRole.PARENT_2:
     case 'parent2':
       return 'Co-Parent';
     case UserRole.GUARDIAN:
