@@ -682,6 +682,7 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const seenBabyIds = new Set<string>();
 
       
+            // ─── 1. Parent1 query (with parent_id fallback) ──────────────────
       try {
         const { data, error } = await supabase
           .from('babies')
@@ -707,39 +708,49 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log(`[BabyContext] Found ${data.length} babies (parent1 query)`);
           }
         }
+
+
       } catch (e) {
         console.warn('[BabyContext] Parent1 query failed:', e);
       }
 
-      
+      // ─── 1b. parent_id query (legacy FK to profiles.id) ──────────────
+      // Some rows were inserted with ONLY `parent_id` set (not
+      // `parent1_id`), or RLS policies check `parent_id = auth.uid()`.
+      // Query both to cover all cases.
       try {
         const { data, error } = await supabase
           .from('babies')
           .select('*')
-          .eq('parent2_id', userId)
+          .eq('parent_id', userId)
           .eq('is_active', true);
 
-        if (error) {
-          console.warn('[BabyContext] Parent2 query error:', error.message);
-        } else if (data) {
+        if (!error && data) {
           data.forEach((baby: any) => {
             if (!seenBabyIds.has(baby.id)) {
               seenBabyIds.add(baby.id);
               allBabies.push(baby);
-              userRoles[baby.id] = 'parent2';
+              // If they own it via parent_id but not parent1_id, still treat as parent1
+              userRoles[baby.id] = 'parent1';
               userPermissions[baby.id] = {
                 view: true, edit: true, delete: true, manage: true,
                 invite: true, export: true,
+                canView: true, canAddEntry: true, canEditEntry: true,
+                canEditOthersEntries: true, canDeleteEntry: true,
+                canEditBaby: true, canInvite: true, canExport: true,
+                canManageFamily: true,
               };
             }
           });
           if (__DEV__) {
-            console.log(`[BabyContext] Found ${data.length} babies (parent2 query)`);
+            console.log(`[BabyContext] Found ${data.length} babies (parent_id query)`);
           }
         }
       } catch (e) {
-        console.warn('[BabyContext] Parent2 query failed:', e);
+        console.warn('[BabyContext] parent_id query failed:', e);
       }
+
+      // ─── 2. Parent2 query ────────────────────────────────────────────
 
       
       try {
@@ -886,105 +897,54 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       
-      // ── INVITE-CODE FALLBACK ─────────────────────────────────────
-      // If the parent1/parent2/family_members queries all returned 0
-      // rows, the user may have just accepted an invite and the
-      // SECURITY DEFINER RPC has not yet been seen by the read path.
-      // Look for ANY completed invite for this user (not just the
-      // first), then hydrate the baby via `get_baby_for_member` RPC
-      // so RLS on `babies` can't filter it out.
+      // ─── EMERGENCY FALLBACK: query ALL babies the user can see ───────
+      // If parent1/parent2/family_members/invite_codes all returned 0
+      // rows, the RLS policy may be checking a column we didn't query.
+      // Try an unfiltered SELECT — RLS will still restrict what we get,
+      // but if the user can see ANY babies, we'll find them here.
       if (allBabies.length === 0) {
         if (__DEV__) {
-          console.log('[BabyContext] No babies found, checking invite_codes fallback...');
+          console.log('[BabyContext] All primary queries returned 0 — trying unfiltered SELECT...');
         }
         try {
-          // Look for ANY completed invite for this user — not just the
-          // newest. `.maybeSingle()` would error with PGRST116 when a
-          // user has accepted more than one invite; `.order()` + array
-          // handles that case.
-            const { data: inviteRows, error: inviteError } = await supabase
-            .from('invite_codes')
-            .select('code, family_id, role, signup_completed, used, used_at')
-            .eq('used_by', userId)
-            .eq('signup_completed', true)
-            .order('used_at', { ascending: false });
-          if (inviteError) {
-            if (__DEV__) console.warn('[BabyContext] invite_codes fallback error:', inviteError.message);
-          } else if (Array.isArray(inviteRows) && inviteRows.length > 0) {
-            const seenFallbackIds = new Set<string>();
+          const { data, error } = await supabase
+            .from('babies')
+            .select('*')
+            .eq('is_active', true)
+            .limit(50);
 
-            for (const inv of inviteRows) {
-              const fid = inv?.family_id;
-              if (!fid || seenFallbackIds.has(fid)) continue;
-              seenFallbackIds.add(fid);
-              if (seenBabyIds.has(fid)) continue;
-
-              // Try the direct SELECT first. `.maybeSingle()` can throw
-              // PGRST116 if RLS hides the row AND a second row somehow
-              // matches, so use a limit-1 array read.
-              let babyRow: any = null;
-              try {
-                // `.maybeSingle()` throws PGRST116 when RLS hides the
-                // row AND a second matching row exists. Use a
-                // limit-1 array read instead.
-                const { data: directRows } = await supabase
-                  .from('babies')
-                  .select('*')
-                  .eq('id', fid)
-                  .eq('is_active', true)
-                  .limit(1);
-                babyRow = Array.isArray(directRows) ? directRows[0] ?? null : null;
-              } catch {}
-
-              // If RLS blocked it, try the SECURITY DEFINER RPC
-              if (!babyRow) {
-                try {
-                  const { data: rpcRow } = await supabase
-                    .rpc('get_baby_for_member', { p_baby_id: fid });
-                  const row = Array.isArray(rpcRow) ? rpcRow[0] : rpcRow;
-                  babyRow = row ?? null;
-                } catch {}
-              }
-
-              if (!babyRow) continue;
-
-              seenBabyIds.add(babyRow.id);
-              allBabies.push(babyRow);
-
-              const role = inv.role || 'viewer';
-              userRoles[babyRow.id] = role;
-
-              const isParent = role === 'parent1' || role === 'parent2';
-              const isGuardian = role === 'guardian';
-              userPermissions[babyRow.id] = {
-                view: true,
-                edit: isParent || isGuardian,
-                delete: isParent,
-                manage: isParent,
-                invite: isParent,
-                export: isParent,
-                canView: true,
-                canAddEntry: isParent || isGuardian,
-                canEditEntry: isParent || isGuardian,
-                canEditOthersEntries: isParent,
-                canDeleteEntry: isParent,
-                canEditBaby: isParent,
-                canInvite: isParent,
-                canExport: isParent,
-                canManageFamily: isParent,
-              };
-
-              if (__DEV__) {
-                console.log(
-                  `[BabyContext] Found baby via invite_codes fallback: ${babyRow.name} (${role})`,
-                );
-              }
+          if (!error && data && data.length > 0) {
+            if (__DEV__) {
+              console.log(`[BabyContext] ✅ Unfiltered query found ${data.length} babies`);
             }
+            data.forEach((baby: any) => {
+              if (!seenBabyIds.has(baby.id)) {
+                seenBabyIds.add(baby.id);
+                allBabies.push(baby);
+                // Infer role from the row itself
+                const isParent1 = baby.parent1_id === userId || baby.parent_id === userId;
+                const isParent2 = baby.parent2_id === userId;
+                const role = isParent1 ? 'parent1' : isParent2 ? 'parent2' : 'guardian';
+                userRoles[baby.id] = role;
+                const isParent = role === 'parent1' || role === 'parent2';
+                userPermissions[baby.id] = {
+                  view: true,
+                  edit: isParent, delete: isParent, manage: isParent,
+                  invite: isParent, export: isParent,
+                  canView: true, canAddEntry: true, canEditEntry: true,
+                  canEditOthersEntries: isParent, canDeleteEntry: isParent,
+                  canEditBaby: isParent, canInvite: isParent, canExport: isParent,
+                  canManageFamily: isParent,
+                };
+              }
+            });
           }
         } catch (e) {
-          console.warn('[BabyContext] Invite codes fallback failed:', e);
+          console.warn('[BabyContext] Unfiltered query failed:', e);
         }
       }
+
+      // ─── FAMILY LABELS ───────────────────────────────────────────────
       
       // ── Family labels ─────────────────────────────────────────
       // A user can belong to multiple families (Parent1 on Baby A,
