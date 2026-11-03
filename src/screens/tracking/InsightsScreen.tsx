@@ -17,6 +17,7 @@ import {
 import { useCustomization } from '../../hooks/useCustomization';
 import { useAuth } from '../../context/AuthContext';
 import { useBaby } from '../../context/BabyContext';
+import { useFamily } from '../../context/FamilyContext';
 
 import { useTracker } from '../../hooks/useTrackerContext';
 import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
@@ -40,6 +41,7 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
+  withSpring,
 } from 'react-native-reanimated';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1062,16 +1064,16 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     }
     const total = weeklyPattern.reduce((sum, d) => sum + d.total, 0);
     const avg = Math.round(total / 7);
-    const maxDay = weeklyPattern.reduce((max, d) => d.total > max.total ? d : max, weeklyPattern[0]);
+    const maxDay = weeklyPattern.reduce((d, m) => (m.total > d.total ? m : d), weeklyPattern[0]);
 
-    // Unified streak — same source of truth as Hub, Timeline, Reminders.
-    const streak = currentBaby
-      ? computeStreak(
-          trackerEntries.filter(
-            (e: any) => e.babyId === currentBaby.id && !e.isDeleted,
-          ),
-        ).currentStreak
-      : 0;
+    // Unified streak — reuse the value already computed by
+    // useTrackerAchievements (same source of truth as Hub,
+    // Timeline, Reminders). `globalStreak` is a TrackerAchievements
+    // state object; its `currentStreak` is the canonical number.
+    const streak =
+      typeof (globalStreak as any)?.currentStreak === 'number'
+        ? (globalStreak as any).currentStreak
+        : 0;
 
     const catCounts: Record<string, number> = {};
     weeklyPattern.forEach(d => {
@@ -1088,7 +1090,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
       streakDays: streak,
       topCategory: topCat ? topCat[0].charAt(0).toUpperCase() + topCat[0].slice(1) : '—',
     };
-  }, [weeklyPattern]);
+  }, [weeklyPattern, globalStreak]);
 
   /* ── Categories ── */
   const categories = useMemo(() => [
