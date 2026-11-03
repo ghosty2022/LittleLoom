@@ -483,16 +483,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
     navigationAttemptedRef.current = true;
 
-    // ── NEVER OVERRIDE THE SETUP FLOW ──────────────────────────────
-    // A fresh signup lands on BabyOptional / CoParentInviteScreen /
-    // CreateBabyProfile via `navigation.reset`. If LoginScreen is
-    // still mounted (React Navigation keeps parents in memory), this
-    // effect would otherwise fire on the next render and call
-    // `navigation.replace('Main')` — collapsing the setup stack and
-    // dumping the user into Home with no baby.
-    //
-    // We read the CURRENT route from navigationRef and skip if we're
-    // already inside the setup flow or the main tabs.
     try {
       const { navigationRef } = require('../../navigation/navigationRef');
       const currentRoute = navigationRef?.current?.getCurrentRoute?.()?.name;
@@ -510,10 +500,6 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
       }
     } catch {}
 
-    // ── TEMP PASSWORD: block all setup flow until password is reset ──
-    // Navigation also routes to ForcedPasswordChange on its own, but
-    // we short-circuit here so the login screen never briefly flashes
-    // the family setup screens.
     if (mustChangePassword === true) {
       const timer = setTimeout(() => {
         if (!isMounted.current) return;
@@ -526,60 +512,85 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     const parent2Addressed = hasParent2 === true || hasParent2 === 'skipped';
     const babyAddressed = hasBaby === true || hasBaby === 'skipped';
 
-    const timer = setTimeout(async () => {
-      if (!isMounted.current) return;
-      if (loginAttempted.current) return;
-
-      forceUnlock().catch(() => {});
-
-      if (!setupComplete) {
-        if (!babyAddressed) {
-          navigation.replace('BabyOptional');
-        } else if (!parent2Addressed) {
-          navigation.replace('CoParentInviteScreen');
-        } else {
-          navigation.replace('Main');
+    // ── Invite-join short-circuit ────────────────────────────────
+    // `signUpWithInviteCode` writes family_members + parent2_id via
+    // a SECURITY DEFINER RPC. That means the user ALREADY has a baby
+    // — even if `babies` hasn't hydrated yet and even if `hasBaby`
+    // flags are stale. Detect this via the invite_codes row.
+    (async () => {
+      let joinedViaInvite = false;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) {
+          const { data: inv } = await supabase
+            .from('invite_codes')
+            .select('code')
+            .eq('used_by', user.id)
+            .eq('signup_completed', true)
+            .limit(1)
+            .maybeSingle();
+          joinedViaInvite = !!inv?.code;
         }
+      } catch {}
+
+      if (!isMounted.current || loginAttempted.current) return;
+
+      if (joinedViaInvite) {
+        forceUnlock().catch(() => {});
+        // Give the RPC + realtime one commit window.
+        await new Promise((r) => setTimeout(r, 1000));
+        if (!isMounted.current) return;
+        navigation.replace('Main');
         return;
       }
 
-      // ── MULTI-BABY SELECTION GUARD ─────────────────────────────
-      // If the user belongs to MORE THAN ONE baby, they MUST pick
-      // which baby to continue with before landing on Main. Without
-      // this, the app silently picks the "priority" baby and the
-      // user has no way to know (or change) that without navigating
-      // into SwitchBaby manually.
-      //
-      // We only do this if the user hasn't already made a selection
-      // this session (tracked via a session flag), so a returning
-      // user who already tapped a baby doesn't get re-prompted.
-      const babiesArr = Array.isArray(babies) ? babies : [];
-      const multiBaby = babiesArr.length > 1;
-
-      if (multiBaby) {
-        let alreadySelectedThisSession = false;
-        try {
-          const flag = await AsyncStorage.getItem(
-            '@littleloom_multi_baby_selected_this_session'
-          );
-          alreadySelectedThisSession = flag === 'true';
-        } catch {}
-
+      const timer = setTimeout(async () => {
         if (!isMounted.current) return;
-        if (!alreadySelectedThisSession) {
-          navigation.replace('SwitchBaby', {
-            returnTo: 'Main',
-            returnLabel: 'Home',
-          } as never);
+        if (loginAttempted.current) return;
+
+        forceUnlock().catch(() => {});
+
+        if (!setupComplete) {
+          if (!babyAddressed) {
+            navigation.replace('BabyOptional');
+          } else if (!parent2Addressed) {
+            navigation.replace('CoParentInviteScreen');
+          } else {
+            navigation.replace('Main');
+          }
           return;
         }
-      }
 
-      if (!isMounted.current) return;
-      navigation.replace('Main');
-    }, 200);
+        const babiesArr = Array.isArray(babies) ? babies : [];
+        const multiBaby = babiesArr.length > 1;
 
-    return () => clearTimeout(timer);
+        if (multiBaby) {
+          let alreadySelectedThisSession = false;
+          try {
+            const flag = await AsyncStorage.getItem(
+              '@littleloom_multi_baby_selected_this_session',
+            );
+            alreadySelectedThisSession = flag === 'true';
+          } catch {}
+
+          if (!isMounted.current) return;
+          if (!alreadySelectedThisSession) {
+            navigation.replace('SwitchBaby', {
+              returnTo: 'Main',
+              returnLabel: 'Home',
+            } as never);
+            return;
+          }
+        }
+
+        if (!isMounted.current) return;
+        navigation.replace('Main');
+      }, 200);
+
+      return () => clearTimeout(timer);
+    })();
+
+    return;
   }, [
     authLoading,
     isAuthenticated,
@@ -592,7 +603,7 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
     forceUnlock,
     mustChangePassword,
   ]);
-
+  
   useEffect(() => {
     logoScale.value = withSequence(
       withTiming(0.8, { duration: 0 }),

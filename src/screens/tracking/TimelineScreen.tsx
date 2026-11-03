@@ -136,7 +136,13 @@ const TRACKER_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; col
   default: { icon: 'ellipse-outline', color: '#9ca3af', label: 'Activity', emoji: '•' },
 };
 
-const getTrackerCfg = (type?: string) => TRACKER_CONFIG[type || ''] || TRACKER_CONFIG.default;
+// Canonical visual map now lives in constants/trackerVisuals.ts.
+// This thin adapter keeps existing `getTrackerCfg(...)` call sites
+// working while guaranteeing every screen agrees on emoji/color.
+const getTrackerCfg = (type?: string) => {
+  const v = getTrackerVisual(type);
+  return { icon: v.icon, color: v.color, label: v.label, emoji: v.emoji };
+};
 
 type TimelineScreenRouteProp = RouteProp<RootStackParamList, 'Timeline'>;
 type TimelineScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;

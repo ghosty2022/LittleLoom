@@ -68,6 +68,8 @@ import FamilyStack from '../../components/FamilyStack';
 import { useSweetAlert } from '../../components/SweetAlert';
 import { ShimmerLoader } from '../../components/UniversalSpinner';
 import { RelationshipBackfillBanner } from '../../components/RelationshipBackfillBanner';
+import { getTrackerVisual } from '../../constants/trackerVisuals';
+import { scopedEntries, countToday, entryTrackerId } from '../../utils/entrySelectors';
 
 // Types
 import type { RootStackParamList } from '../../types/navigation';
@@ -240,7 +242,13 @@ const TRACKER_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; col
   default: { icon: 'ellipse-outline', color: '#9ca3af', label: 'Activity', emoji: '•' },
 };
 
-const getTrackerCfg = (type?: string) => TRACKER_CONFIG[type || ''] || TRACKER_CONFIG.default;
+// Canonical visual map now lives in constants/trackerVisuals.ts.
+// This thin adapter keeps existing `getTrackerCfg(...)` call sites
+// working while guaranteeing every screen agrees on emoji/color.
+const getTrackerCfg = (type?: string) => {
+  const v = getTrackerVisual(type);
+  return { icon: v.icon, color: v.color, label: v.label, emoji: v.emoji };
+};
 
 const getDateTitle = (timestamp: number): string => {
   const date = new Date(timestamp);
@@ -2585,12 +2593,11 @@ useEffect(() => {
     if (!hasBaby) {
       return { feeds: 0, sleep: 0, diapers: 0, potty: 0, medication: 0, temperature: 0, note: 0, milestone: 0 };
     }
-    const today = new Date();
-    const todayEvents = allTimelineEvents.filter(
-      (a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today)
-    );
+    // Use the SAME selector Timeline / Hub / FamilyDashboard use.
+    // `entryTrackerId` normalises legacy rows where only `type` was set.
+    const scoped = scopedEntries(allTimelineEvents, displayedBaby?.id);
     const countOf = (ids: string[]) =>
-      todayEvents.filter((a: any) => ids.includes(a.type) || ids.includes(a.trackerId)).length;
+      scoped.filter((a: any) => ids.includes(entryTrackerId(a))).length;
     return {
       feeds: countOf(['feed']),
       sleep: countOf(['sleep']),
@@ -2605,9 +2612,10 @@ useEffect(() => {
 
   /* ── Real potty-day streak ── */
   const trackingStreakDays = useMemo(() => {
-    if (!hasBaby || allTimelineEvents.length === 0) return 0;
+    const scoped = scopedEntries(allTimelineEvents, displayedBaby?.id);
+    if (!hasBaby || scoped.length === 0) return 0;
     const dayKeys = new Set<string>();
-    allTimelineEvents.forEach((a: any) => {
+    scoped.forEach((a: any) => {
       if (!a?.timestamp) return;
       const d = new Date(a.timestamp);
       d.setHours(0, 0, 0, 0);
@@ -2637,13 +2645,18 @@ useEffect(() => {
       feeds: 0, sleepHours: 0, diapers: 0, lastFeedTime: null, lastSleepTime: null,
       yesterdayFeeds: 0, yesterdaySleepHours: 0, yesterdayDiapers: 0
     };
+    const scoped = scopedEntries(allTimelineEvents, displayedBaby?.id);
+    // ↓ original body but replace `allTimelineEvents` with `scoped`
+      feeds: 0, sleepHours: 0, diapers: 0, lastFeedTime: null, lastSleepTime: null,
+      yesterdayFeeds: 0, yesterdaySleepHours: 0, yesterdayDiapers: 0
+    };
 
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    const todayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today));
-    const yesterdayActivities = allTimelineEvents.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), yesterday));
+    const todayActivities = scoped.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today));
+    const yesterdayActivities = scoped.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), yesterday));
 
     const getDurationSeconds = (a: any): number => {
       const raw = a?.data?.duration ?? a?.duration ?? a?.data?.value ?? 0;
@@ -2673,8 +2686,8 @@ useEffect(() => {
     const yesterdaySleepHours = yesterdaySleepEntries.reduce((sum: number, a: any) => sum + getDurationSeconds(a), 0) / 3600;
     const yesterdayDiapers = yesterdayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length;
 
-    const lastFeed = allTimelineEvents.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed')[0];
-    const lastSleep = allTimelineEvents.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep')[0];
+    const lastFeed = scoped.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed')[0];
+    const lastSleep = scoped.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep')[0];
 
     return {
       feeds, sleepHours, diapers,

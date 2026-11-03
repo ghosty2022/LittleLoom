@@ -1056,10 +1056,10 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
     ].filter(s => s.count > 0 || ['feed', 'sleep', 'diaper'].includes(s.key));
   }, [trackerEntries]);
 
-  const todayCount = useMemo(() => {
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    return trackerEntries.filter((e: any) => e.timestamp >= start.getTime() && !e.isDeleted).length;
-  }, [trackerEntries]);
+  const todayCount = useMemo(
+    () => countToday(scopedEntries(trackerEntries, currentBaby?.id)),
+    [trackerEntries, currentBaby?.id],
+  );
 
   const streak = useMemo(() => getPottyStreak(), [getPottyStreak]);
 

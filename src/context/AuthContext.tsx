@@ -1177,25 +1177,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const declaredRelationship =
         (signUpData.user?.user_metadata as any)?.relationship || '';
 
-      try {
-        if (declaredRelationship) {
-          await supabase
-            .from('profiles')
-            .update({
-              // We store it in `community_bio` as a temporary slot; the
-              // authoritative per-baby relationship is written to
-              // `family_members.relationship` when the baby is created
-              // (see BabyContext.createBaby → family_members insert).
-              // Using community_bio means we don't need a schema change.
-              community_bio: declaredRelationship.slice(0, 160),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', userId);
-        }
-      } catch (e) {
-        if (__DEV__) console.warn('[Auth] relationship persist failed:', e);
-      }
-
       const userProfile: UserProfile = {
         id: userId,
         fullName,
@@ -1238,21 +1219,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ASYNC_KEYS.BABY_COMPLETED,
       ]);
 
-      // Mirror the declared relationship to the profile's bio slot so
-      // UserContext / EditGuardian can surface it before any baby exists.
-      if (declaredRelationship) {
-        try {
-          await supabase
-            .from('profiles')
-            .update({
-              community_bio: declaredRelationship.slice(0, 160),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', userId);
-        } catch (e) {
-          if (__DEV__) console.warn('[Auth] relationship profile sync failed:', e);
-        }
-      }
+      // (Removed) relationship no longer lives on profiles.community_bio.
+      // The authoritative relationship is written per-baby by
+      // accept_invite_code → family_members.relationship.
 
       if (isMounted.current) {
         setState(prev => ({
@@ -2400,397 +2369,259 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const trimmedCode = code.trim().toUpperCase();
 
-      const { data: inviteData, error: inviteError } = await supabase
+      // ── 1. Pre-validate the code WITHOUT inserting anything.
+      //        Used only for friendly errors. The atomic RPC does
+      //        the authoritative validation.
+      const { data: inviteRow, error: inviteError } = await supabase
         .from('invite_codes')
         .select('*')
         .eq('code', trimmedCode)
-        .eq('used', false)
-        .eq('revoked', false)
         .maybeSingle();
 
-      if (inviteError) {
-        if (__DEV__) console.error('[Auth] Invite code validation error:', inviteError);
-        return { success: false, message: 'Error validating invite code' };
+      if (inviteError || !inviteRow) {
+        return { success: false, message: 'Invalid or expired invite code' };
       }
-
-      if (!inviteData) {
-        const { data: partialData, error: partialError } = await supabase
-          .from('invite_codes')
-          .select('*')
-          .eq('code', trimmedCode)
-          .eq('used', true)
-          .eq('signup_completed', false)
-          .eq('revoked', false)
-          .maybeSingle();
-
-        if (!partialError && partialData) {
-          if (__DEV__) console.log('[Auth] Continuing partial signup for code:', trimmedCode);
-        } else {
-          return { success: false, message: 'Invalid or expired invite code' };
-        }
+      if (inviteRow.revoked) {
+        return { success: false, message: 'This invite code has been revoked' };
       }
-
+      if (inviteRow.used && inviteRow.signup_completed) {
+        return { success: false, message: 'This invite code has already been used' };
+      }
       const now = Date.now();
-      const expiresAt = (inviteData?.created_at || 0) + (inviteData?.expires_in_days || 7) * 24 * 60 * 60 * 1000;
-      if (inviteData && now > expiresAt) {
+      const expiresAt =
+        (inviteRow.created_at || 0) +
+        (inviteRow.expires_in_days || 7) * 24 * 60 * 60 * 1000;
+      if (now > expiresAt) {
         return { success: false, message: 'Invite code has expired' };
       }
 
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email.trim().toLowerCase())
-        .maybeSingle();
-
-      if (existingUser) {
-        return { success: false, message: 'An account with this email already exists. Please sign in instead.' };
-      }
-
+      // ── 2. Create the auth user
       const signUpResult = await signUp(fullName, email, password);
       if (!signUpResult.success) {
         return { success: false, message: signUpResult.message || 'Signup failed' };
       }
 
       const { data: { user } } = await supabase.auth.getUser();
-
-      if (user) {
-        // ── Mark the invite code used ─────────────────────────────
-        if (inviteData) {
-          await supabase
-            .from('invite_codes')
-            .update({
-              used: true,
-              used_by: user.id,
-              used_at: Date.now(),
-              used_by_email: email.trim().toLowerCase(),
-              used_by_name: fullName.trim(),
-              signup_completed: true,
-              updated_at: Date.now(),
-            })
-            .eq('code', trimmedCode);
-        } else {
-          await supabase
-            .from('invite_codes')
-            .update({
-              signup_completed: true,
-              used_by: user.id,
-              used_by_email: email.trim().toLowerCase(),
-              used_by_name: fullName.trim(),
-              updated_at: Date.now(),
-            })
-            .eq('code', trimmedCode);
-        }
-
-        const familyMemberId = `fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-        try {
-          const role = inviteData?.role || 'viewer';
-          const relationship = inviteData?.relationship || 'Family Member';
-          const creatorId = inviteData?.creator_id || user.id;
-          const babyId = inviteData?.family_id;
-
-          if (!babyId) {
-            return {
-              success: true,
-              message: 'Account created but no family found. Please contact support.',
-            };
-          }
-
-          // ── Resolve the inviter's display info for the DM + chat ──
-          let creatorName = inviteData?.creator_name || 'Family';
-          let creatorAvatar = '👤';
-          let creatorRole = 'parent1';
-          try {
-            const { data: creatorProfile } = await supabase
-              .from('profiles')
-              .select('full_name, community_display_name, community_avatar, avatar_url, avatar, role')
-              .eq('id', creatorId)
-              .maybeSingle();
-            if (creatorProfile) {
-              creatorName =
-                creatorProfile.community_display_name ||
-                creatorProfile.full_name ||
-                creatorName;
-              creatorAvatar =
-                creatorProfile.community_avatar ||
-                creatorProfile.avatar_url ||
-                creatorProfile.avatar ||
-                '👤';
-              creatorRole = creatorProfile.role || 'parent1';
-            }
-          } catch {}
-
-          // ── 1. Create the family_members row ────────────────────
-          // Seed the canonical permission set for this role so
-          // `BabyContext.hasPermissionForBaby()` returns `true` on the
-          // invitee's very first render — not after `FamilyContext`
-          // normalizes the empty `{}` on the next load.
-          const ROLE_PERMISSION_TEMPLATES: Record<string, Record<string, boolean>> = {
-            parent1: {
-              canView: true, canAddEntry: true, canEditEntry: true,
-              canEditOthersEntries: true, canDeleteEntry: true,
-              canEditBaby: true, canInvite: true, canExport: true,
-              canManageFamily: true,
-            },
-            parent2: {
-              canView: true, canAddEntry: true, canEditEntry: true,
-              canEditOthersEntries: true, canDeleteEntry: true,
-              canEditBaby: true, canInvite: true, canExport: true,
-              canManageFamily: true,
-            },
-            guardian: {
-              canView: true, canAddEntry: true, canEditEntry: true,
-              canEditOthersEntries: false, canDeleteEntry: false,
-              canEditBaby: false, canInvite: false, canExport: false,
-              canManageFamily: false,
-            },
-            viewer: {
-              canView: true, canAddEntry: false, canEditEntry: false,
-              canEditOthersEntries: false, canDeleteEntry: false,
-              canEditBaby: false, canInvite: false, canExport: false,
-              canManageFamily: false,
-            },
-          };
-          const seededPermissions =
-            ROLE_PERMISSION_TEMPLATES[role] || ROLE_PERMISSION_TEMPLATES.viewer;
-
-          const familyMemberData = {
-            id: familyMemberId,
-            baby_id: babyId,
-            user_id: user.id,
-            email: email.trim().toLowerCase(),
-            full_name: fullName.trim(),
-            role,
-            relationship,
-            permissions: seededPermissions,
-            added_at: new Date().toISOString(),
-            added_by: creatorId,
-            can_be_removed: true,
-            notifications_enabled: true,
-            status: 'active',
-            updated_at: new Date().toISOString(),
-            is_deleted: false,
-          };
-
-          const { error: familyError } = await supabase
-            .from('family_members')
-            .insert(familyMemberData);
-
-          if (familyError) {
-            if (__DEV__) console.error('[Auth] Failed to create family member:', familyError);
-          }
-
-          // ── 2. Link parent2 on the baby row ─────────────────────
-          if (role === 'parent2') {
-            try {
-              await supabase
-                .from('babies')
-                .update({ parent2_id: user.id, updated_at: new Date().toISOString() })
-                .eq('id', babyId);
-            } catch {}
-          }
-
-          // ── 3. Resolve the family_code (canonical name used by
-          //    family_chats + family_messages). The inviter's
-          //    app_settings row stores it. Read it, then mirror it to
-          //    the invitee's app_settings so their FamilyChatProvider
-          //    can sync chats.
-          let familyCode: string | null = null;
-          try {
-            const { data: creatorFamilyCode } = await supabase
-              .from('app_settings')
-              .select('value')
-              .eq('key', 'family_code')
-              .eq('user_id', creatorId)
-              .maybeSingle();
-            familyCode = creatorFamilyCode?.value || null;
-          } catch {}
-
-          // Fallback: derive it from the baby id (matches loadFamilyCode()).
-          if (!familyCode) {
-            familyCode = `FAM-${babyId.slice(0, 6).toUpperCase()}`;
-          }
-
-          // Write BOTH the per-baby scoped key (authoritative for
-          // multi-family users) and the legacy per-user key (back-compat
-          // for existing screens that read `family_code`).
-          try {
-            await supabase
-              .from('app_settings')
-              .upsert(
-                [
-                  {
-                    key: `family_code_${babyId}`,
-                    value: familyCode,
-                    user_id: user.id,
-                    updated_at: new Date().toISOString(),
-                  },
-                  {
-                    key: 'family_code',
-                    value: familyCode,
-                    user_id: user.id,
-                    updated_at: new Date().toISOString(),
-                  },
-                ],
-                { onConflict: 'key,user_id' },
-              );
-          } catch {}
-
-          try {
-            await supabase
-              .from('app_settings')
-              .upsert(
-                {
-                  key: 'current_baby_id',
-                  value: babyId,
-                  user_id: user.id,
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'key,user_id' },
-              );
-          } catch {}
-
-          // ── 4. Add the invitee to the family group chat ────────
-          // The group chat id is `family_group_<familyCode>` (created by
-          // `createFamilyGroup()` in FamilyChatContext).
-          try {
-            const groupChatId = `family_group_${familyCode}`;
-            const { data: existingGroup } = await supabase
-              .from('family_chats')
-              .select('id, participants, participant_names, participant_roles, participant_avatars')
-              .eq('id', groupChatId)
-              .maybeSingle();
-
-            if (existingGroup) {
-              const participants: string[] = Array.isArray(existingGroup.participants)
-                ? existingGroup.participants
-                : [];
-              if (!participants.includes(user.id)) {
-                const names = { ...(existingGroup.participant_names || {}) };
-                const roles = { ...(existingGroup.participant_roles || {}) };
-                const avatars = { ...(existingGroup.participant_avatars || {}) };
-                names[user.id] = fullName.trim();
-                roles[user.id] = role;
-                avatars[user.id] = '👤';
-                await supabase
-                  .from('family_chats')
-                  .update({
-                    participants: [...participants, user.id],
-                    participant_names: names,
-                    participant_roles: roles,
-                    participant_avatars: avatars,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', groupChatId);
-              }
-            } else {
-              // Group chat doesn't exist yet — create it with both users.
-              const nowIso = new Date().toISOString();
-              await supabase.from('family_chats').insert({
-                id: groupChatId,
-                type: 'group',
-                name: 'Family Group',
-                participants: [creatorId, user.id],
-                participant_roles: { [creatorId]: creatorRole, [user.id]: role },
-                participant_names: { [creatorId]: creatorName, [user.id]: fullName.trim() },
-                participant_avatars: { [creatorId]: creatorAvatar, [user.id]: '👤' },
-                unread_count: 0,
-                created_at: nowIso,
-                updated_at: nowIso,
-                avatar: '👨‍👩‍👧‍👦',
-                is_muted: false,
-                family_code: familyCode,
-                is_pinned: true,
-              });
-            }
-          } catch (groupErr) {
-            if (__DEV__) console.warn('[Auth] group chat seed failed:', groupErr);
-          }
-
-          // ── 5. Create / join the direct chat with the inviter ──
-          // Canonical direct chat id: `direct_<a>_<b>` with sorted ids.
-          try {
-            const directChatId = `direct_${[creatorId, user.id].sort().join('_')}`;
-            const { data: existingDm } = await supabase
-              .from('family_chats')
-              .select('id, participants')
-              .eq('id', directChatId)
-              .maybeSingle();
-
-            if (!existingDm) {
-              const nowIso = new Date().toISOString();
-              await supabase.from('family_chats').insert({
-                id: directChatId,
-                type: 'direct',
-                name: creatorName || 'Family Member',
-                participants: [creatorId, user.id],
-                participant_roles: { [creatorId]: creatorRole, [user.id]: role },
-                participant_names: { [creatorId]: creatorName, [user.id]: fullName.trim() },
-                participant_avatars: { [creatorId]: creatorAvatar, [user.id]: '👤' },
-                unread_count: 0,
-                created_at: nowIso,
-                updated_at: nowIso,
-                avatar: creatorAvatar,
-                is_muted: false,
-                family_code: familyCode,
-                is_pinned: false,
-              });
-
-              // System welcome message in the DM so the conversation
-              // isn't empty.
-              const sysId = `sys_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-              const sysSyncId = `sys_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-              await supabase.from('family_messages').insert({
-                id: sysId,
-                sync_id: sysSyncId,
-                device_id: 'system',
-                version: 1,
-                chat_id: directChatId,
-                sender_id: creatorId,
-                sender_name: creatorName,
-                sender_role: creatorRole,
-                sender_avatar: creatorAvatar,
-                content: `👋 Welcome to the family, ${fullName.trim()}! Tap to say hello.`,
-                type: 'system',
-                timestamp: new Date().toISOString(),
-                read: false,
-                read_by: [creatorId],
-                family_code: familyCode,
-                reactions: JSON.stringify([]),
-                delivery_status: 'sent',
-              });
-            }
-          } catch (dmErr) {
-            if (__DEV__) console.warn('[Auth] direct chat seed failed:', dmErr);
-          }
-        } catch (familyInsertError) {
-          if (__DEV__) console.error('[Auth] Family member insertion error:', familyInsertError);
-        }
+      if (!user) {
+        return { success: false, message: 'Signup succeeded but no session — please sign in.' };
       }
 
-      const roleDisplay = inviteData?.role === 'parent2' ? 'Parent 2'
-        : inviteData?.role === 'guardian' ? 'Guardian'
-        : 'Viewer';
+      // ── 3. ATOMIC ACCEPT via SECURITY DEFINER RPC
+      //        This is the ONLY path that writes family_members.
+      //        It bypasses RLS, guarantees profiles exists, and is
+      //        idempotent on repeat calls.
+      const { data: rpcResult, error: rpcError } = await supabase.rpc(
+        'accept_invite_code',
+        {
+          p_code: trimmedCode,
+          p_full_name: fullName.trim(),
+          p_email: email.trim().toLowerCase(),
+        },
+      );
 
-      // Nudge BabyContext + FamilyChatContext to re-sync now that
-      // app_settings + family_members are written. Both providers
-      // already subscribe to profile changes and to auth events, but
-      // an explicit broadcast guarantees the invitee's *first* session
-      // shows the baby + chats without a cold restart.
-      try {
-        const { data: { user: freshUser } } = await supabase.auth.getUser();
-        if (freshUser?.id) {
-          await broadcastProfileChange({
-            userId: freshUser.id,
-            fields: ['fullName', 'role'],
+      if (rpcError) {
+        if (__DEV__) {
+          console.error('[Auth] accept_invite_code RPC failed:', {
+            code: (rpcError as any)?.code,
+            message: rpcError.message,
+            details: (rpcError as any)?.details,
+            hint: (rpcError as any)?.hint,
           });
+        }
+        return {
+          success: false,
+          message: rpcError.message || 'Failed to join family. Please try again.',
+        };
+      }
+
+      const result = (rpcResult ?? {}) as {
+        ok?: boolean;
+        code?: string;
+        baby_id?: string;
+        role?: string;
+        member_id?: string;
+        message?: string;
+      };
+
+      if (result.ok !== true) {
+        return {
+          success: false,
+          message: result.message || 'Failed to join family. Please try again.',
+        };
+      }
+
+      const babyId = result.baby_id || inviteRow.family_id;
+      const role = result.role || inviteRow.role || 'viewer';
+      const relationship = inviteRow.relationship || 'Family Member';
+
+      // ── 4. Best-effort secondary setup (NON-BLOCKING)
+      //        Everything below is "nice to have". If any of it
+      //        fails we still return success because the membership
+      //        row is already in the DB.
+
+      // 4a. Resolve inviter display info
+      let creatorName = inviteRow.creator_name || 'Family';
+      let creatorAvatar = '👤';
+      let creatorRole = 'parent1';
+      const creatorId = inviteRow.creator_id;
+      try {
+        if (creatorId) {
+          const { data: creatorProfile } = await supabase
+            .from('profiles')
+            .select('full_name, community_display_name, community_avatar, avatar_url, avatar, role')
+            .eq('id', creatorId)
+            .maybeSingle();
+          if (creatorProfile) {
+            creatorName =
+              creatorProfile.community_display_name ||
+              creatorProfile.full_name ||
+              creatorName;
+            creatorAvatar =
+              creatorProfile.community_avatar ||
+              creatorProfile.avatar_url ||
+              creatorProfile.avatar ||
+              '👤';
+            creatorRole = creatorProfile.role || 'parent1';
+          }
         }
       } catch {}
 
-      // The invitee IS already part of a family (via family_members
-      // + babies.parent2_id / app_settings.current_baby_id). Mark
-      // setup complete so navigation routes them straight to Main
-      // — NOT through BabyOptional / CoParentInviteScreen.
+      const familyCode = `FAM-${String(babyId).slice(0, 6).toUpperCase()}`;
+
+      // 4b. Mirror `profiles` fields (name / avatar / role hint)
+      try {
+        await supabase
+          .from('profiles')
+          .update({
+            full_name: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            role,
+            community_display_name: fullName.trim(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', user.id);
+      } catch {}
+
+      // 4c. Ensure family group chat exists + add invitee
+      try {
+        const groupChatId = `family_group_${familyCode}`;
+        const { data: existingGroup } = await supabase
+          .from('family_chats')
+          .select('id, participants, participant_names, participant_roles, participant_avatars')
+          .eq('id', groupChatId)
+          .maybeSingle();
+
+        if (existingGroup) {
+          const participants: string[] = Array.isArray(existingGroup.participants)
+            ? existingGroup.participants
+            : [];
+          if (!participants.includes(user.id)) {
+            await supabase
+              .from('family_chats')
+              .update({
+                participants: [...participants, user.id],
+                participant_names: {
+                  ...(existingGroup.participant_names || {}),
+                  [user.id]: fullName.trim(),
+                },
+                participant_roles: {
+                  ...(existingGroup.participant_roles || {}),
+                  [user.id]: role,
+                },
+                participant_avatars: {
+                  ...(existingGroup.participant_avatars || {}),
+                  [user.id]: '👤',
+                },
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', groupChatId);
+          }
+        } else if (creatorId) {
+          const nowIso = new Date().toISOString();
+          await supabase.from('family_chats').insert({
+            id: groupChatId,
+            type: 'group',
+            name: 'Family Group',
+            participants: [creatorId, user.id],
+            participant_roles: { [creatorId]: creatorRole, [user.id]: role },
+            participant_names: { [creatorId]: creatorName, [user.id]: fullName.trim() },
+            participant_avatars: { [creatorId]: creatorAvatar, [user.id]: '👤' },
+            unread_count: 0,
+            created_at: nowIso,
+            updated_at: nowIso,
+            avatar: '👨‍👩‍👧‍👦',
+            is_muted: false,
+            family_code: familyCode,
+            is_pinned: true,
+          });
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Auth] group chat seed failed:', e);
+      }
+
+      // 4d. Direct chat with the inviter
+      try {
+        if (creatorId) {
+          const directChatId = `direct_${[creatorId, user.id].sort().join('_')}`;
+          const { data: existingDm } = await supabase
+            .from('family_chats')
+            .select('id')
+            .eq('id', directChatId)
+            .maybeSingle();
+          if (!existingDm) {
+            const nowIso = new Date().toISOString();
+            await supabase.from('family_chats').insert({
+              id: directChatId,
+              type: 'direct',
+              name: creatorName,
+              participants: [creatorId, user.id],
+              participant_roles: { [creatorId]: creatorRole, [user.id]: role },
+              participant_names: { [creatorId]: creatorName, [user.id]: fullName.trim() },
+              participant_avatars: { [creatorId]: creatorAvatar, [user.id]: '👤' },
+              unread_count: 0,
+              created_at: nowIso,
+              updated_at: nowIso,
+              avatar: creatorAvatar,
+              is_muted: false,
+              family_code: familyCode,
+              is_pinned: false,
+            });
+          }
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[Auth] direct chat seed failed:', e);
+      }
+
+      // ── 5. Persist the local profile snapshot + flags ────────────
+      const userProfile: UserProfile = {
+        id: user.id,
+        fullName: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        avatar: '👤',
+        role: role as any,
+        createdAt: user.created_at || new Date().toISOString(),
+        preferences: { notifications: true, darkMode: false, language: 'en' },
+        communityUsername: fullName.trim(),
+        communityHandle: `@${fullName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`,
+        communityBio: relationship,
+        communityAvatar: '👤',
+        communityDisplayName: fullName.trim(),
+        communityStats: { posts: 0, followers: 0, following: 0, helpful: 0 },
+        communitySelectedTopics: [],
+      };
+
+      try {
+        await secureStorage.setItem(
+          SECURE_KEYS.USER_PROFILE,
+          JSON.stringify(userProfile),
+        );
+        await secureStorage.setItem(
+          SECURE_KEYS.AUTH_TOKEN,
+          (await supabase.auth.getSession()).data.session?.access_token || '',
+        );
+      } catch {}
+
+      // Mark setup complete so the navigator routes straight to Main.
       try {
         await AsyncStorage.multiSet([
           [ASYNC_KEYS.SETUP_COMPLETE, 'true'],
@@ -2799,26 +2630,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           [ASYNC_KEYS.PARENT2_COMPLETED, 'true'],
           [ASYNC_KEYS.BABY_COMPLETED, 'true'],
           [ASYNC_KEYS.ONBOARDING_COMPLETE, 'true'],
+          [ASYNC_KEYS.HAS_SEEN_ONBOARDING, 'true'],
           ['@littleloom_multi_baby_selected_this_session', 'true'],
         ]);
       } catch {}
+
       if (isMounted.current) {
         setState(prev => ({
           ...prev,
+          isAuthenticated: true,
+          userToken: (stateRef.current as any)?.userToken ?? prev.userToken,
+          userProfile,
           setupComplete: true,
           hasParent2: true,
           hasBaby: true,
           onboardingComplete: true,
+          hasSeenOnboarding: true,
           mustChangePassword: false,
         }));
       }
+
+      // ── 6. Nudge every context to re-hydrate with the new membership
+      try {
+        await broadcastProfileChange({ userId: user.id, fields: ['role', 'fullName'] });
+      } catch {}
+
+      const roleDisplay =
+        role === 'parent2' ? 'Co-Parent'
+        : role === 'guardian' ? 'Guardian'
+        : 'Viewer';
 
       return {
         success: true,
         message: `Welcome to the family! You've joined as ${roleDisplay}`,
       };
     } catch (error) {
-      if (__DEV__) console.error('[Auth] Sign up with invite code error:', error);
+      if (__DEV__) console.error('[Auth] signUpWithInviteCode error:', error);
       return { success: false, message: 'Failed to join family. Please try again.' };
     }
   }, [signUp]);

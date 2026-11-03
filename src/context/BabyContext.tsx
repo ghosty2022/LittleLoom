@@ -886,79 +886,97 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       
+      // ── INVITE-CODE FALLBACK ─────────────────────────────────────
+      // If the parent1/parent2/family_members queries all returned 0
+      // rows, the user may have just accepted an invite and the
+      // SECURITY DEFINER RPC has not yet been seen by the read path.
+      // Look for ANY completed invite for this user (not just the
+      // first), then hydrate the baby via `get_baby_for_member` RPC
+      // so RLS on `babies` can't filter it out.
       if (allBabies.length === 0) {
         if (__DEV__) {
-          console.log(
-            '[BabyContext] No babies found, checking invite_codes fallback...'
-          );
+          console.log('[BabyContext] No babies found, checking invite_codes fallback...');
         }
         try {
-          const { data: inviteData, error: inviteError } = await supabase
+          const { data: inviteRows, error: inviteError } = await supabase
             .from('invite_codes')
-            .select('family_id, role')
+            .select('code, family_id, role, signup_completed, used')
             .eq('used_by', userId)
             .eq('used', true)
-            .maybeSingle();
+            .eq('signup_completed', true)
+            .order('used_at', { ascending: false });
 
-          if (!inviteError && inviteData?.family_id) {
-            if (__DEV__) {
-              console.log(
-                `[BabyContext] Found family_id from invite_codes: ${inviteData.family_id}`
-              );
-            }
+          if (inviteError) {
+            if (__DEV__) console.warn('[BabyContext] invite_codes fallback error:', inviteError.message);
+          } else if (Array.isArray(inviteRows) && inviteRows.length > 0) {
+            const seenFallbackIds = new Set<string>();
 
-            const { data: babyData, error: babyError } = await supabase
-              .from('babies')
-              .select('*')
-              .eq('id', inviteData.family_id);
+            for (const inv of inviteRows) {
+              const fid = inv?.family_id;
+              if (!fid || seenFallbackIds.has(fid)) continue;
+              seenFallbackIds.add(fid);
+              if (seenBabyIds.has(fid)) continue;
 
-            if (!babyError && babyData && babyData.length > 0) {
+              // Try the direct SELECT first
+              let babyRow: any = null;
+              try {
+                const { data: direct } = await supabase
+                  .from('babies')
+                  .select('*')
+                  .eq('id', fid)
+                  .maybeSingle();
+                babyRow = direct ?? null;
+              } catch {}
+
+              // If RLS blocked it, try the SECURITY DEFINER RPC
+              if (!babyRow) {
+                try {
+                  const { data: rpcRow } = await supabase
+                    .rpc('get_baby_for_member', { p_baby_id: fid });
+                  const row = Array.isArray(rpcRow) ? rpcRow[0] : rpcRow;
+                  babyRow = row ?? null;
+                } catch {}
+              }
+
+              if (!babyRow) continue;
+
+              seenBabyIds.add(babyRow.id);
+              allBabies.push(babyRow);
+
+              const role = inv.role || 'viewer';
+              userRoles[babyRow.id] = role;
+
+              const isParent = role === 'parent1' || role === 'parent2';
+              const isGuardian = role === 'guardian';
+              userPermissions[babyRow.id] = {
+                view: true,
+                edit: isParent || isGuardian,
+                delete: isParent,
+                manage: isParent,
+                invite: isParent,
+                export: isParent,
+                canView: true,
+                canAddEntry: isParent || isGuardian,
+                canEditEntry: isParent || isGuardian,
+                canEditOthersEntries: isParent,
+                canDeleteEntry: isParent,
+                canEditBaby: isParent,
+                canInvite: isParent,
+                canExport: isParent,
+                canManageFamily: isParent,
+              };
+
               if (__DEV__) {
                 console.log(
-                  `[BabyContext] Found baby via invite_codes fallback: ${babyData[0].name}`
+                  `[BabyContext] Found baby via invite_codes fallback: ${babyRow.name} (${role})`,
                 );
               }
-              babyData.forEach((baby: any) => {
-                if (!seenBabyIds.has(baby.id)) {
-                  seenBabyIds.add(baby.id);
-                  allBabies.push(baby);
-                  const role = inviteData.role || 'viewer';
-                  userRoles[baby.id] = role;
-
-                  const isParent = role === 'parent1' || role === 'parent2';
-                  const isGuardian = role === 'guardian';
-
-                  userPermissions[baby.id] = {
-                    view: true,
-                    edit: isParent || isGuardian,
-                    delete: isParent,
-                    manage: isParent,
-                    invite: isParent,
-                    export: isParent,
-
-                    canView: true,
-                    canAddEntry: isParent || isGuardian,
-                    canEditEntry: isParent || isGuardian,
-                    canEditOthersEntries: isParent,
-                    canDeleteEntry: isParent,
-                    canEditBaby: isParent,
-                    canInvite: isParent,
-                    canExport: isParent,
-                    canManageFamily: isParent,
-                  };
-                }
-              });
             }
           }
         } catch (e) {
           console.warn('[BabyContext] Invite codes fallback failed:', e);
         }
       }
-
-      if (__DEV__) {
-        console.log(`[BabyContext] Total babies found: ${allBabies.length}`);
-      }
-
       
       // ── Family labels ─────────────────────────────────────────
       // A user can belong to multiple families (Parent1 on Baby A,
@@ -1321,6 +1339,37 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (event === 'SIGNED_IN' && session?.user) {
           const previousUserId = currentUserIdRef.current;
           const nextUserId = session.user.id;
+
+          // ── Invite-accept probe ───────────────────────────────
+          // If the user just accepted an invite code, their
+          // `family_members` row was written by the SECURITY DEFINER
+          // RPC. The auth SIGNED_IN event fires BEFORE the RPC
+          // completes, so the first loadBabies() we run here may
+          // still see 0 rows. Do a quick probe: if they have an
+          // `invite_codes` row with used_by = them and
+          // signup_completed = true, schedule a second load after
+          // the RPC has had time to commit.
+          (async () => {
+            try {
+              const { data: inviteRow } = await supabase
+                .from('invite_codes')
+                .select('code, family_id, signup_completed')
+                .eq('used_by', nextUserId)
+                .eq('signup_completed', true)
+                .order('used_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (inviteRow?.family_id) {
+                // Second load after the RPC commit window.
+                setTimeout(() => {
+                  if (isMounted.current) {
+                    loadBabiesRef.current?.(true);
+                  }
+                }, 1200);
+              }
+            } catch {}
+          })();
 
           // Account switch on the same device: wipe everything before
           // loading the new user's babies. Otherwise the previous
