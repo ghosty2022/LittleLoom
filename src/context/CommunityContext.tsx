@@ -1486,6 +1486,13 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!meId) return;
     const cleanIds = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string') : [];
 
+    // Commit the in-memory state AND the ref snapshot synchronously
+    // before any await, so any caller awaiting `checkOnboardingStatus()`
+    // immediately after this resolves sees the fresh list.
+    stateRef.current = {
+      ...stateRef.current,
+      selectedTopics: cleanIds,
+    };
     setState((p) => ({ ...p, selectedTopics: cleanIds }));
 
     const writes: Promise<any>[] = [];
@@ -1543,7 +1550,55 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const checkOnboardingStatus = useCallback(async () => {
-    const ids = stateRef.current.selectedTopics;
+    // 1. In-memory state (fastest).
+    let ids = Array.isArray(stateRef.current.selectedTopics)
+      ? stateRef.current.selectedTopics
+      : [];
+
+    // 2. AsyncStorage scoped key (survives setState-commit lag).
+    if (ids.length === 0 && currentUserIdRef.current) {
+      try {
+        const scoped = await AsyncStorage.getItem(
+          `@community_selected_topics_v2_${currentUserIdRef.current}`,
+        );
+        const parsed = scoped ? JSON.parse(scoped) : null;
+        if (Array.isArray(parsed) && parsed.length > 0) ids = parsed;
+      } catch {}
+    }
+
+    // 3. AsyncStorage global key.
+    if (ids.length === 0) {
+      try {
+        const global = await AsyncStorage.getItem('@community_selected_topics_v2');
+        const parsed = global ? JSON.parse(global) : null;
+        if (Array.isArray(parsed) && parsed.length > 0) ids = parsed;
+      } catch {}
+    }
+
+    // 4. DB — authoritative and can't race a fresh write.
+    if (ids.length === 0 && currentUserIdRef.current) {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('community_selected_topics')
+          .eq('id', currentUserIdRef.current)
+          .maybeSingle();
+        const dbTopics = Array.isArray(data?.community_selected_topics)
+          ? (data!.community_selected_topics as string[])
+          : [];
+        if (dbTopics.length > 0) ids = dbTopics;
+      } catch {}
+    }
+
+    // If we recovered topics from disk/DB but context is empty, sync
+    // the context so every screen sees them on the next render.
+    if (
+      ids.length > 0 &&
+      stateRef.current.selectedTopics.length === 0
+    ) {
+      setState((p) => ({ ...p, selectedTopics: ids }));
+    }
+
     return { completed: ids.length >= 3, hasTopics: ids.length > 0 };
   }, []);
 

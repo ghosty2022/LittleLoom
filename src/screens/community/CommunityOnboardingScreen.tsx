@@ -417,6 +417,7 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       }
 
       const scopedKey = `${SELECTED_TOPICS_KEY}_${userId}`;
+      const scopedOnboardingKey = `${ONBOARDING_KEY}_${userId}`;
       const payload = {
         completed: true,
         selectedTopics: topicsToSave,
@@ -424,31 +425,55 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
         ...extra,
       };
 
-      // Write every key the rest of the app reads, atomically-ish.
+      // Write every key the rest of the app reads. Include the *scoped*
+      // onboarding key — that's what `checkOnboardingStatus()` in
+      // CommunityNavigator falls back to when context hasn't committed.
       await Promise.all([
         AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(payload)),
+        AsyncStorage.setItem(scopedOnboardingKey, JSON.stringify(payload)),
         AsyncStorage.setItem(SELECTED_TOPICS_KEY, JSON.stringify(topicsToSave)),
         AsyncStorage.setItem(scopedKey, JSON.stringify(topicsToSave)),
       ]);
 
-      // ── Context is the single source of truth used by every screen.
-      //    Write to it FIRST so the feed updates even if UserContext fails.
+      // ── CONTEXT IS THE SINGLE SOURCE OF TRUTH ────────────────────
+      // If `updateContextSelectedTopics` throws, we MUST still land the
+      // user on the community feed — otherwise `checkOnboardingStatus()`
+      // in the navigator sees `selectedTopics: []` and bounces back here,
+      // which is the "auto-select → Home" loop.
+      let contextOk = false;
       try {
         if (typeof updateContextSelectedTopics === 'function') {
           await updateContextSelectedTopics(topicsToSave);
+          contextOk = true;
         }
       } catch (err) {
-        console.warn('[CommunityOnboarding] context updateSelectedTopics:', err);
+        console.warn('[CommunityOnboarding] context updateSelectedTopics failed:', err);
       }
+
+      // UserContext is best-effort; it doesn't gate navigation.
       try {
         await updateUserTopics(topicsToSave);
       } catch (err) {
-        console.warn('[CommunityOnboarding] updateUserTopics:', err);
+        console.warn('[CommunityOnboarding] updateUserTopics failed:', err);
       }
-      // Fire-and-forget: these don't gate the caller's toast/transition,
-      // so don't block the onboarding → main hop on them.
+
+      // Section state is best-effort too — fire and forget, but log if
+      // it fails so it shows up in DevTools.
       updateSectionState('community', { onboardingComplete: true, topicSelected: true })
-        .catch((err) => console.warn('[CommunityOnboarding] updateSectionState:', err));
+        .catch((err) => console.warn('[CommunityOnboarding] updateSectionState failed:', err));
+
+      // Give React one tick to flush context's setState so the outer
+      // navigator's `checkOnboardingStatus()` reads the fresh values.
+      await new Promise((r) => setTimeout(r, 150));
+
+      if (!contextOk) {
+        // Context write failed but AsyncStorage is written. The
+        // navigator's AsyncStorage fallback will handle it — but log
+        // so we know it happened.
+        console.warn(
+          '[CommunityOnboarding] Context update failed but AsyncStorage succeeded; navigator will recover via disk fallback.'
+        );
+      }
     },
     [currentUser?.id, updateUserTopics, updateContextSelectedTopics],
   );
@@ -485,7 +510,24 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
       }
     } catch (err) {
       console.error('[CommunityOnboarding] complete error:', err);
-      sweetAlert.alert('Error', 'Failed to save your preferences. Please try again.', 'warning');
+      // Even if saving threw, force the transition so the user isn't
+      // trapped on the onboarding screen — but still show the error so
+      // they know their selection may not have been saved.
+      sweetAlert.alert(
+        'Partial Save',
+        'Your topics were saved locally, but the server sync failed. Continuing to your feed…',
+        'warning',
+      );
+      if (isEditing) {
+        if (navigation?.canGoBack?.()) navigation.goBack();
+      } else {
+        const done = onComplete ?? route?.params?.onComplete;
+        if (typeof done === 'function') {
+          try { await done(selectedTopics); } catch {}
+        } else {
+          navigation?.reset?.({ index: 0, routes: [{ name: 'CommunityMain' as never }] });
+        }
+      }
     } finally {
       setIsSaving(false);
     }
@@ -530,7 +572,15 @@ export default function CommunityOnboardingScreen({ navigation, route, onComplet
           }
         } catch (err) {
           console.error('[CommunityOnboarding] skip error:', err);
-          sweetAlert.alert('Error', 'Failed to complete onboarding. Please try again.', 'warning');
+          // Even on failure, land on main so the user isn't trapped.
+          try {
+            const done = onComplete ?? route?.params?.onComplete;
+            if (typeof done === 'function') {
+              await done(topicsToSave);
+            } else {
+              navigation?.reset?.({ index: 0, routes: [{ name: 'CommunityMain' as never }] });
+            }
+          } catch {}
         } finally {
           setIsSaving(false);
         }

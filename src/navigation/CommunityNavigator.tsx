@@ -456,10 +456,51 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
       console.warn('[CommunityNavigator] Failed to refresh topics:', e);
     }
 
-    const onboardingStatus = await checkOnboardingStatus();
+        // Poll for the topics to appear in context — this is what makes
+        // the "auto-select from onboarding" round-trip reliable. When
+        // `persist()` in the onboarding screen finishes, it calls
+        // `updateContextSelectedTopics()` which does a `setState`. That
+        // `setState` is asynchronous, so reading `getSelectedTopics()`
+        // immediately after can still return `[]`. Poll for up to ~1.2 s.
+        const readTopics = () => {
+          try { return getSelectedTopics() || []; } catch { return []; }
+        };
+        let inMemoryTopics = readTopics();
+        for (let i = 0; i < 12 && inMemoryTopics.length === 0; i++) {
+          await new Promise((r) => setTimeout(r, 100));
+          if (!mounted) return;
+          inMemoryTopics = readTopics();
+        }
+        // If the context is *still* empty but AsyncStorage already has
+        // the topics (the write finished on the onboarding screen but
+        // context's setState hasn't committed yet), trust AsyncStorage
+        // and skip the re-onboarding branch entirely.
+        let diskHasTopics = inMemoryTopics.length > 0;
+        if (!diskHasTopics && currentUser?.id) {
+          try {
+            const scoped = await AsyncStorage.getItem(
+              `@community_selected_topics_v2_${currentUser.id}`,
+            );
+            const parsed = scoped ? JSON.parse(scoped) : null;
+            diskHasTopics = Array.isArray(parsed) && parsed.length > 0;
+          } catch {}
+        }
+        if (diskHasTopics && inMemoryTopics.length === 0) {
+          // Nudge context so the rest of the app sees the topics.
+          try {
+            const { refreshTopics: refreshTopicsFn } = community as any;
+            if (typeof refreshTopicsFn === 'function') {
+              await refreshTopicsFn();
+            }
+          } catch {}
+        }
 
-    if (!mounted) return;
+        const onboardingStatus = await checkOnboardingStatus();
 
+        if (!mounted) return;
+
+        // SECOND GUARD: if the context reports 0 topics AND we've never
+        
     // SECOND GUARD: if the context reports 0 topics AND we've never
     // written the onboarding-complete flag for THIS user, we show
     // onboarding. Otherwise — even if selectedTopics is briefly [] —
@@ -472,12 +513,16 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         ? `@community_selected_topics_v2_${userId}`
         : '@community_selected_topics_v2';
       // Also check the context's in-memory list — it may have hydrated
-      // from DB after this effect started.
-      const inMemoryTopics = getSelectedTopics() || [];
-      const [rawScoped, rawGlobal, rawOnboarding] = await Promise.all([
+      // from DB after this effect started. `inMemoryTopics` was polled
+      // above so it's the freshest we can observe.
+      const inMemoryTopics = readTopics();
+      const [rawScoped, rawGlobal, rawOnboarding, rawScopedOnboarding] = await Promise.all([
         AsyncStorage.getItem(scopedKey),
         AsyncStorage.getItem('@community_selected_topics_v2'),
         AsyncStorage.getItem('@littleloom_community_onboarding_v3'),
+        userId
+          ? AsyncStorage.getItem(`@littleloom_community_onboarding_v3_${userId}`)
+          : Promise.resolve(null),
       ]);
       const parse = (s: string | null) => {
         if (!s) return [] as string[];
@@ -495,10 +540,16 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         const blob = rawOnboarding ? JSON.parse(rawOnboarding) : null;
         if (Array.isArray(blob?.selectedTopics)) fromBlob = blob.selectedTopics;
       } catch {}
+      let fromScopedBlob: string[] = [];
+      try {
+        const blob = rawScopedOnboarding ? JSON.parse(rawScopedOnboarding) : null;
+        if (Array.isArray(blob?.selectedTopics)) fromScopedBlob = blob.selectedTopics;
+      } catch {}
       const anyStored =
         scoped.length > 0 ||
         global.length > 0 ||
         fromBlob.length > 0 ||
+        fromScopedBlob.length > 0 ||
         inMemoryTopics.length > 0;
       if (!anyStored) {
         if (__DEV__) console.log('[CommunityNavigator] → onboarding (truly no topics stored)');
@@ -667,10 +718,13 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         ? `${COMMUNITY_TOPICS_KEY}_${userId}`
         : COMMUNITY_TOPICS_KEY;
 
-      const [rawOnboarding, rawTopics, rawScopedTopics] = await Promise.all([
+      const [rawOnboarding, rawTopics, rawScopedTopics, rawScopedOnboarding] = await Promise.all([
         AsyncStorage.getItem(COMMUNITY_ONBOARDING_KEY),
         AsyncStorage.getItem(COMMUNITY_TOPICS_KEY),
         AsyncStorage.getItem(scopedTopicsKey),
+        userId
+          ? AsyncStorage.getItem(`${COMMUNITY_ONBOARDING_KEY}_${userId}`)
+          : Promise.resolve(null),
       ]);
 
       const parse = (raw: string | null): string[] => {
@@ -683,7 +737,6 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         }
       };
 
-      // Priority: explicit screen argument > scoped key > global key > onboarding blob
       let finalTopics: string[] = [];
       if (Array.isArray(topicsFromScreen) && topicsFromScreen.length > 0) {
         finalTopics = topicsFromScreen;
@@ -699,14 +752,27 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
               if (Array.isArray(blob?.selectedTopics) && blob.selectedTopics.length > 0) {
                 finalTopics = blob.selectedTopics;
               }
-            } catch { /* ignore */ }
+            } catch {}
+            if (finalTopics.length === 0) {
+              try {
+                const blob = rawScopedOnboarding ? JSON.parse(rawScopedOnboarding) : null;
+                if (Array.isArray(blob?.selectedTopics) && blob.selectedTopics.length > 0) {
+                  finalTopics = blob.selectedTopics;
+                }
+              } catch {}
+            }
           }
         }
       }
 
       if (finalTopics.length === 0) {
-        console.warn('[CommunityNavigator] Onboarding complete but 0 topics — treating as not done');
-        setPhase('onboarding');
+        // Don't loop back to onboarding in silence — surface it.
+        if (__DEV__) {
+          console.warn('[CommunityNavigator] Onboarding complete but 0 topics — aborting transition');
+        }
+        // Still move to 'main' so the user isn't trapped in onboarding;
+        // the feed will just show "select topics" prompt as before.
+        setPhase('main');
         return;
       }
 
@@ -716,30 +782,32 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         timestamp: new Date().toISOString(),
       };
 
-      // Write every key the rest of the system reads, atomically-ish
       await Promise.all([
         AsyncStorage.setItem(COMMUNITY_ONBOARDING_KEY, JSON.stringify(finalOnboarding)),
         AsyncStorage.setItem(COMMUNITY_TOPICS_KEY, JSON.stringify(finalTopics)),
         AsyncStorage.setItem(scopedTopicsKey, JSON.stringify(finalTopics)),
+        userId
+          ? AsyncStorage.setItem(`${COMMUNITY_ONBOARDING_KEY}_${userId}`, JSON.stringify(finalOnboarding))
+          : Promise.resolve(),
       ]);
 
+      // Give the CommunityContext's `setState` (fired by
+      // `persist()` → `updateContextSelectedTopics`) one tick to
+      // commit so `checkOnboardingStatus()` reads the fresh values.
+      await new Promise((r) => setTimeout(r, 120));
       await checkOnboardingStatus();
       await markSplashShown();
-      // Only advance to 'main' if this was a first-run completion. If the
-      // user opened onboarding in *editing* mode (from a profile / header /
-      // prompt), stay on the current navigator — the caller's
-      // `navigation.goBack()` handles dismissal.
       if (phase !== 'main') {
         setPhase('main');
       }
     } catch (error) {
       console.error('[CommunityNavigator] Onboarding complete error:', error);
-      // Don't silently fall to 'main' if the write failed — leave the user
-      // in onboarding so they can retry.
-      setPhase('onboarding');
+      // Do NOT fall back to onboarding — that's the loop the user sees.
+      // Land on main and let the feed be empty; they can re-open the
+      // onboarding modal from the profile if needed.
+      setPhase('main');
     }
-  }, [markSplashShown, checkOnboardingStatus]);
-
+  }, [markSplashShown, checkOnboardingStatus, phase]);
   
   if (isAuthValid === false) {
     return (
