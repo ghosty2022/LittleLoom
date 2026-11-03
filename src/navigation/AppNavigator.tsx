@@ -324,6 +324,13 @@ function NavigationContent({
   const isMounted = useRef(true);
   const navReadyCalled = useRef(false);
 
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
   const babyCountRef = useRef(0);
   const hasSkippedBabyRef = useRef(false);
 
@@ -435,31 +442,86 @@ function NavigationContent({
       return;
     }
 
-    const newState = getNavState(
-      authLoading,
-      isAuthenticated,
-      isValidSession,
-      isSecurityLocked,
-      securityOn,
-      setupComplete,
-      hasParent2,
-      hasBaby,
-      babyCountRef.current,
-      hasSkippedBabyRef.current,
-      hasSeenOnboarding,
-      isFirstOpen,
-    );
+    // ── Invite-accept short-circuit ─────────────────────────────
+    // `signUpWithInviteCode` writes the family_members row + the
+    // app_settings.current_baby_id via a SECURITY DEFINER RPC. That
+    // means the invitee ALREADY has a baby — even if BabyContext
+    // hasn't hydrated and hasBaby/setupDone are stale from a prior
+    // account on this device.
+    //
+    // Probe invite_codes and force MAIN if the user is a joiner.
+    let cancelledLocal = false;
 
-    if (newState !== lastNavState.current) {
-      if (lastNavState.current === 'SECURITY_LOCK' && newState === 'MAIN') {
-        wasOnSecurityLock.current = true;
-        setTimeout(() => { wasOnSecurityLock.current = false; }, 3000);
+    (async () => {
+      if (!isAuthenticated || !isValidSession) {
+        if (cancelledLocal) return;
+        const s = getNavState(
+          authLoading, isAuthenticated, isValidSession,
+          isSecurityLocked, securityOn, setupComplete,
+          hasParent2, hasBaby, babyCountRef.current,
+          hasSkippedBabyRef.current, hasSeenOnboarding, isFirstOpen,
+        );
+        if (s !== lastNavState.current) {
+          lastNavState.current = s;
+          setNavState(s);
+        }
+        if (!initialCheckDone) setInitialCheckDone(true);
+        return;
       }
-      lastNavState.current = newState;
-      setNavState(newState);
-    }
 
-    if (!initialCheckDone) setInitialCheckDone(true);
+      let joinedViaInvite = false;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) {
+          const { data: invRows } = await supabase
+            .from('invite_codes')
+            .select('code')
+            .eq('used_by', user.id)
+            .eq('signup_completed', true)
+            .limit(1);
+          joinedViaInvite =
+            Array.isArray(invRows) && invRows.length > 0 && !!invRows[0]?.code;
+        }
+      } catch {}
+      if (cancelledLocal) return;
+
+      if (joinedViaInvite) {
+        if (lastNavState.current !== 'MAIN') {
+          lastNavState.current = 'MAIN';
+          setNavState('MAIN');
+        }
+        if (!initialCheckDone) setInitialCheckDone(true);
+        return;
+      }
+
+      const s = getNavState(
+        authLoading,
+        isAuthenticated,
+        isValidSession,
+        isSecurityLocked,
+        securityOn,
+        setupComplete,
+        hasParent2,
+        hasBaby,
+        babyCountRef.current,
+        hasSkippedBabyRef.current,
+        hasSeenOnboarding,
+        isFirstOpen,
+      );
+
+      if (s !== lastNavState.current) {
+        if (lastNavState.current === 'SECURITY_LOCK' && s === 'MAIN') {
+          wasOnSecurityLock.current = true;
+          setTimeout(() => { wasOnSecurityLock.current = false; }, 3000);
+        }
+        lastNavState.current = s;
+        setNavState(s);
+      }
+
+      if (!initialCheckDone) setInitialCheckDone(true);
+    })();
+
+    return () => { cancelledLocal = true; };
   }, [
     authLoading,
     isAuthenticated,
@@ -501,9 +563,36 @@ function NavigationContent({
   useEffect(() => {
     if (!isAuthenticated || !isValidSession) return;
     if (authLoading) return;
+
     // Nudge the resolver by touching the babyCount ref and forcing
     // a re-run of the main resolver effect.
     babyCountRef.current = babies?.length || 0;
+
+    // ── Invite short-circuit on hydration ─────────────────────
+    // During the RPC-commit window, babies may still be [] AND
+    // hasBaby may still be false. Don't latch to SETUP_BABY if the
+    // user is actually a joiner.
+    let cancelledLocal = false;
+
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.id || cancelledLocal) return;
+        const { data: invRows } = await supabase
+          .from('invite_codes')
+          .select('code')
+          .eq('used_by', user.id)
+          .eq('signup_completed', true)
+          .limit(1);
+        const isJoiner =
+          Array.isArray(invRows) && invRows.length > 0 && !!invRows[0]?.code;
+        if (isJoiner && lastNavState.current !== 'MAIN') {
+          lastNavState.current = 'MAIN';
+          setNavState('MAIN');
+        }
+      } catch {}
+    })();
+
     // Force re-evaluation by re-computing navState with the latest
     // counts. This deliberately mimics the resolver effect's body
     // so we don't have to over-parameterise it.
@@ -512,8 +601,9 @@ function NavigationContent({
         lastNavState.current = 'FORCED_PASSWORD_CHANGE';
         setNavState('FORCED_PASSWORD_CHANGE' as any);
       }
-      return;
+      return () => { cancelledLocal = true; };
     }
+
     const newState = getNavState(
       authLoading,
       isAuthenticated,
@@ -528,10 +618,13 @@ function NavigationContent({
       hasSeenOnboarding,
       isFirstOpen,
     );
+
     if (newState !== lastNavState.current) {
       lastNavState.current = newState;
       setNavState(newState);
     }
+
+    return () => { cancelledLocal = true; };
   }, [
     babies?.length,
     isAuthenticated,

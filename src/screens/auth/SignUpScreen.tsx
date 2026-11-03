@@ -556,7 +556,9 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
     triggerHaptic('medium');
 
     try {
-      const signUpResult = await signUp(
+      // Use the invite-aware signup so the RPC links the baby.
+      const signUpResult = await signUpWithInviteCode(
+        trimmedCode,
         joinFullName.trim(),
         joinEmail.trim(),
         joinPassword
@@ -697,9 +699,8 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
       if (result.success && isMounted.current) {
         showSuccess(`Welcome, ${fullName.trim()}!`, 'Your account has been created successfully');
-        // Hard reset so the auth stack can't resurface if the root
-        // navigator re-runs its navState resolver (which it does
-        // whenever BabyContext hydrates).
+        // Brand-new account with no invite → they still need a baby,
+        // so BabyOptional is correct here. (Only the join path changes.)
         navigation.reset({
           index: 0,
           routes: [{ name: 'BabyOptional' as never }],
@@ -823,32 +824,17 @@ export default function SignUpScreen({ navigation, route }: SignUpScreenProps) {
 
         showSuccess(`Welcome, ${joinFullName.trim()}!`, result.message);
 
-        // ── Invite-join success: the SECURITY DEFINER RPC already
-        //    created the family_members row, linked babies.parent2_id,
-        //    and seeded app_settings.current_baby_id. Resetting to
-        //    BabyOptional is WRONG — that screen asks them to create
-        //    a NEW baby, which is not what "join family" means.
-        //
-        //    Wait for BabyContext to hydrate (babyCount > 0) and then
-        //    go to Main. A short poll handles the RPC-commit window.
-        const settleAndGoMain = async (attempt = 0) => {
-          if (!isMounted.current) return;
-          // If the babies array has already hydrated, go now.
-          const { loadBabies, babies } = require('../../context/BabyContext');
-          // We can't call loadBabies here (hook); instead, just wait
-          // for the nav effect. Fall through to Main and let the
-          // navigation gate correct if 0 babies persist.
-          if (attempt === 0) {
-            // Give the RPC 1.2s to commit + realtime to fan out.
-            await new Promise(r => setTimeout(r, 1200));
-          }
-          if (!isMounted.current) return;
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Main' as never }],
-          });
-        };
-        settleAndGoMain().catch(() => {});
+        // Invite-join success: the SECURITY DEFINER RPC already
+        // created the family_members row, linked babies.parent2_id,
+        // and seeded app_settings.current_baby_id. Never route a
+        // joiner to BabyOptional — wait one commit window, then
+        // hard-reset to Main.
+        await new Promise(r => setTimeout(r, 1200));
+        if (!isMounted.current) return;
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main' as never }],
+        });
       } else {
         showError('Join Failed', result.message || 'Could not join family. Please try again.');
         joinAttempted.current = false;

@@ -65,6 +65,7 @@ import { DynamicTrackerForm } from '../../components/trackers/DynamicTrackerForm
 import { TrackerEntryCard } from '../../components/trackers/TrackerEntryCard';
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { useAnomalyFeedback } from '../../hooks/useAnomalyFeedback';
+import { scopedEntries, entryTrackerId } from '../../utils/entrySelectors';
 import type { ProgressiveCorrelation } from '../../hooks/useTrackerProgressive';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -853,12 +854,14 @@ function TrackerContent({
   const entriesToday = useMemo(() => {
     if (!tracker || !currentBaby) return 0;
     const s = startOfDay(new Date()).getTime(), e = endOfDay(new Date()).getTime();
-    return getEntries(tracker.id).filter((x: any) => x.timestamp >= s && x.timestamp <= e).length;
+    return scopedEntries(getEntries(tracker.id), currentBaby.id)
+      .filter((x: any) => x.timestamp >= s && x.timestamp <= e).length;
   }, [tracker, getEntries, currentBaby]);
 
   const lastEntryTime = useMemo(() => {
     if (!tracker || !currentBaby) return null;
-    const list = getEntries(tracker.id).sort((a: any, b: any) => b.timestamp - a.timestamp);
+    const list = scopedEntries(getEntries(tracker.id), currentBaby.id)
+      .sort((a: any, b: any) => b.timestamp - a.timestamp);
     return list.length ? new Date(list[0].timestamp) : null;
   }, [tracker, getEntries, currentBaby]);
 
@@ -1535,7 +1538,16 @@ export default function AddEntryScreen() {
   const [appliedCorrelationPrefill, setAppliedCorrelationPrefill] = useState<Record<string, unknown> | null>(null);
   const [appliedSuggestions, setAppliedSuggestions] = useState<Set<string>>(new Set());
 
-  const [pendingData, setPendingData] = useState<Record<string, unknown>>(() => ({ ...route.params?.presetData }));
+  // Deep-clone the preset so edits to pendingData can't mutate the
+  // route param object, which is owned by the Hub / AllTrackers
+  // screen and rendered elsewhere. The shallow `{...presetData}`
+  // previously let nested objects (e.g. `data.photoUris[]`) leak
+  // edits back into the shared preset.
+  const [pendingData, setPendingData] = useState<Record<string, unknown>>(() => {
+    const raw = route.params?.presetData;
+    if (!raw || typeof raw !== 'object') return {};
+    try { return JSON.parse(JSON.stringify(raw)); } catch { return { ...(raw as object) }; }
+  });
   const [pendingOptions, setPendingOptions] = useState<{ notes?: string; tags?: string[]; photoUris?: string[] }>({ photoUris: [] });
   const [showBabyRequiredModal, setShowBabyRequiredModal] = useState(false);
 

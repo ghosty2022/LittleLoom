@@ -550,6 +550,25 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
         forceUnlock().catch(() => {});
 
+        // Invitee safety net: if the probe raced the RPC and reported
+        // false, re-probe once more before falling into setup flow.
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user?.id) {
+            const { data: inv2 } = await supabase
+              .from('invite_codes')
+              .select('code')
+              .eq('used_by', user.id)
+              .eq('signup_completed', true)
+              .limit(1)
+              .maybeSingle();
+            if (inv2?.code) {
+              navigation.replace('Main');
+              return;
+            }
+          }
+        } catch {}
+
         if (!setupComplete) {
           if (!babyAddressed) {
             navigation.replace('BabyOptional');
@@ -791,9 +810,19 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
         if (recoveryResult.success) {
           showSuccess('Welcome to the family!', recoveryResult.message);
           forceUnlock().catch(() => {});
+          // Invite-join: the RPC already linked the baby. Wait one
+          // commit window, then land on Main — never BabyOptional.
+          await new Promise(r => setTimeout(r, 1200));
+          if (isMounted.current) {
+            navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+          }
         } else {
           showSuccess('Account Created!', 'Your account has been created. Please complete your family setup.');
           forceUnlock().catch(() => {});
+          await new Promise(r => setTimeout(r, 1200));
+          if (isMounted.current) {
+            navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+          }
         }
       } else {
         showError('Failed', signUpResult.message || 'Could not create account. Please try again.');
@@ -1065,6 +1094,12 @@ export default function LoginScreen({ navigation, route }: LoginScreenProps) {
 
         showSuccess(`Welcome, ${joinFullName.trim()}!`, result.message);
         forceUnlock().catch(() => {});
+        // Give the SECURITY DEFINER RPC + realtime one commit window,
+        // then hard-reset to Main. BabyOptional is wrong for a joiner.
+        await new Promise(r => setTimeout(r, 1200));
+        if (isMounted.current) {
+          navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+        }
       } else {
         showError('Join Failed', result.message || 'Could not join family. Please try again.');
         joinAttempted.current = false;

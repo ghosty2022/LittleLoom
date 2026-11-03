@@ -15,6 +15,8 @@ import Animated, {
 
 import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { useTrackerAchievements, computeStreak } from '../../hooks/useTrackerAchievements';
+import { getTrackerVisual } from '../../constants/trackerVisuals';
+import { scopedEntries, entryTrackerId } from '../../utils/entrySelectors';
 import { useTracker } from '../../hooks/useTrackerContext';
 import { formatTimeShort, formatDateShort } from '@/utils/time';
 import { useCustomization } from '../../hooks/useCustomization';

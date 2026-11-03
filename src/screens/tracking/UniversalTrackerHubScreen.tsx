@@ -40,6 +40,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
+import { getTrackerVisual } from '../../constants/trackerVisuals';
+import { scopedEntries, countToday } from '../../utils/entrySelectors';
 import {
   format,
   differenceInDays,
@@ -57,7 +59,6 @@ import { SafeBabyAvatar, SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTrackerAchievements, computeStreak } from '../../hooks/useTrackerAchievements';
-
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -153,168 +154,95 @@ interface DayGroup {
    TRACKER CONFIGS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const TRACKER_CONFIGS: Record<string, TrackerConfig> = {
-  default: {
-    emoji: '•',
-    color: '#94a3b8',
-    gradient: ['#94a3b8', '#cbd5e1'],
-    description: 'Activity',
-    category: 'care',
-    subActions: [{ id: 'default', label: 'View', icon: 'ellipse-outline', color: '#94a3b8' }],
-  },
-  feed: {
-    emoji: '🍼',
-    color: '#fa709a',
-    gradient: ['#fa709a', '#f5576c'],
-    description: 'Feeding sessions',
-    category: 'essential',
-    subActions: [
-      { id: 'breast_left', label: 'Left Breast', icon: 'arrow-back-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'left' } },
-      { id: 'breast_right', label: 'Right Breast', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'right' } },
-      { id: 'breast_both', label: 'Both Sides', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { feedType: 'breast', side: 'both' } },
-      { id: 'bottle', label: 'Bottle', icon: 'beaker-outline', color: '#3b82f6', presetData: { feedType: 'bottle' } },
-      { id: 'solid', label: 'Solid Food', icon: 'restaurant-outline', color: '#f59e0b', presetData: { feedType: 'solid' } },
+// NOTE: emoji/color/gradient/description are now sourced from
+// `constants/trackerVisuals.ts` via `getTrackerVisual()`. This map
+// keeps ONLY the sub-action shape used by the action sheet, so
+// there is one — and only one — source of truth for what a feed
+// looks like across Home / Hub / Timeline / FamilyDashboard.
+const TRACKER_SUB_ACTIONS: Record<string, TrackerSubAction[]> = {
+  feed: [
+    { id: 'breast_left', label: 'Left Breast', icon: 'arrow-back-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'left' } },
+    { id: 'breast_right', label: 'Right Breast', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'right' } },
+    { id: 'breast_both', label: 'Both Sides', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { feedType: 'breast', side: 'both' } },
+    { id: 'bottle', label: 'Bottle', icon: 'beaker-outline', color: '#3b82f6', presetData: { feedType: 'bottle' } },
+    { id: 'solid', label: 'Solid Food', icon: 'restaurant-outline', color: '#f59e0b', presetData: { feedType: 'solid' } },
+  ],
+  sleep: [
+    { id: 'nap', label: 'Start Nap', icon: 'sunny-outline', color: '#10b981', presetData: { sleepType: 'nap', status: 'started' } },
+    { id: 'bedtime', label: 'Bedtime', icon: 'moon-outline', color: '#6366f1', presetData: { sleepType: 'night', status: 'started' } },
+    { id: 'end', label: 'End Sleep', icon: 'alarm-outline', color: '#f59e0b', presetData: { status: 'ended' } },
+  ],
+  diaper: [
+    { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet' } },
+    { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty' } },
+    { id: 'both', label: 'Both', icon: 'water', color: '#8B5CF6', presetData: { type: 'both' } },
+    { id: 'dry', label: 'Dry', icon: 'checkmark-circle-outline', color: '#10b981', presetData: { type: 'dry' } },
+  ],
+  potty: [
+    { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet', successful: true } },
+    { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty', successful: true } },
+    { id: 'both', label: 'Both', icon: 'water', color: '#667eea', presetData: { type: 'both', successful: true } },
+    { id: 'dry', label: 'Dry Attempt', icon: 'close-circle-outline', color: '#94a3b8', presetData: { type: 'dry', successful: false } },
+  ],
+  growth: [
+    { id: 'weight', label: 'Weight', icon: 'scale-outline', color: '#10b981', presetData: { measurementType: 'weight' } },
+    { id: 'height', label: 'Height', icon: 'resize-outline', color: '#3b82f6', presetData: { measurementType: 'height' } },
+    { id: 'head', label: 'Head', icon: 'ellipse-outline', color: '#f59e0b', presetData: { measurementType: 'head' } },
+  ],
+  milestone: [
+    { id: 'physical', label: 'Physical', icon: 'body-outline', color: '#f59e0b', presetData: { category: 'physical' } },
+    { id: 'cognitive', label: 'Cognitive', icon: 'bulb-outline', color: '#8b5cf6', presetData: { category: 'cognitive' } },
+    { id: 'social', label: 'Social', icon: 'people-outline', color: '#ec4899', presetData: { category: 'social' } },
+    { id: 'language', label: 'Language', icon: 'chatbubble-outline', color: '#3b82f6', presetData: { category: 'language' } },
+  ],
+  medication: [
+    { id: 'medicine', label: 'Medicine', icon: 'medical-outline', color: '#ef4444', presetData: { type: 'medicine' } },
+    { id: 'temperature', label: 'Temperature', icon: 'thermometer-outline', color: '#f59e0b', presetData: { type: 'temperature' } },
+    { id: 'symptom', label: 'Symptom', icon: 'alert-circle-outline', color: '#8b5cf6', presetData: { type: 'symptom' } },
+    { id: 'vaccine', label: 'Vaccination', icon: 'shield-checkmark-outline', color: '#10b981', presetData: { type: 'vaccine' } },
+  ],
+  pumping: [
+    { id: 'left', label: 'Left', icon: 'arrow-back-outline', color: '#f472b6', presetData: { side: 'left' } },
+    { id: 'right', label: 'Right', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { side: 'right' } },
+    { id: 'both', label: 'Both', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { side: 'both' } },
+  ],
+  bath: [
+    { id: 'bath', label: 'Log Bath', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'bath' } },
+    { id: 'sponge', label: 'Sponge Bath', icon: 'cloud-outline', color: '#93c5fd', presetData: { type: 'sponge' } },
+  ],
+  tummy_time: [
+    { id: 'tummy_time', label: 'Log Tummy Time', icon: 'fitness-outline', color: '#10b981', presetData: { type: 'tummy_time' } },
+  ],
+  reading: [
+    { id: 'reading', label: 'Log Reading', icon: 'book-outline', color: '#6366f1', presetData: { type: 'reading' } },
+  ],
+  walk: [
+    { id: 'walk', label: 'Log Walk', icon: 'walk-outline', color: '#0ea5e9', presetData: { type: 'walk' } },
+  ],
+  note: [
+    { id: 'note', label: 'Add Note', icon: 'document-text-outline', color: '#64748b', presetData: { type: 'note' } },
+  ],
+};
+
+const getTrackerConfig = (id: string): TrackerConfig => {
+  const v = getTrackerVisual(id);
+  return {
+    emoji: v.emoji,
+    color: v.color,
+    gradient: v.gradient,
+    description: v.label,
+    category:
+      id === 'growth' || id === 'milestone' || id === 'tummy_time' || id === 'reading'
+        ? 'development'
+        : id === 'medication'
+        ? 'health'
+        : id === 'pumping' || id === 'bath' || id === 'walk' || id === 'note'
+        ? 'care'
+        : 'essential',
+    subActions: TRACKER_SUB_ACTIONS[id] || [
+      { id: 'default', label: 'Add Entry', icon: 'add-circle-outline', color: v.color },
     ],
-  },
-  sleep: {
-    emoji: '🌙',
-    color: '#11998e',
-    gradient: ['#11998e', '#38ef7d'],
-    description: 'Sleep tracking',
-    category: 'essential',
-    subActions: [
-      { id: 'nap', label: 'Start Nap', icon: 'sunny-outline', color: '#10b981', presetData: { sleepType: 'nap', status: 'started' } },
-      { id: 'bedtime', label: 'Bedtime', icon: 'moon-outline', color: '#6366f1', presetData: { sleepType: 'night', status: 'started' } },
-      { id: 'end', label: 'End Sleep', icon: 'alarm-outline', color: '#f59e0b', presetData: { status: 'ended' } },
-    ],
-  },
-  diaper: {
-    emoji: '👶',
-    color: '#8B5CF6',
-    gradient: ['#8B5CF6', '#A78BFA'],
-    description: 'Diaper changes',
-    category: 'essential',
-    subActions: [
-      { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet' } },
-      { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty' } },
-      { id: 'both', label: 'Both', icon: 'water', color: '#8B5CF6', presetData: { type: 'both' } },
-      { id: 'dry', label: 'Dry', icon: 'checkmark-circle-outline', color: '#10b981', presetData: { type: 'dry' } },
-    ],
-  },
-  potty: {
-    emoji: '💧',
-    color: '#667eea',
-    gradient: ['#667eea', '#764ba2'],
-    description: 'Potty training',
-    category: 'development',
-    subActions: [
-      { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet', successful: true } },
-      { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty', successful: true } },
-      { id: 'both', label: 'Both', icon: 'water', color: '#667eea', presetData: { type: 'both', successful: true } },
-      { id: 'dry', label: 'Dry Attempt', icon: 'close-circle-outline', color: '#94a3b8', presetData: { type: 'dry', successful: false } },
-    ],
-  },
-  growth: {
-    emoji: '📏',
-    color: '#43e97b',
-    gradient: ['#43e97b', '#38f9d7'],
-    description: 'Growth measurements',
-    category: 'health',
-    subActions: [
-      { id: 'weight', label: 'Weight', icon: 'scale-outline', color: '#10b981', presetData: { measurementType: 'weight' } },
-      { id: 'height', label: 'Height', icon: 'resize-outline', color: '#3b82f6', presetData: { measurementType: 'height' } },
-      { id: 'head', label: 'Head', icon: 'ellipse-outline', color: '#f59e0b', presetData: { measurementType: 'head' } },
-    ],
-  },
-  milestone: {
-    emoji: '🏆',
-    color: '#ffd700',
-    gradient: ['#ffd700', '#ffaa00'],
-    description: 'Development milestones',
-    category: 'development',
-    subActions: [
-      { id: 'physical', label: 'Physical', icon: 'body-outline', color: '#f59e0b', presetData: { category: 'physical' } },
-      { id: 'cognitive', label: 'Cognitive', icon: 'bulb-outline', color: '#8b5cf6', presetData: { category: 'cognitive' } },
-      { id: 'social', label: 'Social', icon: 'people-outline', color: '#ec4899', presetData: { category: 'social' } },
-      { id: 'language', label: 'Language', icon: 'chatbubble-outline', color: '#3b82f6', presetData: { category: 'language' } },
-    ],
-  },
-  medication: {
-    emoji: '💊',
-    color: '#ff6b6b',
-    gradient: ['#ff6b6b', '#ee5a5a'],
-    description: 'Health & medication',
-    category: 'health',
-    subActions: [
-      { id: 'medicine', label: 'Medicine', icon: 'medical-outline', color: '#ef4444', presetData: { type: 'medicine' } },
-      { id: 'temperature', label: 'Temperature', icon: 'thermometer-outline', color: '#f59e0b', presetData: { type: 'temperature' } },
-      { id: 'symptom', label: 'Symptom', icon: 'alert-circle-outline', color: '#8b5cf6', presetData: { type: 'symptom' } },
-      { id: 'vaccine', label: 'Vaccination', icon: 'shield-checkmark-outline', color: '#10b981', presetData: { type: 'vaccine' } },
-    ],
-  },
-  pumping: {
-    emoji: '🤱',
-    color: '#ec4899',
-    gradient: ['#ec4899', '#f472b6'],
-    description: 'Pumping sessions',
-    category: 'care',
-    subActions: [
-      { id: 'left', label: 'Left', icon: 'arrow-back-outline', color: '#f472b6', presetData: { side: 'left' } },
-      { id: 'right', label: 'Right', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { side: 'right' } },
-      { id: 'both', label: 'Both', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { side: 'both' } },
-    ],
-  },
-  bath: {
-    emoji: '🛁',
-    color: '#3b82f6',
-    gradient: ['#3b82f6', '#60a5fa'],
-    description: 'Bath time',
-    category: 'care',
-    subActions: [
-      { id: 'bath', label: 'Log Bath', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'bath' } },
-      { id: 'sponge', label: 'Sponge Bath', icon: 'cloud-outline', color: '#93c5fd', presetData: { type: 'sponge' } },
-    ],
-  },
-  tummy_time: {
-    emoji: '🤸',
-    color: '#10b981',
-    gradient: ['#10b981', '#34d399'],
-    description: 'Tummy time',
-    category: 'development',
-    subActions: [
-      { id: 'tummy_time', label: 'Log Tummy Time', icon: 'fitness-outline', color: '#10b981', presetData: { type: 'tummy_time' } },
-    ],
-  },
-  reading: {
-    emoji: '📚',
-    color: '#6366f1',
-    gradient: ['#6366f1', '#818cf8'],
-    description: 'Reading sessions',
-    category: 'development',
-    subActions: [
-      { id: 'reading', label: 'Log Reading', icon: 'book-outline', color: '#6366f1', presetData: { type: 'reading' } },
-    ],
-  },
-  walk: {
-    emoji: '🚶',
-    color: '#0ea5e9',
-    gradient: ['#0ea5e9', '#38bdf8'],
-    description: 'Outdoor walks',
-    category: 'care',
-    subActions: [
-      { id: 'walk', label: 'Log Walk', icon: 'walk-outline', color: '#0ea5e9', presetData: { type: 'walk' } },
-    ],
-  },
-  note: {
-    emoji: '📝',
-    color: '#64748b',
-    gradient: ['#64748b', '#94a3b8'],
-    description: 'Quick notes',
-    category: 'care',
-    subActions: [
-      { id: 'note', label: 'Add Note', icon: 'document-text-outline', color: '#64748b', presetData: { type: 'note' } },
-    ],
-  },
+  };
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -397,14 +325,8 @@ const getBabyAge = (birthDate?: string | Date) => {
   return { display, shortDisplay: months > 0 ? `${months}m` : `${days}d`, months: years * 12 + months };
 };
 
-const getFallbackConfig = (id: string): TrackerConfig => ({
-  emoji: '📋',
-  color: DS.primary,
-  gradient: [DS.primary, DS.accent],
-  description: id.charAt(0).toUpperCase() + id.slice(1).replace(/_/g, ' '),
-  category: 'essential',
-  subActions: [{ id: 'default', label: 'Add Entry', icon: 'add-circle-outline', color: DS.primary }],
-});
+// (deleted) — visuals come from constants/trackerVisuals.ts and
+// getTrackerConfig() above. No local fallback is needed.
 
 const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -897,7 +819,7 @@ const TodaySummaryBar = React.memo(({ todayCount, entries }: { todayCount: numbe
       </View>
       <View style={styles.todayBarDots}>
         {trackerCounts.map(([trackerId, count]) => {
-          const config = TRACKER_CONFIGS[trackerId] || getFallbackConfig(trackerId);
+          const config = getTrackerConfig(trackerId);
           return (
             <View key={trackerId} style={[styles.todayBarDot, { backgroundColor: config.color }]}>
               <Text style={styles.todayBarDotText}>{config.emoji} {count}</Text>
@@ -1479,7 +1401,7 @@ const NextEventPredictor = React.memo(({ entries, onEventPress }: {
           <TouchableOpacity
             key={pred.id}
             onPress={() => {
-              const config = TRACKER_CONFIGS[pred.trackerId] || getFallbackConfig(pred.trackerId);
+              const config = getTrackerConfig(pred.trackerId);
               const action = config.subActions[0];
               if (action) onEventPress(pred.trackerId, action);
             }}
@@ -2100,7 +2022,7 @@ const RecentActivityList = React.memo(({
               </View>
 
               {group.events.map((event: any, ei: number) => {
-                const cfg = TRACKER_CONFIGS[event?.trackerId || event?.type] || getFallbackConfig(event?.trackerId || 'default');
+                const cfg = getTrackerConfig(entryTrackerId(event) || 'default');
                 const isLast = ei === group.events.length - 1;
                 const time = event?.timestamp ? format(event.timestamp, 'h:mm a') : '';
                 const fullDate = event?.timestamp ? format(event.timestamp, 'MMM d, h:mm a') : '';
@@ -2205,7 +2127,7 @@ const TrackerActionModal = React.memo(({
 
   if (!visible || !trackerId) return null;
 
-  const config = TRACKER_CONFIGS[trackerId] || getFallbackConfig(trackerId);
+  const config = getTrackerConfig(trackerId);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
@@ -2503,30 +2425,30 @@ export default function UniversalTrackerHubScreen() {
 
   const todayCount = useMemo(() => {
     if (!currentBaby) return 0;
-    return entries.filter((e: any) => e?.timestamp >= today).length;
+    return scopedEntries(entries, currentBaby.id).filter((e: any) => e.timestamp >= today).length;
   }, [entries, today, currentBaby]);
 
   const weekCount = useMemo(() => {
     if (!currentBaby) return 0;
     const weekAgo = today - 6 * 86400000;
-    return entries.filter((e: any) => e?.timestamp >= weekAgo).length;
+    return scopedEntries(entries, currentBaby.id).filter((e: any) => e.timestamp >= weekAgo).length;
   }, [entries, today, currentBaby]);
 
   const trackingStreak = useMemo(() => {
-    if (!currentBaby || !entries || entries.length === 0) return 0;
-    const babyEntries = entries.filter((e: any) => e.babyId === currentBaby.id && !e.isDeleted);
-    return computeStreak(babyEntries).currentStreak;
+    if (!currentBaby) return 0;
+    return computeStreak(scopedEntries(entries, currentBaby.id)).currentStreak;
   }, [entries, currentBaby]);
 
   const weekSpark = useMemo(() => {
+    const scoped = scopedEntries(entries, currentBaby?.id);
     const spark: number[] = [];
     for (let i = 0; i < 7; i++) {
       const s = today - (6 - i) * 86400000;
       const e = s + 86400000;
-      spark.push(entries.filter((x: any) => x?.timestamp >= s && x?.timestamp < e).length);
+      spark.push(scoped.filter((x: any) => x.timestamp >= s && x.timestamp < e).length);
     }
     return spark;
-  }, [entries, today]);
+  }, [entries, today, currentBaby]);
 
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];
@@ -2542,18 +2464,23 @@ export default function UniversalTrackerHubScreen() {
     const sourceTrackers =
       trackers?.length > 0
         ? trackers
-        : Object.keys(TRACKER_CONFIGS).map((id) => ({
-            id,
-            name: TRACKER_CONFIGS[id].description || id,
-            emoji: TRACKER_CONFIGS[id].emoji,
-            color: TRACKER_CONFIGS[id].color,
-            gradient: TRACKER_CONFIGS[id].gradient,
-            category: TRACKER_CONFIGS[id].category,
-          }));
+        : Object.keys(TRACKER_SUB_ACTIONS).concat(['feed','sleep','diaper','potty','growth','milestone','medication'])
+            .filter((v, i, a) => a.indexOf(v) === i)
+            .map((id) => {
+              const v = getTrackerVisual(id);
+              return {
+                id,
+                name: v.label,
+                emoji: v.emoji,
+                color: v.color,
+                gradient: v.gradient,
+                category: 'essential',
+              };
+            });
 
     return sourceTrackers.map((t: any) => {
       const id = t.id;
-      const config = TRACKER_CONFIGS[id] || getFallbackConfig(id);
+      const config = getTrackerConfig(id);
       const entriesForTracker = getEntries(id);
       const lastEntry = entriesForTracker[0];
       const title =
@@ -2592,11 +2519,16 @@ export default function UniversalTrackerHubScreen() {
   const handleSubActionSelect = useCallback((trackerId: string, action: TrackerSubAction) => {
     HAPTIC_MEDIUM();
     setShowActionModal(false);
-    setTimeout(() => navigation.navigate('AddEntry', { trackerId, presetData: action.presetData }), 100);
+    // Deep-clone so the AddEntry route param can't alias this object.
+    // AllTrackersScreen already does this — matching it here prevents
+    // a preset on one screen from leaking into the other via shared
+    // references when the same TRACKER_SUB_ACTIONS row is used.
+    const presetData = action.presetData ? JSON.parse(JSON.stringify(action.presetData)) : undefined;
+    setTimeout(() => navigation.navigate('AddEntry', { trackerId, presetData }), 100);
   }, [navigation]);
 
   const handleQuickLog = useCallback((trackerId: string, subActionId: string) => {
-    const config = TRACKER_CONFIGS[trackerId] || getFallbackConfig(trackerId);
+    const config = getTrackerConfig(trackerId);
     const action = config.subActions.find((a) => a.id === subActionId);
     if (action) handleSubActionSelect(trackerId, action);
   }, [handleSubActionSelect]);

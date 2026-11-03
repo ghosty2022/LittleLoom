@@ -1019,11 +1019,17 @@ export const PediatricianPDFExport: React.FC = () => {
   };
 
   const filteredEntries = useMemo(() => {
-    if (dateRange === 'all') return entries as TrackerEntry[];
+    // Scope by baby + drop soft-deleted rows. Without this a PDF
+    // generated for Baby A could embed Baby B's feedings (the tracker
+    // context holds both babies' rows simultaneously during a switch).
+    const base = (entries as TrackerEntry[]).filter(
+      (e: any) => e && e.babyId === currentBaby?.id && !e.isDeleted,
+    );
+    if (dateRange === 'all') return base;
     const days = { '7d': 7, '30d': 30, '90d': 90 };
     const cutoff = subDays(new Date(), days[dateRange]).getTime();
-    return (entries as TrackerEntry[]).filter((e) => new Date(e.timestamp).getTime() > cutoff);
-  }, [entries, dateRange]);
+    return base.filter((e) => new Date(e.timestamp).getTime() > cutoff);
+  }, [entries, dateRange, currentBaby?.id]);
 
   const stats = useMemo(() => {
     const today = new Date();

@@ -54,6 +54,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../hooks/useTrackerContext';
 import { useBaby } from '../../context/BabyContext';
+import { useFamily } from '../../context/FamilyContext';
 import { TrackerEntry, UnifiedTrackerConfig } from '../../types/trackers';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useSweetAlert } from '../../components/SweetAlert';
@@ -65,6 +66,8 @@ import { useTrackerProgressive } from '../../hooks/useTrackerProgressive';
 import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
 import { TimelineCorrelation } from '../../components/trackers/TrackerCorrelationBadge';
 import type { RootStackParamList } from '../../types/navigation';
+import { getTrackerVisual } from '../../constants/trackerVisuals';
+import { scopedEntries, countToday } from '../../utils/entrySelectors';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -837,6 +840,7 @@ export default function TimelineScreen() {
   const { entries: trackerEntries, refreshEntries, deleteEntry, getTracker, getEntries } = useTracker();
   const { success, confirm, error } = useSweetAlert();
 
+  const { members, loadFamily } = useFamily();   // ← needed for live logger names
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { reminders: predictiveReminders } = usePredictiveReminders();
   const { growthIndex } = useGrowthIntelligence();
@@ -848,7 +852,8 @@ export default function TimelineScreen() {
     useCallback(() => {
       refreshEntries();
       refreshCurrentBaby();
-    }, [refreshEntries, refreshCurrentBaby]),
+      loadFamily().catch(() => {});
+    }, [refreshEntries, refreshCurrentBaby, loadFamily]),
   );
 
   const [activeTab, setActiveTab] = useState<TimelineTab>('timeline');
@@ -876,8 +881,9 @@ export default function TimelineScreen() {
   }, [babyLoading, currentBaby]);
 
   const allEntries = useMemo(() => {
-    if (!currentBaby || !Array.isArray(trackerEntries)) return [];
-    return [...trackerEntries].sort((a, b) => b.timestamp - a.timestamp);
+    if (!currentBaby) return [];
+    return [...scopedEntries(trackerEntries, currentBaby.id)]
+      .sort((a, b) => b.timestamp - a.timestamp);
   }, [trackerEntries, currentBaby]);
 
   const { insights: allInsights, dismissInsight } = useTrackerProgressive(selectedFilter === 'all' ? 'feed' : selectedFilter);
@@ -885,6 +891,9 @@ export default function TimelineScreen() {
   const activeReminders = useMemo(() => safeArray(predictiveReminders).filter(r => !dismissedReminders.has(r?.id)), [predictiveReminders, dismissedReminders]);
 
   /* Stats for pulse header */
+  // `allEntries` is ALREADY baby-scoped + non-deleted + timestamp-valid
+  // (Patch 2c). Everything below therefore inherits that guarantee and
+  // matches HomeScreen / Hub / FamilyDashboard bit-for-bit.
   const { todayCount, weekCount, streak, weekSpark } = useMemo(() => {
     const todayStart = startOfDay(new Date()).getTime();
     const today = allEntries.filter(e => e?.timestamp >= todayStart).length;
@@ -896,10 +905,9 @@ export default function TimelineScreen() {
       const e = s + 86400000;
       spark.push(allEntries.filter(x => x.timestamp >= s && x.timestamp < e).length);
     }
-    const babyEntries = allEntries.filter((e: any) => e.babyId === currentBaby?.id && !e.isDeleted);
-    const streakVal = computeStreak(babyEntries).currentStreak;
+    const streakVal = computeStreak(allEntries).currentStreak;
     return { todayCount: today, weekCount: week, streak: streakVal, weekSpark: spark };
-  }, [allEntries, currentBaby?.id]);
+  }, [allEntries]);
 
   /* Smart sections */
   const smartSections = useMemo((): SmartSection[] => {
@@ -1265,7 +1273,23 @@ export default function TimelineScreen() {
                                   {ev?.title || cfg.label}
                                 </Text>
                                 <Text style={[styles.eventMeta, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
-                                  {ev?.loggedByName ? `by ${ev.loggedByName}` : t?.name || cfg.label}
+                                  {(() => {
+                                    // Same resolution rule as HomeScreen's RecentTimeline
+                                    // and EntryDetail's audit card: prefer the LIVE
+                                    // family_members row over the historical snapshot.
+                                    const by = (ev as any)?.loggedBy;
+                                    const byName = String((ev as any)?.loggedByName || '').trim();
+                                    const member =
+                                      (by && (members.find((m: any) => m.userId === by) ||
+                                             members.find((m: any) => m.id === by))) ||
+                                      (byName && members.find((m: any) =>
+                                        (m.fullName || '').trim().toLowerCase() === byName.toLowerCase())) ||
+                                      null;
+                                    const name = member?.fullName || byName;
+                                    const label = member?.relationship || (ev as any)?.loggedByRole || '';
+                                    if (!name) return t?.name || cfg.label;
+                                    return label ? `${name} (${label})` : name;
+                                  })()}
                                 </Text>
                               </View>
                               <TouchableOpacity

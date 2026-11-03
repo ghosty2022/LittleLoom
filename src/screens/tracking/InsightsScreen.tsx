@@ -645,6 +645,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
   const { currentBaby, growthData, milestones, babies, getGrowthData, loadBabies } = useBaby();
 
   const { growthIndex } = useGrowthIntelligence();
+  const { members, loadFamily } = useFamily();   // ← needed for live logger names
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
 
   const [aiCorrelations, setAiCorrelations] = useState<DiscoveredCorrelation[]>([]);
@@ -962,7 +963,10 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     }
 
     /* Nap reminder */
-    const todaySleep = getTrackerEntries('sleep').filter((e: any) => isSameDay(new Date(e.timestamp), new Date()));
+    const todaySleep = getTrackerEntries('sleep').filter(
+      (e: any) => e && !e.isDeleted && e.babyId === currentBaby?.id &&
+        isSameDay(new Date(e.timestamp), new Date()),
+    );
     if (todaySleep.length === 0 && new Date().getHours() > 14) {
       items.push({
         id: 'nap-reminder',
@@ -1027,11 +1031,17 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
 
   /* ── Weekly pattern ── */
   const weeklyPattern = useMemo((): PatternData[] => {
-    if (!trackerEntries.length) return [];
+    if (!trackerEntries.length || !currentBaby?.id) return [];
     const last7Days = Array.from({ length: 7 }, (_, i) => subDays(new Date(), 6 - i));
+    // Baby-scope + drop soft-deleted rows, matching Home / Hub /
+    // Timeline. Without this the weekly bar chart could show Baby A's
+    // activity while the rest of the screen shows Baby B's.
+    const scoped = trackerEntries.filter(
+      (e: any) => e && e.babyId === currentBaby.id && !e.isDeleted,
+    );
 
     return last7Days.map(day => {
-      const dayActivities = trackerEntries.filter((a: any) => {
+      const dayActivities = scoped.filter((a: any) => {
         const aDate = new Date(a.timestamp || a.date);
         return isSameDay(aDate, day);
       });
@@ -1043,7 +1053,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
         total: dayActivities.length,
       };
     });
-  }, [trackerEntries]);
+  }, [trackerEntries, currentBaby?.id]);
 
   /* ── Weekly stats ── */
   const weeklyStats = useMemo((): WeeklyStats => {

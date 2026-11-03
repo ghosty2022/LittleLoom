@@ -1046,7 +1046,10 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
   const todayStats = useMemo<TodayGlanceStat[]>(() => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const todayEntries = trackerEntries.filter((e: any) => e.timestamp >= todayStart.getTime() && !e.isDeleted);
-    const countBy = (id: string) => todayEntries.filter((e: any) => e.trackerId === id).length;
+    // Match `trackerId` OR `type` — legacy entries were written with
+    // only `type` set, and the Timeline / Hub use `entryTrackerId()`
+    // to normalise both. Do the same here.
+    const countBy = (id: string) => todayEntries.filter((e: any) => (e.trackerId || e.type) === id).length;
     return [
       { key: 'feed', icon: '🍼', label: 'Feeds', count: countBy('feed'), color: '#f59e0b' },
       { key: 'sleep', icon: '😴', label: 'Sleeps', count: countBy('sleep'), color: '#8b5cf6' },
@@ -1094,7 +1097,13 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
         const memberMatch =
           members.find((m: any) => m.userId === e.loggedBy) ||
           members.find((m: any) => m.id === e.loggedBy) ||
-          members.find((m: any) => m.fullName === e.loggedByName);
+          (e.loggedByName
+            ? members.find(
+                (m: any) =>
+                  (m.fullName || '').trim().toLowerCase() ===
+                  String(e.loggedByName).trim().toLowerCase(),
+              )
+            : undefined);
         map.set(key, {
           id: key,
           name: memberMatch?.fullName || e.loggedByName || 'Someone',
@@ -1119,7 +1128,14 @@ export default function FamilyDashboardScreen({ navigation }: FamilyDashboardScr
         const trackerId = e.trackerId || e.type || 'note';
         const memberMatch =
           members.find((m: any) => m.userId === e.loggedBy) ||
-          members.find((m: any) => m.id === e.loggedBy);
+          members.find((m: any) => m.id === e.loggedBy) ||
+          (e.loggedByName
+            ? members.find(
+                (m: any) =>
+                  (m.fullName || '').trim().toLowerCase() ===
+                  String(e.loggedByName).trim().toLowerCase(),
+              )
+            : undefined);
         return {
           id: e.id || `family-event-${i}`,
           type: trackerId,

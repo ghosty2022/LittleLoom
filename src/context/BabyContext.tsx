@@ -898,11 +898,14 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('[BabyContext] No babies found, checking invite_codes fallback...');
         }
         try {
+          // Look for ANY completed invite for this user — not just the
+          // newest. `.maybeSingle()` would error with PGRST116 when a
+          // user has accepted more than one invite; `.order()` + array
+          // handles that case.
           const { data: inviteRows, error: inviteError } = await supabase
             .from('invite_codes')
-            .select('code, family_id, role, signup_completed, used')
+            .select('code, family_id, role, signup_completed, used, used_at')
             .eq('used_by', userId)
-            .eq('used', true)
             .eq('signup_completed', true)
             .order('used_at', { ascending: false });
 
@@ -917,15 +920,18 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
               seenFallbackIds.add(fid);
               if (seenBabyIds.has(fid)) continue;
 
-              // Try the direct SELECT first
+              // Try the direct SELECT first. `.maybeSingle()` can throw
+              // PGRST116 if RLS hides the row AND a second row somehow
+              // matches, so use a limit-1 array read.
               let babyRow: any = null;
               try {
-                const { data: direct } = await supabase
+                const { data: directRows } = await supabase
                   .from('babies')
                   .select('*')
                   .eq('id', fid)
-                  .maybeSingle();
-                babyRow = direct ?? null;
+                  .eq('is_active', true)
+                  .limit(1);
+                babyRow = Array.isArray(directRows) ? directRows[0] ?? null : null;
               } catch {}
 
               // If RLS blocked it, try the SECURITY DEFINER RPC
@@ -1351,14 +1357,19 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // the RPC has had time to commit.
           (async () => {
             try {
-              const { data: inviteRow } = await supabase
+              // `.limit(1).maybeSingle()` is safe here, but wrap it in
+              // a try/catch on the promise result to swallow PGRST116
+              // if a race inserts a second row between .limit(1) and
+              // .maybeSingle().
+              const { data: inviteRows } = await supabase
                 .from('invite_codes')
                 .select('code, family_id, signup_completed')
                 .eq('used_by', nextUserId)
                 .eq('signup_completed', true)
                 .order('used_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+                .limit(1);
+
+              const inviteRow = Array.isArray(inviteRows) ? inviteRows[0] : null;
 
               if (inviteRow?.family_id) {
                 // Second load after the RPC commit window.

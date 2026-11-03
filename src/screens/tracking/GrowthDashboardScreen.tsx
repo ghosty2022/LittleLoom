@@ -1008,6 +1008,7 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   const { userProfile } = useAuth();
   const { entries: trackerEntries } = useTracker();
   const { growthIndex } = useGrowthIntelligence();
+  const { members, loadFamily } = useFamily();   // ← needed for live logger names
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { achievements, newlyUnlocked, streak: globalStreak } = useTrackerAchievements();
   const { getPercentile, getStatus } = useWHOGrowthCalculator();
@@ -1192,7 +1193,11 @@ export default function GrowthDashboardScreen({ navigation }: any) {
     { key: 'photos' as DashboardTab, label: 'Photos', icon: 'images-outline' as const },
   ];
 
-  const todayLogs = trackerEntries.filter((e: any) => e?.timestamp >= startOfDay(new Date()).getTime()).length;
+  const todayLogs = trackerEntries.filter(
+    (e: any) => e?.timestamp >= startOfDay(new Date()).getTime() &&
+      e.babyId === currentBaby?.id &&
+      !e.isDeleted,
+  ).length;
 
   return (
     <View style={[styles.container, { backgroundColor: isDarkBg(theme) ? DS.darkBg : DS.gray50 }]}>

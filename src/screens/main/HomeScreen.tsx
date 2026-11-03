@@ -2643,13 +2643,9 @@ useEffect(() => {
   const dailySummary = useMemo((): DailySummary => {
     if (!hasBaby) return {
       feeds: 0, sleepHours: 0, diapers: 0, lastFeedTime: null, lastSleepTime: null,
-      yesterdayFeeds: 0, yesterdaySleepHours: 0, yesterdayDiapers: 0
+      yesterdayFeeds: 0, yesterdaySleepHours: 0, yesterdayDiapers: 0,
     };
     const scoped = scopedEntries(allTimelineEvents, displayedBaby?.id);
-    // ↓ original body but replace `allTimelineEvents` with `scoped`
-      feeds: 0, sleepHours: 0, diapers: 0, lastFeedTime: null, lastSleepTime: null,
-      yesterdayFeeds: 0, yesterdaySleepHours: 0, yesterdayDiapers: 0
-    };
 
     const today = new Date();
     const yesterday = new Date(today);
