@@ -331,7 +331,30 @@ function NavigationContent({
     };
   }, []);
 
-  const babyCountRef = useRef(0);
+  // ── Invite-probe cache reset on user change ─────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const uid = user?.id ?? null;
+        if (uid !== lastInviteProbeUserId.current) {
+          lastInviteProbeUserId.current = uid;
+          inviteProbeCacheRef.current = null;
+        }
+      } catch {}
+    })();
+  }, [isAuthenticated]);
+
+    const babyCountRef = useRef(0);
+  const hasSkippedBabyRef = useRef(false);
+  // ── Invite-probe cache ─────────────────────────────────────
+  // The invite_codes probe is fired by the resolver effect and
+  // the hydration re-evaluate effect. Without a cache, that's
+  // 2+ Supabase round-trips per session just to decide which
+  // stack to render. Probe ONCE per session, reset on user-id
+  // change.
+  const inviteProbeCacheRef = useRef<boolean | null>(null);
+  const lastInviteProbeUserId = useRef<string | null>(null);
   const hasSkippedBabyRef = useRef(false);
 
   const securityOn = useMemo(() =>
@@ -469,20 +492,34 @@ function NavigationContent({
         return;
       }
 
+      // ── Invite-accept short-circuit (cached) ──────────────
+      // Probe AT MOST once per session and only when the user
+      // genuinely has 0 babies. The resolver re-fires on focus,
+      // on baby hydration, and on every AppState change, so
+      // without the cache we'd burn a Supabase query each time.
       let joinedViaInvite = false;
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user?.id) {
-          const { data: invRows } = await supabase
-            .from('invite_codes')
-            .select('code')
-            .eq('used_by', user.id)
-            .eq('signup_completed', true)
-            .limit(1);
-          joinedViaInvite =
-            Array.isArray(invRows) && invRows.length > 0 && !!invRows[0]?.code;
+      if (babyCountRef.current === 0) {
+        if (inviteProbeCacheRef.current === null) {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user?.id) {
+              const { data: invRows } = await supabase
+                .from('invite_codes')
+                .select('code')
+                .eq('used_by', user.id)
+                .eq('signup_completed', true)
+                .limit(1);
+              inviteProbeCacheRef.current =
+                Array.isArray(invRows) && invRows.length > 0 && !!invRows[0]?.code;
+            } else {
+              inviteProbeCacheRef.current = false;
+            }
+          } catch {
+            inviteProbeCacheRef.current = false;
+          }
         }
-      } catch {}
+        joinedViaInvite = inviteProbeCacheRef.current === true;
+      }
       if (cancelledLocal) return;
 
       if (joinedViaInvite) {
@@ -590,17 +627,19 @@ function NavigationContent({
 
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user?.id || cancelledLocal) return;
-        const { data: invRows } = await supabase
-          .from('invite_codes')
-          .select('code')
-          .eq('used_by', user.id)
-          .eq('signup_completed', true)
-          .limit(1);
-        const isJoiner =
-          Array.isArray(invRows) && invRows.length > 0 && !!invRows[0]?.code;
-        if (isJoiner && lastNavState.current !== 'MAIN') {
+        if (inviteProbeCacheRef.current === null) {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user?.id || cancelledLocal) return;
+          const { data: invRows } = await supabase
+            .from('invite_codes')
+            .select('code')
+            .eq('used_by', user.id)
+            .eq('signup_completed', true)
+            .limit(1);
+          inviteProbeCacheRef.current =
+            Array.isArray(invRows) && invRows.length > 0 && !!invRows[0]?.code;
+        }
+        if (inviteProbeCacheRef.current === true && lastNavState.current !== 'MAIN') {
           lastNavState.current = 'MAIN';
           setNavState('MAIN');
         }
@@ -979,13 +1018,12 @@ function NavigationContent({
       multiBabySettleTimerRef.current = setTimeout(() => {
         multiBabySettleTimerRef.current = null;
         if (multiBabyCheckedRef.current) return;
-        // Only latch if the count really settled at <= 1.
-        const currentCount = Array.isArray(babies) ? babies.length : 0;
-        if (currentCount <= 1) {
+        // Read the LIVE count from `babyCountRef`, kept current by
+        // the "Baby count tracking" effect — the closure's
+        // `babies` value is stale by the time the timer fires.
+        if ((babyCountRef.current ?? 0) <= 1) {
           multiBabyCheckedRef.current = true;
         }
-        // If it grew, this effect will fire again when `babies`
-        // updates — the dependency array includes `babies`.
       }, 500);
       return () => {
         if (multiBabySettleTimerRef.current) {

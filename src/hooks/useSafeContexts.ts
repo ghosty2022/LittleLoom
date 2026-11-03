@@ -1,15 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
 import { useContext } from 'react';
 import { useTheme as useThemeOriginal } from '../context/AppContext';
 import { useAuth as useAuthOriginal } from '../context/AuthContext';
@@ -17,9 +5,13 @@ import { useBaby as useBabyOriginal } from '../context/BabyContext';
 import { useActivity as useActivityOriginal } from '../context/ActivityContext';
 import useCustomizationOriginal from './useCustomization';
 
-
 import { TrackerContext } from '../context/TrackerContext';
 import { UserContext } from '../context/UserContext';
+import { useFamily as _useFamilyFromContext } from '../context/FamilyContext';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DEFAULTS
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const DEFAULT_APP_COLORS = {
   background: '#f8faff',
@@ -42,7 +34,6 @@ const DEFAULT_APP_COLORS = {
 };
 
 const DEFAULT_FULL_THEME = {
-  
   primary: '#667eea',
   secondary: '#764ba2',
   accent: '#fa709a',
@@ -50,8 +41,6 @@ const DEFAULT_FULL_THEME = {
   spinnerColor: '#667eea',
   darkText: '#4338ca',
   lightText: '#ffffff',
-
-  
   background: '#f4f6fa',
   surface: '#ffffff',
   surfaceElevated: '#ffffff',
@@ -136,18 +125,15 @@ const DEFAULT_CUSTOMIZATION = {
   triggerHaptic: async () => {},
 };
 
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   SAFE HOOKS
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 function useSafeApp() {
   try {
-    
-    
-    
-    
     const app = useThemeOriginal() as any;
     return {
       ...app,
-      
       isNavVisible: true,
       isNavCompact: false,
       showNav: () => {},
@@ -155,7 +141,6 @@ function useSafeApp() {
       toggleCompact: () => {},
       forceShowNav: () => {},
       forceHideNav: () => {},
-      
       isCommunityScreen: app?.isCommunityScreen ?? false,
       setCommunityScreen:
         typeof app?.setCommunityScreen === 'function'
@@ -163,7 +148,7 @@ function useSafeApp() {
           : () => {},
       handleScroll: () => {},
     };
-  } catch (e) {
+  } catch {
     return {
       themeMode: 'system' as const,
       appearance: 'system' as const,
@@ -190,12 +175,10 @@ function useSafeApp() {
   }
 }
 
-
-
 function useSafeAuth() {
   try {
     return useAuthOriginal();
-  } catch (e) {
+  } catch {
     return {
       isLoading: false,
       isAuthenticated: false,
@@ -245,28 +228,36 @@ function useSafeAuth() {
       isUsernameAvailable: async () => ({ available: true, message: '' }),
       registerCommunityUsername: async () => false,
       updateCommunityAvatar: async () => false,
-      // ── NEW: temp-password APIs ──────────────────────────────
-      generateTemporaryPassword: async () => ({
-        success: false,
-        message: 'Not ready',
-      }),
-      setNewPasswordAfterTemp: async () => ({
-        success: false,
-        message: 'Not ready',
-      }),
+      signUpWithInviteCode: async () => ({ success: false, message: 'Not ready' }),
+      forgotPassword: async () => ({ success: false, message: 'Not ready' }),
+      resetPasswordForUser: async () => ({ success: false, message: 'Not ready' }),
+      resetPasswordWithPin: async () => ({ success: false, message: 'Not ready' }),
+      findUserByEmail: async () => null,
+      findUserByEmailOrUsername: async () => null,
+      findUserByEmailOrUsernameOrPhone: async () => null,
+      checkSession: async () => false,
+      forceLogoutOnInvalidSession: async () => false,
+      verifyPassword: async () => false,
+      deleteAccount: async () => ({ success: false, message: 'Not ready' }),
+      deleteAccountWithConfirmation: async () => ({ success: false, message: 'Not ready' }),
+      refreshSession: async () => false,
+      generateTemporaryPassword: async () => ({ success: false, message: 'Not ready' }),
+      setNewPasswordAfterTemp: async () => ({ success: false, message: 'Not ready' }),
       refreshMustChangePassword: async () => false,
+      broadcastProfileChange: async () => {},
+      subscribeToProfileChanges: () => () => {},
     };
   }
 }
 
-
-
 function useSafeBaby() {
   try {
     return useBabyOriginal();
-  } catch (e) {
+  } catch {
     return {
       isLoading: false,
+      isSyncing: false,
+      isInitialized: false,
       babies: [],
       currentBabyId: null,
       currentBaby: null,
@@ -280,23 +271,44 @@ function useSafeBaby() {
       activities: [],
       entries: [],
       isLoadingEntries: false,
+      lastSyncTime: null,
+      userRoles: {},
+      userPermissions: {},
+
       loadBabies: async () => {},
-      createBaby: async () => false,
+      forceRefresh: async () => {},
+      loadEntries: async () => {},
+      syncWithActivityContext: async () => {},
+
+      createBaby: async () => null,
       updateBaby: async () => {},
       deleteBaby: async () => false,
       switchBaby: async () => false,
       refreshCurrentBaby: async () => {},
       skipBaby: async () => {},
       clearSkipBaby: async () => {},
+
+      getUserRoleForBaby: () => null,
+      hasPermissionForBaby: () => false,
+      getBabiesForRole: () => [],
+      canManageBaby: () => false,
+      canViewBaby: () => false,
+      canEditBaby: () => false,
+      getCurrentBabyId: () => null,
+      subscribeToBabyChanges: () => () => {},
+
       calculateAge: () => '',
       getBabyAge: () => '',
+
       addGrowthMeasurement: async () => false,
       getGrowthData: () => [],
       getLatestMeasurements: () => ({ height: null, weight: null, head: null, temperature: null }),
       deleteGrowthMeasurement: async () => false,
+
       addMilestone: async () => false,
       getMilestones: () => [],
       deleteMilestone: async () => false,
+
       addSleepLog: async () => false,
       getSleepLogs: () => [],
       endSleepSession: async () => false,
@@ -311,31 +323,30 @@ function useSafeBaby() {
       getPottySuccessRate: () => 0,
       addMedicationLog: async () => false,
       getMedicationLogs: () => [],
+
       addActivity: async () => false,
       getRecentActivities: () => [],
       getActivitiesByType: () => [],
       deleteActivity: async () => false,
-      getBabyStats: () => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }),
-      updateBabyStats: async () => {},
-      loadEntries: async () => {},
+
       deleteEntry: async () => false,
       addEntry: async () => false,
       updateEntry: async () => false,
       getEntryById: () => undefined,
       getDateTitle: () => 'Today',
-      syncWithActivityContext: async () => {},
       scheduleActivityReminder: async () => null,
       cancelActivityReminder: async () => {},
+
+      getBabyStats: () => ({ streak: 0, milestones: 0, photos: 0, entries: 0 }),
+      updateBabyStats: async () => {},
     };
   }
 }
 
-
-
 function useSafeActivity() {
   try {
     return useActivityOriginal();
-  } catch (e) {
+  } catch {
     return {
       entries: [],
       isLoading: false,
@@ -362,21 +373,65 @@ function useSafeActivity() {
   }
 }
 
-
-
 function useSafeCustomization() {
   try {
     return useCustomizationOriginal();
-  } catch (e) {
-    
-    
+  } catch {
     return DEFAULT_CUSTOMIZATION;
   }
 }
 
+/* ─── Family ──────────────────────────────────────────────────────────── */
 
+function getFallbackFamily() {
+  return {
+    isLoading: false,
+    members: [] as any[],
+    parent1: null,
+    parent2: null,
+    guardians: [] as any[],
+    pendingInvites: [] as any[],
+    loadFamily: async () => {},
+    refreshFamily: async () => {},
+    inviteMember: async () => false,
+    addMemberDirectly: async () => ({
+      ok: false,
+      code: 'not_signed_in',
+      title: 'Not Ready',
+      message: 'Family context has not mounted yet.',
+    }),
+    removeMember: async () => false,
+    promoteMember: async () => null,
+    getEffectivePermissions: () => ({}) as any,
+    updateParent2Profile: async () => false,
+    updateGuardianProfile: async () => null,
+    resendInvite: async () => false,
+    cancelInvite: async () => false,
+    refreshMemberStatus: async () => {},
+    generateInviteCode: async () => ({ code: '', success: false, message: 'Not ready' }),
+    getActiveInviteCodes: async () => [],
+    revokeInviteCode: async () => false,
+    getCurrentBaby: () => null,
+    getBabyId: () => null,
+    validateInviteCode: async () => ({ valid: false, data: null, message: 'Not ready' }),
+    useInviteCode: async () => ({ success: false, message: 'Not ready' }),
+    markSignupComplete: async () => ({ success: false, message: 'Not ready' }),
+    getInviteCodeById: async () => null,
+    recoverPartialSignup: async () => ({ success: false, message: 'Not ready' }),
+    getPartialSignupInfo: async () => ({ exists: false }),
+    transferOwnership: async () => ({ success: false, message: 'Not ready' }),
+  };
+}
 
+export function useSafeFamily() {
+  try {
+    return _useFamilyFromContext();
+  } catch {
+    return getFallbackFamily() as any;
+  }
+}
 
+/* ─── Tracker ─────────────────────────────────────────────────────────── */
 
 function getFallbackTrackerContext() {
   return {
@@ -387,6 +442,7 @@ function getFallbackTrackerContext() {
     entriesByTracker: {},
     lastTrackerId: null,
     currentBabyId: null,
+    savingTrackerId: null,
     progressive: {
       todayEntries: [],
       yesterdayEntries: [],
@@ -452,16 +508,14 @@ function getFallbackTrackerContext() {
 function useSafeTracker() {
   try {
     const ctx = useContext(TrackerContext);
-    if (!ctx) {
-      return getFallbackTrackerContext();
-    }
+    if (!ctx) return getFallbackTrackerContext();
     return ctx;
-  } catch (e) {
+  } catch {
     return getFallbackTrackerContext();
   }
 }
 
-
+/* ─── User ────────────────────────────────────────────────────────────── */
 
 function getFallbackUserContext() {
   return {
@@ -499,22 +553,23 @@ function getFallbackUserContext() {
     getCommunityHandle: () => '',
     syncWithAuthProfile: async () => {},
     getAuthProfile: () => null,
+    pickAndUploadAvatar: async () => null,
   };
 }
 
 function useSafeUser() {
   try {
     const ctx = useContext(UserContext);
-    if (!ctx) {
-      return getFallbackUserContext();
-    }
+    if (!ctx) return getFallbackUserContext();
     return ctx;
-  } catch (e) {
+  } catch {
     return getFallbackUserContext();
   }
 }
 
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   UNIFIED THEME
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export function useUnifiedTheme() {
   const app = useSafeApp();
@@ -558,7 +613,9 @@ export function useUnifiedTheme() {
   };
 }
 
-
+/* ═══════════════════════════════════════════════════════════════════════════
+   EXPORTS — both `useSafeFamily` and the legacy `useFamily` alias.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export {
   useSafeApp,
@@ -569,5 +626,8 @@ export {
   useSafeTracker,
   useSafeUser,
 };
+
+// Backwards-compat: every screen imports `useFamily` from this hook file.
+export { useSafeFamily as useFamily };
 
 export default useUnifiedTheme;

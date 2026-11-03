@@ -198,6 +198,16 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const loadFamilyRef = useRef<(() => Promise<void>) | null>(null);
   // Prevents the "no baby yet" retry loop from running forever.
   const loadFamilyRetryCount = useRef(0);
+  // Queue flag — when loadFamily() is called while another run is
+  // in-flight, remember the request and re-run once it finishes.
+  // Without this, a realtime `family_members.inserted` fired during
+  // the previous round-trip is silently lost, and the new member
+  // never appears until the next focus.
+  const loadFamilyQueueRef = useRef(false);
+  // Live snapshot of `currentBaby` so async commit guards can detect
+  // mid-flight baby switches without a stale closure.
+  const currentBabyRef = useRef<any>(currentBaby);
+  currentBabyRef.current = currentBaby;
 
   // ─── Realtime: reload family when members change on any device ──
   // ── Realtime: reload family when members change on any device ──
@@ -892,6 +902,20 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // Always emit a fresh state object so `useMemo([members])`
       // consumers re-render even when length is unchanged.
+      // ── COMMIT GUARD — discard members for the wrong baby ──────
+      // If the active baby changed while we were doing the
+      // round-trip (user switched babies mid-load), the results
+      // belong to the OLD baby. A newer loadFamily() is already
+      // in flight from the switch effect, so drop this one.
+      if (currentBaby?.id && currentBabyRef.current?.id !== currentBaby.id) {
+        if (__DEV__) {
+          console.log(
+            '[FamilyContext] loadFamily discarded — baby changed during load',
+          );
+        }
+        return;
+      }
+
       setState({
         isLoading: false,
         members: uniqueMembers,
@@ -3172,9 +3196,10 @@ export const useFamily = (): FamilyContextType => {
       message: 'Family context has not mounted yet.',
     }),
     removeMember: async () => false,
+    promoteMember: async () => null,
     getEffectivePermissions: () => ROLE_PERMISSIONS[UserRole.VIEWER],
     updateParent2Profile: async () => false,
-    updateGuardianProfile: async () => false,
+    updateGuardianProfile: async () => null,
     resendInvite: async () => false,
     cancelInvite: async () => false,
     refreshMemberStatus: async () => {},
