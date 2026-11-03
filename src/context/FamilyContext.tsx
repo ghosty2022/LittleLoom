@@ -8,7 +8,7 @@ import { supabase } from '@/utils/supabase';
 import { useAuth, subscribeToProfileChanges } from './AuthContext';
 import { useBaby } from './BabyContext';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember, resolveProfileByIdentifier, ResolvedProfile } from '../types/roles';
+import { UserRole, Permission, ROLE_PERMISSIONS, FamilyMember, resolveProfileByIdentifier, ResolvedProfile, normalizeRole } from '../types/roles';
 
 export type { FamilyMember } from '../types/roles';
 
@@ -760,6 +760,55 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
+      // ── 3b. Backfill `user_id` for rows that have `email` but
+      //         no `user_id`. This is the root cause of "the inviter
+      //         is not in the family list": an invite-accepted
+      //         member's own row (parent1's row) may have been
+      //         inserted with `user_id = NULL` by an older version
+      //         of `accept_invite_code`, which makes every
+      //         `members.find(m => m.userId === inviterUserId)`
+      //         miss them silently.
+      //
+      // We do ONE batched profile lookup, then mutate `rawRows`
+      // and `profileMap` in place so `buildMember` sees the
+      // resolved user_id.
+      const nullEmailRows = rawRows.filter(
+        (r) => !r.user_id && typeof r.email === 'string' && r.email.trim().length > 0,
+      );
+      if (nullEmailRows.length > 0) {
+        const emails = Array.from(
+          new Set(nullEmailRows.map((r) => String(r.email).trim().toLowerCase())),
+        );
+        try {
+          const { data: byEmailRows } = await supabase
+            .from('profiles')
+            .select('id, email, full_name, community_display_name, community_avatar, avatar_url, avatar, role, phone_number')
+            .in('email', emails);
+          const emailMap: Record<string, any> = {};
+          (byEmailRows || []).forEach((p: any) => {
+            if (p.email) {
+              emailMap[String(p.email).trim().toLowerCase()] = p;
+              profileMap[p.id] = p;
+            }
+          });
+          for (const r of nullEmailRows) {
+            const matched = emailMap[String(r.email).trim().toLowerCase()];
+            if (matched?.id) {
+              r.user_id = matched.id; // mutate before buildMember
+              // Fire-and-forget DB backfill so next load is instant.
+              supabase
+                .from('family_members')
+                .update({ user_id: matched.id, updated_at: new Date().toISOString() })
+                .eq('id', r.id)
+                .then(() => {})
+                .catch(() => {});
+            }
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[FamilyContext] email backfill failed:', e);
+        }
+      }
+
       // ── 4. Normalize each row into the FamilyMember shape ──────
       const buildMember = (row: any): FamilyMember => {
         // ── AUTHORITATIVE ROLE SOURCE ────────────────────────────────
@@ -780,12 +829,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         //   • Role demotion (parent1 → parent2/guardian) is visible
         //     immediately too (they no longer appear in Primary Parent
         //     group).
-        const rawRole = (row.role || 'viewer').toString().toLowerCase();
-        const enumRole: UserRole =
-          rawRole === 'parent1' ? UserRole.PARENT_1
-          : rawRole === 'parent2' ? UserRole.PARENT_2
-          : rawRole === 'guardian' ? UserRole.GUARDIAN
-          : UserRole.VIEWER;
+        // Use the shared normalizer — handles 'Primary Parent',
+        // 'PARENT1', 'parent_1', 'owner', 'coparent', etc. A raw
+        // string comparison here used to silently downgrade legacy
+        // 'Primary Parent' rows to VIEWER, which then showed them
+        // as "pending" in FamilySharing and disabled every
+        // manage-permission path in EditGuardian.
+        const enumRole: UserRole = normalizeRole(row.role);
 
         const profile = row.user_id ? profileMap[row.user_id] : null;
         const liveName =
@@ -819,8 +869,14 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // falls through to "Never". Normalize here so
         // `FamilyMember.lastActive` is ALWAYS an ISO string (or
         // undefined when the raw value was empty/invalid).
-        const normalizedLastActive = ((): string | undefined => {
-          const raw = row.last_active;
+        // Shared date normaliser — accepts ISO strings, SQL
+        // timestamps, pure 10-/13-digit epoch strings, AND
+        // decimal epoch strings (e.g. "1730592000000.5" written
+        // by EXTRACT(EPOCH FROM now()) * 1000). The decimal case
+        // is what made `family_members.added_at` from the
+        // `accept_invite_code` RPC show up as "Unknown" in
+        // EditGuardian's "Member Since" row.
+        const normaliseDateString = (raw: unknown): string | undefined => {
           if (raw == null || raw === '') return undefined;
           if (typeof raw === 'number' && Number.isFinite(raw)) {
             const ms = raw <= 1e12 ? raw * 1000 : raw;
@@ -828,15 +884,30 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
           const s = String(raw).trim();
           if (!s) return undefined;
-          if (/^\d+$/.test(s)) {
-            const n = parseInt(s, 10);
+          // Decimal epoch (12–17 chars, contains '.'):
+          //   "1730592000000.5"    → 1730592000000 ms
+          //   10-digit decimals are seconds → * 1000
+          if (/^\d+(\.\d+)?$/.test(s)) {
+            const n = parseFloat(s);
             if (!Number.isFinite(n) || n <= 0) return undefined;
-            const ms = s.length <= 10 ? n * 1000 : n;
+            const ms = n <= 1e12 ? n * 1000 : n;
             return new Date(ms).toISOString();
           }
           const t = new Date(s).getTime();
           return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
-        })();
+        };
+
+        const normalizedLastActive = normaliseDateString(row.last_active);
+
+        // `added_at` is TEXT on the DB and has been written as
+        // ISO, epoch millis, and stringified-decimal epoch over
+        // time. Fall back to `created_at` if present, then to
+        // `updated_at`, then to `undefined` — the UI shows
+        // "Unknown" for undefined, which is honest.
+        const normalizedAddedAt =
+          normaliseDateString(row.added_at) ||
+          normaliseDateString((row as any).created_at) ||
+          normaliseDateString(row.updated_at);
 
         const built: any = {
           id: row.id,
@@ -847,7 +918,7 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           role: enumRole,
           relationship: row.relationship,
           permissions,
-          addedAt: row.added_at,
+          addedAt: normalizedAddedAt,
           addedBy: row.added_by,
           canBeRemoved: row.can_be_removed !== false,
           lastActive: normalizedLastActive,

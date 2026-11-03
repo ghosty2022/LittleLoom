@@ -543,7 +543,15 @@ const FamilyHealthCard = React.memo(({ members, isDark }: { members: any[]; isDa
               {[
                 { label: 'Active', value: members.filter((m) => { const t = parseLastActive(m?.lastActive); return t > 0 && Date.now() - t <= 86400000; }).length, color: DS.success },
                 { label: 'Week', value: members.filter((m) => { const t = parseLastActive(m?.lastActive); return t > 0 && Date.now() - t <= 7 * 86400000; }).length, color: DS.warning },
-                { label: 'Pending', value: members.filter((m) => parseLastActive(m?.lastActive) === 0 || m.status === 'pending').length, color: DS.danger },
+                {
+  label: 'Pending',
+  value: members.filter(
+    (m) =>
+      String(m?.role) !== 'parent1' &&
+      (parseLastActive(m?.lastActive) === 0 || m.status === 'pending'),
+  ).length,
+  color: DS.danger,
+},
               ].map((stat, i) => (
                 <View key={i} style={styles.healthStat}>
                   <Text style={[styles.healthStatVal, { color: stat.color }]}>{stat.value}</Text>

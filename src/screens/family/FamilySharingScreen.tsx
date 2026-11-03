@@ -626,7 +626,15 @@ const FamilyHealthCard = React.memo(({ members, isDark }: { members: FamilyMembe
               {[
                 { label: 'Active', value: members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 86400000).length, color: DS.success },
                 { label: 'Week', value: members.filter(m => m.lastActive && new Date(m.lastActive).getTime() > Date.now() - 7 * 86400000).length, color: DS.warning },
-                { label: 'Pending', value: members.filter(m => !m.lastActive || m.status === 'pending').length, color: DS.danger },
+                {
+                  label: 'Pending',
+                  value: members.filter(
+                    (m) =>
+                      m.role !== UserRole.PARENT_1 &&
+                      (!m.lastActive || m.status === 'pending'),
+                  ).length,
+                  color: DS.danger,
+                },
               ].map((stat, i) => (
                 <View key={i} style={styles.healthStat}>
                   <Text style={[styles.healthStatVal, { color: stat.color }]}>{stat.value}</Text>
@@ -702,7 +710,12 @@ const MemberCard = React.memo(({
   const roleCfg = ROLE_CONFIG[member.role] || ROLE_CONFIG[UserRole.VIEWER];
   const _lastActiveMs = parseLastActive((member as any).lastActive);
   const isOnline = _lastActiveMs > 0 && Date.now() - _lastActiveMs < 5 * 60000;
-  const isPending = _lastActiveMs === 0 || member.status === 'pending';
+  // Parent1 is NEVER "pending" — they created the family. The
+  // last_active column is written by `touch_family_member_last_active`
+  // but may lag on cold boot.
+  const isPending =
+    member.role !== UserRole.PARENT_1 &&
+    (_lastActiveMs === 0 || member.status === 'pending');
   // Snapshot the timestamp for the "Active X ago" label so we don't
   // re-derive it inside the render below (which can't use parseLastActive
   // again without shadowing).
@@ -872,7 +885,9 @@ const AccessTab = ({
         const permMap = ROLE_PERMISSION_MAP[member.role] || ROLE_PERMISSION_MAP[UserRole.VIEWER];
         const activePerms = (Object.keys(PERMISSION_META) as PermissionKey[]).filter(k => permMap[k]);
         const isYou = member.id === currentUserId || member.userId === currentUserId;
-        const isPending = !member.lastActive || member.status === 'pending';
+        const isPending =
+          member.role !== UserRole.PARENT_1 &&
+          (!member.lastActive || member.status === 'pending');
         return (
           <Animated.View key={member.id} entering={FadeInUp.delay(80 + idx * 40).springify()}>
             <PressableScale
@@ -1160,10 +1175,13 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     [members],
   );
   const pendingCount = useMemo(
-    () => members.filter(m => {
-      const t = parseLastActive((m as any).lastActive);
-      return t === 0 || m.status === 'pending';
-    }).length,
+    () =>
+      members.filter((m: any) => {
+        const role = String(m?.role || '').toLowerCase();
+        if (role === 'parent1') return false;
+        const t = parseLastActive(m?.lastActive);
+        return t === 0 || m.status === 'pending';
+      }).length,
     [members],
   );
   const unreadChat = 0;
@@ -1173,6 +1191,14 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
 
   // Re-read family on every focus so role changes made via
   // EditGuardian / another device reflect immediately.
+  const loadActiveCodes = useCallback(async () => {
+    if (!currentBaby) return;
+    try {
+      const codes = await getActiveInviteCodes();
+      setActiveCodes((codes || []).filter((c: any) => c.status === 'active' || c.status === 'partial'));
+    } catch (e) { console.error(e); }
+  }, [currentBaby, getActiveInviteCodes]);
+
   useFocusEffect(
     useCallback(() => {
       // Force a fresh fetch every time this screen gains focus.
@@ -1189,14 +1215,6 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
       return () => {};
     }, [loadFamily, isPrimaryParent, currentBaby, loadActiveCodes]),
   );
-
-  const loadActiveCodes = useCallback(async () => {
-    if (!currentBaby) return;
-    try {
-      const codes = await getActiveInviteCodes();
-      setActiveCodes((codes || []).filter((c: any) => c.status === 'active' || c.status === 'partial'));
-    } catch (e) { console.error(e); }
-  }, [currentBaby, getActiveInviteCodes]);
 
   useEffect(() => {
     if (isPrimaryParent && currentBaby) loadActiveCodes();

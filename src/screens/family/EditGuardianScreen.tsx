@@ -45,7 +45,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
 import type { RootStackParamList } from '../../types/navigation';
-import { UserRole, ROLE_LABELS, ROLE_PERMISSIONS, getMemberDisplayLabel, canonicalizeRelationship } from '../../types/roles';
+import { UserRole, ROLE_LABELS, ROLE_PERMISSIONS, getMemberDisplayLabel, canonicalizeRelationship, normalizeRole } from '../../types/roles';
 import { useFamily, FamilyMember } from '../../context/FamilyContext';
 import type { AddMemberResult } from '../../context/FamilyContext';
 import { useUser } from '../../context/UserContext';
@@ -818,34 +818,34 @@ export default function EditGuardianScreen({ navigation, route }: EditGuardianSc
   const [inviter, setInviter] = useState<{ fullName: string; avatar?: string; role?: string; relationship?: string; userId?: string } | null>(null);
   const [formData, setFormData] = useState({ fullName: '', email: '', phoneNumber: '', relationship: '', username: '', avatar: '', notificationsEnabled: true });
   const [originalData, setOriginalData] = useState({ fullName: '', email: '', phoneNumber: '', relationship: '', username: '', avatar: '', notificationsEnabled: true });
-/* ─── LOAD INVITER (added_by → profiles) ─── */
+/* ─── LOAD INVITER (added_by → profiles, with invite_codes fallback) ─── */
 const loadInviter = useCallback(async (addedBy: string | undefined | null) => {
-  if (!addedBy) { setInviter(null); return; }
-  try {
-    // `added_by` may be a `family_members.user_id` (UUID) OR a
-    // `family_members.id`. Try the UUID lookup first.
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, full_name, community_display_name, community_avatar, avatar_url, avatar, role')
-      .eq('id', addedBy)
-      .maybeSingle();
-    if (data) {
-      setInviter({
-        userId: data.id,
-        fullName: data.community_display_name || data.full_name || 'Family Member',
-        avatar: data.community_avatar || data.avatar_url || data.avatar || undefined,
-        role: data.role,
-      });
-      return;
-    }
-    // Fallback: look up the family_members row that owns this id
-    // (some legacy rows stored `added_by` as family_members.id).
-    if (currentBaby?.id) {
+  // ── Path 1: `added_by` set → resolve it against profiles ────────
+  if (addedBy) {
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, community_display_name, community_avatar, avatar_url, avatar, role')
+        .eq('id', addedBy)
+        .maybeSingle();
+      if (data) {
+        setInviter({
+          userId: data.id,
+          fullName: data.community_display_name || data.full_name || 'Family Member',
+          avatar: data.community_avatar || data.avatar_url || data.avatar || undefined,
+          role: data.role,
+        });
+        return;
+      }
+    } catch {}
+
+    // ── Path 2: `added_by` might be a family_members.id ───────────
+    try {
       const { data: fmRow } = await supabase
         .from('family_members')
         .select('user_id, full_name, avatar, role, relationship')
-        .eq('baby_id', currentBaby.id)
         .or(`id.eq.${addedBy},user_id.eq.${addedBy}`)
+        .is('deleted_at', null)
         .limit(1)
         .maybeSingle();
       if (fmRow?.user_id) {
@@ -862,13 +862,57 @@ const loadInviter = useCallback(async (addedBy: string | undefined | null) => {
             role: p.role || fmRow.role,
             relationship: fmRow.relationship,
           });
+          return;
         }
       }
-    }
-  } catch {
-    setInviter(null);
+    } catch {}
   }
-}, [currentBaby?.id]);
+
+  // ── Path 3: `added_by` is NULL → look up the invite_codes row ───
+  // This is the path that was silently failing. Every invite-code
+  // signup writes `used_by_email` + `creator_id` on the code row,
+  // even when `family_members.added_by` was never patched.
+  try {
+    const memberEmail = String((member as any)?.email || '').trim().toLowerCase();
+    const memberUserId = String((member as any)?.userId || (member as any)?.id || '');
+    if (!memberEmail && !memberUserId) {
+      setInviter(null);
+      return;
+    }
+    const orParts: string[] = [];
+    if (memberEmail) orParts.push(`used_by_email.eq.${memberEmail}`);
+    if (memberUserId) orParts.push(`used_by.eq.${memberUserId}`);
+    const { data: codeRow } = await supabase
+      .from('invite_codes')
+      .select('creator_id, creator_name, used_by_email, used_by')
+      .or(orParts.join(','))
+      .eq('signup_completed', true)
+      .order('used_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (codeRow?.creator_id) {
+      const { data: p } = await supabase
+        .from('profiles')
+        .select('id, full_name, community_display_name, community_avatar, avatar_url, avatar, role')
+        .eq('id', codeRow.creator_id)
+        .maybeSingle();
+      if (p) {
+        setInviter({
+          userId: p.id,
+          fullName: p.community_display_name || p.full_name || codeRow.creator_name || 'Family Member',
+          avatar: p.community_avatar || p.avatar_url || p.avatar || undefined,
+          role: p.role,
+        });
+        return;
+      }
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('[loadInviter] invite_codes fallback failed:', e);
+  }
+
+  setInviter(null);
+}, [member, currentBaby?.id]);
   const [usernameCheck, setUsernameCheck] = useState<{ available: boolean; message: string } | null>(null);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const usernameDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -999,31 +1043,30 @@ const loadMemberData = useCallback(async () => {
 
     // ── 3. Synthesise the PARENT_1 self-card ONLY when the
     //      viewer truly owns the current baby. Same guard as before.
-    let resolvedMember: FamilyMember | null = null;
-    if (dbRow) {
-      const rawRole = String(dbRow.role || 'viewer').toLowerCase();
-      const enumRole =
-        rawRole === 'parent1' ? UserRole.PARENT_1
-        : rawRole === 'parent2' ? UserRole.PARENT_2
-        : rawRole === 'guardian' ? UserRole.GUARDIAN
-        : UserRole.VIEWER;
-      resolvedMember = {
-        id: dbRow.id,
-        userId: dbRow.user_id || dbRow.id,
-        fullName: dbRow.full_name || 'Family Member',
-        email: dbRow.email || '',
-        phoneNumber: dbRow.phone_number || '',
-        avatar: dbRow.avatar || '',
-        role: enumRole,
-        relationship: dbRow.relationship || '',
-        permissions: dbRow.permissions || ROLE_PERMISSIONS[enumRole],
-        addedAt: dbRow.added_at || dbRow.created_at || new Date().toISOString(),
-        addedBy: dbRow.added_by || '',
-        canBeRemoved: dbRow.can_be_removed !== false,
-        lastActive: dbRow.last_active || undefined,
-        notificationsEnabled: dbRow.notifications_enabled !== false,
-        status: dbRow.status || 'active',
-      } as FamilyMember;
+      let resolvedMember: FamilyMember | null = null;
+      if (dbRow) {
+        resolvedMember = {
+          id: dbRow.id,
+          userId: dbRow.user_id,
+          fullName: dbRow.full_name,
+          email: dbRow.email,
+          avatar: dbRow.avatar,
+          // Normalise the role — DB may hold 'Primary Parent',
+          // 'parent_1', 'Parent1', etc. for legacy rows. Without
+          // this, canEdit / canRemove / handleRoleChange all
+          // misfire on legacy-mangled rows.
+          role: normalizeRole(dbRow.role),
+          relationship: dbRow.relationship,
+          permissions: dbRow.permissions,
+          addedAt: dbRow.added_at,
+          addedBy: dbRow.added_by,
+          canBeRemoved: dbRow.can_be_removed !== false,
+          lastActive: dbRow.last_active,
+          phoneNumber: dbRow.phone_number,
+          notificationsEnabled: dbRow.notifications_enabled !== false,
+          status: dbRow.status || 'active',
+        } as FamilyMember;
+
     } else if (profileFallback) {
       resolvedMember = {
         id: profileFallback.id,
@@ -1222,7 +1265,7 @@ const loadMemberData = useCallback(async () => {
               fullName: row.full_name,
               email: row.email,
               avatar: row.avatar,
-              role: row.role,
+              role: normalizeRole(row.role),
               relationship: row.relationship,
               permissions: row.permissions,
               addedAt: row.added_at,

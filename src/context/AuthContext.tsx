@@ -2457,36 +2457,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // ── 3b. Ensure the family_members row carries the inviter
       //        and the relationship the inviter declared on the code.
-      //        MUST run AFTER `babyId` is resolved (below) so it
-      //        targets the correct row.
+      //        Runs AFTER `babyId` is resolved AND retries to survive
+      //        RLS / commit lag — a single missed UPDATE is what made
+      //        the inviter invisible on every family screen.
       const babyId = result.baby_id || inviteRow.family_id;
       const role = result.role || inviteRow.role || 'viewer';
       const relationship = inviteRow.relationship || 'Family Member';
 
       try {
-        const { data: createdRow } = await supabase
-          .from('family_members')
-          .select('id, added_by, relationship')
-          .eq('baby_id', babyId)
-          .eq('user_id', user.id)
-          .is('deleted_at', null)
-          .maybeSingle();
+        const patch: Record<string, unknown> = {
+          updated_at: new Date().toISOString(),
+        };
+        if (inviteRow.creator_id) patch.added_by = inviteRow.creator_id;
+        if (inviteRow.relationship) patch.relationship = inviteRow.relationship;
 
-        if (createdRow) {
-          const patch: Record<string, unknown> = {};
-          if (!createdRow.added_by && inviteRow.creator_id) {
-            patch.added_by = inviteRow.creator_id;
+        let stamped = false;
+        for (let attempt = 0; attempt < 3 && !stamped; attempt++) {
+          try {
+            const { data: updated, error: updErr } = await supabase
+              .from('family_members')
+              .update(patch)
+              .eq('baby_id', babyId)
+              .eq('user_id', user.id)
+              .is('deleted_at', null)
+              .select('id, added_by, relationship');
+
+            if (!updErr && Array.isArray(updated) && updated.length > 0) {
+              const row = updated[0];
+              if (!inviteRow.creator_id || row?.added_by === inviteRow.creator_id) {
+                stamped = true;
+                if (__DEV__) {
+                  console.log('[Auth] family_members stamped:', {
+                    id: row.id,
+                    added_by: row.added_by,
+                    relationship: row.relationship,
+                  });
+                }
+              }
+            }
+          } catch (e) {
+            if (__DEV__) console.warn(`[Auth] stamp attempt ${attempt + 1} failed:`, e);
           }
-          if (
-            inviteRow.relationship &&
-            (!createdRow.relationship || createdRow.relationship === 'Parent')
-          ) {
-            patch.relationship = inviteRow.relationship;
+          if (!stamped) {
+            await new Promise((r) => setTimeout(r, 400));
           }
-          if (Object.keys(patch).length > 0) {
-            patch.updated_at = new Date().toISOString();
-            await supabase.from('family_members').update(patch).eq('id', createdRow.id);
-          }
+        }
+
+        if (!stamped && __DEV__) {
+          console.warn('[Auth] family_members row could not be stamped with added_by');
         }
       } catch (e) {
         if (__DEV__) console.warn('[Auth] family_members post-patch failed:', e);
@@ -2634,12 +2652,23 @@ try {
       }
 
       // ── 5. Persist the local profile snapshot + flags ────────────
+      // Coerce the RPC's raw role string to the AuthContext's
+      // canonical union. Anything not parent1/parent2/guardian is
+      // recorded as 'guardian' here — viewers still get proper
+      // permissions from `family_members.permissions`, but
+      // `userProfile.role` must stay inside its declared union so
+      // every downstream switch-case behaves.
+      const normalizedProfileRole: 'parent1' | 'parent2' | 'guardian' =
+        role === 'parent2' ? 'parent2'
+        : role === 'parent1' ? 'parent1'
+        : 'guardian';
+
       const userProfile: UserProfile = {
         id: user.id,
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
         avatar: '👤',
-        role: role as any,
+        role: normalizedProfileRole,
         createdAt: user.created_at || new Date().toISOString(),
         preferences: { notifications: true, darkMode: false, language: 'en' },
         communityUsername: fullName.trim(),
