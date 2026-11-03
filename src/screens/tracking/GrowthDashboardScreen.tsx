@@ -658,19 +658,89 @@ const VelocityHeatmap = memo(({ measurements }: { measurements: GrowthMeasuremen
 const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[]; baby: BabyProfile }) => {
   const theme = useDashboardTheme();
   const correlations = useMemo(() => {
-    const sleep = trackerEntries.filter((e: any) => e.trackerId === 'sleep' && e.babyId === baby?.id).slice(-7);
-    const feed = trackerEntries.filter((e: any) => e.trackerId === 'feed' && e.babyId === baby?.id).slice(-7);
+    // Only count entries that belong to THIS baby, and only rows where the
+    // value we're averaging is actually a finite positive number.
+    const sleep = trackerEntries
+      .filter(
+        (e: any) =>
+          e.trackerId === 'sleep' &&
+          e.babyId === baby?.id &&
+          Number.isFinite(e.duration) &&
+          e.duration > 0,
+      )
+      .slice(-7);
+
+    const feed = trackerEntries
+      .filter((e: any) => {
+        if (e.trackerId !== 'feed' || e.babyId !== baby?.id) return false;
+        const raw = Number(
+          e?.data?.bottleAmount ?? e?.data?.amount ?? e?.amount,
+        );
+        return Number.isFinite(raw) && raw > 0;
+      })
+      .slice(-7);
+
     const all = trackerEntries.filter((e: any) => e.babyId === baby?.id);
-    const avgSleep = sleep.length ? sleep.reduce((s, e) => s + (e.duration || 0), 0) / sleep.length / 60 : 0;
-    const avgFeed = feed.length ? feed.reduce((s, e) => s + (e.amount || 0), 0) / feed.length : 0;
-    const avgAct = all.length ? all.length / 7 : 0;
-    const sleepScore = avgSleep > 12 ? 92 : avgSleep > 8 ? 78 : avgSleep > 4 ? 55 : avgSleep > 0 ? 30 : 0;
-    const feedScore = avgFeed > 150 ? 88 : avgFeed > 100 ? 72 : avgFeed > 50 ? 50 : avgFeed > 0 ? 25 : 0;
-    const actScore = Math.min(100, Math.round(avgAct * 20));
+
+    const avgSleep =
+      sleep.length > 0
+        ? sleep.reduce((s, e) => s + (e.duration || 0), 0) / sleep.length / 60
+        : null;
+
+    const avgFeed =
+      feed.length > 0
+        ? feed.reduce((s, e) => {
+            const raw = Number(
+              e?.data?.bottleAmount ?? e?.data?.amount ?? e?.amount,
+            );
+            const unit = String(
+              e?.data?.bottleAmount_unit ?? e?.data?.amount_unit ?? 'ml',
+            ).toLowerCase();
+            return s + (unit === 'oz' ? raw * 29.5735 : raw);
+          }, 0) / feed.length
+        : null;
+
+    const avgAct = all.length > 0 ? all.length / 7 : null;
+
+    const sleepScore =
+      avgSleep === null ? null
+      : avgSleep > 12 ? 92
+      : avgSleep > 8  ? 78
+      : avgSleep > 4  ? 55
+      : 30;
+
+    const feedScore =
+      avgFeed === null ? null
+      : avgFeed > 150 ? 88
+      : avgFeed > 100 ? 72
+      : avgFeed > 50  ? 50
+      : 25;
+
+    const actScore =
+      avgAct === null ? null : Math.min(100, Math.round(avgAct * 20));
+
     return [
-      { label: 'Sleep → Growth', value: sleepScore, icon: '😴', color: '#8b5cf6', detail: avgSleep > 0 ? `${avgSleep.toFixed(1)}h avg` : 'No data' },
-      { label: 'Feed → Growth', value: feedScore, icon: '🍼', color: '#f59e0b', detail: avgFeed > 0 ? `${avgFeed.toFixed(0)}ml avg` : 'No data' },
-      { label: 'Activity → Growth', value: actScore, icon: '🎾', color: '#10b981', detail: avgAct > 0 ? `${avgAct.toFixed(1)}/day` : 'No data' },
+      {
+        label: 'Sleep → Growth',
+        value: sleepScore,
+        icon: '😴',
+        color: '#8b5cf6',
+        detail: avgSleep !== null ? `${avgSleep.toFixed(1)}h avg` : 'No data',
+      },
+      {
+        label: 'Feed → Growth',
+        value: feedScore,
+        icon: '🍼',
+        color: '#f59e0b',
+        detail: avgFeed !== null ? `${Math.round(avgFeed)}ml avg` : 'No data',
+      },
+      {
+        label: 'Activity → Growth',
+        value: actScore,
+        icon: '🎾',
+        color: '#10b981',
+        detail: avgAct !== null ? `${avgAct.toFixed(1)}/day` : 'No data',
+      },
     ];
   }, [trackerEntries, baby]);
   return (
@@ -687,10 +757,14 @@ const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[
               <Text style={[styles.corrLabel, { color: theme.text.primary }]}>{c.label}</Text>
               <Text style={[styles.corrDetail, { color: theme.text.muted }]}>{c.detail}</Text>
             </View>
-            <View style={[styles.corrBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
-              <View style={[styles.corrFill, { width: `${c.value}%`, backgroundColor: c.color }]} />
-            </View>
-            <Text style={[styles.corrVal, { color: c.color }]}>{c.value}%</Text>
+            {c.value !== null && (
+              <>
+                <View style={[styles.corrBar, { backgroundColor: theme.isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                  <View style={[styles.corrFill, { width: `${c.value}%`, backgroundColor: c.color }]} />
+                </View>
+                <Text style={[styles.corrVal, { color: c.color }]}>{c.value}%</Text>
+              </>
+            )}
           </View>
         ))}
       </View>

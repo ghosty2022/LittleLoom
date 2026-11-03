@@ -922,24 +922,70 @@ const WellnessScoreCard = React.memo(({ entries, onPress }: { entries: any[]; on
     const list = Array.isArray(entries) ? entries : [];
     const todayEntries = list.filter((e: any) => e?.timestamp >= today);
 
+    if (todayEntries.length === 0) {
+      return {
+        overall: null,
+        nutrition: null,
+        sleep: null,
+        activity: null,
+        hydration: null,
+        hasData: false,
+      };
+    }
+
     const feedCount = todayEntries.filter((e: any) => e.trackerId === 'feed').length;
     const sleepMins = todayEntries
       .filter((e: any) => e.trackerId === 'sleep')
-      .reduce((sum: number, e: any) => sum + (e.duration || 0), 0);
+      .reduce((sum: number, e: any) => sum + (Number(e.duration) || 0), 0);
     const diaperCount = todayEntries.filter((e: any) => e.trackerId === 'diaper').length;
-    const milestoneCount = todayEntries.filter((e: any) => e.trackerId === 'milestone').length;
+
+    const nutritionScore =
+      feedCount > 0 ? Math.min(100, Math.round((feedCount / 8) * 100)) : null;
+    const sleepScore =
+      sleepMins > 0 ? Math.min(100, Math.round((sleepMins / 840) * 100)) : null;
+    const hydrationScore =
+      diaperCount > 0 ? Math.min(100, Math.round((diaperCount / 6) * 100)) : null;
+
+    // Activity = any logged entry that isn't feed/sleep/diaper
+    const activityEntries = todayEntries.filter(
+      (e: any) => !['feed', 'sleep', 'diaper'].includes(e?.trackerId),
+    );
+    const activityScore =
+      activityEntries.length > 0
+        ? Math.min(100, activityEntries.length * 20)
+        : null;
+
+    const parts = [nutritionScore, sleepScore, hydrationScore, activityScore].filter(
+      (v): v is number => v !== null,
+    );
+    const overall =
+      parts.length > 0
+        ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length)
+        : null;
 
     return {
-      overall: Math.min(100, Math.round((feedCount / 8) * 25 + (sleepMins / 840) * 25 + (diaperCount / 6) * 25 + Math.min(1, milestoneCount) * 25)),
-      nutrition: Math.min(100, Math.round((feedCount / 8) * 100)),
-      sleep: Math.min(100, Math.round((sleepMins / 840) * 100)),
-      activity: Math.min(100, Math.round((milestoneCount / 3) * 100)),
-      hydration: Math.min(100, Math.round((diaperCount / 6) * 100)),
+      overall,
+      nutrition: nutritionScore,
+      sleep: sleepScore,
+      activity: activityScore,
+      hydration: hydrationScore,
+      hasData: true,
     };
   }, [entries]);
 
-  const scoreColor = score.overall >= 80 ? DS.success : score.overall >= 60 ? theme.primary : score.overall >= 40 ? DS.warning : DS.danger;
-  const scoreLabel = score.overall >= 80 ? 'Excellent' : score.overall >= 60 ? 'Good' : score.overall >= 40 ? 'Fair' : 'Needs attention';
+  const scoreColor =
+    score.overall === null ? DS.gray400
+    : score.overall >= 80 ? DS.success
+    : score.overall >= 60 ? theme.primary
+    : score.overall >= 40 ? DS.warning
+    : DS.danger;
+
+  const scoreLabel =
+    score.overall === null ? 'No data yet'
+    : score.overall >= 80 ? 'Excellent'
+    : score.overall >= 60 ? 'Good'
+    : score.overall >= 40 ? 'Fair'
+    : 'Needs attention';
 
   return (
     <Animated.View entering={FadeInUp.delay(140).springify()}>
@@ -947,7 +993,7 @@ const WellnessScoreCard = React.memo(({ entries, onPress }: { entries: any[]; on
         <View style={styles.wellnessTop}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.wellnessLabel, { color: theme.text.muted }]}>Today's Wellness</Text>
-            <Text style={[styles.wellnessScore, { color: scoreColor }]}>{score.overall}</Text>
+            <Text style={[styles.wellnessScore, { color: scoreColor }]}>{score.overall ?? '—'}</Text>
             <Text style={[styles.wellnessScoreLabel, { color: theme.text.secondary }]}>{scoreLabel}</Text>
           </View>
           <View style={styles.wellnessRingWrap}>
@@ -956,33 +1002,67 @@ const WellnessScoreCard = React.memo(({ entries, onPress }: { entries: any[]; on
               <View
                 style={[
                   styles.wellnessRingProgress,
-                  { borderColor: scoreColor, transform: [{ rotate: `${-90 + (score.overall / 100) * 360}deg` }] },
+                  {
+                    borderColor: scoreColor,
+                    transform: [
+                      {
+                        rotate: `${-90 + ((score.overall ?? 0) / 100) * 360}deg`,
+                      },
+                    ],
+                  },
                 ]}
               />
               <View style={styles.wellnessRingInner}>
-                <Ionicons name={score.overall >= 80 ? 'heart' : 'heart-outline'} size={24} color={scoreColor} />
+                <Ionicons
+                  name={score.overall !== null && score.overall >= 80 ? 'heart' : 'heart-outline'}
+                  size={24}
+                  color={scoreColor}
+                />
               </View>
             </View>
           </View>
         </View>
-        <View style={styles.wellnessBreakdown}>
-          {[
-            { label: 'Nutrition', value: score.nutrition, color: '#fa709a', icon: '🍼' },
-            { label: 'Sleep', value: score.sleep, color: '#11998e', icon: '🌙' },
-            { label: 'Activity', value: score.activity, color: '#ffd700', icon: '🏆' },
-            { label: 'Hydration', value: score.hydration, color: '#3b82f6', icon: '💧' },
-          ].map((item) => (
-            <View key={item.label} style={styles.wellnessBreakdownItem}>
-              <Text style={styles.wellnessBreakdownIcon}>{item.icon}</Text>
-              <View style={styles.wellnessBreakdownBarWrap}>
-                <View style={[styles.wellnessBreakdownBarBg, { backgroundColor: `${item.color}12` }]}>
-                  <View style={[styles.wellnessBreakdownBarFill, { width: `${item.value}%`, backgroundColor: item.color }]} />
+        {score.hasData ? (
+          <View style={styles.wellnessBreakdown}>
+            {[
+              { label: 'Nutrition', value: score.nutrition, color: '#fa709a', icon: '🍼' },
+              { label: 'Sleep', value: score.sleep, color: '#11998e', icon: '🌙' },
+              { label: 'Activity', value: score.activity, color: '#ffd700', icon: '🏆' },
+              { label: 'Hydration', value: score.hydration, color: '#3b82f6', icon: '💧' },
+            ].map((item) => (
+              <View key={item.label} style={styles.wellnessBreakdownItem}>
+                <Text style={styles.wellnessBreakdownIcon}>{item.icon}</Text>
+                <View style={styles.wellnessBreakdownBarWrap}>
+                  <View style={[styles.wellnessBreakdownBarBg, { backgroundColor: `${item.color}12` }]}>
+                    <View
+                      style={[
+                        styles.wellnessBreakdownBarFill,
+                        {
+                          width: `${item.value ?? 0}%`,
+                          backgroundColor: item.value === null ? `${item.color}30` : item.color,
+                        },
+                      ]}
+                    />
+                  </View>
                 </View>
+                <Text style={[styles.wellnessBreakdownValue, { color: theme.text.primary }]}>
+                  {item.value === null ? '—' : `${item.value}%`}
+                </Text>
               </View>
-              <Text style={[styles.wellnessBreakdownValue, { color: theme.text.primary }]}>{item.value}%</Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        ) : (
+          <Text
+            style={{
+              color: theme.text.muted,
+              fontSize: 12,
+              textAlign: 'center',
+              marginTop: 8,
+            }}
+          >
+            Log a feed, sleep, or diaper to see your wellness score
+          </Text>
+        )}
       </GlassCard>
     </Animated.View>
   );
@@ -1113,7 +1193,15 @@ const FeedingPatternCard = React.memo(({ entries, onPress }: { entries: any[]; o
       intervals.length > 0
         ? Math.round((intervals.reduce((a, b) => a + b, 0) / intervals.length) * 10) / 10
         : 3;
-    const totalVolume = feedEntries.reduce((sum: number, e: any) => sum + (e.amount || e.value || 120), 0);
+    // Only sum volumes that were actually entered. Do NOT default to 120.
+const totalVolume = feedEntries.reduce((sum: number, e: any) => {
+  const amt = Number(e?.data?.bottleAmount ?? e?.data?.amount ?? e?.amount ?? e?.value);
+  if (!Number.isFinite(amt) || amt <= 0) return sum;
+  const unit = String(e?.data?.bottleAmount_unit ?? e?.data?.amount_unit ?? 'ml').toLowerCase();
+  return sum + (unit === 'oz' ? amt * 29.5735 : amt);
+}, 0);
+const totalVolumeLabel = totalVolume > 0 ? `${Math.round(totalVolume)}ml` : '—';
+const hasVolumeData = totalVolume > 0;
 
     const lastEntry = feedEntries[0];
     if (!lastEntry) return null;
@@ -1129,9 +1217,13 @@ const FeedingPatternCard = React.memo(({ entries, onPress }: { entries: any[]; o
     try {
       const nextFeed = new Date(lastEntry.timestamp + avgInterval * 3600000);
       if (!isNaN(nextFeed.getTime())) {
-        nextFeedEstimate = format(nextFeed, 'h:mm a');
-      }
-    } catch {}
+        let nextFeedEstimate = '—';
+if (intervals.length >= 3) {
+  try {
+    const nextFeed = new Date(lastEntry.timestamp + avgInterval * 3600000);
+    if (!isNaN(nextFeed.getTime())) nextFeedEstimate = format(nextFeed, 'h:mm a');
+  } catch {}
+}
 
     return { avgInterval, totalVolume, lastSide, nextFeedEstimate };
   }, [entries]);

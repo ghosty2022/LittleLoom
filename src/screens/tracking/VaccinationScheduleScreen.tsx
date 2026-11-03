@@ -352,19 +352,9 @@ async function loadVaccineScheduleFromSupabase(): Promise<VaccineSeries[]> {
       }
     }
 
-    if (VACCINE_SERIES.length > 0) {
-      await supabase
-        .from('app_settings')
-        .upsert(
-          {
-            key: SUPABASE_SCHEDULE_KEY,
-            value: JSON.stringify(VACCINE_SERIES),
-            user_id: user?.id ?? '00000000-0000-0000-0000-000000000000',
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'key, user_id' }
-        )
-        .then(() => {}, () => {});
+    // Do NOT auto-upsert VACCINE_SERIES. Remote schedule is authoritative.
+    if (__DEV__) {
+      console.log('[Vaccination] Using local fallback; no remote row found.');
     }
   } catch (e) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
@@ -641,7 +631,7 @@ const ProtectionRing = memo<{ stats: any; isDark: boolean; onPress: () => void }
   const stroke = 8;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const progress = Math.min(stats.progress, 100);
+  const progress = stats.total > 0 ? Math.min(stats.progress, 100) : 0;
   const offset = circumference - (progress / 100) * circumference;
 
   const progressColor = progress >= 80 ? DS.success : progress >= 50 ? DS.primary : progress >= 25 ? DS.warning : DS.danger;
@@ -711,7 +701,7 @@ const ProtectionRing = memo<{ stats: any; isDark: boolean; onPress: () => void }
                   <Text style={[styles.protMiniLabel, { color: isDark ? DS.gray400 : DS.gray500 }]}>{s.label}</Text>
                   <View style={[styles.protBarBg, { backgroundColor: `${s.color}12` }]}>
                     <View style={[styles.protBarFill, {
-                      width: `${Math.min((s.value / (s.total || 1)) * 100, 100)}%`,
+                      width: `${s.total > 0 ? Math.min((s.value / s.total) * 100, 100) : 0}%`,
                       backgroundColor: s.color,
                     }]} />
                   </View>
@@ -872,15 +862,10 @@ const VaccineTimeline = memo(({ doses, onDosePress, isDark }: {
   doses: VaccineDose[]; onDosePress: (d: VaccineDose) => void; isDark: boolean;
 }) => {
   const timelineItems = useMemo(() => {
-    return [...doses]
-      .sort((a, b) => {
-        const da = safeParseDate(a.dueDate), db = safeParseDate(b.dueDate);
-        return (da?.getTime() || 0) - (db?.getTime() || 0);
-      })
-      .map((dose) => ({
-        ...dose,
-        isPast: safeParseDate(dose.dueDate) ? isBefore(safeParseDate(dose.dueDate)!, startOfDay(new Date())) : false,
-      }));
+    return [...doses].sort((a, b) => {
+      const da = safeParseDate(a.dueDate), db = safeParseDate(b.dueDate);
+      return (da?.getTime() || 0) - (db?.getTime() || 0);
+    });
   }, [doses]);
 
   if (!timelineItems.length) return null;
@@ -1943,12 +1928,14 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
             <Animated.View entering={FadeInUp.delay(240).springify()} style={{ marginTop: DS.space.lg, paddingHorizontal: DS.space.lg }}>
               <SectionHeader title="Related Tools" icon="link-outline" color={DS.info} />
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                {[
-                  { icon: '📊', label: 'Growth', screen: 'GrowthDashboard', grad: [DS.primary, DS.primaryLight] as [string, string] },
-                  { icon: '🌟', label: 'Milestones', screen: 'Timeline', grad: [DS.warning, '#fbbf24'] as [string, string] },
-                  { icon: '🏆', label: 'Awards', screen: 'Achievements', grad: ['#8b5cf6', '#a78bfa'] as [string, string] },
-                ].map((a, i) => (
-                  <PressableScale key={i} onPress={() => navigation.navigate(a.screen, (a as any).params ?? undefined)} activeScale={0.94} style={{ flex: 1 }}>
+                {(
+                  [
+                    { icon: '📊', label: 'Growth', screen: 'GrowthDashboard', grad: [DS.primary, DS.primaryLight] as [string, string] },
+                    { icon: '🌟', label: 'Milestones', screen: 'Timeline', grad: [DS.warning, '#fbbf24'] as [string, string] },
+                    { icon: '🏆', label: 'Awards', screen: 'Achievements', grad: ['#8b5cf6', '#a78bfa'] as [string, string] },
+                  ] as const
+                ).map((a, i) => (
+                  <PressableScale key={i} onPress={() => navigation.navigate(a.screen as any)} activeScale={0.94} style={{ flex: 1 }}>
                     <LinearGradient colors={a.grad} style={styles.quickAct} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                       <Text style={{ fontSize: 20 }}>{a.icon}</Text>
                       <Text style={styles.quickActText}>{a.label}</Text>

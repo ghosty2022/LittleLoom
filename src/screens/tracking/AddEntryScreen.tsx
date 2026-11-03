@@ -45,6 +45,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useDateTimePicker } from '../../hooks/useDateTimePicker';
 import { isFieldVisible } from '../../utils/form';
+import {
+  formatFieldValue,
+  formatDuration,
+  prettifyFieldKey,
+  cleanImageUris,
+  getEntryFields,
+  SKIP_ENTRY_KEYS,
+} from '../../utils/entryFormatting';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../hooks';
@@ -154,54 +162,7 @@ const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedb
 /* ═══════════════════════════════════════════════════════════════════════════
    SAFE HELPERS
    ═══════════════════════════════════════════════════════════════════════════ */
-const cleanImageUris = (raw: unknown): string[] => {
-  if (!Array.isArray(raw)) return [];
-  const flat = (raw as unknown[]).flat(Infinity);
-  const strings = flat
-    .map((u) => {
-      if (typeof u === 'string') return u;
-      if (u && typeof u === 'object' && typeof (u as any).uri === 'string') return (u as any).uri as string;
-      return '';
-    })
-    .filter((u): u is string => u.length > 0);
-  return [...new Set(strings)];
-};
-
-const formatFieldValue = (key: string, value: unknown): string | null => {
-  if (value === undefined || value === null || value === '') return null;
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (Array.isArray(value)) return value.length === 0 ? null : value.map(String).join(', ');
-  if (typeof value === 'object') {
-    const o = value as any;
-    if (o?.name) return String(o.name);
-    if (o?.label) return String(o.label);
-    return JSON.stringify(value);
-  }
-  return String(value);
-};
-
-const getEntryFields = (entry: YesterdayEntry) => {
-  return Object.entries(entry.data || {}).filter(([k, v]) => {
-    if (['id', 'timestamp', 'babyId', 'type', 'title', 'icon', 'photoUris'].includes(k)) return false;
-    return formatFieldValue(k, v) !== null;
-  });
-};
-
-const shouldFilterField = (k: string) =>
-  ['id', 'timestamp', 'babyId', 'type', 'title', 'icon', 'photoUris'].includes(k);
-
-const prettifyFieldKey = (k: string) =>
-  k.replace(/([A-Z])/g, ' $1').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\w/, (c) => c.toUpperCase());
-
-const formatDuration = (seconds: unknown): string => {
-  const s = Number(seconds);
-  if (!Number.isFinite(s) || s <= 0) return '';
-  const mins = Math.floor(s / 60);
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-};
+/* Entry formatting helpers live in '../../utils/entryFormatting'. */
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GradientText + PressableScale
@@ -699,7 +660,7 @@ const ConfirmModal = memo<ConfirmModalProps>(({
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: opacity.value }));
 
   const preview = useMemo(
-    () => Object.entries(data).filter(([k, v]) => !shouldFilterField(k) && formatFieldValue(k, v) !== null),
+    () => Object.entries(data).filter(([k, v]) => !SKIP_ENTRY_KEYS.has(k) && formatFieldValue(k, v) !== null),
     [data],
   );
   const uris = useMemo(() => cleanImageUris(photoUris.length ? photoUris : (data as any)?.photoUris), [photoUris, data]);
@@ -1288,8 +1249,21 @@ function TrackerContent({
           {/* Streak Ring */}
           {streak && streak.currentStreak > 0 && (
             <View style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}>
-              <StreakRing streak={streak} isAtRisk={isAtRisk} entriesToday={entriesToday} dailyGoal={3} trackerColor={tracker.gradient[0]} isDark={isDark}
-                onLogNow={() => scrollViewRef.current?.scrollTo({ y: 500, animated: true })} />
+              <StreakRing
+                streak={streak}
+                isAtRisk={isAtRisk}
+                entriesToday={entriesToday}
+                dailyGoal={
+                  tracker.id === 'feed' ? 8
+                  : tracker.id === 'sleep' ? 4
+                  : tracker.id === 'diaper' ? 6
+                  : tracker.id === 'growth' ? 1
+                  : 3
+                }
+                trackerColor={tracker.gradient[0]}
+                isDark={isDark}
+                onLogNow={() => scrollViewRef.current?.scrollTo({ y: 500, animated: true })}
+              />
             </View>
           )}
 

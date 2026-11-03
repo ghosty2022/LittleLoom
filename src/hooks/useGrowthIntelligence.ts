@@ -508,38 +508,29 @@ export const useGrowthIntelligence = () => {
   }, [mergedGrowthData, ageInMonths, gender, currentBaby?.birthDate]);
 
   const cognitiveScore = useMemo((): SubScore => {
-    const milestoneEntries = getEntriesStable('milestone', 50) || [];
-    const playEntries = getEntriesStable('play', 30) || [];
-    const readingEntries = getEntriesStable('reading', 30) || [];
-
+    // Cognitive score is derived ONLY from milestones that are expected at the
+    // baby's current age AND actually logged. No fabricated bonuses from
+    // play/reading entries — those track engagement, not attainment.
     const expectedMilestones = Object.entries(MILESTONE_CALENDAR)
       .filter(([_, data]) => data.window.start <= ageInMonths)
       .map(([name, _]) => name);
 
     const achievedCount = expectedMilestones.filter(m => achievedMilestoneIds.has(m)).length;
-    const milestoneScore = expectedMilestones.length > 0 ?
-      (achievedCount / expectedMilestones.length) * 100 : 100;
+    const milestoneScore = expectedMilestones.length > 0
+      ? (achievedCount / expectedMilestones.length) * 100
+      : 0;
 
-    const activityTypes = new Set([
-      ...playEntries.map(e => String(e.data?.playType || '')),
-      ...readingEntries.map(e => 'reading'),
-    ].filter(Boolean));
-    const diversityBonus = Math.min(20, activityTypes.size * 5);
-
-    const readingScore = readingEntries.length > 0 ?
-      Math.min(15, readingEntries.length * 3) : 0;
-
-    const value = Math.min(100, milestoneScore + diversityBonus + readingScore);
+    const value = expectedMilestones.length > 0 ? milestoneScore : 0;
 
     return {
       label: 'Cognitive',
-      value: safeScore(value, 50),
+      value: safeScore(value, 0),
       color: '#FFD700',
       weight: 0.20,
-      trend: milestoneScore > 80 ? 'up' : 'stable',
+      trend: milestoneScore >= 80 ? 'up' : milestoneScore <= 40 ? 'down' : 'stable',
       delta: achievedCount,
     };
-  }, [achievedMilestoneIds, getEntriesStable, ageInMonths]);
+  }, [achievedMilestoneIds, ageInMonths]);
 
   const healthStability = useMemo((): SubScore => {
     const tempEntries = getEntriesStable('temperature', 30) || [];
