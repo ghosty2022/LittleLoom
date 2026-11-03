@@ -200,22 +200,30 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const loadFamilyRetryCount = useRef(0);
 
   // ─── Realtime: reload family when members change on any device ──
+  // ── Realtime: reload family when members change on any device ──
+  // Debounced to 200ms so a batch of inserts (e.g. the Parent-1 seed
+  // + guardian invite that land together on first cold boot) result
+  // in a SINGLE loadFamily call, not three. Without this, a fresh
+  // guardian session fires 3 back-to-back queries within ~50ms of
+  // each other, each racing the previous — which surfaces as
+  // "members flash in, then flash back to empty."
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleFamilyReload = useCallback((reason: string) => {
+    if (__DEV__) console.log(`[FamilyContext] Realtime family_members.${reason}`);
+    if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+    realtimeDebounceRef.current = setTimeout(() => {
+      realtimeDebounceRef.current = null;
+      loadFamilyRef.current?.().catch(() => {});
+    }, 200);
+  }, []);
+
   useRealtimeSubscription({
     table: 'family_members',
     filter: currentBaby?.id ? `baby_id=eq.${currentBaby.id}` : undefined,
     enabled: !!currentBaby?.id,
-    onInsert: () => {
-      if (__DEV__) console.log('[FamilyContext] Realtime family_members.inserted');
-      loadFamilyRef.current?.();
-    },
-    onUpdate: () => {
-      if (__DEV__) console.log('[FamilyContext] Realtime family_members.updated');
-      loadFamilyRef.current?.();
-    },
-    onDelete: () => {
-      if (__DEV__) console.log('[FamilyContext] Realtime family_members.deleted');
-      loadFamilyRef.current?.();
-    },
+    onInsert: () => scheduleFamilyReload('inserted'),
+    onUpdate: () => scheduleFamilyReload('updated'),
+    onDelete: () => scheduleFamilyReload('deleted'),
   });
 
   // ─── Track current user to prevent cross-device conflicts ────
@@ -481,11 +489,22 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (!resolvedBabyId) {
         // Retry with backoff — BabyContext may not have hydrated yet.
-        // We track attempts via a ref so this doesn't loop forever.
+        // Cold start on a slow device + RLS-protected reads can take
+        // 3-5 seconds, so 4 × ~400ms (the old budget) was barely
+        // enough and caused "no baby yet → empty family" flashes on
+        // the first real launch. 8 attempts with a 200ms base covers
+        // a 4-second worst case, and we cap the delay at 1000ms so
+        // the loop never feels stuck.
+        //
+        // We distinguish "no baby yet" (retryable) from "no baby
+        // ever" (terminal). The latter is when the user genuinely
+        // has 0 babies — in that case BabyContext's own
+        // `isInitialized` will be true and it won't emit
+        // `currentBaby` for us. See the guard below.
         const attempt = (loadFamilyRetryCount.current ?? 0) + 1;
         loadFamilyRetryCount.current = attempt;
-        if (attempt <= 4) {
-          const delay = Math.min(150 * attempt, 800);
+        if (attempt <= 8) {
+          const delay = Math.min(200 * attempt, 1000);
           if (__DEV__) {
             console.log(
               `[FamilyContext] loadFamily: no baby yet (attempt ${attempt}), retrying in ${delay}ms`,
@@ -543,6 +562,27 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         effectiveUserId = session?.user?.id;
       } catch {}
     }
+
+    // If we still don't have a user id, wait one tick and retry
+    // rather than burning a full round-trip against a stale read.
+    // This is why guardian cold-start was so slow: the first call
+    // ran entirely against `authProfile = null`, made the
+    // family_members query with `authProfile.id = undefined`, got
+    // 0 rows, and only the RETRY loop recovered.
+    if (!effectiveUserId) {
+      const attempt = (loadFamilyRetryCount.current ?? 0) + 1;
+      loadFamilyRetryCount.current = attempt;
+      if (attempt <= 8) {
+        const delay = Math.min(150 * attempt, 800);
+        setTimeout(() => {
+          loadFamilyRef.current?.().catch(() => {});
+        }, delay);
+        familyLoadInProgress.current = false;
+        return;
+      }
+      familyLoadInProgress.current = false;
+      return;
+    }
     if (!effectiveUserId) {
       // Try AsyncStorage recovery
       try {
@@ -574,7 +614,20 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     //
     // Doing it in one round-trip here means we don't waste a second
     // query below when the user really isn't associated.
-    if (familyLoadInProgress.current) return;
+    // ── QUEUE GUARD ─────────────────────────────────────────────
+    // If a loadFamily() is already in flight, remember that another
+    // one was requested and re-run once the current one finishes.
+    //
+    // The old `return` silently swallowed re-run requests, which
+    // meant a realtime `family_members.inserted` event that fired
+    // DURING the previous loadFamily's round-trip was lost — the
+    // new member never appeared until the next focus. That's the
+    // "add member → still see empty list" bug.
+    if (familyLoadInProgress.current) {
+      if (__DEV__) console.log('[FamilyContext] loadFamily queued (in progress)');
+      familyLoadQueueRef.current = true;
+      return;
+    }
     familyLoadInProgress.current = true;
 
     setState(prev => ({ ...prev, isLoading: true }));
@@ -852,6 +905,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setState(prev => ({ ...prev, isLoading: false }));
     } finally {
       familyLoadInProgress.current = false;
+      if (familyLoadQueueRef.current) {
+        familyLoadQueueRef.current = false;
+        // Microtask so we don't recurse inside the current call stack
+        setTimeout(() => {
+          loadFamilyRef.current?.().catch(() => {});
+        }, 0);
+      }
     }
   }, [currentBaby, authProfile]);
 
@@ -3081,6 +3141,15 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
  * `useActivity` and prevents `useFamily must be used within
  * FamilyProvider` crashes during hot-reload or route transitions.
  */
+// ─── EXPORT the raw context so `useSafeContexts.ts` (and any other
+//     safe-hook wrapper) can access it without going through
+//     `useFamily`. Without this, `import { FamilyContext } from
+//     '../context/FamilyContext'` resolves to `undefined` and every
+//     `useContext(FamilyContext)` call throws a React error that the
+//     ErrorBoundary catches — killing every screen that calls
+//     `useFamily()`, which is all of them except Home.
+export { FamilyContext };
+
 export const useFamily = (): FamilyContextType => {
   const context = useContext(FamilyContext);
   if (context) return context;

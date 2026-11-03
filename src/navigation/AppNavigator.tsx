@@ -494,6 +494,20 @@ function NavigationContent({
         return;
       }
 
+      // ── DEFENSIVE: don't latch to SETUP_BABY while BabyContext
+      //    might still be hydrating. If babyCount is 0 but we
+      //    haven't yet given loadBabies a chance (e.g. cold boot
+      //    with slow network), wait for babiesReady to settle.
+      //
+      //    `babiesReady` is set to true once loadBabies resolves
+      //    (success OR failure), so this just postpones the
+      //    decision until BabyContext has genuinely reported its
+      //    final count.
+      const babiesSettled = babiesReady || !isAuthenticated;
+      if (!babiesSettled) {
+        return; // resolver re-fires when babiesReady flips
+      }
+
       const s = getNavState(
         authLoading,
         isAuthenticated,
