@@ -1558,7 +1558,7 @@ const success = await updateGuardianProfile(targetMemberId, updates);
     if (!hasPermission('manageFamily')) { sweetAlert.error('Permission Denied', 'Only parents can remove members'); triggerHaptic('error'); return; }
     sweetAlert.confirm('Remove Family Member', `Remove ${member.fullName}? Their history will be preserved but they will lose access.`, async () => {
       triggerHaptic('error');
-      const success = await removeMember(member.id);
+      const success = await removeMember((member as any).userId || member.id);
       if (success) { triggerHaptic('success'); sweetAlert.success('Member Removed', `${member.fullName} has been removed`); navigation.goBack(); }
       else sweetAlert.error('Error', 'Failed to remove family member');
     }, () => {}, 'Remove', 'Cancel');
@@ -1586,7 +1586,7 @@ const success = await updateGuardianProfile(targetMemberId, updates);
         try { await supabase.from('profiles').update({ community_avatar: publicUrl, avatar_url: publicUrl, updated_at: new Date().toISOString() }).eq('id', linkedProfileId); } catch {}
       }
       if (isCurrentUserLocal) { try { await updateProfile({ avatar: publicUrl || localUri }); } catch {} }
-      const success = await updateGuardianProfile(member.id, { avatar: localUri });
+      const success = await updateGuardianProfile((member as any).userId || member.id, { avatar: localUri });
       if (success) {
         setMember(prev => prev ? { ...prev, avatar: localUri } : null);
         setOriginalData(prev => ({ ...prev, avatar: localUri }));
@@ -1620,7 +1620,7 @@ const success = await updateGuardianProfile(targetMemberId, updates);
         try { await supabase.from('profiles').update({ community_avatar: publicUrl, avatar_url: publicUrl, updated_at: new Date().toISOString() }).eq('id', linkedProfileId); } catch {}
       }
       if (isCurrentUserLocal) { try { await updateProfile({ avatar: publicUrl || localUri }); } catch {} }
-      const success = await updateGuardianProfile(member.id, { avatar: localUri });
+      const success = await updateGuardianProfile((member as any).userId || member.id, { avatar: localUri });
       if (success) {
         setMember(prev => prev ? { ...prev, avatar: localUri } : null);
         setOriginalData(prev => ({ ...prev, avatar: localUri }));
