@@ -325,6 +325,29 @@ const getBabyAge = (birthDate?: string | Date) => {
   return { display, shortDisplay: months > 0 ? `${months}m` : `${days}d`, months: years * 12 + months };
 };
 
+/**
+ * Extract the canonical tracker id from a timeline / activity entry.
+ * Different writers have used different key names over time:
+ *   • trackerId   (AddEntry writes this)
+ *   • tracker_id  (raw tracker_entries row)
+ *   • tracker     (legacy)
+ *   • type        (very old)
+ * Returns undefined if none are present so callers can fall back.
+ */
+const entryTrackerId = (entry: any): string | undefined => {
+  if (!entry || typeof entry !== 'object') return undefined;
+  const candidate =
+    entry.trackerId ??
+    entry.tracker_id ??
+    entry.tracker ??
+    (typeof entry.type === 'string' && !['wet', 'dirty', 'both', 'dry', 'note'].includes(entry.type)
+      ? entry.type
+      : undefined);
+  return typeof candidate === 'string' && candidate.length > 0
+    ? candidate
+    : undefined;
+};
+
 // (deleted) — visuals come from constants/trackerVisuals.ts and
 // getTrackerConfig() above. No local fallback is needed.
 
@@ -2022,7 +2045,8 @@ const RecentActivityList = React.memo(({
               </View>
 
               {group.events.map((event: any, ei: number) => {
-                const cfg = getTrackerConfig(entryTrackerId(event) || 'default');
+                const trackerIdForEvent = entryTrackerId(event) || 'default';
+                const cfg = getTrackerConfig(trackerIdForEvent);
                 const isLast = ei === group.events.length - 1;
                 const time = event?.timestamp ? format(event.timestamp, 'h:mm a') : '';
                 const fullDate = event?.timestamp ? format(event.timestamp, 'MMM d, h:mm a') : '';
