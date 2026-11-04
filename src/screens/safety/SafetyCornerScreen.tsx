@@ -926,16 +926,42 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
     sweetAlert.confirm(
       'SOS Emergency',
       `This will call ${emergencyNumbers?.emergency || '911'} and alert your emergency contacts with your location. Are you sure?`,
-      () => {
+      async () => {
         Vibration.vibrate([0, 500, 200, 500]);
-        triggerSOS();
-        sweetAlert.success('SOS Triggered', `Emergency services (${emergencyNumbers?.emergency || '911'}) have been contacted.`);
+
+        // Fire-and-forget the family fan-out.
+        try {
+          await triggerSOS();
+        } catch (e) {
+          if (__DEV__) console.warn('[SafetyCorner] triggerSOS failed:', e);
+        }
+
+        // ── SYSTEM NOTIFICATION (survives backgrounding) ────────
+        // The SOS call itself may take 5–20 s and may hand off to the
+        // phone app. If the user drops back to the home screen mid-call,
+        // the in-app `sweetAlert.success` is invisible. A system
+        // notification persists across backgrounding and re-surfaces
+        // when they return, confirming the SOS reached their contacts.
+        try {
+          const { notificationService } = await import('../../services/NotificationService');
+          await notificationService.sendSafetyAlert(
+            'SOS Activated',
+            `${currentBaby?.name || 'Your baby'} — emergency services and your contacts were notified.`,
+          );
+        } catch (e) {
+          if (__DEV__) console.warn('[SafetyCorner] SOS notification failed:', e);
+        }
+
+        sweetAlert.success(
+          'SOS Triggered',
+          `Emergency services (${emergencyNumbers?.emergency || '911'}) have been contacted.`,
+        );
       },
       () => {},
       `Call ${emergencyNumbers?.emergency || '911'}`,
-      'Cancel'
+      'Cancel',
     );
-  }, [triggerSOS, sweetAlert, emergencyNumbers]);
+  }, [triggerSOS, sweetAlert, emergencyNumbers, currentBaby?.name]);
 
   const handleAddContact = useCallback(async (contact: Omit<EmergencyContact, 'id'>) => {
     await addCustomEmergencyContact(contact);
@@ -1010,11 +1036,45 @@ export default function SafetyCornerScreen({ navigation }: SafetyCornerScreenPro
     sweetAlert.success('Updated', 'Report status updated.');
   }, [updateDoctorReport, getDoctorReports, sweetAlert]);
 
-  const handleScheduleReminder = useCallback(async (title: string, body: string, date: Date) => {
-    await scheduleSafetyReminder(title, body, date);
-    HAPTIC_SUCCESS();
-    sweetAlert.success('Reminder Set', `"${title}" scheduled for ${date.toLocaleString()}`);
-  }, [scheduleSafetyReminder, sweetAlert]);
+  const handleScheduleReminder = useCallback(
+    async (title: string, body: string, date: Date) => {
+      // 1. Persist via SafetyContext (keeps the in-app reminder list)
+      await scheduleSafetyReminder(title, body, date);
+
+      // 2. ALSO schedule a real OS notification so it fires if the
+      //    app is closed. Route through NotificationService so the
+      //    `safety` channel (high priority, bypasses DND) is used.
+      try {
+        const { notificationService } = await import('../../services/NotificationService');
+        const delaySeconds = Math.max(
+          1,
+          Math.round((date.getTime() - Date.now()) / 1000),
+        );
+        await notificationService.scheduleNotification({
+          title: `🛡️ ${title}`,
+          body: body || 'Safety reminder',
+          channelId: 'safety',
+          priority: 'high',
+          sound: true,
+          delaySeconds,
+          data: {
+            type: 'safety_alert',
+            screen: 'SafetyCorner',
+            params: {},
+          },
+        });
+      } catch (e) {
+        if (__DEV__) console.warn('[SafetyCorner] schedule notification failed:', e);
+      }
+
+      HAPTIC_SUCCESS();
+      sweetAlert.success(
+        'Reminder Set',
+        `"${title}" scheduled for ${date.toLocaleString()}`,
+      );
+    },
+    [scheduleSafetyReminder, sweetAlert],
+  );
 
   const handleShareLocation = useCallback(async () => {
     try {

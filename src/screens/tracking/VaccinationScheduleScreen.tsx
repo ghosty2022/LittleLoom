@@ -1525,25 +1525,65 @@ export default function VaccinationScheduleScreen({ navigation }: any) {
     if (currentBaby) babyModalShownRef.current = false;
   }, [currentBaby, isLoadingInitial]);
 
-  const saveRecord = useCallback(async (doseId: string, data: any) => {
-    if (!currentBaby) return;
-    try {
-      const stored = await AsyncStorage.getItem(`${STORAGE_KEY}_${currentBaby.id}`);
-      const records = stored ? JSON.parse(stored) : {};
-      records[doseId] = {
-        completedDate: data.date,
-        notes: data.notes,
-        sideEffects: data.sideEffects,
-        batchNumber: data.batchNumber,
-        location: data.location,
-      };
-      await AsyncStorage.setItem(`${STORAGE_KEY}_${currentBaby.id}`, JSON.stringify(records));
-      await loadRecords();
-      HAPTIC_SUCCESS();
-    } catch (error) {
-      console.error('Error saving record:', error);
-    }
-  }, [currentBaby, loadRecords]);
+  const saveRecord = useCallback(
+    async (doseId: string, data: any) => {
+      if (!currentBaby) return;
+      try {
+        const stored = await AsyncStorage.getItem(
+          `${STORAGE_KEY}_${currentBaby.id}`,
+        );
+        const records = stored ? JSON.parse(stored) : {};
+        records[doseId] = {
+          completedDate: data.date,
+          notes: data.notes,
+          sideEffects: data.sideEffects,
+          batchNumber: data.batchNumber,
+          location: data.location,
+        };
+        await AsyncStorage.setItem(
+          `${STORAGE_KEY}_${currentBaby.id}`,
+          JSON.stringify(records),
+        );
+        await loadRecords();
+        HAPTIC_SUCCESS();
+
+        // ── CONFIRMATION NOTIFICATION ─────────────────────────
+        // Confirms to the parent that the record was saved (useful
+        // when the Save button lives behind a modal and the parent
+        // dismisses it without noticing). Uses the `reminders`
+        // channel so it doesn't collide with the safety channel.
+        try {
+          const [vaccineId, doseNumberStr] = doseId.split('_');
+          const doseNumber = Number(doseNumberStr) || 1;
+          const series = VACCINE_SERIES.find(s => s.id === vaccineId);
+          const doseLabel = series
+            ? `${series.name} — dose ${doseNumber}`
+            : 'Vaccine';
+          const { notificationService } = await import(
+            '../../services/NotificationService'
+          );
+          await notificationService.scheduleNotification({
+            title: '💉 Vaccine Recorded',
+            body: `${doseLabel} for ${currentBaby.name} on ${new Date(data.date).toLocaleDateString()}`,
+            channelId: 'reminders',
+            priority: 'normal',
+            sound: true,
+            delaySeconds: 1, // fire on next tick so the modal dismiss animates first
+            data: {
+              type: 'vaccine_recorded',
+              screen: 'VaccinationSchedule',
+              params: {},
+            },
+          });
+        } catch (e) {
+          if (__DEV__) console.warn('[Vaccines] confirmation notification failed:', e);
+        }
+      } catch (error) {
+        console.error('Error saving record:', error);
+      }
+    },
+    [currentBaby, loadRecords],
+  );
 
   const handleComplete = useCallback((dose: VaccineDose) => {
     setSelectedDose(dose);

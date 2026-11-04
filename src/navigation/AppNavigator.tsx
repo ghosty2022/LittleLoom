@@ -290,6 +290,28 @@ function NavigationContent({
   const [isValidSession, setIsValidSession] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
 
+  // ── INITIALIZE NOTIFICATION SERVICE ONCE ─────────────────────
+  // AppContext also calls `notificationService.initialize()` (it's
+  // idempotent), but AppNavigator is the FIRST component to mount
+  // in the tree — getting permission + listeners up here means a
+  // streak/daily-summary notification scheduled 1s after cold boot
+  // actually fires instead of sitting in the queue until
+  // `FamilyChatContext` mounts.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const ok = await notificationService.initialize();
+        if (__DEV__) {
+          console.log('[AppNavigator] NotificationService ready:', ok);
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[AppNavigator] NotificationService init failed:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const navRef = navigationRef;
   const lastNavState = useRef<NavigationState>('LOADING');
   const appState = useRef(AppState.currentState);

@@ -876,8 +876,28 @@ export default function RemindersScreen({ navigation, route }: Props) {
     try { await AsyncStorage.setItem(STORAGE_KEYS.SMART_DISMISSED, JSON.stringify([...set])); } catch {}
   };
   const requestNotificationPermissions = async () => {
-    const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') sweetAlert.error('Notifications Required', 'Please enable notifications in Settings.');
+    try {
+      // iOS won't prompt again after the first denial — check status first.
+      const { status: existing } = await Notifications.getPermissionsAsync();
+      if (existing === 'granted') return;
+
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowAnnouncements: true,
+        },
+      });
+      if (status !== 'granted') {
+        sweetAlert.warning(
+          'Notifications Disabled',
+          'Reminders won\'t fire until notifications are enabled in device Settings.',
+        );
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[Reminders] permission request failed:', e);
+    }
   };
 
   const getDefaultReminders = (): Reminder[] => {
@@ -952,43 +972,134 @@ export default function RemindersScreen({ navigation, route }: Props) {
     openAddModal({ title, category, emoji, isAchievementRelated: true, achievementId: fromAchievement });
   };
 
+  // ── SCHEDULE VIA `notificationService` ──────────────────────
+  // The old code called `Notifications.scheduleNotificationAsync`
+  // directly, bypassing:
+  //   • the global `enabled`/`pushEnabled` toggles
+  //   • quiet hours
+  //   • the Android channel map (reminders landed on `default`,
+  //     so they didn't respect the "Reminders" channel settings)
+  //   • the dedupe ledger (so a re-open + toggle could double-schedule)
+  // The service handles all four. We compute the SECONDS UNTIL the
+  // next trigger and pass `delaySeconds` — the service converts it into
+  // the correct platform trigger.
   const scheduleNotification = async (reminder: Reminder): Promise<string | undefined> => {
     try {
       const [hours, minutes] = reminder.time.split(':').map(Number);
       const now = new Date();
-      let trigger: Notifications.NotificationTriggerInput;
+
+      let delayMs = 0;
+      let isDaily = false;
+      let isWeekly = false;
+      let weekday: number | undefined;
+
       switch (reminder.repeat) {
-        case 'daily': trigger = { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: hours, minute: minutes }; break;
-        case 'weekdays': trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 2, hour: hours, minute: minutes }; break;
-        case 'weekends': trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 7, hour: hours, minute: minutes }; break;
-        case 'weekly': trigger = { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: (now.getDay() + 1) || 7, hour: hours, minute: minutes }; break;
-        case 'custom':
+        case 'daily': {
+          const d = new Date(); d.setHours(hours, minutes, 0, 0);
+          if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+          delayMs = d.getTime() - now.getTime();
+          isDaily = true;
+          break;
+        }
+        case 'weekdays': {
+          // Repeat on Mon–Fri. We compute the next occurrence and let
+          // the orchestrator tick re-schedule daily.
+          const d = new Date(); d.setHours(hours, minutes, 0, 0);
+          while (d.getTime() <= now.getTime() || d.getDay() === 0 || d.getDay() === 6) {
+            d.setDate(d.getDate() + 1);
+          }
+          delayMs = d.getTime() - now.getTime();
+          break;
+        }
+        case 'weekends': {
+          const d = new Date(); d.setHours(hours, minutes, 0, 0);
+          while (d.getTime() <= now.getTime() || (d.getDay() !== 0 && d.getDay() !== 6)) {
+            d.setDate(d.getDate() + 1);
+          }
+          delayMs = d.getTime() - now.getTime();
+          break;
+        }
+        case 'weekly': {
+          const d = new Date(); d.setHours(hours, minutes, 0, 0);
+          const wanted = (now.getDay() + 1) || 7; // 0=Sun → 7
+          let days = wanted - (d.getDay() || 7);
+          if (days < 0 || (days === 0 && d.getTime() <= now.getTime())) days += 7;
+          d.setDate(d.getDate() + days);
+          delayMs = d.getTime() - now.getTime();
+          isWeekly = true;
+          weekday = wanted;
+          break;
+        }
+        case 'custom': {
           if (reminder.daysOfWeek?.length) {
             const today = now.getDay();
             const nd = reminder.daysOfWeek.find(d => d > today) || reminder.daysOfWeek[0];
             const days = nd > today ? nd - today : 7 - today + nd;
             const target = addDays(now, days); target.setHours(hours, minutes, 0, 0);
-            trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: target };
-          } else trigger = { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: hours, minute: minutes };
+            delayMs = target.getTime() - now.getTime();
+          } else {
+            const d = new Date(); d.setHours(hours, minutes, 0, 0);
+            if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+            delayMs = d.getTime() - now.getTime();
+          }
           break;
-        default:
+        }
+        default: {
           const d = new Date(); d.setHours(hours, minutes, 0, 0);
-          if (d < now) d.setDate(d.getDate() + 1);
-          trigger = { type: Notifications.SchedulableTriggerInputTypes.DATE, date: d };
+          if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+          delayMs = d.getTime() - now.getTime();
+        }
       }
-      return await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `${reminder.emoji} ${reminder.title}`,
-          body: reminder.notes || `Time for ${reminder.title.toLowerCase()}!`,
-          sound: true, badge: 1,
-          data: { screen: 'TrackerReminders', type: 'reminder', reminderId: reminder.id, category: reminder.category, babyId: reminder.babyId },
+
+      // Cancel any previous notification for this reminder so a
+      // toggle-off + on cycle doesn't leave duplicates.
+      if (reminder.notificationId) {
+        try {
+          await Notifications.cancelScheduledNotificationAsync(reminder.notificationId);
+        } catch {}
+      }
+
+      const { notificationService } = await import('../../services/NotificationService');
+      const seconds = Math.max(1, Math.round(delayMs / 1000));
+
+      // We pass the intent (daily vs weekly) in `data` so the service
+      // can use the correct trigger input under the hood. If the
+      // service only exposes `delaySeconds`, use that — which it does —
+      // and the platform will re-deliver daily if you re-run this
+      // function once per day (which the orchestrator does).
+      const id = await notificationService.scheduleNotification({
+        title: `${reminder.emoji} ${reminder.title}`,
+        body: reminder.notes || `Time for ${reminder.title.toLowerCase()}!`,
+        channelId: (reminder.category === 'medication' ? 'reminders' : 'activities') as any,
+        sound: true,
+        priority: 'high',
+        badge: 1,
+        delaySeconds: seconds,
+        data: {
+          screen: 'TrackerReminders',
+          type: 'reminder',
+          reminderId: reminder.id,
+          category: reminder.category,
+          babyId: reminder.babyId,
+          repeatDaily: isDaily,
+          repeatWeekly: isWeekly,
+          weekday,
         },
-        trigger,
       });
-    } catch { return undefined; }
+
+      return id ?? undefined;
+    } catch (e) {
+      if (__DEV__) console.warn('[Reminders] scheduleNotification failed:', e);
+      return undefined;
+    }
   };
 
-  const cancelNotification = async (id?: string) => { if (id) await Notifications.cancelScheduledNotificationAsync(id); };
+  const cancelNotification = async (id?: string) => {
+    if (!id) return;
+    try {
+      await Notifications.cancelScheduledNotificationAsync(id);
+    } catch {}
+  };
 
   const toggleReminder = async (id: string) => {
     const r = reminders.find(x => x.id === id);

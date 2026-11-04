@@ -664,7 +664,8 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
       }
 
       try {
-        
+        // Derive a target screen from the payload type if the notification
+        // didn't specify one.
         const targetScreen = screen || (
           type === 'chat_message' ? 'Chat' :
           type === 'community_notification' ? 'Notifications' :
@@ -678,15 +679,39 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
 
         if (!targetScreen) return;
 
-        
-        
-        const currentRoute = nav.getCurrentRoute?.()?.name;
-        if (currentRoute && currentRoute !== 'CommunityMain' && currentRoute !== targetScreen) {
-          
-          nav.navigate(targetScreen, params);
-        } else {
-          nav.navigate(targetScreen, params);
+        // ── BUILD THE PARAMS THE TARGET SCREEN ACTUALLY NEEDS ───
+        // `params` is `data.params` — which notification senders rarely
+        // populate. The actual fields live at the top level of the
+        // payload (`chatId`, `postId`, `userId`). Without this merge,
+        // a chat-message tap opened `Chat` with `chatId: undefined`,
+        // which made the ChatScreen immediately fall through to
+        // "This conversation is no longer available".
+        const resolvedParams: Record<string, unknown> = { ...params };
+        if (targetScreen === 'Chat' && !resolvedParams.chatId) {
+          if (typeof data.chatId === 'string') resolvedParams.chatId = data.chatId;
+          if (typeof data.userId === 'string') resolvedParams.userId = data.userId;
         }
+        if (targetScreen === 'PostDetail' && !resolvedParams.postId) {
+          if (typeof data.postId === 'string') resolvedParams.postId = data.postId;
+        }
+        if (
+          (targetScreen === 'CommunityMemberProfile' ||
+            targetScreen === 'Followers' ||
+            targetScreen === 'Following') &&
+          !resolvedParams.userId
+        ) {
+          if (typeof data.actorId === 'string') resolvedParams.userId = data.actorId;
+          else if (typeof data.userId === 'string') resolvedParams.userId = data.userId;
+        }
+        if (
+          (targetScreen === 'Notifications') &&
+          !resolvedParams.notificationId &&
+          typeof data.notificationId === 'string'
+        ) {
+          resolvedParams.notificationId = data.notificationId;
+        }
+
+        nav.navigate(targetScreen, resolvedParams);
 
         if (__DEV__) {
           console.log('[CommunityNavigator] Routed notification to:', targetScreen, params);

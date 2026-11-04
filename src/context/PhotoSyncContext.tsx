@@ -197,14 +197,24 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
       const queue = safeParseJSON<ImportQueueItem[]>(data, []);
       if (!isMounted.current) return;
+
+      // ── CRITICAL ORDER ──────────────────────────────────────
+      // `queueRef.current` MUST be updated BEFORE the state commit,
+      // because `processQueueItem` reads from the ref. The old order
+      // (setState first, then ref on the next effect tick) left a
+      // one-tick window where a freshly-loaded queue was invisible
+      // to `processQueueItem`, causing items to be marked
+      // 'processing' against an empty `queueRef.current` and never
+      // landing as 'completed' in the persisted JSON.
       queueRef.current = queue;
+
       setState(prev => ({
         ...prev,
         queue,
         queueStats: computeStats(queue),
       }));
     } catch {
-      
+      // No file yet — first launch. Nothing to load.
     }
   }, []);
 

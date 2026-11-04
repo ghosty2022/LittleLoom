@@ -840,7 +840,21 @@ export default function TimelineScreen() {
   const { entries: trackerEntries, refreshEntries, deleteEntry, getTracker, getEntries } = useTracker();
   const { success, confirm, error } = useSweetAlert();
 
-  const { members, loadFamily } = useFamily();   // ← needed for live logger names
+  const { members, loadFamily } = useFamily();
+
+  // ── Achievements feed the notification orchestrator ─────────────
+  // `pendingAchievements` grows the moment a new achievement unlocks,
+  // and the orchestrator fires a local notification for each one.
+  // `useIntegratedTracker()` is optional — HomeScreen must not crash
+  // if the provider isn't mounted (deep-link case).
+  let integrated: any = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('../../context/IntegratedTrackerContext');
+    integrated = mod.useIntegratedTracker?.() ?? null;
+  } catch {
+    integrated = null;
+  }   // ← needed for live logger names
   const { correlations: timelineCorrelations } = useTimelineCorrelations();
   const { reminders: predictiveReminders } = usePredictiveReminders();
   const { growthIndex } = useGrowthIntelligence();

@@ -1846,6 +1846,20 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // several seconds after launch.
   const { members, loadFamily } = useFamily();
 
+  // ── Achievements feed the notification orchestrator ─────────────
+  // `pendingAchievements` grows the moment a new achievement unlocks,
+  // and the orchestrator fires a local notification for each one.
+  // `useIntegratedTracker()` is optional — HomeScreen must not crash
+  // if the provider isn't mounted (deep-link case).
+  let integrated: any = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('../../context/IntegratedTrackerContext');
+    integrated = mod.useIntegratedTracker?.() ?? null;
+  } catch {
+    integrated = null;
+  }
+
   const {
     entries: trackerEntriesRaw,
     refreshEntries: refreshTrackerEntries,
@@ -1911,6 +1925,34 @@ const loadActivities = refreshTrackerEntries;
           typeof loadFamily === 'function' ? loadFamily() : Promise.resolve(),
         ]);
       } catch {}
+
+      // ── NOTIFICATION ORCHESTRATOR ─────────────────────────
+      // Fires:
+      //   • achievement unlocked (per `pendingAchievements`)
+      //   • streak at risk (>= 20:00 local, no entry today)
+      //   • daily summary (20:30–21:30 window, entries exist)
+      //   • vaccine due (T-7 and T-0)
+      // Every category dedupes internally, so a 45-second tick
+      // cannot spam. Wrapped in its own try/catch because a
+      // notification failure must NEVER block the data refresh.
+      try {
+        const { runNotificationOrchestrator } = await import(
+          '../../services/NotificationOrchestrator'
+        );
+        await runNotificationOrchestrator({
+                    pendingAchievements: integrated?.pendingAchievements ?? [],,
+          babyId: displayedBaby?.id ?? null,
+          babyName: displayedBaby?.name ?? 'your baby',
+          babyBirthDate: displayedBaby?.birthDate ?? null,
+          currentStreak: trackingStreakDays,
+          hasEntryToday: Object.values(todayCounts).some((n) => Number(n) > 0),
+          feedCount: todayCounts.feeds,
+          sleepHours: dailySummary.sleepHours,
+          diaperCount: todayCounts.diapers,
+        });
+      } catch (e) {
+        if (__DEV__) console.warn('[HomeScreen] Notification orchestrator failed:', e);
+      }
     };
 
     // Don't hammer on first render — start 45 s after mount.
@@ -1919,7 +1961,18 @@ const loadActivities = refreshTrackerEntries;
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [userProfile?.id, loadBabies, loadActivities, loadFamily]);
+  }, [
+    userProfile?.id,
+    loadBabies,
+    loadActivities,
+    loadFamily,
+    displayedBaby?.id,
+    displayedBaby?.name,
+    displayedBaby?.birthDate,
+    trackingStreakDays,
+    todayCounts,
+    dailySummary.sleepHours,
+  ]);
 
 // Track the userId we hydrated cache for. If it changes (sign-out → sign-in),
 // we wipe the in-memory cache and reload scoped keys.
@@ -2159,6 +2212,28 @@ useEffect(() => {
             typeof loadFamily === 'function' ? loadFamily() : Promise.resolve(),
           ]);
         } catch {}
+
+        // Re-run the orchestrator on foreground resume — a user who
+        // opened the app at 21:30 should get their daily-summary
+        // notification if they haven't seen it yet today.
+        try {
+          const { runNotificationOrchestrator } = await import(
+            '../../services/NotificationOrchestrator'
+          );
+          await runNotificationOrchestrator({
+                      pendingAchievements: integrated?.pendingAchievements ?? [],,
+            babyId: displayedBaby?.id ?? null,
+            babyName: displayedBaby?.name ?? 'your baby',
+            babyBirthDate: displayedBaby?.birthDate ?? null,
+            currentStreak: trackingStreakDays,
+            hasEntryToday: Object.values(todayCounts).some((n) => Number(n) > 0),
+            feedCount: todayCounts.feeds,
+            sleepHours: dailySummary.sleepHours,
+            diaperCount: todayCounts.diapers,
+          });
+        } catch (e) {
+          if (__DEV__) console.warn('[HomeScreen] Orchestrator (resume) failed:', e);
+        }
       });
       return () => {
         sub.remove();

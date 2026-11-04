@@ -17,17 +17,20 @@ import { useCustomization, AppearanceMode } from '../hooks/useCustomization';
 
 const BACKGROUND_SYNC_TASK = 'BACKGROUND_NOTIFICATION_SYNC';
 
+// ── BACKGROUND FETCH: DEFERRED ────────────────────────────────
+// We intentionally do NOT register a periodic background task here.
+// Notifications that must fire reliably while the app is closed should
+// be scheduled as *local* notifications by NotificationService
+// (which uses `scheduleNotificationAsync` with a DATE trigger, so the
+// OS delivers them without needing to wake JS).
+//
+// If you later want to run background *sync* (not notification delivery),
+// register `BACKGROUND_SYNC_TASK` inside `ensureNotificationsInitialized`
+// and point it at a fresh sync function — but that's out of scope for
+// this audit. Keep the name defined so nothing else complains.
 if (!TaskManager.isTaskDefined(BACKGROUND_SYNC_TASK)) {
   TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
-    try {
-      const result = await performBackgroundNotificationSync();
-      return result?.hasUpdates
-        ? BackgroundFetch.BackgroundFetchResult.NewData
-        : BackgroundFetch.BackgroundFetchResult.NoData;
-    } catch (error) {
-      console.error('[BackgroundSync] Task error:', error);
-      return BackgroundFetch.BackgroundFetchResult.Failed;
-    }
+    return BackgroundFetch.BackgroundFetchResult.NoData;
   });
 }
 
@@ -72,6 +75,10 @@ export interface NotificationSettings {
   safetyAlerts: boolean;
   dailySummary: boolean;
   activityReminders: boolean;
+  /** @deprecated mirror of `achievementReminders` */
+  achievementNotifications?: boolean;
+  /** @deprecated mirror of `activityReminders || streakReminders` */
+  reminderNotifications?: boolean;
 }
 
 export interface NotificationPayload {
@@ -211,56 +218,36 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   safetyAlerts: true,
   dailySummary: true,
   activityReminders: true,
+  // ── ALIASES ────────────────────────────────────────────
+  // `NotificationService` uses these names. We include them in the
+  // AppContext type so `updateNotificationSettings` can write the
+  // right field when the settings screen toggles it. Reading either
+  // field yields the same state.
+  achievementNotifications: true,
+  reminderNotifications: true,
+} as NotificationSettings & {
+  achievementNotifications?: boolean;
+  reminderNotifications?: boolean;
 };
 
 
 
+// ── REMOVED: `performBackgroundNotificationSync` ──────────────────
+// The old background task wrote to `PENDING_NOTIFICATIONS_KEY` in
+// AsyncStorage but nothing else in the app read that key. Meanwhile
+// `NotificationService` maintains its OWN queue (`@littleloom_notification_queue_v2`)
+// and flushes it on foreground resume. Two queues, neither drained,
+// both wasting battery.
+//
+// `NotificationService.flushQueue()` (already called by the service
+// on AppState → 'active') is the only queue that matters. This stub
+// keeps the exported function name intact so callers don't crash.
 async function performBackgroundNotificationSync(): Promise<{ hasUpdates: boolean }> {
   try {
-    const settings = await loadNotificationSettings();
-    if (!settings.allowBackgroundSync) return { hasUpdates: false };
-
-    const pending = await loadPendingNotifications();
-    let hasUpdates = false;
-
-    for (const notification of pending) {
-      if (notification.status === 'pending') {
-        try {
-          const id = await Notifications.scheduleNotificationAsync({
-            content: {
-              title: notification.payload.title,
-              body: notification.payload.body,
-              data: notification.payload.data || {},
-              sound: notification.payload.sound !== false,
-              badge: notification.payload.badge || 1,
-              ...(Platform.OS === 'android' && {
-                channelId: notification.payload.channelId || 'default',
-                priority: notification.payload.priority === 'high'
-                  ? Notifications.AndroidPriority.HIGH
-                  : notification.payload.priority === 'low'
-                    ? Notifications.AndroidPriority.LOW
-                    : Notifications.AndroidPriority.DEFAULT,
-              }),
-            },
-            trigger: null,
-          });
-          notification.status = 'sent';
-          notification.sentAt = Date.now();
-          hasUpdates = true;
-        } catch (error) {
-          notification.status = 'failed';
-          notification.error = String(error);
-        }
-      }
-    }
-
-    if (hasUpdates) {
-      await savePendingNotifications(pending);
-    }
-
-    return { hasUpdates };
-  } catch (error) {
-    console.error('[BackgroundSync] Error:', error);
+    const { notificationService } = await import('@/services/NotificationService');
+    await notificationService.flushQueue();
+    return { hasUpdates: notificationService.getQueueLength() > 0 };
+  } catch {
     return { hasUpdates: false };
   }
 }
@@ -954,8 +941,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         quietHoursStart: newSettings.quietHoursStart,
         quietHoursEnd: newSettings.quietHoursEnd,
         chatNotifications: newSettings.chatNotifications,
-        achievementNotifications: newSettings.achievementReminders,
-        reminderNotifications: newSettings.activityReminders || newSettings.streakReminders,
+        // Merge the two settings screens' naming:
+        //   AppContext uses `achievementReminders`/`streakReminders`/
+        //   `activityReminders` (separate toggles).
+        //   NotificationService uses `achievementNotifications`/
+        //   `reminderNotifications`.
+        // We OR them so either toggle enables the category.
+        achievementNotifications:
+          newSettings.achievementReminders ||
+          (newSettings as any).achievementNotifications === true,
+        reminderNotifications:
+          newSettings.activityReminders ||
+          newSettings.streakReminders ||
+          (newSettings as any).reminderNotifications === true,
         safetyAlerts: newSettings.safetyAlerts,
       });
     } catch (e) {

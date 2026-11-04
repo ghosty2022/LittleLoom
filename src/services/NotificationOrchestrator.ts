@@ -89,17 +89,36 @@ const schedule = async (
   body: string,
   data: Record<string, unknown>,
   category: Category,
+  delaySeconds: number = 0,
 ): Promise<boolean> => {
   try {
+    const trigger: Notifications.NotificationTriggerInput | null =
+      delaySeconds > 0
+        ? {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: delaySeconds,
+            repeats: false,
+          }
+        : null;
+
+    const content: Notifications.NotificationContentInput = {
+      title,
+      body,
+      data: { ...data, category, type: data.type ?? category },
+      sound: true,
+      priority: Notifications.AndroidPriority.HIGH,
+    };
+
+    // Channel mapping — must match NotificationService.createAndroidChannels
+    if (category === 'safety_alert') content.channelId = 'safety';
+    else if (category === 'vaccine') content.channelId = 'reminders';
+    else if (category === 'achievement') content.channelId = 'achievements';
+    else if (category === 'streak') content.channelId = 'streaks';
+    else content.channelId = 'reminders';
+
     const id = await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        data: { ...data, category, type: data.type ?? category },
-        sound: true,
-        priority: Notifications.AndroidPriority.HIGH,
-      },
-      trigger: null, // deliver immediately
+      content,
+      trigger,
     });
     return !!id;
   } catch (e) {
@@ -145,10 +164,20 @@ export const checkStreakNotification = async (args: {
   hasEntryToday: boolean;
 }) => {
   if (!args.babyId || args.currentStreak < 1 || args.hasEntryToday) return;
-  const hour = new Date().getHours();
-  if (hour < 20) return;
 
-  const today = new Date().toISOString().split('T')[0];
+  // If we're already past 20:00, fire now. Otherwise schedule for 20:00.
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(20, 0, 0, 0);
+  const delaySeconds = Math.max(
+    0,
+    Math.round((target.getTime() - now.getTime()) / 1000),
+  );
+  // Never schedule for a time more than 24h out — that means we're
+  // before 20:00 today, which is fine; the OS delivers at 20:00.
+  if (delaySeconds > 24 * 60 * 60) return;
+
+  const today = now.toISOString().split('T')[0];
   const key = `${CATEGORY_IDS.streak}:${args.babyId}:${today}`;
   const fired = await loadFired();
   if (hasFired(fired, key, 24 * 60 * 60 * 1000)) return;
@@ -162,6 +191,7 @@ export const checkStreakNotification = async (args: {
       params: { type: 'potty' },
     },
     'streak',
+    delaySeconds,
   );
   await markFired(key);
 };
@@ -199,6 +229,9 @@ export const checkDailySummaryNotification = async (args: {
       params: {},
     },
     'daily_summary',
+    // Fire immediately — the caller already confirmed we're inside
+    // the 20:30–21:30 window.
+    0,
   );
   await markFired(key);
 };
@@ -244,6 +277,19 @@ export const checkVaccineNotification = async (args: {
     if (hasFired(fired, key, 14 * 24 * 60 * 60 * 1000)) continue;
 
     const when = daysUntil === 0 ? 'is due today' : 'is due in 7 days';
+    // Fire at 09:00 local on the due date (T-0) or 7 days before.
+    // If that time has already passed today, fire 1 minute from now
+    // (better late than never).
+    const now = new Date();
+    const target = new Date(now);
+    target.setDate(target.getDate() + daysUntil);
+    target.setHours(9, 0, 0, 0);
+    let delaySeconds = Math.max(
+      0,
+      Math.round((target.getTime() - now.getTime()) / 1000),
+    );
+    if (delaySeconds === 0) delaySeconds = 60; // fire in a minute if past
+    if (delaySeconds > 14 * 24 * 60 * 60) continue; // >14d out = skip
     await schedule(
       `💉 ${v.name} ${when}`,
       `${args.babyName}'s ${v.name} vaccination ${when}. Tap to view the schedule.`,
@@ -253,6 +299,7 @@ export const checkVaccineNotification = async (args: {
         params: { highlightVaccine: v.name },
       },
       'vaccine',
+      delaySeconds,
     );
     await markFired(key);
   }
