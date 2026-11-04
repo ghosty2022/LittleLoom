@@ -33,30 +33,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-// Derive the KeyboardAvoidingView offset from the ACTUAL header
-// height so the input stays glued to the keyboard on both platforms.
-// The old hardcoded 90 was wrong whenever the header grew (badge row,
-// safe-area, dynamic type).
-const KEYBOARD_VERTICAL_OFFSET_IOS = 90;
-
-// Cap system font scaling so accessibility sizes don't break layout.
-import { Text as RNText, TextInput as RNTextInput } from 'react-native';
-const capScaling = (n: number) => Math.min(n, 1.35);
-// @ts-ignore
-RNText.defaultProps = { ...(RNText.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
-// @ts-ignore
-RNTextInput.defaultProps = { ...(RNTextInput.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
-const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
-const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
-
 // Cap system font scaling so extremely large accessibility text
-// doesn't blow out chat bubbles or the input bar.
+// doesn't blow out the slide layout or the CTA button.
 import { Text as RNText, TextInput as RNTextInput } from 'react-native';
 const capScaling = (n: number) => Math.min(n, 1.35);
 // @ts-ignore - patch defaults once per module load
 RNText.defaultProps = { ...(RNText.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
 // @ts-ignore
 RNTextInput.defaultProps = { ...(RNTextInput.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
+
+const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
+const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
 
 const ONBOARDING_COMPLETE_KEY = '@littleloom_onboarding_complete_v3';
 const ONBOARDING_SEEN_KEY = '@littleloom_onboarding_seen_v3';

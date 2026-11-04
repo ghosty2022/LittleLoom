@@ -904,7 +904,7 @@ const ImagePreviewModal: React.FC<{ visible: boolean; imageUrl: string; onClose:
       </TouchableOpacity>
     </Modal>
   );
-};
+};AndroidManifest.xml
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MESSAGE BUBBLE
@@ -1185,7 +1185,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   // ── Instant message sync via context subscription (no polling) ──
   const { subscribeToChatMessages } = useFamilyChat();
   const lastMarkedCountRef = useRef<number>(-1);
-  CONST MESSAGESREF = USEREF<FAMILYMESSAGE[]>([]);
+  const messagesRef = useRef<FamilyMessage[]>([]);
   useEffect(() => {
     if (!chatId) return;
     const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
@@ -1924,7 +1924,7 @@ const styles = StyleSheet.create({
   quickReplyText: { fontSize: 12, fontWeight: '600' },
 
   /* Input bar */
-  inputBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: DS.space.md, paddingTop: 8, gap: 4, borderTopWidth: 1 },
+  inputBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: DS.space.md, paddingTop: 8, paddingBottom: 10, gap: 4, borderTopWidth: 1 },
   inputIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   inputWrapper: { flex: 1, borderRadius: 22, paddingHorizontal: 14, borderWidth: 1, maxHeight: 100 },
   input: { fontSize: 14, fontWeight: '500', paddingVertical: 9, maxHeight: 90, flexShrink: 1 },
