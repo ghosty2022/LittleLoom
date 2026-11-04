@@ -950,7 +950,13 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   useEffect(() => {
     if (!chatId) return;
     const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
-      setMessages(msgs);
+      // Guard: don't blank a populated list with a transient empty
+      // payload from a re-hydrating cache. Wait for the real cache.
+      setMessages((prev) =>
+        msgs.length === 0 && prev.length > 0 && !chatStillExistsRef.current
+          ? prev
+          : msgs,
+      );
       // Only mark read when there are actually unread messages
       const meId = userProfile?.id;
       const hasUnread = !!meId && msgs.some((m) => !m.readBy?.includes(meId));
@@ -965,6 +971,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   }, [chatId, subscribeToChatMessages, markChatRead, userProfile?.id]);
 
   useEffect(() => { initializeChat(); }, [initialChatId, memberId]);
+  // (unchanged — the fix lives inside initializeChat above)
 
 // (removed duplicate polling effect — subscribeToChatMessages already
 // delivers live messages instantly and handles markChatRead below)
@@ -978,17 +985,23 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     }
 
     // If the user previously deleted this chat, don't resurrect it.
-    // `isChatHidden` is a synchronous ref-read from FamilyChatContext.
     if (targetChatId && isChatHidden(targetChatId)) {
       navigation.goBack();
       return;
     }
 
     if (targetChatId) {
-      setChatId(targetChatId);
+      // CRITICAL: fetch chat + messages BEFORE flipping chatId, so the
+      // subscription effect that runs on `chatId` change has a fully
+      // populated message buffer to deliver. Previously we flipped
+      // `chatId` first, let the subscription fire with an empty cache,
+      // then refreshed — producing the "appear → disappear → appear"
+      // flicker.
       const chat = getChatById(targetChatId);
+      const seed = getChatMessages(targetChatId);
       setChatInfo(chat);
-      refreshMessages();
+      setMessages(seed); // seed synchronously so FlatList has data
+      setChatId(targetChatId); // THEN flip — subscription will see same array
     }
     setIsLoading(false);
   };
