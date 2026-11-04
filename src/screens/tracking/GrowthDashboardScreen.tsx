@@ -64,6 +64,20 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+// Derive the KeyboardAvoidingView offset from the ACTUAL header
+// height so the input stays glued to the keyboard on both platforms.
+// The old hardcoded 90 was wrong whenever the header grew (badge row,
+// safe-area, dynamic type).
+const KEYBOARD_VERTICAL_OFFSET_IOS = 90;
+
+// Cap system font scaling so accessibility sizes don't break layout.
+import { Text as RNText, TextInput as RNTextInput } from 'react-native';
+const capScaling = (n: number) => Math.min(n, 1.35);
+// @ts-ignore
+RNText.defaultProps = { ...(RNText.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
+// @ts-ignore
+RNTextInput.defaultProps = { ...(RNTextInput.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 const HEADER_TOP_PADDING = 52;
 const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;

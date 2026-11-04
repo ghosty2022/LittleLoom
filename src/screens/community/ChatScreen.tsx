@@ -98,6 +98,20 @@ const LL = {
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
+// Derive the KeyboardAvoidingView offset from the ACTUAL header
+// height so the input stays glued to the keyboard on both platforms.
+// The old hardcoded 90 was wrong whenever the header grew (badge row,
+// safe-area, dynamic type).
+const KEYBOARD_VERTICAL_OFFSET_IOS = 90;
+
+// Cap system font scaling so accessibility sizes don't break layout.
+import { Text as RNText, TextInput as RNTextInput } from 'react-native';
+const capScaling = (n: number) => Math.min(n, 1.35);
+// @ts-ignore
+RNText.defaultProps = { ...(RNText.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
+// @ts-ignore
+RNTextInput.defaultProps = { ...(RNTextInput.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
+
 /* ═══════════════════════════════════════════════════════════
    Helpers
    ═══════════════════════════════════════════════════════════ */
@@ -793,9 +807,12 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       const newChatId = await getOrCreateDirectChat(otherUserId, memberInfo);
       if (cancelled || !newChatId) return;
 
-      setChatId(newChatId);
+      // Seed messages BEFORE flipping chatId so the subscription effect
+      // (which fires on chatId change) delivers the same array instead
+      // of a transient []. Fixes the flicker.
       const msgs = getChatMessages(newChatId);
       setMessages(msgs);
+      setChatId(newChatId);
       setIsBlocked(isUserBlocked(otherUserId));
       setIsLoading(false);
       markChatRead(newChatId);
@@ -868,10 +885,25 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   // Live-update messages once chatId is known
   const { subscribeToChatMessages } = useFamilyChat();
+  const messagesRef = useRef<FamilyMessage[]>([]);
   useEffect(() => {
     if (!chatId || !subscribeToChatMessages) return;
     const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
-      setMessages(msgs);
+      setMessages((prev) => {
+        // Never blank a populated list with a transient empty payload.
+        const next = msgs.length === 0 && prev.length > 0 ? prev : msgs;
+        // Auto-scroll ONLY on a genuine message-count increase.
+        // This is what stops the keyboard-open reflow from
+        // yanking the whole screen upward.
+        if (next.length > messagesRef.current.length) {
+          setTimeout(
+            () => flatListRef.current?.scrollToEnd({ animated: true }),
+            60,
+          );
+        }
+        messagesRef.current = next;
+        return next;
+      });
       const meId = userProfile?.id;
       const hasUnread = !!meId && msgs.some((m) => !m.readBy?.includes(meId));
       if (hasUnread) markChatRead(chatId);
@@ -1543,11 +1575,13 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messagesList}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => {
-          if (searchQuery) return;
-          // instant scroll on new message arrival
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }}
+        // ── KEY FIX ──────────────────────────────────────────
+        // Never scroll on content-size change (fires per keystroke).
+        // Auto-scroll is handled by the message-count watcher below.
+        onContentSizeChange={() => {}}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        style={{ flex: 1 }}
         ListHeaderComponent={renderListHeader}
         ListEmptyComponent={
           searchQuery ? (
@@ -1619,8 +1653,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
       {/* Input area */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={
+          Platform.OS === 'ios' ? insets.top + KEYBOARD_VERTICAL_OFFSET_IOS : 0
+        }
+        style={{ flexShrink: 0 }}
       >
         <View
           style={[
@@ -1628,7 +1665,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             {
               backgroundColor: isDark ? LL.darkSurface : LL.white,
               borderTopColor: isDark ? LL.darkBorder : LL.lightBorder,
-              paddingBottom: Math.max(insets.bottom, LL.space.md),
+              // Only pad by the safe-area bottom when the keyboard
+              // is NOT open. When the keyboard is up, insets.bottom
+              // is already accounted for by the KAV, so double-padding
+              // was pushing the input off-screen.
+              paddingBottom: LL.space.md,
             },
           ]}
         >
@@ -1857,15 +1898,16 @@ const styles = StyleSheet.create({
   avatarSmall: { marginRight: LL.space.sm },
   avatarSmallRight: { marginLeft: LL.space.sm },
   messageBubble: {
-    maxWidth: SCREEN_W * 0.76,
+    maxWidth: Math.min(SCREEN_W * 0.78, 520),
     borderRadius: LL.radius.xl,
     paddingHorizontal: LL.space.lg,
     paddingVertical: LL.space.md,
     overflow: 'hidden',
+    flexShrink: 1,
   },
   myBubble: { borderBottomRightRadius: LL.space.sm },
   theirBubble: { borderBottomLeftRadius: LL.space.sm },
-  messageText: { fontSize: 15, lineHeight: 22, fontWeight: '500' },
+  messageText: { fontSize: 15, lineHeight: 22, fontWeight: '500', flexShrink: 1 },
   messageFooter: { flexDirection: 'row', alignItems: 'center', marginTop: LL.space.xs, gap: 6 },
   messageTime: { fontSize: 10.5, fontWeight: '500' },
   editedLabel: { fontSize: 10.5, fontStyle: 'italic', fontWeight: '500' },
@@ -1986,7 +2028,7 @@ const styles = StyleSheet.create({
     paddingVertical: LL.space.sm,
     maxHeight: 100,
   },
-  input: { fontSize: 14.5, maxHeight: 80 },
+  input: { fontSize: 14.5, maxHeight: 80, flexShrink: 1 },
   sendBtn: { width: 42, height: 42, borderRadius: LL.radius.full, overflow: 'hidden' },
   sendBtnDisabled: { opacity: 0.5 },
   sendBtnGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },

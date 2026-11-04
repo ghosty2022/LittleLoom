@@ -54,6 +54,23 @@ const { width, height } = Dimensions.get('window');
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
 
+// Keyboard-avoidance offsets must be derived from the ACTUAL header
+// height (status bar + 14px pad on Android, 52px notch pad on iOS)
+// plus the ~64px pulse-card height + its 12px outer margin. A fixed
+// 90 (the old value) was wrong on both platforms and caused the input
+// to detach from the keyboard.
+const KEYBOARD_VERTICAL_OFFSET =
+  Platform.OS === 'ios' ? HEADER_TOP_PADDING + 76 : 0;
+
+// Cap system font scaling so extremely large accessibility text
+// doesn't blow out chat bubbles or the input bar.
+import { Text as RNText, TextInput as RNTextInput } from 'react-native';
+const capScaling = (n: number) => Math.min(n, 1.35);
+// @ts-ignore - patch defaults once per module load
+RNText.defaultProps = { ...(RNText.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
+// @ts-ignore
+RNTextInput.defaultProps = { ...(RNTextInput.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
+
 /* ═══════════════════════════════════════════════════════════════════════════
    DESIGN SYSTEM — Aura
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -613,6 +630,226 @@ const TypingIndicator: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   SOFT OPTIONS SHEET — matches the MoreScreen CustomModal aesthetic
+   ═══════════════════════════════════════════════════════════════════════════ */
+interface SoftOption {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  subtitle?: string;
+  color: string;
+  destructive?: boolean;
+  onPress: () => void;
+}
+
+const SoftOptionsSheet: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  message?: string;
+  options: SoftOption[];
+  isDark: boolean;
+}> = ({ visible, onClose, title, message, options, isDark }) => {
+  const scale = useSharedValue(0.9);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withSpring(1, { damping: 20, stiffness: 300 });
+      opacity.value = withTiming(1, { duration: 180 });
+    } else {
+      scale.value = withTiming(0.9, { duration: 150 });
+      opacity.value = withTiming(0, { duration: 150 });
+    }
+  }, [visible, scale, opacity]);
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={{ flex: 1 }} onPress={onClose}>
+        <Animated.View
+          style={[
+            {
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingHorizontal: 24,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+            },
+            backdropStyle,
+          ]}
+        >
+          {Platform.OS === 'ios' ? (
+            <Animated.View style={[{ width: '100%', maxWidth: 380 }, cardStyle]}>
+              <BlurView
+                intensity={isDark ? 60 : 90}
+                tint={isDark ? 'dark' : 'light'}
+                style={{
+                  borderRadius: 26,
+                  padding: 20,
+                  overflow: 'hidden',
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)',
+                }}
+              >
+                <SoftOptionsBody
+                  title={title}
+                  message={message}
+                  options={options}
+                  isDark={isDark}
+                  onClose={onClose}
+                />
+              </BlurView>
+            </Animated.View>
+          ) : (
+            <Animated.View
+              style={[
+                {
+                  width: '100%',
+                  maxWidth: 380,
+                  borderRadius: 26,
+                  padding: 20,
+                  backgroundColor: isDark ? 'rgba(26,26,46,0.98)' : 'rgba(255,255,255,0.98)',
+                },
+                cardStyle,
+              ]}
+            >
+              <SoftOptionsBody
+                title={title}
+                message={message}
+                options={options}
+                isDark={isDark}
+                onClose={onClose}
+              />
+            </Animated.View>
+          )}
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+};
+
+const SoftOptionsBody: React.FC<{
+  title: string;
+  message?: string;
+  options: SoftOption[];
+  isDark: boolean;
+  onClose: () => void;
+}> = ({ title, message, options, isDark, onClose }) => (
+  <>
+    <View style={{ alignItems: 'center', marginBottom: 12 }}>
+      <View
+        style={{
+          width: 40,
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
+          marginBottom: 14,
+        }}
+      />
+      <Text
+        style={{
+          fontSize: 18,
+          fontWeight: '800',
+          color: isDark ? DS.white : DS.gray900,
+          textAlign: 'center',
+        }}
+      >
+        {title}
+      </Text>
+      {!!message && (
+        <Text
+          style={{
+            fontSize: 13,
+            fontWeight: '500',
+            marginTop: 4,
+            textAlign: 'center',
+            color: isDark ? DS.gray400 : DS.gray500,
+          }}
+        >
+          {message}
+        </Text>
+      )}
+    </View>
+    <View style={{ marginTop: 6 }}>
+      {options.map((opt, i) => (
+        <PressableScale
+          key={i}
+          onPress={() => {
+            onClose();
+            opt.onPress();
+          }}
+          activeScale={0.98}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingVertical: 12,
+              paddingHorizontal: 6,
+              borderBottomWidth: i < options.length - 1 ? StyleSheet.hairlineWidth : 0,
+              borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+              gap: 12,
+            }}
+          >
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 11,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: opt.destructive ? 'rgba(239,68,68,0.12)' : `${opt.color}18`,
+              }}
+            >
+              <Ionicons
+                name={opt.icon}
+                size={18}
+                color={opt.destructive ? DS.danger : opt.color}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: '700',
+                  color: opt.destructive ? DS.danger : isDark ? DS.white : DS.gray900,
+                }}
+              >
+                {opt.label}
+              </Text>
+              {!!opt.subtitle && (
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '500',
+                    marginTop: 1,
+                    color: isDark ? DS.gray500 : DS.gray500,
+                  }}
+                >
+                  {opt.subtitle}
+                </Text>
+              )}
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={isDark ? DS.gray600 : DS.gray300}
+            />
+          </View>
+        </PressableScale>
+      ))}
+    </View>
+  </>
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
    MESSAGE REACTIONS
    ═══════════════════════════════════════════════════════════════════════════ */
 const MessageReactions: React.FC<{
@@ -836,7 +1073,7 @@ const MessageBubble: React.FC<{
 
 const ActionItem: React.FC<{ icon: any; label: string; color: string; onPress: () => void; isDark: boolean }> = ({ icon, label, color, onPress, isDark }) => (
   <PressableScale onPress={onPress} activeScale={0.98}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 6 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8 }}>
       <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: `${color}15`, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
         <Ionicons name={icon} size={18} color={color} />
       </View>
@@ -899,6 +1136,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const [showMessageInfo, setShowMessageInfo] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [alert, setAlert] = useState<{ visible: boolean; type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }>({ visible: false, type: 'success', title: '', message: '' });
+  const [showOptionsSheet, setShowOptionsSheet] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -947,6 +1185,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   // ── Instant message sync via context subscription (no polling) ──
   const { subscribeToChatMessages } = useFamilyChat();
   const lastMarkedCountRef = useRef<number>(-1);
+  CONST MESSAGESREF = USEREF<FAMILYMESSAGE[]>([]);
   useEffect(() => {
     if (!chatId) return;
     const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
@@ -964,8 +1203,14 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         lastMarkedCountRef.current = msgs.length;
         markChatRead(chatId);
       }
-      // auto-scroll on new message
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 30);
+      // auto-scroll ONLY when the message count actually grew —
+      // never on mere reflow from keyboard open/close. That's what
+      // was yanking the list upward on every keystroke.
+      const prevCount = messagesRef.current.length;
+      messagesRef.current = msgs;
+      if (msgs.length > prevCount) {
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 60);
+      }
     });
     return unsub;
   }, [chatId, subscribeToChatMessages, markChatRead, userProfile?.id]);
@@ -1000,6 +1245,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
       const chat = getChatById(targetChatId);
       const seed = getChatMessages(targetChatId);
       setChatInfo(chat);
+      messagesRef.current = seed;
       setMessages(seed); // seed synchronously so FlatList has data
       setChatId(targetChatId); // THEN flip — subscription will see same array
     }
@@ -1199,6 +1445,89 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
 
   const formatDuration = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
+  // ── Chat options menu items ──────────────────────────────
+  // Built as a plain array (not an IIFE inside JSX) so Babel's
+  // TSX parser doesn't confuse the generic `<SoftOption[]>` type
+  // annotation with a JSX opening tag.
+  const chatOptions = useMemo<SoftOption[]>(() => {
+    const otherId = chatInfo?.participants?.find(
+      (p: string) => p !== userProfile?.id,
+    );
+    const blocked = isUserBlocked(otherId || '');
+    const peerName =
+      headerInfo.name ||
+      (chatInfo?.type === 'group' ? 'this group' : 'this conversation');
+
+    const opts: SoftOption[] = [];
+
+    if (otherId) {
+      opts.push({
+        icon: blocked ? 'checkmark-circle-outline' : 'ban-outline',
+        label: blocked ? 'Unblock User' : 'Block User',
+        subtitle: blocked
+          ? 'Receive messages from them again'
+          : 'Stop receiving messages from them',
+        color: blocked ? DS.success : DS.danger,
+        destructive: !blocked,
+        onPress: () => {
+          blockUser(otherId);
+          const nowBlocked = isUserBlocked(otherId);
+          showSweetAlert(
+            nowBlocked ? 'warning' : 'success',
+            nowBlocked ? 'Blocked' : 'Unblocked',
+            nowBlocked ? 'User blocked' : 'User unblocked',
+          );
+        },
+      });
+    }
+
+    opts.push({
+      icon: 'trash-outline',
+      label: chatInfo?.type === 'group' ? 'Delete for Me' : 'Delete Chat',
+      subtitle:
+        chatInfo?.type === 'group'
+          ? 'Hide this group from your list'
+          : 'Remove conversation permanently',
+      color: DS.danger,
+      destructive: true,
+      onPress: () => {
+        Alert.alert(
+          chatInfo?.type === 'group' ? 'Delete for Me' : 'Delete Chat',
+          `Permanently delete ${peerName}? This cannot be undone.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await deleteChat(chatId);
+                  navigation.goBack();
+                } catch {
+                  showSweetAlert('error', 'Error', 'Failed to delete chat.');
+                }
+              },
+            },
+          ],
+        );
+      },
+    });
+
+    return opts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    chatInfo,
+    chatInfo?.participants,
+    chatInfo?.type,
+    chatId,
+    headerInfo.name,
+    isUserBlocked,
+    userProfile?.id,
+    blockUser,
+    deleteChat,
+    navigation,
+  ]);
+
   const renderMessage = ({ item, index }: { item: FamilyMessage; index: number }) => {
     const isMe = item.senderId === userProfile?.id;
     const member = item.senderId !== 'system' ? getMemberById(item.senderId) : undefined;
@@ -1320,58 +1649,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
                 }
               : undefined
           }
-          onOptions={() => {
-            const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
-            const peerName =
-              headerInfo.name || (chatInfo?.type === 'group' ? 'this group' : 'this conversation');
-
-            Alert.alert(
-              'Chat Options',
-              undefined,
-              [
-                {
-                  text: isUserBlocked(otherId || '') ? 'Unblock User' : 'Block User',
-                  style: isUserBlocked(otherId || '') ? 'default' : 'destructive',
-                  onPress: () => {
-                    if (!otherId) return;
-                    blockUser(otherId);
-                    const nowBlocked = isUserBlocked(otherId);
-                    showSweetAlert(
-                      nowBlocked ? 'warning' : 'success',
-                      nowBlocked ? 'Blocked' : 'Unblocked',
-                      nowBlocked ? 'User blocked' : 'User unblocked',
-                    );
-                  },
-                },
-                {
-                  text: chatInfo?.type === 'group' ? 'Delete for Me' : 'Delete Chat',
-                  style: 'destructive',
-                  onPress: () => {
-                    Alert.alert(
-                      chatInfo?.type === 'group' ? 'Delete for Me' : 'Delete Chat',
-                      `Permanently delete ${peerName}? This cannot be undone.`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Delete',
-                          style: 'destructive',
-                          onPress: async () => {
-                            try {
-                              await deleteChat(chatId);
-                              navigation.goBack();
-                            } catch {
-                              showSweetAlert('error', 'Error', 'Failed to delete chat.');
-                            }
-                          },
-                        },
-                      ],
-                    );
-                  },
-                },
-                { text: 'Cancel', style: 'cancel' },
-              ],
-            );
-          }}
+          onOptions={() => setShowOptionsSheet(true)}
         />
       </View>
 
@@ -1395,8 +1673,21 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingTop: DS.space.md, paddingBottom: 20 }}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+        // ── KEY FIX ──────────────────────────────────────────
+        // Do NOT scrollToEnd on every content-size change while
+        // typing. That handler fires on EVERY keystroke (because
+        // the input grows / the KeyboardAvoidingView shrinks the
+        // list), yanking the whole message list upward and making
+        // it look like the screen slid off. We only auto-scroll
+        // when a NEW MESSAGE actually arrives — handled inside the
+        // `subscribeToChatMessages` effect below.
+        onContentSizeChange={() => { /* no-op — see subscription */ }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        removeClippedSubviews={false}
+        // Prevent the list from scrolling behind the header on
+        // Android when the keyboard resizes the window.
+        style={{ flex: 1 }}
         ListEmptyComponent={
           <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: DS.space.lg }}>
             <View style={[styles.emptyChatIcon, { backgroundColor: `${DS.primary}15` }]}>
@@ -1416,7 +1707,11 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
 
       <ReplyPreview replyTo={replyingTo} onCancel={() => setReplyingTo(null)} isDark={isDark} />
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={KEYBOARD_VERTICAL_OFFSET}
+        style={{ flexShrink: 0 }}
+      >
         {!inputText && !replyingTo && (
           <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.md, paddingVertical: 6, gap: 6 }}>
             {QUICK_REPLIES.map((reply, i) => (
@@ -1432,7 +1727,11 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         <View style={[styles.inputBar, {
           backgroundColor: isDark ? 'rgba(12,10,9,0.98)' : 'rgba(255,255,255,0.98)',
           borderTopColor: isDark ? DS.darkBorder : DS.gray200,
-          paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
+          // The KeyboardAvoidingView already offsets the input by the
+          // keyboard height. Adding `insets.bottom` again while the
+          // keyboard is open was pushing the input bar off the top of
+          // the visible screen on gesture-nav Android phones.
+          // `paddingBottom` comes from the styles object (`10`).
         }]}>
           <TouchableOpacity style={styles.inputIconBtn} onPress={showImageSourceAlert}>
             <Ionicons name="image-outline" size={22} color={DS.primary} />
@@ -1483,6 +1782,19 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           </View>
         )}
       </KeyboardAvoidingView>
+
+      <SoftOptionsSheet
+        visible={showOptionsSheet}
+        onClose={() => setShowOptionsSheet(false)}
+        title={chatInfo?.type === 'group' ? 'Group Chat' : headerInfo.name || 'Chat'}
+        message={
+          chatInfo?.type === 'group'
+            ? `${chatInfo.participants?.length || 0} members`
+            : headerInfo.status
+        }
+        isDark={isDark}
+        options={chatOptions}
+      />
     </View>
   );
 }
@@ -1569,7 +1881,13 @@ const styles = StyleSheet.create({
   myContainer: { justifyContent: 'flex-end' },
   theirContainer: { justifyContent: 'flex-start' },
   senderName: { fontSize: 11, fontWeight: '700', marginBottom: 3, marginLeft: 4 },
-  bubble: { maxWidth: width * 0.75, padding: 10, borderRadius: 16 },
+  bubble: {
+    maxWidth: Math.min(width * 0.78, 520),
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 16,
+    flexShrink: 1,
+  },
   myBubble: { borderBottomRightRadius: 4 },
   myBubbleLast: { borderBottomRightRadius: 16 },
   theirBubble: { borderBottomLeftRadius: 4, borderWidth: 1 },
@@ -1579,7 +1897,7 @@ const styles = StyleSheet.create({
   replyName: { fontSize: 11, fontWeight: '700' },
   imageContainer: { width: width * 0.55, height: width * 0.55, borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.05)' },
   imagePlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  messageText: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  messageText: { fontSize: 14, lineHeight: 20, fontWeight: '500', flexShrink: 1 },
   messageFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 3, gap: 4 },
   timestamp: { fontSize: 10, fontWeight: '500' },
   editedLabel: { fontSize: 9, fontWeight: '500' },
@@ -1609,7 +1927,7 @@ const styles = StyleSheet.create({
   inputBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: DS.space.md, paddingTop: 8, gap: 4, borderTopWidth: 1 },
   inputIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   inputWrapper: { flex: 1, borderRadius: 22, paddingHorizontal: 14, borderWidth: 1, maxHeight: 100 },
-  input: { fontSize: 14, fontWeight: '500', paddingVertical: 9, maxHeight: 90 },
+  input: { fontSize: 14, fontWeight: '500', paddingVertical: 9, maxHeight: 90, flexShrink: 1 },
   sendBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', ...DS.shadow.md },
 
   /* Recording overlay */

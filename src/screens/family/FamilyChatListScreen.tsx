@@ -60,6 +60,15 @@ const { width, height } = Dimensions.get('window');
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
 
+// Cap system font scaling so extremely large accessibility text
+// doesn't blow out chat bubbles or the input bar.
+import { Text as RNText, TextInput as RNTextInput } from 'react-native';
+const capScaling = (n: number) => Math.min(n, 1.35);
+// @ts-ignore - patch defaults once per module load
+RNText.defaultProps = { ...(RNText.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
+// @ts-ignore
+RNTextInput.defaultProps = { ...(RNTextInput.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
+
 /* ═══════════════════════════════════════════════════════════════════════════
    DESIGN SYSTEM — Aura
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -754,6 +763,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const [groupPhoto, setGroupPhoto] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [alert, setAlert] = useState<{ visible: boolean; type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }>({ visible: false, type: 'success', title: '', message: '' });
+  const [showOptionsSheet, setShowOptionsSheet] = useState(false);
 
   // ── Instant list updates on any inbound message ─────────────
   // Subscribing to each chat's message stream is 100x cheaper
@@ -1005,6 +1015,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   };
 
   const sortedChats = useMemo(() => {
+    const source = Array.isArray(chats) && chats.length > 0 ? chats : [];
     const filtered = searchQuery.trim()
       ? chats.filter((c) =>
           c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
