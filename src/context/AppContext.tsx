@@ -121,7 +121,7 @@ export interface AppContextType {
   getScheduledNotifications: () => Promise<Notifications.NotificationRequest[]>;
   getNotificationHistory: () => Promise<any[]>;
   markNotificationRead: (id: string) => Promise<void>;
-  getBadgeCount: () => number;
+  getBadgeCount: () => Promise<number>;
   isInQuietHours: () => boolean;
   enableKeepAwake: (reason?: string) => Promise<void>;
   releaseKeepAwake: () => Promise<void>;
@@ -183,6 +183,14 @@ let _cachedAppearance: AppearanceMode | null = null;
 let _cachedThemeMode: ThemeMode | null = null;
 let _themeLoaded = false;
 let _navigationRef: any = null;
+
+// ── Single source of truth for "what nav ref should notification taps
+//    use?". AppContext and AppNavigator both need to talk to the
+//    navigator. Sharing a module-level variable that App.tsx / AppNavigator
+//    never set was the reason `handleNavigation` always hit
+//    `null.navigate(...)`. We now expose a setter that pulls the ref
+//    from the navigationContainerRef singleton.
+import { navigationRef as sharedNavigationRef } from '@/navigation/navigationRef';
 
 
 
@@ -559,6 +567,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       appStateListener.current = AppState.addEventListener('change', handleAppStateChange);
 
+      // ── WIRE THE LISTENERS ──────────────────────────────────
+      // The old code declared `notificationListener` and
+      // `responseListener` refs but NEVER subscribed. As a result:
+      //   • `storeNotification` was never called → no notification
+      //     ever entered the history buffer.
+      //   • `handleNotificationResponse` never fired → the app never
+      //     navigated on a tap that came through AppContext (only
+      //     AppNavigator's own duplicate handler worked, and it
+      //     only knew about a fixed set of types).
+      //
+      // We tear down any previous listeners first so repeated calls to
+      // `ensureNotificationsInitialized` (e.g. on toggle of
+      // `settings.enabled`) don't stack.
+      try {
+        if (notificationListener.current?.remove) {
+          notificationListener.current.remove();
+        }
+        if (responseListener.current?.remove) {
+          responseListener.current.remove();
+        }
+      } catch {}
+
+      notificationListener.current = Notifications.addNotificationReceivedListener(
+        handleNotificationReceived,
+      );
+      responseListener.current = Notifications.addNotificationResponseReceivedListener(
+        handleNotificationResponse,
+      );
+
       isInitialized.current = true;
       setIsNotificationReady(true);
 
@@ -589,8 +626,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const data = response.notification.request.content.data;
     if (!data) return;
 
-    if (_navigationRef) {
-      handleNavigation(data, _navigationRef);
+    // Prefer the shared navigationContainerRef (set by AppNavigator /
+    // NavigationContainer). Fall back to the AppContext-local ref only
+    // if the shared one isn't ready — which happens during the first
+    // 100ms of cold boot, before NavigationContainer mounts.
+    const nav =
+      sharedNavigationRef?.isReady?.()
+        ? sharedNavigationRef
+        : _navigationRef;
+    if (nav) {
+      handleNavigation(data, nav);
     }
   }, []);
 
@@ -909,9 +954,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  const getBadgeCount = useCallback((): number => {
-    return 0;
-  }, []);
+  // ── Real unread count ─────────────────────────────────────────
+  // The old hardcoded `0` meant the app icon never showed a badge
+  // even when a chat message arrived while the app was backgrounded.
+  // We compute from `notificationHistory`: any entry with
+  // `read === false` counts. `markNotificationRead` flips that flag,
+  // and `storeNotification` appends to it, so this stays accurate.
+  const getBadgeCount = useCallback(async (): Promise<number> => {
+    try {
+      const history = await getNotificationHistory();
+      return Array.isArray(history)
+        ? history.filter((n: any) => n && n.read !== true).length
+        : 0;
+    } catch {
+      return 0;
+    }
+  }, [getNotificationHistory]);
 
   const updateNotificationSettings = useCallback(async (updates: Partial<NotificationSettings>) => {
     const newSettings = { ...notificationSettings, ...updates };

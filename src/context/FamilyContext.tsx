@@ -106,7 +106,15 @@ interface FamilyContextType extends FamilyState {
   
   getEffectivePermissions: (userId?: string) => Permission;
   updateParent2Profile: (updates: Partial<Omit<FamilyMember, 'id' | 'userId' | 'role' | 'permissions' | 'addedAt' | 'addedBy' | 'canBeRemoved'>>) => Promise<boolean>;
-  updateGuardianProfile: (memberId: string, updates: Partial<FamilyMember>) => Promise<boolean>;
+  /**
+   * Returns the DB-verified fresh FamilyMember on success, or `null`
+   * on failure. The old `Promise<boolean>` signature was a lie — the
+   * implementation has always returned `FamilyMember | null`, which
+   * meant `EditGuardianScreen` treated `fresh` as `boolean` and never
+   * read `.id`/`.fullName` off it, so the screen kept showing stale
+   * values after a successful save.
+   */
+  updateGuardianProfile: (memberId: string, updates: Partial<FamilyMember>) => Promise<FamilyMember | null>;
   promoteMember: (memberId: string, newRole: UserRole) => Promise<FamilyMember | null>;
   resendInvite: (memberId: string) => Promise<boolean>;
   cancelInvite: (memberId: string) => Promise<boolean>;

@@ -927,12 +927,27 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const m = data.message as FamilyMessage;
         // Ignore messages for chats this user has permanently hidden.
         if (hiddenChatsRef.current.has(m.chatId)) return;
-        // Ignore messages that belong to a different family's group
-        // chat. Direct chats use `'community'` and are always accepted.
-        if (
-          m.familyCode !== 'community' &&
-          m.familyCode !== familyCode
-        ) {
+
+        // ── ACCEPT MESSAGES FOR *ANY* CHAT THE USER HAS ─────────
+        // The old check only accepted `m.familyCode === 'community'`
+        // or `m.familyCode === familyCode` (the family code captured
+        // when this channel was created). That meant a user who
+        // belongs to Family A and Family B, currently viewing A,
+        // silently dropped every message sent from B's group chat.
+        //
+        // Now: accept if the message is a community DM (sentinel
+        // 'community'), OR the message's family code matches the
+        // CURRENT family, OR the message's `chatId` corresponds to a
+        // chat that is already in `chatsRef.current` (which means
+        // we're a legitimate participant regardless of which family
+        // is currently active).
+        const chatForMessage = chatsRef.current.find(
+          (c) => c.id === m.chatId,
+        );
+        const isCommunityDm = m.familyCode === 'community';
+        const isCurrentFamily = m.familyCode === familyCode;
+        const isKnownChat = !!chatForMessage;
+        if (!isCommunityDm && !isCurrentFamily && !isKnownChat) {
           return;
         }
         const chat = chatsRef.current.find(c => c.id === m.chatId);

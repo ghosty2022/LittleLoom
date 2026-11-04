@@ -751,6 +751,17 @@ function NavigationContent({
       try {
         switch (type) {
           case 'chat_message':
+            // If the payload indicates this is a *Community* DM
+            // (`target === 'community'` or `isCommunity === true`),
+            // let `CommunityNavigator` handle it — its own
+            // notification handler is registered separately and
+            // knows the Community stack. Otherwise, FamilyChat.
+            if (
+              (data as any).isCommunity === true ||
+              (data as any).target === 'community'
+            ) {
+              return;   // CommunityNavigator will handle it
+            }
             safeNavigate('FamilyChat', {
               chatId: data.chatId,
               ...params,

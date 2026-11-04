@@ -3463,8 +3463,15 @@ try {
   // CONTEXT VALUE
   // ═══════════════════════════════════════════════════════════════════════
 
-  const value = useMemo(() => ({
-    ...state,
+  // Split the value into two halves so the *stable* half (callbacks)
+  // doesn't get recreated every time `state` changes. The state half
+  // is spread from `state` on every render anyway, so consumers that
+  // read `isAuthenticated` / `userProfile` re-render correctly.
+  //
+  // Before: the entire memo deps list included `state`, so every
+  // flip of `mustChangePassword`, `isBiometricEnabled`, etc. recreated
+  // the whole context object → cascading re-render of every consumer.
+  const stableCallbacks = useMemo(() => ({
     signIn,
     signUp,
     signInWithSocial,
@@ -3514,7 +3521,6 @@ try {
     generateTemporaryPassword,
     setNewPasswordAfterTemp,
     refreshMustChangePassword,
-    // Profile-change fan-out
     broadcastProfileChange: async (
       fields: ProfileChangePayload['fields'],
     ) => {
@@ -3524,7 +3530,6 @@ try {
     },
     subscribeToProfileChanges,
   }), [
-    state,
     signIn,
     signUp,
     signInWithSocial,
@@ -3576,6 +3581,11 @@ try {
     refreshMustChangePassword,
   ]);
 
+  const value = useMemo(
+    () => ({ ...state, ...stableCallbacks }),
+    [state, stableCallbacks],
+  );
+  
   return (
     <AuthContext.Provider value={value}>
       {children}
