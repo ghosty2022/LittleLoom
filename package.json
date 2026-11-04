@@ -53,7 +53,7 @@
     "dayjs": "^1.11.13",
     "drizzle-orm": "^0.45.2",
     "edge-llm": "^0.1.4",
-    "expo": "~57.0.27",
+    "expo": "~57.0.31",
     "expo-ai-kit": "^0.18.2",
     "expo-apple-authentication": "~57.0.1",
     "expo-application": "~57.0.2",
