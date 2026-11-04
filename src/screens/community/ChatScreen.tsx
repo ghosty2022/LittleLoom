@@ -718,21 +718,63 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
       const communityPeer = getUserById(otherUserId);
 
+      // ── FALLBACK CHAIN ────────────────────────────────────────
+      // 1. FamilyContext.members (live, authoritative)
+      // 2. chat.participantNames/Avatars/Roles (last snapshot)
+      // 3. CommunityContext (public profile)
+      //
+      // If all three miss, the peer is genuinely gone — but we
+      // still render a placeholder with a real id so the header
+      // doesn't crash and the "This member is inactive" banner
+      // is accurate.
+      const snapshotName = (chatForPeer?.participantNames as any)?.[otherUserId];
+      const snapshotAvatar = (chatForPeer?.participantAvatars as any)?.[otherUserId];
+      const snapshotRole = (chatForPeer?.participantRoles as any)?.[otherUserId];
+
       const chatUser = familyPeer
         ? {
-            id: familyPeer.id,
-            displayName: familyPeer.fullName,
+            id: (familyPeer as any).userId || familyPeer.id,
+            displayName: familyPeer.fullName || snapshotName || 'Family Member',
             handle: `@${(familyPeer.fullName || '').toLowerCase().replace(/\s+/g, '_')}`,
-            avatar: familyPeer.avatar,
+            avatar: familyPeer.avatar || snapshotAvatar,
             isVerified: false,
             onlineStatus: 'offline',
             lastActive: (familyPeer as any).lastActive,
-            role: familyPeer.role,
+            role: familyPeer.role || snapshotRole || 'guardian',
             relationship: (familyPeer as any).relationship,
+            // `isFamilyMember` lets the header show a family badge
+            // instead of the Community "verified" icon.
+            isFamilyMember: true,
           }
         : communityPeer
           ? {
               id: communityPeer.id,
+              displayName: snapshotName || communityPeer.displayName || 'Family Member',
+              handle:
+                communityPeer.handle ||
+                `@${(communityPeer.displayName || '').toLowerCase().replace(/\s+/g, '_')}`,
+              avatar: snapshotAvatar || communityPeer.avatar,
+              isVerified: communityPeer.isVerified,
+              onlineStatus: communityPeer.onlineStatus,
+              lastActive: communityPeer.lastActive,
+              role: snapshotRole || 'viewer',
+              relationship: '',
+              isFamilyMember: false,
+            }
+          : snapshotName
+            ? {
+                id: otherUserId,
+                displayName: snapshotName,
+                handle: '',
+                avatar: snapshotAvatar,
+                isVerified: false,
+                onlineStatus: 'offline',
+                lastActive: undefined,
+                role: snapshotRole || 'guardian',
+                relationship: '',
+                isFamilyMember: true,
+              }
+            : null;     id: communityPeer.id,
               displayName:
                 (chatForPeer?.participantNames as any)?.[otherUserId] ||
                 communityPeer.displayName,
@@ -1165,9 +1207,6 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     if (isBlocked) return 'Blocked';
     if (typingUsers.length > 0) return 'typing...';
 
-    // Prefer the family relationship label ("Mother", "Father", …)
-    // over a raw online/offline string. Falls through to the
-    // presence state only when no relationship was set.
     const relLabel = user.role
       ? getMemberDisplayLabel({
           role: user.role,
@@ -1186,9 +1225,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     if (minutes < 60) return `Active ${minutes}m ago${relSuffix}`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `Active ${hours}h ago${relSuffix}`;
-    return `Active ${Math.floor(hours / 24)}d ago${relSuffix}`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `Active ${days}d ago${relSuffix}`;
+    if (days < 30) return `Active ${Math.floor(days / 7)}w ago${relSuffix}`;
+    return `Last active ${Math.floor(days / 30)}mo ago${relSuffix}`;
   };
-
   const renderMessage = ({ item, index }: { item: FamilyMessage; index: number }) => {
     const isMe = item.senderId === userProfile?.id;
     const showAvatar = !isMe && (index === 0 || messages[index - 1]?.senderId !== item.senderId);
@@ -1458,7 +1499,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         <View style={[styles.blockedBanner, { backgroundColor: `${LL.error}12`, marginTop: LL.space.sm }]}>
           <Ionicons name="person-remove" size={18} color={LL.error} />
           <Text style={[styles.blockedBannerText, { color: LL.error, flex: 1 }]}>
-            This member is no longer active
+            This conversation is no longer available
           </Text>
         </View>
       )}
