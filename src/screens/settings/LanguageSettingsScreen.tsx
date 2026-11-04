@@ -247,7 +247,11 @@ export default function LanguageSettingsScreen({ navigation }: Props) {
     setIsSaving(true);
     setSelected(code);
     try {
-      await updateSettings({ language: code as any });
+      // The `updateSettings` in useCustomization expects an object
+      // that matches `CustomizationSettings`. We cast to any to 
+      // satisfy the TS compiler since `language` might not be 
+      // in the strict type definition yet.
+      await (updateSettings as any)({ language: code });
       if (isConnected && user) {
         const { error } = await supabase.from('user_preferences').upsert({
           user_id: user.id, language: code, updated_at: new Date().toISOString(),

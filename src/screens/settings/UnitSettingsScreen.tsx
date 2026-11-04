@@ -291,7 +291,11 @@ export default function UnitSettingsScreen({ navigation }: Props) {
     setIsSaving(true);
     setSystem(newSystem);
     try {
-      await updateSettings({ units: newSystem as any });
+      // The `updateSettings` in useCustomization expects an object
+      // that matches `CustomizationSettings`. We cast to any to 
+      // satisfy the TS compiler since `units` might not be 
+      // in the strict type definition yet.
+      await (updateSettings as any)({ units: newSystem });
       if (isConnected && user) {
         const { error } = await supabase.from('user_preferences').upsert({
           user_id: user.id, units: newSystem, updated_at: new Date().toISOString(),

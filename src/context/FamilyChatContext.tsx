@@ -1598,13 +1598,29 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const chatId = `family_group_${familyCode}`;
 
+      // 1. Check if it exists locally in state first
+      const localChat = chatsRef.current.find(c => c.id === chatId);
+      if (localChat) {
+        return chatId;
+      }
+
+      // 2. Check if it exists in the database
       const { data: existing } = await supabase
         .from('family_chats')
-        .select('id')
+        .select('*')
         .eq('id', chatId)
         .maybeSingle();
 
-      if (existing) return chatId;
+      if (existing) {
+        // If it exists on the server but not locally, un-hide it
+        // and add it to the local state so the user can see it.
+        await unhideChat(chatId);
+        setState(prev => {
+          if (prev.chats.some(c => c.id === chatId)) return prev;
+          return { ...prev, chats: [existing, ...prev.chats] };
+        });
+        return chatId;
+      }
 
       const participantNames: Record<string, string> = {};
       const participantRoles: Record<string, string> = {};
