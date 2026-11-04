@@ -575,9 +575,11 @@ function NavigationContent({
             .eq('used_by', user.id)
             .eq('signup_completed', true)
             .limit(1);
+          if (cancelledLocal) return;
           inviteProbeCacheRef.current =
             Array.isArray(invRows) && invRows.length > 0 && !!invRows[0]?.code;
         }
+        if (cancelledLocal) return;
         if (inviteProbeCacheRef.current === true && lastNavState.current !== 'MAIN') {
           lastNavState.current = 'MAIN';
           setNavState('MAIN');

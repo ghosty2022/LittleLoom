@@ -926,50 +926,34 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       
-      // ─── EMERGENCY FALLBACK: query ALL babies the user can see ───────
-      // If parent1/parent2/family_members/invite_codes all returned 0
-      // rows, the RLS policy may be checking a column we didn't query.
-      // Try an unfiltered SELECT — RLS will still restrict what we get,
-      // but if the user can see ANY babies, we'll find them here.
+      // ─── REMOVED: unfiltered SELECT fallback ────────────────────────
+      // The old code did a `.from('babies').select('*').eq('is_active',
+      // true).limit(50)` when every filtered query returned 0 rows.
+      // That was intended as an RLS safety net, but it's actively
+      // harmful:
+      //   • It triples the cold-boot time on every device whose user
+      //     has 0 babies (new signups, guests, guardians whose RLS
+      //     policy is misconfigured), because three failed filtered
+      //     queries are now followed by one more failed full scan.
+      //   • Once RLS is fixed, it lets a user read up to 50 babies
+      //     they're not a member of if the policy ever grants *any*
+      //     row visibility.
+      //   • It masks the REAL failure (bad RLS) behind a "found nothing"
+      //     log line instead of surfacing the policy error.
+      //
+      // If a guardian genuinely can't see their baby, the correct fix
+      // is on the server: `get_baby_for_member(baby_id)` already exists
+      // (see the `rpc('get_baby_for_member')` call above) and is a
+      // SECURITY DEFINER function that returns the row iff the caller
+      // has an active family_members row. That's the ONLY safe fallback.
       if (allBabies.length === 0) {
         if (__DEV__) {
-          console.log('[BabyContext] All primary queries returned 0 — trying unfiltered SELECT...');
-        }
-        try {
-          const { data, error } = await supabase
-            .from('babies')
-            .select('*')
-            .eq('is_active', true)
-            .limit(50);
-
-          if (!error && data && data.length > 0) {
-            if (__DEV__) {
-              console.log(`[BabyContext] ✅ Unfiltered query found ${data.length} babies`);
-            }
-            data.forEach((baby: any) => {
-              if (!seenBabyIds.has(baby.id)) {
-                seenBabyIds.add(baby.id);
-                allBabies.push(baby);
-                // Infer role from the row itself
-                const isParent1 = baby.parent1_id === userId || baby.parent_id === userId;
-                const isParent2 = baby.parent2_id === userId;
-                const role = isParent1 ? 'parent1' : isParent2 ? 'parent2' : 'guardian';
-                userRoles[baby.id] = role;
-                const isParent = role === 'parent1' || role === 'parent2';
-                userPermissions[baby.id] = {
-                  view: true,
-                  edit: isParent, delete: isParent, manage: isParent,
-                  invite: isParent, export: isParent,
-                  canView: true, canAddEntry: true, canEditEntry: true,
-                  canEditOthersEntries: isParent, canDeleteEntry: isParent,
-                  canEditBaby: isParent, canInvite: isParent, canExport: isParent,
-                  canManageFamily: isParent,
-                };
-              }
-            });
-          }
-        } catch (e) {
-          console.warn('[BabyContext] Unfiltered query failed:', e);
+          console.warn(
+            '[BabyContext] All primary queries returned 0 rows. ' +
+            'This is almost always an RLS policy issue on `babies` or ' +
+            '`family_members`. Check the Supabase logs for ' +
+            '"infinite recursion detected in policy".'
+          );
         }
       }
 
@@ -1421,16 +1405,21 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }, 500);
         } else if (event === 'SIGNED_OUT') {
+          // ── Capture the previous user id BEFORE nulling the ref ──
+          // The old code nulled `currentUserIdRef.current` first, then
+          // read it back as `lastUid` — so `lastUid` was always `null`,
+          // and the cache keys were built as `..._null` instead of
+          // `..._<previousUser>`. The previous user's baby list was
+          // never purged, and the NEXT user on the same device could
+          // inherit it via the AsyncStorage fallback in `loadBabies`.
+          const lastUid = currentUserIdRef.current;
+
           currentUserIdRef.current = null;
           initRef.current = false;
           backfillRanRef.current = false;
           lastBroadcastedBabyIdRef.current = null;
 
-          // Purge the on-disk babies cache so a different account
-          // signing in on this device doesn't inherit the previous
-          // account's baby list as an offline fallback.
           try {
-            const lastUid = currentUserIdRef.current;
             const keys: string[] = [
               STORAGE_KEYS.BABIES_CACHE_KEY,
               STORAGE_KEYS.CURRENT_BABY_ID,
@@ -2680,15 +2669,21 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         
         
-        const cachedRole = state.userRoles[id];
-        const inferredRole: 'parent1' | 'parent2' | 'guardian' | 'viewer' =
+        // Prefer what the DB says about THIS baby right now. Fall back
+        // to the cached role only when the row's parent slots don't
+        // mention the caller at all — that's the guardian/viewer case,
+        // where `family_members.role` is authoritative and comes from
+        // `state.userRoles`.
+        const dbRole: 'parent1' | 'parent2' | null =
           baby.parent1_id === userId
             ? 'parent1'
             : baby.parent2_id === userId
             ? 'parent2'
-            : 'viewer';
+            : null;
 
-        const resolvedRole = cachedRole || inferredRole;
+        const cachedRole = state.userRoles[id];
+        const resolvedRole: 'parent1' | 'parent2' | 'guardian' | 'viewer' =
+          dbRole || cachedRole || 'viewer';
 
         const babyProfile = mapBabyRowToProfile(baby, resolvedRole);
 

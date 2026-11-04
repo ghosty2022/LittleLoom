@@ -557,6 +557,8 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // Reduce retry frequency to avoid log spam. 5 retries with
         // 1s spacing is enough to cover the BabyContext hydration
         // window without flooding the logs.
+      if (!resolvedBabyId) {
+        // Retry with backoff — BabyContext may not have hydrated yet.
         const attempt = (loadFamilyRetryCount.current ?? 0) + 1;
         loadFamilyRetryCount.current = attempt;
         if (attempt <= 5) {
@@ -569,6 +571,10 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           setTimeout(() => {
             loadFamilyRef.current?.().catch(() => {});
           }, delay);
+          // Leave `familyLoadInProgress` in whatever state it was —
+          // this branch is reached BEFORE the "queue guard" sets it
+          // to true, so we must not clobber it. The only thing that
+          // matters is telling the UI we're still loading.
           setState(prev => ({ ...prev, isLoading: true }));
         } else {
           // Genuinely no baby — stop retrying.
@@ -626,6 +632,48 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // family_members query with `authProfile.id = undefined`, got
     // 0 rows, and only the RETRY loop recovered.
     if (!effectiveUserId) {
+      // ── AsyncStorage auth-token recovery ───────────────────────
+      // Supabase's RN client stores the session under a key that
+      // contains `auth-token` or `supabase.auth`. On cold boot the
+      // in-memory Supabase client may still be resolving, but the
+      // token is already on disk. This path recovers it instantly
+      // instead of waiting for the network.
+      try {
+        const keys = await AsyncStorage.getAllKeys();
+        const authKey = keys.find(
+          (k) =>
+            typeof k === 'string' &&
+            (k.includes('auth-token') || k.includes('supabase.auth')),
+        );
+        if (authKey) {
+          const stored = await AsyncStorage.getItem(authKey);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            effectiveUserId =
+              parsed?.user?.id ||
+              parsed?.session?.user?.id ||
+              parsed?.currentSession?.user?.id ||
+              null;
+            if (__DEV__ && effectiveUserId) {
+              console.log(
+                '[FamilyContext] Recovered user ID from AsyncStorage:',
+                effectiveUserId,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[FamilyContext] AsyncStorage recovery failed:', e);
+      }
+    }
+
+    if (!effectiveUserId) {
+      // ── Retry with backoff ─────────────────────────────────────
+      // Supabase's `getSession()` may still be resolving. Retry up
+      // to 8 times with increasing delay (150 → 800ms), then give
+      // up. Without the AsyncStorage attempt above, this would be
+      // the only path on a slow cold boot, which is why the
+      // guardian session used to be so slow.
       const attempt = (loadFamilyRetryCount.current ?? 0) + 1;
       loadFamilyRetryCount.current = attempt;
       if (attempt <= 8) {
@@ -638,20 +686,6 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       familyLoadInProgress.current = false;
       return;
-    }
-    if (!effectiveUserId) {
-      // Try AsyncStorage recovery
-      try {
-        const keys = await AsyncStorage.getAllKeys();
-        const authKey = keys.find(k => k.includes('auth-token') || k.includes('supabase.auth'));
-        if (authKey) {
-          const stored = await AsyncStorage.getItem(authKey);
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            effectiveUserId = parsed?.user?.id || parsed?.session?.user?.id;
-          }
-        }
-      } catch {}
     }
 
     // ─── Guard: only skip if we're sure the user has NO relationship.
@@ -1046,6 +1080,61 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const built: FamilyMember[] = rawRows.map(buildMember);
 
+      // ── 4b. Enrich "invited by" names ───────────────────────────
+      // Build a `inviterById` map of {name, avatar, role} for every
+      // `family_members.added_by` value that isn't already in
+      // `profileMap`. The map is applied POST-dedupe (see below) so
+      // the surviving row is the one that gets the enrichment,
+      // regardless of which sibling the dedupe kept.
+      const inviterById: Record<
+        string,
+        { name?: string; avatar?: string; role?: string }
+      > = {};
+      try {
+        const inviterIds = Array.from(
+          new Set(
+            built
+              .map((m: any) => m.addedBy)
+              .filter(
+                (id: string | undefined): id is string =>
+                  !!id && id.length > 0 && !profileMap[id],
+              ),
+          ),
+        );
+        if (inviterIds.length > 0) {
+          const { data: inviterProfiles } = await supabase
+            .from('profiles')
+            .select(
+              'id, full_name, community_display_name, community_avatar, avatar_url, avatar, role',
+            )
+            .in('id', inviterIds);
+          (inviterProfiles || []).forEach((p: any) => {
+            profileMap[p.id] = p;
+          });
+        }
+        built.forEach((m: any) => {
+          if (!m.addedBy) return;
+          const inv = profileMap[m.addedBy];
+          if (!inv) return;
+          inviterById[m.addedBy] = {
+            name:
+              inv.community_display_name ||
+              inv.full_name ||
+              undefined,
+            avatar:
+              inv.community_avatar ||
+              inv.avatar_url ||
+              inv.avatar ||
+              undefined,
+            role: inv.role || undefined,
+          };
+        });
+      } catch (e) {
+        if (__DEV__) {
+          console.warn('[FamilyContext] inviter enrichment failed:', e);
+        }
+      }
+
       // ── 5. De-dupe by user_id (fallback: id). When TWO rows exist
       //       for the same user (legacy data, or an interrupted
       //       promote/demote), we ALWAYS keep the row with the most
@@ -1109,6 +1198,21 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return m;
         });
       }
+
+      // ── Apply inviter enrichment to the POST-dedupe list ─────
+      // `inviterById` was built above (4b) from every `added_by`
+      // value on the PRE-dedupe rows. Stamp the surviving row so
+      // `MemberCard` can render "Invited by Sarah".
+      dedupedMembers = dedupedMembers.map((m: any) => {
+        const info = m.addedBy ? inviterById[m.addedBy] : undefined;
+        if (!info) return m;
+        return {
+          ...m,
+          addedByName: info.name,
+          addedByAvatar: info.avatar,
+          addedByRole: info.role,
+        };
+      });
 
       // Sort for display only: parent1 → parent2 → guardian → viewer.
       const stripInternal = (m: FamilyMember): FamilyMember => {
@@ -1414,15 +1518,15 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      if (updates.fullName) {
-        await supabase
-          .from('babies')
-          .update({
-            parent2_name: updates.fullName,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', currentBaby.id);
-      }
+      // ── REMOVED: `babies.parent2_name` write ────────────────────
+      // The `babies` table has no `parent2_name` column (see schema).
+      // This update was a no-op that returned a 400 from PostgREST
+      // which the surrounding code swallowed. The `fullName` value is
+      // already mirrored to `profiles.full_name` above — that's the
+      // authoritative source for the parent2 display name.
+      //
+      // No replacement needed. `loadFamily()` below will re-hydrate
+      // the family list with the new name.
 
       await loadFamily();
 

@@ -542,34 +542,17 @@ const generateInsights = (
 
 
 
-function useFamilyMembersSafe(): any[] {
-  const [members, setMembers] = React.useState<any[]>([]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const mod = await import('@/context/FamilyContext');
-        if (cancelled) return;
-        const anyMod = mod as any;
-        if (anyMod?.__getFamilySnapshot) {
-          setMembers(anyMod.__getFamilySnapshot().members || []);
-        }
-      } catch (e) {
-        if (__DEV__) {
-          console.warn('[TrackerContext] FamilyContext lazy load failed:', e);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  return members;
-}
+// ── REMOVED: `useFamilyMembersSafe()` ────────────────────────────
+// This helper did a dynamic import of FamilyContext on every
+// TrackerProvider mount, read a nonexistent `__getFamilySnapshot`
+// export off the module (FamilyContext never exposed it), and
+// discarded the result. Net effect: one wasted dynamic import and a
+// dev warning per mount. Nothing consumed the value.
+//
+// Family member data now lives where it belongs: `FamilyContext.members`.
 
 export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userProfile } = useAuth();
-  useFamilyMembersSafe();
   const { triggerHaptic } = useCustomization();
   const { success, toast, alert: sweetAlert } = useSweetAlert();
   
@@ -586,6 +569,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     },
   });
+
+  // ── Live permission snapshot for the `refreshEntriesInternal` closure ──
+  // The callback can't list `currentBabyPermissions` in its deps without
+  // firing on every render (it's a fresh object each time), so we mirror
+  // it into a ref and read that inside the callback.
+  const currentBabyPermissionsRef = useRef<ReturnType<typeof useMemo> extends infer _ ? any : any>(null);
 
   const [state, setState] = useState<TrackerState>({
     isLoading: true,
@@ -808,14 +797,18 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // members (after our initial load) are never fetched. We
       // force the RPC path for non-parent roles so cross-device
       // entries always arrive.
-      const userRole = (() => {
-        try {
-          return currentBabyPermissions?.canManageFamily ? 'parent' : 'non-parent';
-        } catch { return 'non-parent'; }
-      })();
+      //
+      // `currentBabyPermissions` is NOT in this callback's deps (it
+      // changes on every render, which would recreate the callback
+      // every render and cause `refreshEntries` to fire on every
+      // effect). We read the ref instead — it's kept in sync by the
+      // `useEffect` below — so the RPC path is used whenever the
+      // caller genuinely isn't a parent, regardless of callback age.
+      const perms = currentBabyPermissionsRef.current;
+      const isParent = Boolean(perms?.canManageFamily);
 
       let entries: TrackerEntry[];
-      if (userRole === 'non-parent') {
+      if (!isParent) {
         try {
           const { data: rpcRows, error: rpcErr } = await supabase
             .rpc('get_entries_for_member', { p_baby_id: babyId });
@@ -886,6 +879,12 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, [currentBabyIdState, hasPermissionForBaby]);
 
+    // Keep the ref in sync on every render so the closure above sees the
+  // latest value without needing a dependency.
+  useEffect(() => {
+    currentBabyPermissionsRef.current = currentBabyPermissions;
+  }, [currentBabyPermissions]);
+  
   const canUseTracker = useCallback((trackerId: string): boolean => {
     const tracker = state.trackers.find(t => t.id === trackerId);
     if (!tracker || !myRole) return false;
