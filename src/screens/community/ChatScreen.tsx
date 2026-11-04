@@ -34,6 +34,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAvatar } from '../../components/SafeAvatar';
 import { useCommunity } from '../../context/CommunityContext';
+import { useFamily } from '../../context/FamilyContext';
 import { useFamilyChat, FamilyMessage, FileMetadata } from '../../context/FamilyChatContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -649,9 +650,11 @@ const DateSeparator = React.memo(({ date, isDark }: { date: string; isDark: bool
    ═══════════════════════════════════════════════════════════ */
 export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const otherUserId = (route.params as any)?.chatId ?? (route.params as any)?.userId;
+  const initialChatId = (route.params as any)?.chatId as string | undefined;
   const { getUserById, getUserRole, updateOnlineStatus } = useCommunity();
   const {
     getOrCreateDirectChat,
+    getChatById,
     getChatMessages,
     sendMessage,
     editMessage,
@@ -666,7 +669,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     deleteMessage,
     pickAndSendImage,
     pickAndSendFile,
-} = useFamilyChat();
+  } = useFamilyChat();
 
   const { isDark } = useApp();
   const { userProfile } = useAuth();
@@ -761,7 +764,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
               relationship: '',
               isFamilyMember: false,
             }
-          : snapshotName
+                      : snapshotName
             ? {
                 id: otherUserId,
                 displayName: snapshotName,
@@ -772,37 +775,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
                 lastActive: undefined,
                 role: snapshotRole || 'guardian',
                 relationship: '',
-                isFamilyMember: true,
-              }
-            : null;     id: communityPeer.id,
-              displayName:
-                (chatForPeer?.participantNames as any)?.[otherUserId] ||
-                communityPeer.displayName,
-              handle:
-                communityPeer.handle ||
-                `@${(communityPeer.displayName || '').toLowerCase().replace(/\s+/g, '_')}`,
-              avatar:
-                (chatForPeer?.participantAvatars as any)?.[otherUserId] ||
-                communityPeer.avatar,
-              isVerified: communityPeer.isVerified,
-              onlineStatus: communityPeer.onlineStatus,
-              lastActive: communityPeer.lastActive,
-              role:
-                (chatForPeer?.participantRoles as any)?.[otherUserId] ||
-                'viewer',
-              relationship: '',
-            }
-          : (chatForPeer?.participantNames as any)?.[otherUserId]
-            ? {
-                id: otherUserId,
-                displayName: (chatForPeer!.participantNames as any)[otherUserId],
-                handle: '',
-                avatar: (chatForPeer!.participantAvatars as any)?.[otherUserId],
-                isVerified: false,
-                onlineStatus: 'offline',
-                lastActive: undefined,
-                role: (chatForPeer!.participantRoles as any)?.[otherUserId] || 'viewer',
-                relationship: '',
+                // Snapshot name alone doesn't prove family membership —
+                // the peer might have been a community user whose
+                // community profile was later deleted. Default to
+                // `false` so the "Community" badge shows correctly.
+                isFamilyMember: false,
               }
             : null;
 
@@ -1430,22 +1407,76 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             )}
           </View>
           <View style={{ flex: 1 }}>
-            <View style={styles.nameRow}>
-              <Text
-                style={[
-                  styles.userName,
-                  { color: isBlocked ? (isDark ? LL.gray500 : LL.gray400) : isDark ? LL.white : LL.gray900 },
-                ]}
-                numberOfLines={1}
+
+          <View style={styles.nameRow}>
+            <Text
+              style={[
+                styles.userName,
+                { color: isBlocked ? (isDark ? LL.gray500 : LL.gray400) : isDark ? LL.white : LL.gray900 },
+              ]}
+              numberOfLines={1}
+            >
+              {user?.displayName ?? 'Unknown member'}
+            </Text>
+            {user?.isVerified && !isBlocked && (
+              <View style={[styles.verifiedBadge, { backgroundColor: LL.primary }]}>
+                <Ionicons name="checkmark" size={10} color={LL.white} />
+              </View>
+            )}
+            {user?.isFamilyMember && !isBlocked && (
+              <View
+                style={{
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 6,
+                  backgroundColor: isDark ? `${LL.success}20` : `${LL.success}15`,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 3,
+                }}
               >
-                {user?.displayName ?? 'Unknown member'}
-              </Text>
-              {user?.isVerified && !isBlocked && (
-                <View style={[styles.verifiedBadge, { backgroundColor: LL.primary }]}>
-                  <Ionicons name="checkmark" size={10} color={LL.white} />
-                </View>
-              )}
-            </View>
+                <Ionicons name="people" size={9} color={LL.success} />
+                <Text
+                  style={{
+                    fontSize: 8,
+                    fontWeight: '800',
+                    color: LL.success,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  Family
+                </Text>
+              </View>
+            )}
+            {!user?.isFamilyMember && user && !isBlocked && (
+              <View
+                style={{
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 6,
+                  backgroundColor: isDark ? `${LL.accent}20` : `${LL.accent}15`,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 3,
+                }}
+              >
+                <Ionicons name="globe-outline" size={9} color={LL.accent} />
+                <Text
+                  style={{
+                    fontSize: 8,
+                    fontWeight: '800',
+                    color: LL.accent,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  Community
+                </Text>
+              </View>
+            )}
+          </View>
+
             <Text
               style={[
                 styles.userStatus,

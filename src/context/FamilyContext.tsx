@@ -1185,9 +1185,24 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // parent1 `family_members` row has `relationship = NULL` (or the
   // literal string 'Parent'). We backfill it from `user_metadata`
   // once per session so the chat header shows "Mother"/"Father" etc.
+  // Ref that prevents the "backfill" effect from firing more than once
+  // per (user, baby) pair, even when the DB write fails silently (RLS).
+  // Without this, a failed write leaves `relationship === 'Parent'` on
+  // the row, so the guard passes again on every loadFamily() → the
+  // effect re-runs → the backfill writes again → infinite loop.
+  const backfillAttemptedRef = React.useRef<string | null>(null);
+
   useEffect(() => {
     if (!currentBaby?.id || !authProfile?.id) return;
     if (currentBaby.parent1_id !== authProfile.id) return;
+
+    // Only one attempt per (user, baby). A subsequent app launch or
+    // sign-in resets the provider instance, so a genuinely-needed
+    // retry will still happen then.
+    const attemptKey = `${authProfile.id}::${currentBaby.id}`;
+    if (backfillAttemptedRef.current === attemptKey) return;
+    backfillAttemptedRef.current = attemptKey;
+
     let cancelled = false;
     (async () => {
       try {

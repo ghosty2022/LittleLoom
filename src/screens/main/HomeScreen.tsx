@@ -2063,6 +2063,13 @@ useEffect(() => {
   /* ── Generate smart notifications ── */
   useEffect(() => {
     if (!currentBaby) return;
+    // Wait until the AsyncStorage hydration for THIS user has finished.
+    // Otherwise the generation effect can fire first on a slow cold
+    // boot, append fresh notifications, and then the hydration effect
+    // wipes them with `setSmartNotifications([])` when it detects a
+    // user change — making the panel disappear on every launch.
+    if (!userProfile?.id) return;
+    if (smartNotifsHydratedForUserRef.current !== userProfile.id) return;
     const now = Date.now();
     const birthDate = currentBaby.birthDate ? new Date(currentBaby.birthDate) : null;
     const ageInDays = birthDate ? Math.floor((now - birthDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
@@ -2624,7 +2631,7 @@ const allTimelineEvents = useMemo(() => {
   return merged
     .slice(0, 50)
     .sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
-}, [hasBaby, displayedBaby?.id, trackerEntries, getRecentTimelineEvents, cachedActivities]);
+}, [displayedBaby?.id, trackerEntries, getRecentTimelineEvents, cachedActivities]);
 
 useEffect(() => {
   const userId = userProfile?.id;
@@ -2658,7 +2665,7 @@ useEffect(() => {
       note: countOf(['note']),
       milestone: countOf(['milestone']),
     };
-  }, [allTimelineEvents, hasBaby]);
+  }, [allTimelineEvents, displayedBaby?.id]);
 
   /* ── Real potty-day streak ── */
   const trackingStreakDays = useMemo(() => {
@@ -2687,7 +2694,7 @@ useEffect(() => {
       cursor -= DAY;
     }
     return streak;
-  }, [allTimelineEvents, hasBaby]);
+  }, [allTimelineEvents, displayedBaby?.id]);
 
   /* ── Daily summary with yesterday counts ── */
   const dailySummary = useMemo((): DailySummary => {
@@ -2741,7 +2748,7 @@ useEffect(() => {
       lastSleepTime: lastSleep ? new Date(lastSleep.timestamp) : null,
       yesterdayFeeds, yesterdaySleepHours, yesterdayDiapers
     };
-  }, [allTimelineEvents, hasBaby]);
+  }, [allTimelineEvents, displayedBaby?.id]);
 
   /* ── Growth KPIs ── */
 const growthStats = useMemo(() => {
