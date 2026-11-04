@@ -605,7 +605,7 @@ const TrackerCard = React.memo(({
           {tracker.title}
         </Text>
         <Text style={[styles.trackerDesc, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>
-          {TRACKER_CONFIGS[tracker.id]?.description || tracker.category}
+          {TRACKER_SUB_ACTIONS[tracker.id]?.description || tracker.category}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
           <Text style={[styles.trackerCount, { color: tracker.color }]}>{tracker.count} logs</Text>
@@ -649,7 +649,7 @@ const SubActionSheet = React.memo(({
 
   if (!visible || !trackerId) return null;
 
-  const config = TRACKER_CONFIGS[trackerId] || {
+  const config = TRACKER_SUB_ACTIONS[trackerId] || {
     emoji: '📋', color: DS.primary, gradient: [DS.primary, '#764ba2'] as [string, string],
     description: 'Track activity', category: 'essential',
     /* subActions moved to TRACKER_SUB_ACTIONS */
@@ -893,7 +893,7 @@ export default function AllTrackersScreen() {
         ? rawEntries.filter((e: any) => e && !e.isDeleted && e.babyId === currentBaby.id)
         : [];
       const lastEntry = entriesForTracker && entriesForTracker.length > 0 ? entriesForTracker[0] : null;
-      const config = TRACKER_CONFIGS[id];
+      const config = TRACKER_SUB_ACTIONS[id];
       return {
         id,
         title: tracker.name || tracker.title || id.charAt(0).toUpperCase() + id.slice(1),
