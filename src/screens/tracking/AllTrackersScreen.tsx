@@ -121,11 +121,10 @@ interface TrackerConfig {
 // keeps ONLY the sub-action shape used by the action sheet, so
 // there is one — and only one — source of truth for what a feed
 // looks like across Home / Hub / Timeline / FamilyDashboard.
-const TRACKER_SUB_ACTIONS: Record<string, TrackerSubAction[]> = {
+const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
   feed: {
     emoji: '🍼', color: '#fa709a', gradient: ['#fa709a', '#f5576c'],
     description: 'Feeding sessions', category: 'essential',
-    /* subActions moved to TRACKER_SUB_ACTIONS */
     subActions: [
       { id: 'breast_left', label: 'Left Breast', icon: 'arrow-back-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'left' } },
       { id: 'breast_right', label: 'Right Breast', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'right' } },
