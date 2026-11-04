@@ -443,7 +443,6 @@ export default function CreateCustomTrackerScreen() {
     }
 
     setIsSubmitting(true);
-    HAPTIC_SUCCESS();
 
     const trackerConfig = {
       id: `custom_${Date.now()}`,
@@ -476,20 +475,28 @@ export default function CreateCustomTrackerScreen() {
 
     await new Promise(resolve => setTimeout(resolve, 400));
 
-    await addCustomTracker?.(
-      trackerConfig.name,
-      trackerConfig.emoji,
-      trackerConfig.category,
-      trackerConfig.fields as any,
-      'parent1',
-      {
-        icon: (trackerConfig as any).icon,
-        color: trackerConfig.color,
-        gradient: trackerConfig.gradient,
-        description: trackerConfig.description,
-        quickTags: trackerConfig.quickTags,
-      }
-    );
+    try {
+      await addCustomTracker?.(
+        trackerConfig.name,
+        trackerConfig.emoji,
+        trackerConfig.category,
+        trackerConfig.fields as any,
+        'parent1',
+        {
+          icon: (trackerConfig as any).icon,
+          color: trackerConfig.color,
+          gradient: trackerConfig.gradient,
+          description: trackerConfig.description,
+          quickTags: trackerConfig.quickTags,
+        }
+      );
+      HAPTIC_SUCCESS();
+    } catch (e) {
+      HAPTIC_WARNING();
+      if (__DEV__) console.warn('[CreateCustomTracker] addCustomTracker failed:', e);
+    } finally {
+      setIsSubmitting(false);
+    }
     navigation.goBack();
   }, [name, selectedEmoji, selectedColor, description, finalUnit, isValid, addCustomTracker, navigation]);
 

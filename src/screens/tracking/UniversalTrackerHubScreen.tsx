@@ -2593,31 +2593,39 @@ export default function UniversalTrackerHubScreen() {
   // downstream memos read it directly. Adding another
   // `scopedEntries(entries, id)` here would just churn array
   // identities and defeat React.memo on the child cards.
+  // `entries` is already baby-scoped by the `useMemo` above, but we
+  // re-run `scopedEntries` here for absolute safety (see the memo's
+  // own comment). This guarantees the KPI header agrees with
+  // HomeScreen / TimelineScreen bit-for-bit.
   const todayCount = useMemo(() => {
     if (!currentBaby) return 0;
-    return entries.filter((e: any) => e.timestamp >= today).length;
+    const scoped = scopedEntries(entries, currentBaby.id);
+    return scoped.filter((e: any) => e.timestamp >= today).length;
   }, [entries, today, currentBaby]);
 
   const weekCount = useMemo(() => {
     if (!currentBaby) return 0;
     const weekAgo = today - 6 * 86400000;
-    return entries.filter((e: any) => e.timestamp >= weekAgo).length;
+    const scoped = scopedEntries(entries, currentBaby.id);
+    return scoped.filter((e: any) => e.timestamp >= weekAgo).length;
   }, [entries, today, currentBaby]);
 
   const trackingStreak = useMemo(() => {
     if (!currentBaby) return 0;
-    return computeStreak(entries).currentStreak;
+    return computeStreak(scopedEntries(entries, currentBaby.id)).currentStreak;
   }, [entries, currentBaby]);
 
   const weekSpark = useMemo(() => {
+    if (!currentBaby) return [0, 0, 0, 0, 0, 0, 0];
+    const scoped = scopedEntries(entries, currentBaby.id);
     const spark: number[] = [];
     for (let i = 0; i < 7; i++) {
       const s = today - (6 - i) * 86400000;
       const e = s + 86400000;
-      spark.push(entries.filter((x: any) => x.timestamp >= s && x.timestamp < e).length);
+      spark.push(scoped.filter((x: any) => x.timestamp >= s && x.timestamp < e).length);
     }
     return spark;
-  }, [entries, today]);
+  }, [entries, today, currentBaby]);
 
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];

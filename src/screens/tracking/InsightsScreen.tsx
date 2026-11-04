@@ -670,7 +670,7 @@ export default function InsightsScreen({ navigation, route }: InsightsScreenProp
     let cancelled = false;
     (async () => {
       try {
-        const { discoverCorrelations, getCachedCorrelations } = require('../services/ai/CorrelationEngine');
+        const { discoverCorrelations, getCachedCorrelations } = require('../../services/ai/CorrelationEngine');
         const cached = await getCachedCorrelations(currentBaby.id);
         if (!cancelled && Array.isArray(cached) && cached.length > 0) {
           setAiCorrelations(cached);

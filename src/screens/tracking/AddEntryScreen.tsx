@@ -600,7 +600,10 @@ const YesterdayStrip = memo(({
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.lg, gap: 10, paddingVertical: 4 }}>
         {entries.map(e => {
-          const fields = getEntryFields(e);
+          // `getEntryFields` already filters SKIP_ENTRY_KEYS — but pass
+          // an explicit `entry.data` so callers that build a synthetic
+          // YesterdayEntry from a single field still render correctly.
+          const fields = getEntryFields({ data: e.data });
           const entryDate = new Date(e.timestamp);
           return (
             <PressableScale key={e.id} onPress={() => onCopy(e)} activeScale={0.94}>

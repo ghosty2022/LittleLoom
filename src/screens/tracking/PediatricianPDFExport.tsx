@@ -60,8 +60,6 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 import {
   WHO_BOY_LMS,
   WHO_GIRL_LMS,
-  calculateZScore,
-  calculateZScoreRestricted,
   calculatePercentilePrecise,
   zScoreToPercentile,
   zScoreToValue,
@@ -830,7 +828,15 @@ export const PediatricianPDFExport: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { currentBaby } = useBaby();
   const { entries } = useTracker();
-  const { parent1, parent2, guardians } = useFamily();
+  // `useFamily()` exposes a single `members` array + role-derived
+  // helpers. `parent1` / `parent2` / `guardians` are NOT exported by
+  // the context — the previous destructure silently produced
+  // `undefined` for all three, so the "Family Contacts" section of
+  // the PDF always rendered empty.
+  const { members = [] } = useFamily();
+  const parent1 = members.find((m: any) => m.role === 'parent1');
+  const parent2 = members.find((m: any) => m.role === 'parent2');
+  const guardians = members.filter((m: any) => m.role === 'guardian');
   const { userProfile } = useAuth();
   const sweetAlert = useSweetAlert();
   const isDark = theme.isDark;

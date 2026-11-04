@@ -378,35 +378,28 @@ export const TRACKER_STORAGE_KEYS = {
 
 
 
+// Every id below MUST exist in `config/defaultTrackers.ts`
+// (`DEFAULT_TRACKERS`). Anything else will fail
+// `getDefaultTracker(id)` at runtime.
+//
+// The previous list included `'nap'`, `'dream_feed'`,
+// `'breastfeeding'`, `'injury'`, `'eczema'` — none of those are
+// real trackers. They were removed. If you want any of them back,
+// add them to `DEFAULT_TRACKERS` first, then re-add here.
 export const DEFAULT_TRACKER_IDS = [
-  
   'feed', 'sleep', 'diaper', 'potty', 'bath', 'pumping',
-  
   'growth', 'temperature', 'medication', 'symptom',
-  'vaccine', 'doctor_visit', 'teething', 'allergy',
-  'skin_condition',
-  
+  'vaccine', 'doctor_visit', 'teething', 'allergy', 'skin_condition',
   'milestone', 'tummy_time', 'play', 'reading', 'speech',
-  
   'mood', 'crying',
-  
   'nail_care', 'oral_hygiene', 'sunscreen', 'skin_care',
-  
   'solid_food', 'water', 'vitamin', 'allergen_intro',
-  
   'accident', 'car_seat', 'babyproofing',
-  
   'bedtime', 'screen_time',
-  
   'note', 'photo', 'journal',
-  
   'trip', 'daycare', 'babysitter',
-  
   'reflux', 'colic', 'constipation', 'diarrhea',
-  
   'supply_inventory', 'expenses', 'cleaning',
-  
-  'nap', 'dream_feed', 'breastfeeding', 'injury', 'eczema',
 ] as const;
 
 export type DefaultTrackerId = typeof DEFAULT_TRACKER_IDS[number];

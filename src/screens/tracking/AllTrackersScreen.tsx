@@ -122,10 +122,19 @@ interface TrackerConfig {
 // keeps ONLY the sub-action shape used by the action sheet, so
 // there is one — and only one — source of truth for what a feed
 // looks like across Home / Hub / Timeline / FamilyDashboard.
-const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
+// This map carries ONLY the sub-action shape + category. All visual
+// properties (emoji/color/gradient/label) come from
+// `constants/trackerVisuals.ts` via `getTrackerVisual()`. This is the
+// single source of truth for what a feed looks like everywhere in
+// the app.
+type TrackerSubActionsMap = Record<string, {
+  category: TrackerConfig['category'];
+  subActions: TrackerSubAction[];
+}>;
+
+const TRACKER_SUB_ACTIONS: TrackerSubActionsMap = {
   feed: {
-    emoji: '🍼', color: '#fa709a', gradient: ['#fa709a', '#f5576c'],
-    description: 'Feeding sessions', category: 'essential',
+    category: 'essential',
     subActions: [
       { id: 'breast_left', label: 'Left Breast', icon: 'arrow-back-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'left' } },
       { id: 'breast_right', label: 'Right Breast', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'right' } },
@@ -135,9 +144,7 @@ const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
     ],
   },
   sleep: {
-    emoji: '🌙', color: '#11998e', gradient: ['#11998e', '#38ef7d'],
-    description: 'Sleep tracking', category: 'essential',
-    
+    category: 'essential',
     subActions: [
       { id: 'nap', label: 'Start Nap', icon: 'sunny-outline', color: '#10b981', presetData: { sleepType: 'nap', status: 'started' } },
       { id: 'bedtime', label: 'Bedtime', icon: 'moon-outline', color: '#6366f1', presetData: { sleepType: 'night', status: 'started' } },
@@ -145,9 +152,7 @@ const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
     ],
   },
   diaper: {
-    emoji: '👶', color: '#8B5CF6', gradient: ['#8B5CF6', '#A78BFA'],
-    description: 'Diaper changes', category: 'essential',
-    
+    category: 'essential',
     subActions: [
       { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet' } },
       { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty' } },
@@ -156,9 +161,7 @@ const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
     ],
   },
   potty: {
-    emoji: '💧', color: '#667eea', gradient: ['#667eea', '#764ba2'],
-    description: 'Potty training', category: 'development',
-    
+    category: 'development',
     subActions: [
       { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet', successful: true } },
       { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty', successful: true } },
@@ -167,9 +170,7 @@ const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
     ],
   },
   growth: {
-    emoji: '📏', color: '#43e97b', gradient: ['#43e97b', '#38f9d7'],
-    description: 'Growth measurements', category: 'health',
-    
+    category: 'health',
     subActions: [
       { id: 'weight', label: 'Weight', icon: 'scale-outline', color: '#10b981', presetData: { measurementType: 'weight' } },
       { id: 'height', label: 'Height', icon: 'resize-outline', color: '#3b82f6', presetData: { measurementType: 'height' } },
@@ -177,9 +178,7 @@ const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
     ],
   },
   milestone: {
-    emoji: '🏆', color: '#ffd700', gradient: ['#ffd700', '#ffaa00'],
-    description: 'Development milestones', category: 'development',
-    
+    category: 'development',
     subActions: [
       { id: 'physical', label: 'Physical', icon: 'body-outline', color: '#f59e0b', presetData: { category: 'physical' } },
       { id: 'cognitive', label: 'Cognitive', icon: 'bulb-outline', color: '#8b5cf6', presetData: { category: 'cognitive' } },
@@ -188,9 +187,7 @@ const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
     ],
   },
   medication: {
-    emoji: '💊', color: '#ff6b6b', gradient: ['#ff6b6b', '#ee5a5a'],
-    description: 'Health & medication', category: 'health',
-    
+    category: 'health',
     subActions: [
       { id: 'medicine', label: 'Medicine', icon: 'medical-outline', color: '#ef4444', presetData: { type: 'medicine' } },
       { id: 'temperature', label: 'Temperature', icon: 'thermometer-outline', color: '#f59e0b', presetData: { type: 'temperature' } },
@@ -199,9 +196,7 @@ const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
     ],
   },
   pumping: {
-    emoji: '🤱', color: '#ec4899', gradient: ['#ec4899', '#f472b6'],
-    description: 'Pumping sessions', category: 'care',
-    
+    category: 'care',
     subActions: [
       { id: 'left', label: 'Left', icon: 'arrow-back-outline', color: '#f472b6', presetData: { side: 'left' } },
       { id: 'right', label: 'Right', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { side: 'right' } },
@@ -209,18 +204,14 @@ const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
     ],
   },
   bath: {
-    emoji: '🛁', color: '#3b82f6', gradient: ['#3b82f6', '#60a5fa'],
-    description: 'Bath time', category: 'care',
-    
+    category: 'care',
     subActions: [
       { id: 'bath', label: 'Log Bath', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'bath' } },
       { id: 'sponge', label: 'Sponge Bath', icon: 'cloud-outline', color: '#93c5fd', presetData: { type: 'sponge' } },
     ],
   },
   tummy_time: {
-    emoji: '🤸', color: '#10b981', gradient: ['#10b981', '#34d399'],
-    description: 'Tummy time', category: 'development',
-    
+    category: 'development',
     subActions: [
       { id: 'tummy_time', label: 'Log Tummy Time', icon: 'fitness-outline', color: '#10b981', presetData: { type: 'tummy_time' } },
     ],
@@ -605,7 +596,7 @@ const TrackerCard = React.memo(({
           {tracker.title}
         </Text>
         <Text style={[styles.trackerDesc, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>
-          {TRACKER_SUB_ACTIONS[tracker.id]?.description || tracker.category}
+          {getTrackerVisual(tracker.id).label || tracker.category}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
           <Text style={[styles.trackerCount, { color: tracker.color }]}>{tracker.count} logs</Text>
@@ -649,11 +640,17 @@ const SubActionSheet = React.memo(({
 
   if (!visible || !trackerId) return null;
 
-  const config = TRACKER_SUB_ACTIONS[trackerId] || {
-    emoji: '📋', color: DS.primary, gradient: [DS.primary, '#764ba2'] as [string, string],
-    description: 'Track activity', category: 'essential',
-    
-    subActions: [{ id: 'default', label: 'Add Entry', icon: 'add-circle-outline' as const, color: DS.primary }],
+  const visual = getTrackerVisual(trackerId);
+  const entry = TRACKER_SUB_ACTIONS[trackerId];
+  const config = {
+    emoji: visual.emoji,
+    color: visual.color,
+    gradient: visual.gradient,
+    description: visual.label,
+    category: entry?.category ?? 'essential',
+    subActions: entry?.subActions?.length
+      ? entry.subActions
+      : [{ id: 'default', label: 'Add Entry', icon: 'add-circle-outline' as const, color: visual.color }],
   };
 
   return (

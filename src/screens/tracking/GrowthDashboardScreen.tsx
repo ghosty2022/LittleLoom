@@ -1041,7 +1041,10 @@ export default function GrowthDashboardScreen({ navigation }: any) {
   } catch {
     integrated = null;
   }   // ← needed for live logger names
-  const { correlations: timelineCorrelations } = useTimelineCorrelations();
+  // GrowthDashboard does not surface correlation cards (that lives on
+  // Timeline & Insights). Calling the hook would subscribe it to
+  // timeline updates for no reason — skip the subscription entirely.
+  // If you later add a Correlations section, restore the destructure.
   const { achievements, newlyUnlocked, streak: globalStreak } = useTrackerAchievements();
   const { getPercentile, getStatus } = useWHOGrowthCalculator();
 
