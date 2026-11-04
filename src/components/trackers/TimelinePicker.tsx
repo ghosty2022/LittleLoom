@@ -26,17 +26,19 @@ import { CATEGORY_CONFIG } from './trackerConstants';
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Persistence keys for the picker (favorites + recents)
+   AsyncStorage keys for picker persistence
    ═══════════════════════════════════════════════════════════════════════════
-   These are AsyncStorage keys used by the TimelinePicker to remember
-   which trackers a user has pinned as favorites and which they've
-   recently opened. They MUST be defined in this module — the previous
-   version referenced `TRACKER_PICKER_KEYS` without declaring it, which
-   threw `Property 'TRACKER_PICKER_KEYS' doesn't exist` on the first
-   render of the picker.
+   Used by the three useEffect hooks below to hydrate + persist favorites
+   and recent trackers. Previously referenced as `TRACKER_PICKER_KEYS`
+   without being declared anywhere — which is exactly what caused the
+   `Property 'TRACKER_PICKER_KEYS' doesn't exist` crash on first render.
 
-   They are namespaced with `@littleloom_` and versioned (`_v1`) so a
-   future schema change can't hydrate stale entries. */
+   Namespaced + versioned so a future schema change can't hydrate stale
+   entries from a previous app version.
+
+   IMPORTANT: this must be declared EXACTLY ONCE per module. Duplicate
+   `const` declarations in the same scope are a hard SyntaxError in JS
+   and will crash the whole bundle, not just this component. */
 const TRACKER_PICKER_KEYS = {
   FAVORITE_TRACKERS: '@littleloom_tracker_picker_favorites_v1',
   RECENT_TRACKERS: '@littleloom_tracker_picker_recents_v1',

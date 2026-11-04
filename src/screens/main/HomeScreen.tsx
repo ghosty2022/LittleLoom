@@ -882,20 +882,67 @@ const NextBestAction: React.FC<{
   lastActivities: any[];
   onAction: (screen: string, params?: any) => void;
 }> = React.memo(({ isDark, theme, currentBaby, lastActivities, onAction }) => {
+  // ── FIX: 999 hrs + wrong "last diaper" ──────────────────────
+  // Bug 1: `hoursSinceDiaper = 999` was a sentinel that leaked to
+  //        the UI as "Last change was 999h ago."
+  // Bug 2: the filter `a.type === 'diaper' || a.trackerId === 'diaper'`
+  //        missed legacy rows (`tracker_id`, `data.trackerId`,
+  //        `nappy` alias) — same gap `normaliseTrackerId` closes.
+  // Bug 3: `.find()` on an unsorted list returns the OLDEST match,
+  //        not the newest. We now explicitly sort newest-first.
+  // Bug 4: on a diaper row, `data.type` is 'wet'|'dirty'|'both',
+  //        never 'diaper' — so `a.type === 'diaper'` could never
+  //        match. We match on the normalised tracker id only.
   const suggestion = useMemo(() => {
     if (!currentBaby) return null;
-    const now = new Date();
-    const lastFeed = lastActivities.find((a: any) => a.type === 'feed' || a.trackerId === 'feed');
-    const lastSleep = lastActivities.find((a: any) => a.type === 'sleep' || a.trackerId === 'sleep');
-    const lastDiaper = lastActivities.find((a: any) => a.type === 'diaper' || a.trackerId === 'diaper');
 
-    const hoursSinceFeed = lastFeed ? differenceInHours(now, new Date(lastFeed.timestamp)) : 999;
-    const hoursSinceSleep = lastSleep ? differenceInHours(now, new Date(lastSleep.timestamp)) : 999;
-    const hoursSinceDiaper = lastDiaper ? differenceInHours(now, new Date(lastDiaper.timestamp)) : 999;
+    // Same normaliser the KPI grid / streak / daily summary use, so
+    // the popup can never disagree with the numbers on the dashboard.
+    const findLatest = (ids: string[]): any | null => {
+      const matches = (lastActivities || [])
+        .filter((a: any) => {
+          if (!a) return false;
+          const id = normaliseTrackerId(a);
+          return id != null && ids.includes(id);
+        })
+        // Newest first — `.find()` previously returned the oldest.
+        .sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
+      return matches[0] || null;
+    };
 
-    if (hoursSinceFeed >= 3) return { id: 'feed-now', title: 'Time to Feed', subtitle: `Last feed was ${hoursSinceFeed}h ago`, icon: 'nutrition-outline', gradient: ['#fa709a', '#fee140'] as [string, string], trackerId: 'feed', urgency: 'high' as const };
-    if (hoursSinceDiaper >= 3) return { id: 'diaper-now', title: 'Check Diaper', subtitle: `Last change was ${hoursSinceDiaper}h ago`, icon: 'shirt-outline', gradient: ['#667eea', '#764ba2'] as [string, string], trackerId: 'diaper', urgency: 'normal' as const };
-    if (hoursSinceSleep >= 4) return { id: 'sleep-now', title: 'Sleep Window Opening', subtitle: `Awake for ${hoursSinceSleep}h — watch for cues`, icon: 'moon-outline', gradient: ['#11998e', '#38ef7d'] as [string, string], trackerId: 'sleep', urgency: 'normal' as const };
+    const lastFeed = findLatest(['feed']);
+    const lastSleep = findLatest(['sleep']);
+    const lastDiaper = findLatest(['diaper']);
+
+    // differenceInHours on a validated numeric timestamp only.
+    // Both guards matter: a missing timestamp used to yield NaN,
+    // which fails every `>=` check non-deterministically.
+    const hoursSince = (entry: any): number | null => {
+      if (!entry || typeof entry.timestamp !== 'number' || Number.isNaN(entry.timestamp)) {
+        return null;
+      }
+      const h = differenceInHours(new Date(), new Date(entry.timestamp));
+      return Number.isFinite(h) && h >= 0 ? h : null;
+    };
+
+    const hoursSinceFeed = hoursSince(lastFeed);
+    const hoursSinceSleep = hoursSince(lastSleep);
+    const hoursSinceDiaper = hoursSince(lastDiaper);
+
+    if (hoursSinceFeed != null && hoursSinceFeed >= 3) {
+      return { id: 'feed-now', title: 'Time to Feed', subtitle: `Last feed was ${hoursSinceFeed}h ago`, icon: 'nutrition-outline', gradient: ['#fa709a', '#fee140'] as [string, string], trackerId: 'feed', urgency: 'high' as const };
+    }
+    if (hoursSinceDiaper != null && hoursSinceDiaper >= 3) {
+      return { id: 'diaper-now', title: 'Check Diaper', subtitle: `Last change was ${hoursSinceDiaper}h ago`, icon: 'shirt-outline', gradient: ['#667eea', '#764ba2'] as [string, string], trackerId: 'diaper', urgency: 'normal' as const };
+    }
+    if (hoursSinceSleep != null && hoursSinceSleep >= 4) {
+      return { id: 'sleep-now', title: 'Sleep Window Opening', subtitle: `Awake for ${hoursSinceSleep}h — watch for cues`, icon: 'moon-outline', gradient: ['#11998e', '#38ef7d'] as [string, string], trackerId: 'sleep', urgency: 'normal' as const };
+    }
+    // No diaper/feed/sleep history at all → never show a fabricated
+    // hour count. Show a real "start tracking" prompt instead.
+    if (hoursSinceFeed == null && hoursSinceDiaper == null && hoursSinceSleep == null) {
+      return { id: 'first-log', title: 'Start Tracking', subtitle: 'Log your first feed, sleep, or diaper change', icon: 'add-circle-outline', gradient: ['#6366f1', '#818cf8'] as [string, string], trackerId: 'feed', urgency: 'low' as const };
+    }
     return { id: 'all-good', title: 'All Caught Up!', subtitle: 'Everything looks good. Enjoy the moment', icon: 'checkmark-circle-outline', gradient: ['#10b981', '#34d399'] as [string, string], trackerId: 'note', urgency: 'low' as const };
   }, [currentBaby, lastActivities]);
 
