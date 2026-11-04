@@ -2029,7 +2029,7 @@ const loadActivities = refreshTrackerEntries;
           currentStreak: trackingStreakDays,
           hasEntryToday: Object.values(todayCounts).some((n) => Number(n) > 0),
           feedCount: todayCounts.feeds,
-          sleepHours: dailySummary.sleepHours,
+          sleepHours: dailySummary?.sleepHours ?? 0,
           diaperCount: todayCounts.diapers,
         });
       } catch (e) {
@@ -2335,7 +2335,12 @@ useEffect(() => {
             currentStreak: trackingStreakDays,
             hasEntryToday: Object.values(todayCounts).some((n) => Number(n) > 0),
             feedCount: todayCounts.feeds,
-            sleepHours: dailySummary.sleepHours,
+            // `dailySummary` may still be `undefined` on the very
+            // first foreground after cold boot (this callback runs
+            // inside useFocusEffect which can fire before the memo
+            // resolves). Default to 0 so the orchestrator receives a
+            // real number and never throws.
+            sleepHours: dailySummary?.sleepHours ?? 0,
             diaperCount: todayCounts.diapers,
           });
         } catch (e) {
