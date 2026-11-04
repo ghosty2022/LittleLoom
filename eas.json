@@ -14,7 +14,8 @@
       },
       "env": {
         "EXPO_USE_FAST_RESOLVER": "1",
-        "EXPO_DOCTOR_SKIP": "1"
+        "EXPO_DOCTOR_SKIP": "1",
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
     },
     "dev-fast": {
@@ -27,7 +28,8 @@
       },
       "env": {
         "EXPO_USE_FAST_RESOLVER": "1",
-        "EXPO_DOCTOR_SKIP": "1"
+        "EXPO_DOCTOR_SKIP": "1",
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
     },
     "preview": {
@@ -36,6 +38,11 @@
       "channel": "preview",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EAS_SKIP_AUTO_FINGERPRINT": "1",
+        "EXPO_USE_FAST_RESOLVER": "1",
+        "EXPO_DOCTOR_SKIP": "1"
       }
     },
     "production": {
@@ -44,6 +51,10 @@
       "channel": "production",
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EAS_SKIP_AUTO_FINGERPRINT": "1",
+        "EXPO_USE_FAST_RESOLVER": "1"
       }
     }
   },
