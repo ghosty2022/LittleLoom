@@ -689,11 +689,90 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
+      // ── 0. GUARD: if we don't know the baby yet, resolve it ONCE
+      //    from family_members for this user, then continue. This is
+      //    the fix for "empty family on cold boot / guardian first
+      //    login." Without it, every query below is skipped because
+      //    `currentBaby.id` is undefined.
+      let babyIdForQuery = currentBaby?.id as string | undefined;
+
+      if (!babyIdForQuery && effectiveUserId) {
+        // Fast path: app_settings is usually hydrated before
+        // family_members is queried.
+        try {
+          const { data: settingsRow } = await supabase
+            .from('app_settings')
+            .select('value')
+            .eq('key', 'current_baby_id')
+            .eq('user_id', effectiveUserId)
+            .maybeSingle();
+          if (settingsRow?.value) babyIdForQuery = settingsRow.value;
+        } catch {}
+
+        // Authoritative path: family_members itself.
+        if (!babyIdForQuery) {
+          try {
+            const { data: fm } = await supabase
+              .from('family_members')
+              .select('baby_id')
+              .eq('user_id', effectiveUserId)
+              .eq('status', 'active')
+              .is('deleted_at', null)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (fm?.baby_id) babyIdForQuery = fm.baby_id;
+          } catch {}
+        }
+
+        // Last resort: baby table.
+        if (!babyIdForQuery) {
+          for (const col of ['parent1_id', 'parent2_id', 'parent_id'] as const) {
+            try {
+              const { data: b } = await supabase
+                .from('babies')
+                .select('id')
+                .eq(col, effectiveUserId)
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle();
+              if (b?.id) { babyIdForQuery = b.id; break; }
+            } catch {}
+          }
+        }
+
+        // Adopt the resolved baby so every downstream consumer sees
+        // it immediately (not just this one call).
+        if (babyIdForQuery) {
+          setCurrentBaby({ id: babyIdForQuery } as any);
+          try {
+            await supabase
+              .from('app_settings')
+              .upsert(
+                {
+                  key: 'current_baby_id',
+                  value: babyIdForQuery,
+                  user_id: effectiveUserId,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'key,user_id' },
+              );
+          } catch {}
+        }
+      }
+
+      if (!babyIdForQuery) {
+        // No baby anywhere → truly nothing to load.
+        familyLoadInProgress.current = false;
+        setState(prev => ({ ...prev, isLoading: false }));
+        return;
+      }
+
       // ── 1. Query all family_members rows for this baby ──────────
       const { data: dbMembers, error: membersError } = await supabase
         .from('family_members')
         .select('*')
-        .eq('baby_id', currentBaby.id)
+        .eq('baby_id', babyIdForQuery)
         .is('deleted_at', null);
 
       if (membersError && __DEV__) {
@@ -712,13 +791,13 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       //    guardian/viewer being added directly — which made a
       //    guardian appear to themselves as "Primary Parent".
       if (
-        currentBaby.parent1_id &&
+        currentBaby?.parent1_id &&
         authProfile?.id === currentBaby.parent1_id &&
         !rawRows.some(r => r.user_id === currentBaby.parent1_id && r.role === 'parent1')
       ) {
         rawRows.push({
-          id: `${currentBaby.id}-p1`,
-          baby_id: currentBaby.id,
+          id: `${babyIdForQuery}-p1`,
+          baby_id: babyIdForQuery,
           user_id: currentBaby.parent1_id,
           email: authProfile?.email || '',
           full_name: authProfile?.fullName || 'Primary Parent',
