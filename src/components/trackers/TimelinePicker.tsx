@@ -26,6 +26,23 @@ import { CATEGORY_CONFIG } from './trackerConstants';
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Persistence keys for the picker (favorites + recents)
+   ═══════════════════════════════════════════════════════════════════════════
+   These are AsyncStorage keys used by the TimelinePicker to remember
+   which trackers a user has pinned as favorites and which they've
+   recently opened. They MUST be defined in this module — the previous
+   version referenced `TRACKER_PICKER_KEYS` without declaring it, which
+   threw `Property 'TRACKER_PICKER_KEYS' doesn't exist` on the first
+   render of the picker.
+
+   They are namespaced with `@littleloom_` and versioned (`_v1`) so a
+   future schema change can't hydrate stale entries. */
+const TRACKER_PICKER_KEYS = {
+  FAVORITE_TRACKERS: '@littleloom_tracker_picker_favorites_v1',
+  RECENT_TRACKERS: '@littleloom_tracker_picker_recents_v1',
+} as const;
+
+/* ═══════════════════════════════════════════════════════════════════════════
    AURA DS
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -408,12 +425,20 @@ export const TimelinePicker: React.FC<TimelinePickerProps> = ({
           AsyncStorage.getItem(TRACKER_PICKER_KEYS.RECENT_TRACKERS),
         ]);
         if (favRaw) {
-          const arr = JSON.parse(favRaw);
-          if (Array.isArray(arr)) setFavorites(new Set(arr));
+          try {
+            const arr = JSON.parse(favRaw);
+            if (Array.isArray(arr)) {
+              setFavorites(new Set(arr.filter((x): x is string => typeof x === 'string')));
+            }
+          } catch {}
         }
         if (recentRaw) {
-          const arr = JSON.parse(recentRaw);
-          if (Array.isArray(arr)) setRecentTrackers(arr);
+          try {
+            const arr = JSON.parse(recentRaw);
+            if (Array.isArray(arr)) {
+              setRecentTrackers(arr.filter((x): x is string => typeof x === 'string'));
+            }
+          } catch {}
         }
       } catch {}
     })();
