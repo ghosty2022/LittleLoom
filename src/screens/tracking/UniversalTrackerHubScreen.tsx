@@ -893,7 +893,11 @@ const TodaySummaryBar = React.memo(({ todayCount, entries }: { todayCount: numbe
   const trackerCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     todayEntries.forEach((e: any) => {
-      const id = e?.trackerId;
+      // Use `normaliseTrackerId` (defined at the top of the file) so
+      // legacy rows that only stored `type: 'diaper'` still count
+      // toward the Diaper dot on this strip. `entryTrackerId` would
+      // silently drop them.
+      const id = normaliseTrackerId(e);
       if (!id) return;
       counts[id] = (counts[id] || 0) + 1;
     });
@@ -956,11 +960,15 @@ const WellnessScoreCard = React.memo(({ entries, onPress }: { entries: any[]; on
       };
     }
 
-    const feedCount = todayEntries.filter((e: any) => e.trackerId === 'feed').length;
+    const hasTracker = (e: any, ids: string[]) => {
+      const id = normaliseTrackerId(e);
+      return id != null && ids.includes(id);
+    };
+    const feedCount = todayEntries.filter((e: any) => hasTracker(e, ['feed'])).length;
     const sleepMins = todayEntries
-      .filter((e: any) => e.trackerId === 'sleep')
+      .filter((e: any) => hasTracker(e, ['sleep']))
       .reduce((sum: number, e: any) => sum + (Number(e.duration) || 0), 0);
-    const diaperCount = todayEntries.filter((e: any) => e.trackerId === 'diaper').length;
+    const diaperCount = todayEntries.filter((e: any) => hasTracker(e, ['diaper'])).length;
 
     const nutritionScore =
       feedCount > 0 ? Math.min(100, Math.round((feedCount / 8) * 100)) : null;
@@ -970,9 +978,11 @@ const WellnessScoreCard = React.memo(({ entries, onPress }: { entries: any[]; on
       diaperCount > 0 ? Math.min(100, Math.round((diaperCount / 6) * 100)) : null;
 
     // Activity = any logged entry that isn't feed/sleep/diaper
-    const activityEntries = todayEntries.filter(
-      (e: any) => !['feed', 'sleep', 'diaper'].includes(e?.trackerId),
-    );
+    const activityEntries = todayEntries.filter((e: any) => {
+      const id = normaliseTrackerId(e);
+      if (!id) return false;
+      return !['feed', 'sleep', 'diaper'].includes(id);
+    });
     const activityScore =
       activityEntries.length > 0
         ? Math.min(100, activityEntries.length * 20)
@@ -1102,7 +1112,9 @@ const SleepQualityAnalyzer = React.memo(({ entries, onPress }: { entries: any[];
   const sleepData = useMemo(() => {
     const list = Array.isArray(entries) ? entries : [];
     const sleepEntries = list
-      .filter((e: any) => e.trackerId === 'sleep' && e?.timestamp)
+      .filter(
+        (e: any) => normaliseTrackerId(e) === 'sleep' && e?.timestamp,
+      )
       .sort((a: any, b: any) => b.timestamp - a.timestamp)
       .slice(0, 7);
     if (sleepEntries.length === 0) return null;
@@ -1202,7 +1214,7 @@ const pattern = useMemo(() => {
   const feedEntries = list
     .filter(
       (e: any) =>
-        e.trackerId === 'feed' &&
+        normaliseTrackerId(e) === 'feed' &&
         e.timestamp &&
         typeof e.timestamp === 'number' &&
         !isNaN(e.timestamp),
@@ -1419,7 +1431,7 @@ const NextEventPredictor = React.memo(({ entries, onEventPress }: {
     const now = Date.now();
     const result: any[] = [];
 
-    const feedEntries = list.filter((e: any) => e.trackerId === 'feed' && e?.timestamp).sort((a: any, b: any) => b.timestamp - a.timestamp);
+    const feedEntries = list.filter((e: any) => normaliseTrackerId(e) === 'feed' && e?.timestamp).sort((a: any, b: any) => b.timestamp - a.timestamp);
     if (feedEntries.length >= 2) {
       const denom = Math.min(3, feedEntries.length - 1);
       const avgGap = (feedEntries[0].timestamp - feedEntries[denom].timestamp) / denom;
@@ -1443,7 +1455,7 @@ const NextEventPredictor = React.memo(({ entries, onEventPress }: {
       }
     }
 
-    const sleepEntries = list.filter((e: any) => e.trackerId === 'sleep' && e?.timestamp).sort((a: any, b: any) => b.timestamp - a.timestamp);
+    const sleepEntries = list.filter((e: any) => normaliseTrackerId(e) === 'sleep' && e?.timestamp).sort((a: any, b: any) => b.timestamp - a.timestamp);
     if (sleepEntries.length >= 2) {
       const lastSleep = sleepEntries[0];
       const avgWakeWindow = 3 * 60;
@@ -1465,7 +1477,7 @@ const NextEventPredictor = React.memo(({ entries, onEventPress }: {
       }
     }
 
-    const diaperEntries = list.filter((e: any) => e.trackerId === 'diaper' && e?.timestamp).sort((a: any, b: any) => b.timestamp - a.timestamp);
+    const diaperEntries = list.filter((e: any) => normaliseTrackerId(e) === 'diaper' && e?.timestamp).sort((a: any, b: any) => b.timestamp - a.timestamp);
     if (diaperEntries.length >= 2) {
       const denom = Math.min(5, diaperEntries.length - 1);
       const avgGap = (diaperEntries[0].timestamp - diaperEntries[denom].timestamp) / denom;
@@ -1566,13 +1578,17 @@ const SmartDailyGoals = React.memo(({ entries, baby, onGoalPress }: {
     const sleepHoursTarget = ageMonths < 3 ? 16 : ageMonths < 6 ? 14 : ageMonths < 12 ? 13 : ageMonths < 24 ? 12 : 11;
     const diaperTarget = ageMonths < 3 ? 8 : ageMonths < 6 ? 7 : ageMonths < 12 ? 6 : 5;
 
+    const hasTracker = (e: any, ids: string[]) => {
+      const id = normaliseTrackerId(e);
+      return id != null && ids.includes(id);
+    };
     return [
       {
         id: 'feed-goal',
         label: 'Feeds',
         icon: '🍼',
         target: feedTarget,
-        current: todayEntries.filter((e: any) => e.trackerId === 'feed').length,
+        current: todayEntries.filter((e: any) => hasTracker(e, ['feed'])).length,
         color: '#fa709a',
         unit: 'feeds',
       },
@@ -1583,7 +1599,7 @@ const SmartDailyGoals = React.memo(({ entries, baby, onGoalPress }: {
         target: sleepHoursTarget,
         current: Math.floor(
           todayEntries
-            .filter((e: any) => e.trackerId === 'sleep')
+            .filter((e: any) => hasTracker(e, ['sleep']))
             .reduce((sum: number, e: any) => sum + (e.duration || 0), 0) / 3600
         ),
         color: '#11998e',
@@ -1594,7 +1610,7 @@ const SmartDailyGoals = React.memo(({ entries, baby, onGoalPress }: {
         label: 'Diapers',
         icon: '👶',
         target: diaperTarget,
-        current: todayEntries.filter((e: any) => e.trackerId === 'diaper').length,
+        current: todayEntries.filter((e: any) => hasTracker(e, ['diaper'])).length,
         color: '#8B5CF6',
         unit: 'changes',
       },
@@ -1603,7 +1619,7 @@ const SmartDailyGoals = React.memo(({ entries, baby, onGoalPress }: {
         label: 'Moments',
         icon: '🏆',
         target: 1,
-        current: todayEntries.filter((e: any) => e.trackerId === 'milestone').length,
+        current: todayEntries.filter((e: any) => hasTracker(e, ['milestone'])).length,
         color: '#ffd700',
         unit: 'logs',
       },
@@ -1694,7 +1710,7 @@ const SmartInsightsCarousel = React.memo(({
     const todayEntries = list.filter((e: any) => e?.timestamp >= today);
 
     const feedEntries = list
-      .filter((e: any) => e.trackerId === 'feed' && e?.timestamp)
+      .filter((e: any) => normaliseTrackerId(e) === 'feed' && e?.timestamp)
       .sort((a: any, b: any) => b.timestamp - a.timestamp);
 
     if (feedEntries.length >= 2) {
@@ -1715,7 +1731,7 @@ const SmartInsightsCarousel = React.memo(({
     }
 
     const sleepMins = todayEntries
-      .filter((e: any) => e.trackerId === 'sleep')
+      .filter((e: any) => normaliseTrackerId(e) === 'sleep')
       .reduce((sum: number, e: any) => sum + (e.duration || 0), 0);
 
     let ageMonths = 0;
@@ -1761,7 +1777,7 @@ const SmartInsightsCarousel = React.memo(({
       });
     }
 
-    const growthEntries = list.filter((e: any) => e.trackerId === 'growth' && e?.timestamp);
+    const growthEntries = list.filter((e: any) => normaliseTrackerId(e) === 'growth' && e?.timestamp);
     if (growthEntries.length > 0) {
       const lastGrowth = Math.max(...growthEntries.map((e: any) => e.timestamp));
       const daysSince = differenceInDays(new Date(), new Date(lastGrowth));
@@ -1780,7 +1796,7 @@ const SmartInsightsCarousel = React.memo(({
       }
     }
 
-    const milestoneEntries = list.filter((e: any) => e.trackerId === 'milestone');
+    const milestoneEntries = list.filter((e: any) => normaliseTrackerId(e) === 'milestone');
     if (milestoneEntries.length === 0 && ageMonths >= 3) {
       items.push({
         id: 'first-milestone',
@@ -2123,7 +2139,7 @@ const RecentActivityList = React.memo(({
               </View>
 
               {group.events.map((event: any, ei: number) => {
-                const trackerIdForEvent = entryTrackerId(event) || 'default';
+                const trackerIdForEvent = normaliseTrackerId(event) || 'default';
                 const cfg = getTrackerConfig(trackerIdForEvent);
                 const isLast = ei === group.events.length - 1;
                 const time = event?.timestamp ? format(event.timestamp, 'h:mm a') : '';
@@ -2534,40 +2550,39 @@ export default function UniversalTrackerHubScreen() {
 
   const today = useMemo(() => startOfDay(new Date()).getTime(), []);
 
+  // `entries` is already baby-scoped by the `useMemo` above, so all
+  // downstream memos read it directly. Adding another
+  // `scopedEntries(entries, id)` here would just churn array
+  // identities and defeat React.memo on the child cards.
   const todayCount = useMemo(() => {
     if (!currentBaby) return 0;
-    return scopedEntries(entries, currentBaby.id).filter((e: any) => e.timestamp >= today).length;
+    return entries.filter((e: any) => e.timestamp >= today).length;
   }, [entries, today, currentBaby]);
 
   const weekCount = useMemo(() => {
     if (!currentBaby) return 0;
     const weekAgo = today - 6 * 86400000;
-    return scopedEntries(entries, currentBaby.id).filter((e: any) => e.timestamp >= weekAgo).length;
+    return entries.filter((e: any) => e.timestamp >= weekAgo).length;
   }, [entries, today, currentBaby]);
 
   const trackingStreak = useMemo(() => {
     if (!currentBaby) return 0;
-    return computeStreak(scopedEntries(entries, currentBaby.id)).currentStreak;
+    return computeStreak(entries).currentStreak;
   }, [entries, currentBaby]);
 
   const weekSpark = useMemo(() => {
-    const scoped = scopedEntries(entries, currentBaby?.id);
     const spark: number[] = [];
     for (let i = 0; i < 7; i++) {
       const s = today - (6 - i) * 86400000;
       const e = s + 86400000;
-      spark.push(scoped.filter((x: any) => x.timestamp >= s && x.timestamp < e).length);
+      spark.push(entries.filter((x: any) => x.timestamp >= s && x.timestamp < e).length);
     }
     return spark;
-  }, [entries, today, currentBaby]);
+  }, [entries, today]);
 
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];
-    // Route through `scopedEntries` so any legacy row that stored its
-    // tracker id in `type` / `data.trackerId` still appears here, AND
-    // so soft-deleted + sibling-baby rows are dropped consistently
-    // with Timeline / Home / EntryDetail.
-    return scopedEntries(entries, currentBaby.id)
+    return entries
       .filter((e: any) => e?.timestamp && typeof e.timestamp === 'number' && e.timestamp > 0)
       .sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0))
       .slice(0, 50);
@@ -2596,7 +2611,15 @@ export default function UniversalTrackerHubScreen() {
     return sourceTrackers.map((t: any) => {
       const id = t.id;
       const config = getTrackerConfig(id);
-      const entriesForTracker = getEntries(id);
+      // Scope to the active baby — `getEntries(id)` returns every row
+      // for this tracker across ALL babies, which inflates the card
+      // count on multi-baby accounts. `normaliseTrackerId` recovers
+      // legacy rows that only stored the tracker under `type`.
+      const entriesForTracker = entries.filter((e: any) => {
+        if (!e || e.isDeleted) return false;
+        const norm = normaliseTrackerId(e);
+        return norm === id;
+      }).sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
       const lastEntry = entriesForTracker[0];
       const title =
         t.name ||
@@ -2617,7 +2640,7 @@ export default function UniversalTrackerHubScreen() {
         hasSubActions: !!config.subActions?.length,
       };
     });
-  }, [trackers, getEntries, currentBaby?.id, currentBaby]);
+  }, [trackers, entries, currentBaby?.id, currentBaby]);
 
   /* ─── Handlers ──────────────────────────────────────────────────────── */
 
@@ -2761,7 +2784,9 @@ export default function UniversalTrackerHubScreen() {
     }
 
     // Find closest upcoming prediction
-    const feedEntries = entries.filter((e: any) => e.trackerId === 'feed' && e?.timestamp).sort((a: any, b: any) => b.timestamp - a.timestamp);
+    const feedEntries = entries
+      .filter((e: any) => normaliseTrackerId(e) === 'feed' && e?.timestamp)
+      .sort((a: any, b: any) => b.timestamp - a.timestamp);
     if (feedEntries.length >= 2) {
       const gap = (Date.now() - feedEntries[0].timestamp) / 3600000;
       if (gap > 3) {

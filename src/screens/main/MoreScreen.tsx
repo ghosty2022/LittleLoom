@@ -50,6 +50,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSupabase } from '../../hooks/useSupabase';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { useCustomization } from '../../hooks/useCustomization';
+import { useLanguage } from '../../hooks/useLanguage';
+import { useUnits } from '../../hooks/useUnits';
 
 // Contexts
 import { useAuth } from '../../context/AuthContext';
@@ -1664,6 +1666,14 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     hapticFeedback,
   } = useCustomization();
 
+  // Language + units are stored in the SAME CustomizationSettings
+  // blob (`@littleloom_customization_v3`), so these hooks are thin
+  // read/update wrappers with no separate storage key. Every screen
+  // that reads language or units goes through these — no drift
+  // between LanguageSettingsScreen / UnitSettingsScreen / MoreScreen.
+  const { languageLabel } = useLanguage();
+  const { unitsLabel } = useUnits();
+
   const { isConnected } = useSupabase();
   const { sync, isSyncing, getQueueStatus } = useOfflineSync();
   const sweetAlert = useSweetAlert();
@@ -2565,13 +2575,10 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
               isDark={isDark}
               showArrow
             />
-            <MenuItem
+                        <MenuItem
               icon="language"
               title="Language"
-              value={
-                (require('../../hooks/useLanguage')?.useLanguage?.()?.language as string)
-                  || 'English (US)'
-              }
+              value={languageLabel}
               onPress={() => navigation.navigate('LanguageSettings')}
               color="#fa8231"
               isDark={isDark}
@@ -2580,10 +2587,7 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             <MenuItem
               icon="bar-chart"
               title="Units"
-              value={
-                (require('../../hooks/useUnits')?.useUnits?.()?.unitSystem as string)
-                  || 'Metric (kg, cm)'
-              }
+              value={unitsLabel}
               onPress={() => navigation.navigate('UnitSettings')}
               color="#5f27cd"
               isDark={isDark}
@@ -2605,6 +2609,8 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
     collaborativeEnabled,
     currentBaby,
     sweetAlert,
+    languageLabel,
+    unitsLabel,
   ]);
 
   const renderFamilySection = useCallback(() => {
