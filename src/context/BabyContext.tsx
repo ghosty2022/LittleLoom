@@ -1065,7 +1065,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.warn('[BabyContext] Failed to get current_baby_id:', e);
         }
 
-        const isValidCurrent = currentId && babies.some(b => b.id === currentId);
+        // ── READ AsyncStorage AS SECONDARY SOURCE ────────────────
+        // The user's last explicit switch is in AsyncStorage. If
+        // app_settings lost it (RLS), honor the local choice.
+        let localCurrentId: string | null = null;
+        try {
+          localCurrentId = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_BABY_ID);
+        } catch {}
+
+        const isValidCurrent =
+          (currentId && babies.some(b => b.id === currentId)) ||
+          (localCurrentId && babies.some(b => b.id === localCurrentId));
 
         if (!isValidCurrent) {
           // ── Multi-family priority ────────────────────────────────
@@ -1091,7 +1101,11 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const bT = new Date(b.createdAt || 0).getTime();
             return bT - aT;
           });
-          currentId = prioritizedBabies[0]?.id || babies[0].id;
+          // Prefer AsyncStorage choice, then priority
+          currentId =
+            (localCurrentId && babies.some(b => b.id === localCurrentId))
+              ? localCurrentId
+              : prioritizedBabies[0]?.id || babies[0].id;
           if (__DEV__) {
             console.log(
               `[BabyContext] Setting current baby to first: ${currentId}`
@@ -2292,9 +2306,22 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // ── Identity & basics ────────────────────────────────────────
         if (updates.name !== undefined) remoteUpdates.name = updates.name;
-        if (updates.avatar !== undefined) remoteUpdates.avatar = updates.avatar;
-        if (updates.avatar_url !== undefined)
+        // ── KEEP avatar AND avatar_url IN SYNC ──────────────────
+        // Some screens read `baby.avatar`, others read `baby.avatar_url`.
+        // Writing only one leaves the other stale, which is why a
+        // newly-uploaded photo sometimes disappears.
+        if (updates.avatar !== undefined) {
+          remoteUpdates.avatar = updates.avatar;
+          if (updates.avatar_url === undefined) {
+            remoteUpdates.avatar_url = updates.avatar;
+          }
+        }
+        if (updates.avatar_url !== undefined) {
           remoteUpdates.avatar_url = updates.avatar_url;
+          if (updates.avatar === undefined) {
+            remoteUpdates.avatar = updates.avatar_url;
+          }
+        }
         if (updates.birthDate !== undefined)
           remoteUpdates.date_of_birth = updates.birthDate;
         if (updates.gender !== undefined) {
@@ -2600,8 +2627,15 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         
+        // ── PERSISTENCE BARRIER ─────────────────────────────────
+        // Write to app_settings FIRST, then AsyncStorage, then
+        // state. If the upsert fails silently (RLS), we still
+        // have AsyncStorage as the fallback. The `loadBabies`
+        // function will read app_settings, but a stale read
+        // is corrected by the AsyncStorage check below.
+        let persistedToDb = false;
         try {
-          await supabase
+          const { error: settingsErr } = await supabase
             .from('app_settings')
             .upsert(
               {
@@ -2612,11 +2646,37 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
               },
               { onConflict: 'key, user_id' }
             );
+          persistedToDb = !settingsErr;
+          if (settingsErr && __DEV__) {
+            console.warn('[BabyContext] current_baby_id upsert failed:', settingsErr.message);
+          }
         } catch (e) {
-          console.warn('[BabyContext] Failed to persist current_baby_id:', e);
+          if (__DEV__) console.warn('[BabyContext] current_baby_id persist threw:', e);
         }
 
+        // Always write AsyncStorage — this survives DB RLS failures
+        // and is the authoritative "last user choice" on this device.
         await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_BABY_ID, id);
+
+        // If the DB write failed (RLS), retry once after a short
+        // delay so the row is there before the next loadBabies().
+        if (!persistedToDb) {
+          setTimeout(async () => {
+            try {
+              await supabase
+                .from('app_settings')
+                .upsert(
+                  {
+                    key: 'current_baby_id',
+                    value: id,
+                    user_id: userId,
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: 'key, user_id' }
+                );
+            } catch {}
+          }, 500);
+        }
 
         
         

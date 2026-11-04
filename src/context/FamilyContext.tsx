@@ -780,10 +780,34 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           new Set(nullEmailRows.map((r) => String(r.email).trim().toLowerCase())),
         );
         try {
+          // Use case-insensitive match — invite rows sometimes store
+          // "Mother@Example.com" while the profile has "mother@example.com"
           const { data: byEmailRows } = await supabase
             .from('profiles')
             .select('id, email, full_name, community_display_name, community_avatar, avatar_url, avatar, role, phone_number')
-            .in('email', emails);
+            .in('email', emails.map(e => e.toLowerCase()));
+
+          // Also try ilike for any that didn't match case-insensitively
+          const unmatchedEmails = emails.filter(
+            (e) => !(byEmailRows || []).some(
+              (p: any) => (p.email || '').toLowerCase() === e.toLowerCase(),
+            ),
+          );
+          if (unmatchedEmails.length > 0) {
+            for (const em of unmatchedEmails) {
+              try {
+                const { data: fuzzy } = await supabase
+                  .from('profiles')
+                  .select('id, email, full_name, community_display_name, community_avatar, avatar_url, avatar, role, phone_number')
+                  .ilike('email', em)
+                  .limit(1)
+                  .maybeSingle();
+                if (fuzzy?.id) {
+                  byEmailRows?.push(fuzzy);
+                }
+              } catch {}
+            }
+          }
           const emailMap: Record<string, any> = {};
           (byEmailRows || []).forEach((p: any) => {
             if (p.email) {
@@ -924,7 +948,15 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           lastActive: normalizedLastActive,
           phoneNumber: livePhone,
           notificationsEnabled: row.notifications_enabled !== false,
-          status: row.status || (normalizedLastActive ? 'active' : 'pending'),
+          // ── STATUS FIX ──────────────────────────────────────────
+          // parent1 is NEVER pending — they created the family. The
+          // `last_active` column can lag on cold boot, which used to
+          // mark the owner as "pending" and hide them from the tree.
+          status:
+            enumRole === UserRole.PARENT_1
+              ? 'active'
+              : (row.status ||
+                 (normalizedLastActive ? 'active' : 'pending')),
         };
         // Internal hint used only by the dedupe pass above. Never
         // surfaced to consumers — stripped from the final state via
@@ -1907,13 +1939,29 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Duplicate check: same user_id anywhere in this family?
     try {
+      // Check by BOTH user_id AND email — invite-accepted rows may
+      // have user_id = NULL but email populated. Without this, a
+      // co-parent who accepted an invite appears "not found" and
+      // we try to insert a duplicate.
       const { data: existing } = await supabase
         .from('family_members')
-        .select('id, role, status, deleted_at')
+        .select('id, role, status, deleted_at, user_id, email')
         .eq('baby_id', currentBaby.id)
-        .eq('user_id', profile.id)
+        .or(`user_id.eq.${profile.id},email.eq.${(profile.email || '').toLowerCase()}`)
         .is('deleted_at', null)
         .maybeSingle();
+
+      // ── BACKFILL user_id on the existing row ──────────────────
+      // If the row exists but user_id is NULL (invite-accepted
+      // legacy row), stamp it NOW so every future lookup matches.
+      if (existing?.id && !existing.user_id) {
+        try {
+          await supabase
+            .from('family_members')
+            .update({ user_id: profile.id, updated_at: new Date().toISOString() })
+            .eq('id', existing.id);
+        } catch {}
+      }
 
       if (existing) {
         return {

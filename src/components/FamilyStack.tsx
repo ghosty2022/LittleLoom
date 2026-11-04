@@ -159,7 +159,11 @@ export const FamilyStack: React.FC<FamilyStackProps> = ({
                       borderColor: isDark ? DS.darkCard : DS.white,
                     }}
                   >
-                    <SafeAvatar avatar={m.avatar} size={48} fallbackColor={roleCfg} />
+                    <SafeAvatar
+                      avatar={m.avatar ? `${m.avatar}${m.avatar.includes('?') ? '&' : '?'}v=${(m as any).lastActive || Date.now()}` : m.avatar}
+                      size={48}
+                      fallbackColor={roleCfg}
+                    />
                   </View>
                   <Text
                     style={{

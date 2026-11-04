@@ -801,7 +801,38 @@ export const TrackerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     isRefreshingRef.current = true;
 
     try {
-      const entries = await loadEntries(babyId);
+      // ── FORCE FULL SYNC FOR GUARDIANS / VIEWERS ─────────────
+      // The direct SELECT on `tracker_entries` is RLS-filtered for
+      // non-parents. If it returns rows, EntryService skips the
+      // RPC fallback — which means entries logged by OTHER family
+      // members (after our initial load) are never fetched. We
+      // force the RPC path for non-parent roles so cross-device
+      // entries always arrive.
+      const userRole = (() => {
+        try {
+          return currentBabyPermissions?.canManageFamily ? 'parent' : 'non-parent';
+        } catch { return 'non-parent'; }
+      })();
+
+      let entries: TrackerEntry[];
+      if (userRole === 'non-parent') {
+        try {
+          const { data: rpcRows, error: rpcErr } = await supabase
+            .rpc('get_entries_for_member', { p_baby_id: babyId });
+          if (!rpcErr && Array.isArray(rpcRows)) {
+            entries = rpcRows.map(mapRowToEntry);
+            if (__DEV__) {
+              console.log(`[TrackerContext] RPC sync recovered ${entries.length} entries for guardian`);
+            }
+          } else {
+            entries = await loadEntries(babyId);
+          }
+        } catch {
+          entries = await loadEntries(babyId);
+        }
+      } else {
+        entries = await loadEntries(babyId);
+      }
 
       // Extra safety: if the baby changed WHILE we were awaiting, drop
       // this result — it belongs to the old baby.

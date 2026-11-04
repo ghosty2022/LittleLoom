@@ -1297,10 +1297,23 @@ export default function FamilySharingScreen({ navigation }: FamilySharingScreenP
     // changes. `id` (family_members row id) can change if a member is
     // removed and re-invited, so the old check sometimes showed the
     // same person twice.
-    const unique = data.filter(
-      (m, i, arr) =>
-        i === arr.findIndex((x) => (x.userId || x.id) === (m.userId || m.id)),
-    );
+    // ── DEDUPE + DROP PHANTOM ROWS ────────────────────────────
+    // A "member" with no userId AND no lastActive AND no real
+    // profile is an orphaned invite placeholder — it belongs in the
+    // invite list, not the member list. Keeping it here caused the
+    // "pending" ghost rows that never resolve.
+    const unique = data
+      .filter(
+        (m, i, arr) =>
+          i === arr.findIndex((x) => (x.userId || x.id) === (m.userId || m.id)),
+      )
+      .filter((m) => {
+        const hasUserId = !!(m as any).userId;
+        const hasActivity = parseLastActive((m as any).lastActive) > 0;
+        const isParent1 = normalizeRole((m as any).role) === UserRole.PARENT_1;
+        // Keep real members; drop only orphaned non-parent placeholders
+        return hasUserId || hasActivity || isParent1;
+      });
 
     // ── EMPTY-STATE GATE ────────────────────────────────────────
     // Only show the "invite someone" CTA when the family is
