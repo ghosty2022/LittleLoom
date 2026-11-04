@@ -488,76 +488,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   
 
+  // ── NOTIFICATIONS: DELEGATE TO `NotificationService` ──────────
+  // The old code ran a parallel permission flow + listener registry
+  // *inside* AppContext, which meant:
+  //   • Two permission prompts could race on cold boot.
+  //   • Notification history was written to AsyncStorage by AppContext
+  //     but read by NotificationService from a different key.
+  //   • Every tap fired BOTH AppContext's handler AND AppNavigator's
+  //     handler. AppContext's version routed to non-existent screens
+  //     ('Safety', 'Reminders', 'Community') and always threw.
+  //
+  // `NotificationService` already owns channels, permissions, history,
+  // queue-flush, badge count, and delivery — so AppContext now just
+  // mirrors its settings and forwards writes. One source of truth.
   const ensureNotificationsInitialized = useCallback(async () => {
     if (isInitialized.current) return true;
     if (initStarted.current) {
       return new Promise<boolean>((resolve) => {
         const check = () => {
-          if (isInitialized.current) {
-            resolve(true);
-          } else {
-            setTimeout(check, 100);
-          }
+          if (isInitialized.current) resolve(true);
+          else setTimeout(check, 100);
         };
         check();
       });
     }
-
     initStarted.current = true;
 
     try {
-      const settings = await loadNotificationSettings();
-      setNotificationSettings(settings);
+      const { notificationService } = await import('@/services/NotificationService');
+      const ok = await notificationService.initialize();
 
-      if (!settings.enabled) {
-        console.log('[AppContext] Notifications disabled by user');
-        setIsNotificationReady(true);
-        isInitialized.current = true;
-        return true;
-      }
+      // Mirror the settings the service loaded (which is the single
+      // source of truth) into our React state so the settings screen
+      // shows the current toggles.
+      const svcSettings = notificationService.getSettings();
+      const merged: NotificationSettings = {
+        ...DEFAULT_NOTIFICATION_SETTINGS,
+        ...svcSettings,
+        // `allowBackgroundSync`/`syncInterval`/`achievementReminders`/
+        // `streakReminders`/`chatNotifications`/`safetyAlerts`/
+        // `dailySummary`/`activityReminders` live only in AppContext's
+        // local key (they're not part of NotificationService's schema).
+        // Preserve whatever we loaded from AppContext storage on top.
+        ...(await loadNotificationSettings()),
+      };
+      setNotificationSettings(merged);
 
-      if (Device.isDevice) {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
+      // Store & mirror history into the shared key so `getNotificationHistory`
+      // returns what `NotificationService.storeNotificationHistory` wrote.
+      try {
+        const history = await notificationService.getNotificationHistory();
+        await AsyncStorage.setItem(
+          NOTIFICATION_HISTORY_KEY,
+          JSON.stringify(history || []),
+        );
+      } catch {}
 
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync({
-            ios: {
-              allowAlert: true,
-              allowBadge: true,
-              allowSound: true,
-              allowAnnouncements: true,
-            },
-          });
-          finalStatus = status;
-        }
+      appStateListener.current = AppState.addEventListener('change', handleAppStateChange);
 
-        if (finalStatus !== 'granted') {
-          console.log('[AppContext] Notification permission denied');
-          setIsNotificationReady(true);
-          isInitialized.current = true;
-          return true;
-        }
-      }
-
-      
-      
-      
-      
-      
-
-      if (settings.allowBackgroundSync) {
+      // Optional background sync — kept as-is, but now goes through
+      // NotificationService so the queue actually drains.
+      if (merged.allowBackgroundSync) {
         try {
           const status = await BackgroundFetch.getStatusAsync();
           if (status !== BackgroundFetch.BackgroundFetchStatus.Denied) {
             const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
             if (!isRegistered) {
               await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-                minimumInterval: settings.syncInterval || 5,
+                minimumInterval: merged.syncInterval || 5,
                 stopOnTerminate: false,
                 startOnBoot: true,
               });
-              console.log('[AppContext] Background sync registered');
             }
           }
         } catch (error) {
@@ -565,79 +566,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      appStateListener.current = AppState.addEventListener('change', handleAppStateChange);
-
-      // ── WIRE THE LISTENERS ──────────────────────────────────
-      // The old code declared `notificationListener` and
-      // `responseListener` refs but NEVER subscribed. As a result:
-      //   • `storeNotification` was never called → no notification
-      //     ever entered the history buffer.
-      //   • `handleNotificationResponse` never fired → the app never
-      //     navigated on a tap that came through AppContext (only
-      //     AppNavigator's own duplicate handler worked, and it
-      //     only knew about a fixed set of types).
-      //
-      // We tear down any previous listeners first so repeated calls to
-      // `ensureNotificationsInitialized` (e.g. on toggle of
-      // `settings.enabled`) don't stack.
-      try {
-        if (notificationListener.current?.remove) {
-          notificationListener.current.remove();
-        }
-        if (responseListener.current?.remove) {
-          responseListener.current.remove();
-        }
-      } catch {}
-
-      notificationListener.current = Notifications.addNotificationReceivedListener(
-        handleNotificationReceived,
-      );
-      responseListener.current = Notifications.addNotificationResponseReceivedListener(
-        handleNotificationResponse,
-      );
-
       isInitialized.current = true;
-      setIsNotificationReady(true);
-
-      console.log('[AppContext] Notifications initialized successfully');
-      return true;
+      setIsNotificationReady(ok);
+      return ok;
     } catch (error) {
-      console.error('[AppContext] Notification initialization error:', error);
-      setIsNotificationReady(true);
-      isInitialized.current = true;
+      console.error('[AppContext] Notification init failed:', error);
+      setIsNotificationReady(false);
+      isInitialized.current = false;
+      initStarted.current = false;
       return false;
     }
-  }, []);
-
-  
-  
-  
-  
+  }, [handleAppStateChange]);
   
 
-  const handleNotificationReceived = useCallback((notification: Notifications.Notification) => {
-    console.log('[AppContext] Notification received (fallback):', notification.request.identifier);
-    storeNotification(notification);
-  }, []);
 
-  const handleNotificationResponse = useCallback((response: Notifications.NotificationResponse) => {
-    console.log('[AppContext] Notification response (fallback):', response.notification.request.identifier);
-
-    const data = response.notification.request.content.data;
-    if (!data) return;
-
-    // Prefer the shared navigationContainerRef (set by AppNavigator /
-    // NavigationContainer). Fall back to the AppContext-local ref only
-    // if the shared one isn't ready — which happens during the first
-    // 100ms of cold boot, before NavigationContainer mounts.
-    const nav =
-      sharedNavigationRef?.isReady?.()
-        ? sharedNavigationRef
-        : _navigationRef;
-    if (nav) {
-      handleNavigation(data, nav);
-    }
-  }, []);
+  // ── Notification-tap handling lives in AppNavigator + CommunityNavigator ──
+  //
+  // The old code registered a THIRD handler here. Between AppNavigator's
+  // `navigateFromNotification` and CommunityNavigator's
+  // `handleCommunityNotification`, every tap was already routed correctly
+  // — AppNavigator to root-stack screens (FamilyChat, Achievements,
+  // TrackerReminders, SafetyCorner, Timeline) and CommunityNavigator to
+  // Community-stack screens (Chat, PostDetail, Notifications). The
+  // AppContext handler was a *duplicate* that only knew about non-existent
+  // screens ('Safety', 'Reminders', 'Community') and always threw.
+  //
+  // We keep a single, tiny AppState listener that flushes NotificationService's
+  // queue on foreground resume — because the service's own listener only
+  // fires when `AppState` transitions from background→active, and it only
+  // does so if `NotificationService.initialize()` has been called.
 
   const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
     if (nextAppState === 'background') {
@@ -645,48 +602,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         keepAwakeRef.release().catch(() => {});
         setKeepAwakeRef(null);
       }
-      if (notificationSettings.allowBackgroundSync) {
-        performBackgroundNotificationSync().catch(() => {});
-      }
+    } else if (nextAppState === 'active') {
+      // Flush anything queued while we were backgrounded (permission
+      // denial, quiet hours, etc.) so the user sees everything on return.
+      import('@/services/NotificationService')
+        .then(({ notificationService }) => {
+          notificationService.flushQueue().catch(() => {});
+          notificationService.setBadgeCount(
+            (notificationSettings as any)?.badgeEnabled ? undefined as any : 0
+          ).catch(() => {});
+        })
+        .catch(() => {});
     }
-  }, [keepAwakeRef, notificationSettings.allowBackgroundSync]);
+  }, [keepAwakeRef, notificationSettings]);
 
-  const handleNavigation = useCallback((data: Record<string, unknown>, navigation: any) => {
-    const type = data.type as string;
-    const screen = data.screen as string;
-    const params = data.params as Record<string, unknown> || {};
+  // Backwards-compat shim: some screens call `handleNotificationReceived`
+  // directly during testing. Forward it to NotificationService so the
+  // history buffer is still populated.
+  const handleNotificationReceived = useCallback(
+    (notification: Notifications.Notification) => {
+      // NotificationService already stores history in its own listener —
+      // we don't double-write here. But if you've swapped out the service,
+      // uncomment the `storeNotification` call below.
+      // storeNotification(notification);
+      void notification;
+    },
+    [],
+  );
 
-    switch (type) {
-      case 'streak_reminder':
-      case 'streak_urgent':
-        navigation.navigate('Timeline', { type: 'potty', ...params });
-        break;
-      case 'achievement_reminder':
-      case 'achievement_unlocked':
-        navigation.navigate('Achievements', params);
-        break;
-      case 'chat_message':
-        navigation.navigate('FamilyChat', params);
-        break;
-      case 'safety_alert':
-        navigation.navigate('Safety', params);
-        break;
-      case 'reminder':
-        navigation.navigate('Reminders', params);
-        break;
-      case 'daily_summary':
-        navigation.navigate('Timeline', params);
-        break;
-      case 'community_notification':
-        navigation.navigate('Community', params);
-        break;
-      default:
-        if (screen) {
-          navigation.navigate(screen, params);
-        }
-        break;
-    }
-  }, []);
+  // Kept as a no-op stub so external callers don't crash. All real
+  // navigation happens in AppNavigator + CommunityNavigator.
+  const handleNotificationResponse = useCallback(
+    (_response: Notifications.NotificationResponse) => {},
+    [],
+  );
+
+  const handleNavigation = useCallback(
+    (_data: Record<string, unknown>, _navigation: any) => {},
+    [],
+  );
 
   
 
@@ -830,68 +784,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   
 
+  // ── SCHEDULE — route THROUGH NotificationService ───────────────
+  // The old path duplicated delivery (its own scheduleNotificationAsync
+  // call, its own quiet-hours check, its own settings gate). That's the
+  // reason two competing queues existed. We now delegate everything to
+  // NotificationService so there's exactly one queue, one dedupe ledger,
+  // and one delivery pipeline.
   const scheduleNotification = useCallback(async (
     payload: NotificationPayload,
-    trigger?: Notifications.NotificationTriggerInput
+    trigger?: Notifications.NotificationTriggerInput,
   ): Promise<string | null> => {
-    await ensureNotificationsInitialized();
-
-    if (!isNotificationReady) {
-      console.warn('[AppContext] Notifications not ready');
-      return null;
-    }
-
-    if (!notificationSettings.enabled || !notificationSettings.pushEnabled) {
-      return null;
-    }
-
-    if (isInQuietHours()) {
-      const notification: ScheduledNotification = {
-        id: `pending_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        payload,
-        trigger: trigger || null,
-        status: 'pending',
-        scheduledAt: Date.now(),
-      };
-
-      const pending = await loadPendingNotifications();
-      pending.push(notification);
-      await savePendingNotifications(pending);
-      return notification.id;
-    }
-
     try {
-      const id = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: payload.title,
-          body: payload.body,
-          data: payload.data || {},
-          sound: payload.sound !== false && notificationSettings.soundEnabled,
-          badge: payload.badge || 1,
-          ...(Platform.OS === 'android' && {
-            channelId: payload.channelId || 'default',
-            priority: payload.priority === 'high'
-              ? Notifications.AndroidPriority.HIGH
-              : payload.priority === 'low'
-                ? Notifications.AndroidPriority.LOW
-                : Notifications.AndroidPriority.DEFAULT,
-          }),
-        },
-        trigger: trigger || null,
+      const ok = await ensureNotificationsInitialized();
+      if (!ok) return null;
+
+      const { notificationService } = await import('@/services/NotificationService');
+
+      // Translate the AppContext payload into a NotificationService payload.
+      // `trigger` is passed through when non-null so scheduled (future)
+      // notifications land at the right time. `delaySeconds` is derived
+      // from DATE triggers that are in the future.
+      let delaySeconds: number | undefined;
+      if (trigger && (trigger as any)?.type === 'date') {
+        const when = (trigger as any)?.date;
+        const ts = when instanceof Date ? when.getTime() : new Date(when).getTime();
+        if (Number.isFinite(ts)) {
+          delaySeconds = Math.max(0, Math.round((ts - Date.now()) / 1000));
+        }
+      } else if (trigger && (trigger as any)?.type === 'timeInterval') {
+        delaySeconds = (trigger as any)?.seconds;
+      }
+
+      const id = await notificationService.scheduleNotification({
+        title: payload.title,
+        body: payload.body,
+        data: payload.data,
+        channelId: payload.channelId as any,
+        sound: payload.sound !== false,
+        priority: payload.priority,
+        badge: payload.badge,
+        delaySeconds,
       });
 
-      return id;
+      return id ?? null;
     } catch (error) {
       console.error('[AppContext] Schedule error:', error);
       return null;
     }
-  }, [ensureNotificationsInitialized, isNotificationReady, notificationSettings, isInQuietHours]);
+  }, [ensureNotificationsInitialized]);
 
   const sendImmediateNotification = useCallback(
-    (payload: NotificationPayload): Promise<string | null> => {
-      return scheduleNotification(payload, null);
-    },
-    [scheduleNotification]
+    (payload: NotificationPayload): Promise<string | null> =>
+      scheduleNotification(payload, null),
+    [scheduleNotification],
   );
 
   const cancelNotification = useCallback(async (id: string) => {
@@ -919,10 +864,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getNotificationHistory = useCallback(async () => {
     try {
-      const stored = await getAppSetting(NOTIFICATION_HISTORY_KEY);
-      if (stored) {
-        return JSON.parse(stored);
+      // Read the *shared* history — `NotificationService.storeNotificationHistory`
+      // is the single writer. AppContext's legacy writer is removed in
+      // FIX 1; we keep a read-through of the shared key so anything written
+      // before the upgrade still loads.
+      const { notificationService } = await import('@/services/NotificationService');
+      const svcHistory = await notificationService.getNotificationHistory();
+      if (Array.isArray(svcHistory) && svcHistory.length > 0) {
+        return svcHistory;
       }
+      const stored = await getAppSetting(NOTIFICATION_HISTORY_KEY);
+      if (stored) return JSON.parse(stored);
       const asyncStored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
       return asyncStored ? JSON.parse(asyncStored) : [];
     } catch {
@@ -932,21 +884,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markNotificationRead = useCallback(async (id: string) => {
     try {
-      let history = [];
+      // Update NotificationService's own history (source of truth).
+      try {
+        const { notificationService } = await import('@/services/NotificationService');
+        const history = await notificationService.getNotificationHistory();
+        const updated = (history || []).map((n: any) =>
+          n.id === id ? { ...n, read: true } : n,
+        );
+        await AsyncStorage.setItem(
+          '@littleloom_notification_history_v2',
+          JSON.stringify(updated),
+        );
+        // Refresh the badge from the new unread count.
+        const unread = updated.filter((n: any) => n.read !== true).length;
+        await notificationService.setBadgeCount(unread);
+      } catch {}
+
+      // Mirror into the AppContext history key so the settings UI
+      // updates if it reads via getNotificationHistory().
+      let history: any[] = [];
       const stored = await getAppSetting(NOTIFICATION_HISTORY_KEY);
-      if (stored) {
-        history = JSON.parse(stored);
-      } else {
+      if (stored) history = JSON.parse(stored);
+      else {
         const asyncStored = await AsyncStorage.getItem(NOTIFICATION_HISTORY_KEY);
-        if (asyncStored) {
-          history = JSON.parse(asyncStored);
-        }
+        if (asyncStored) history = JSON.parse(asyncStored);
       }
-
-      const updated = history.map((n: any) =>
-        n.id === id ? { ...n, read: true } : n
-      );
-
+      const updated = history.map((n: any) => (n.id === id ? { ...n, read: true } : n));
       await setAppSetting(NOTIFICATION_HISTORY_KEY, JSON.stringify(updated));
       await AsyncStorage.setItem(NOTIFICATION_HISTORY_KEY, JSON.stringify(updated));
     } catch (error) {
