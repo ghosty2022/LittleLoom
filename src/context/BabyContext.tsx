@@ -2063,11 +2063,17 @@ export const BabyProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const { data: authUser } = await supabase.auth.getUser();
           const meta: any = authUser?.user?.user_metadata || {};
-          // The relationship declared at signup is only a fallback —
-          // `profiles.community_bio` may hold a per-baby relationship
-          // the user set during profile creation. Prefer that.
-          let declaredRelationship: string =
-            (meta.relationship && String(meta.relationship).trim()) || '';
+          // ── FIX: the caller's pick on BabyProfileCreateScreen wins ──
+          // `createBaby` receives a `relationship` field (added by the
+          // create screen) that reflects what the user actually chose
+          // on that screen. It must take precedence over
+          // `user_metadata.relationship` (which is the *signup* pick,
+          // potentially stale if the user changed it during profile
+          // creation).
+          let declaredRelationship: string = (
+            (data as any)?.relationship &&
+            String((data as any).relationship).trim()
+          ) || (meta.relationship && String(meta.relationship).trim()) || '';
           try {
             const { data: prof } = await supabase
               .from('profiles')

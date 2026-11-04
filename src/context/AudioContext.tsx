@@ -6,7 +6,9 @@ import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+// SDK 54+ uses the new File/Directory API. The legacy module is still
+// available under this path for compatibility, but prefer the next API.
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/utils/supabase';
 import { decode } from 'base64-arraybuffer';
 

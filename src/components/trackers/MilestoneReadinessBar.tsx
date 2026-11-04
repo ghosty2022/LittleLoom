@@ -115,7 +115,13 @@ export const MilestoneReadinessBar: React.FC<MilestoneReadinessBarProps> = ({ re
           {/* Progress bar */}
           <View style={[styles.progressTrack, { backgroundColor: fullThemeColors.border }]}>
             <LinearGradient
-              colors={pct > 80 ? meta.grad : pct > 50 ? [AURA.warning, '#fbbf24'] : ['#a8a29e', '#d6d3d1']}
+              colors={
+                pct > 80
+                  ? meta.grad
+                  : pct > 50
+                  ? [DS.warning, '#fbbf24']
+                  : ['#a8a29e', '#d6d3d1']
+              }
               style={[styles.progressFill, { width: `${pct}%` }]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}

@@ -485,7 +485,57 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
-  const [creatorRelationship, setCreatorRelationship] = useState<'Father' | 'Mother' | 'Guardian'>('Mother');
+  const [creatorRelationship, setCreatorRelationship] = useState<
+    'Father' | 'Mother' | 'Guardian' | 'Parent' | 'Caregiver' | 'Other'
+  >('Mother');
+  const [showRelationshipInput, setShowRelationshipInput] = useState(false);
+  const [customRelationship, setCustomRelationship] = useState('');
+  // ── FIX: hydrate the relationship picker from the signup metadata ──
+  // `SignUpScreen` stores the user's choice in `user_metadata.relationship`
+  // (e.g. "Father", "Guardian", "Godmother"). The old code ignored it and
+  // always defaulted to "Mother", which meant the value that reached
+  // `family_members.relationship` was wrong for anyone who wasn't the mother.
+  //
+  // We also honor `profiles.community_bio` as a secondary source because
+  // `AuthContext.signUpWithInviteCode` mirrors the relationship there.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const metaRel = (user?.user_metadata as any)?.relationship;
+        let rel = typeof metaRel === 'string' ? metaRel.trim() : '';
+
+        if (!rel && user?.id) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('community_bio')
+            .eq('id', user.id)
+            .maybeSingle();
+          const bioRel = (prof?.community_bio || '').trim();
+          // Only use community_bio when it looks like a relationship label
+          if (bioRel && bioRel.length <= 40 && !/[.!?]/.test(bioRel)) {
+            rel = bioRel;
+          }
+        }
+        if (!rel || cancelled) return;
+
+        const normalized = rel.toLowerCase();
+        const preset: 'Father' | 'Mother' | 'Guardian' | null =
+          normalized.includes('father') || normalized === 'dad' ? 'Father'
+          : normalized.includes('mother') || normalized === 'mom' ? 'Mother'
+          : normalized.includes('guardian') || normalized.includes('parent') ? 'Guardian'
+          : null;
+
+        if (preset) {
+          setCreatorRelationship(preset);
+        }
+      } catch {
+        // best-effort — keep the default
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [pickerState, setPickerState] = useState<{
     visible: boolean;
     type: 'bloodType' | 'deliveryType' | 'birthAttendant' | 'feedingPlan' | null;
@@ -680,6 +730,15 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
         multipleBirth, birthOrder: birthOrder.trim() || undefined,
         feedingPlan: feedingPlan ? feedingPlan.toLowerCase() : undefined,
         birthTime: birthTime.trim() || undefined,
+        // ── FIX: persist the relationship the user picked HERE ──
+        // `BabyContext.createBaby` reads `user_metadata.relationship`
+        // as the initial value, but the user may change it on this
+        // screen. We pass the resolved value explicitly so the
+        // `family_members.relationship` row reflects what was shown.
+        relationship:
+          creatorRelationship === 'Other'
+            ? (customRelationship.trim() || 'Family Member')
+            : creatorRelationship,
       };
 
       babyId = await createBaby(babyData);
@@ -842,23 +901,74 @@ export default function BabyProfileCreateScreen({ navigation }: BabyProfileCreat
       {/* Relationship */}
       <View>
         <FieldLabel label="You are the baby's" required isDark={isDark} />
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {(['Mother', 'Father', 'Guardian'] as const).map(r => {
-            const active = creatorRelationship === r;
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {(
+            [
+              { key: 'Mother',    emoji: '👩', label: 'Mother' },
+              { key: 'Father',    emoji: '👨', label: 'Father' },
+              { key: 'Parent',    emoji: '🧑', label: 'Parent' },
+              { key: 'Guardian',  emoji: '🛡️', label: 'Guardian' },
+              { key: 'Caregiver', emoji: '🤱', label: 'Caregiver' },
+              { key: 'Other',     emoji: '✏️', label: 'Other' },
+            ] as const
+          ).map(({ key, emoji, label }) => {
+            // `creatorRelationship` is typed as the three legacy presets,
+            // but the signup screen offers five + custom. We store the
+            // extra values as strings in a parallel `customRelationship`
+            // state so the union stays compatible with the DB CHECK
+            // (or with `user_metadata.relationship` free-text).
+            const active =
+              key === 'Other'
+                ? !['Mother', 'Father', 'Guardian'].includes(creatorRelationship) &&
+                  creatorRelationship !== 'Parent' &&
+                  creatorRelationship !== 'Caregiver' &&
+                  creatorRelationship !== 'Other'
+                : creatorRelationship === key;
             return (
-              <PressableScale key={r} onPress={() => { setCreatorRelationship(r); triggerHaptic('light'); }} activeScale={0.96} style={{ flex: 1 }}>
+              <PressableScale
+                key={key}
+                onPress={() => {
+                  setCreatorRelationship(key as any);
+                  if (key === 'Other') {
+                    setShowRelationshipInput(true);
+                  } else {
+                    setShowRelationshipInput(false);
+                    setCustomRelationship('');
+                  }
+                  triggerHaptic('light');
+                }}
+                activeScale={0.96}
+                style={{ minWidth: '30%', flexGrow: 1 }}
+              >
                 <View style={[styles.choiceBtn, {
                   backgroundColor: active ? `${DS.primary}15` : isDark ? 'rgba(255,255,255,0.03)' : DS.gray50,
                   borderColor: active ? DS.primary : isDark ? DS.darkBorder : DS.gray200,
                   borderWidth: active ? 2 : 1,
                 }]}>
-                  <Text style={{ fontSize: 26, marginBottom: 4 }}>{r === 'Mother' ? '👩' : r === 'Father' ? '👨' : '🛡️'}</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? DS.primary : (isDark ? DS.gray400 : DS.gray600) }}>{r}</Text>
+                  <Text style={{ fontSize: 26, marginBottom: 4 }}>{emoji}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? DS.primary : (isDark ? DS.gray400 : DS.gray600) }}>{label}</Text>
                 </View>
               </PressableScale>
             );
           })}
         </View>
+
+        {showRelationshipInput && (
+          <View style={{ marginTop: 10 }}>
+            <FieldLabel label="Specify relationship" isDark={isDark} />
+            <InputBox icon="create-outline" isDark={isDark}>
+              <TextInput
+                style={[styles.input, { color: isDark ? DS.white : DS.gray900 }]}
+                value={customRelationship}
+                onChangeText={setCustomRelationship}
+                placeholder="e.g. Godmother, Au Pair, Foster Parent"
+                placeholderTextColor={isDark ? DS.gray600 : DS.gray400}
+                autoCapitalize="words"
+                maxLength={40}
+              />
+            </InputBox>
+          </View>
+        )}
       </View>
 
       {/* Gender */}

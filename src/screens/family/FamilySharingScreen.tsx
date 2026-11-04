@@ -37,7 +37,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+// SDK 54+ uses the new File/Directory API. The legacy module is still
+// available under this path for compatibility, but prefer the next API.
+import * as FileSystem from 'expo-file-system/legacy';
 import { differenceInMonths, formatDistanceToNow, format } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';

@@ -23,6 +23,9 @@ import { useTracker } from '../../hooks/useTrackerContext';
 import { useGrowthIntelligence } from '../../hooks/useGrowthIntelligence';
 import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
 import { useTrackerAchievements } from '../../hooks/useTrackerAchievements';
+// NOTE: InsightsScreen does not currently call `useTrackerProgressive`
+// — it uses `useTracker().getInsights()` for engine insights. If that
+// ever changes, import the hook here.
 import { useWHOGrowthCalculator } from '../../hooks/useWHOGrowthCalculator';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';

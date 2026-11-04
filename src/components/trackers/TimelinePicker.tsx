@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../hooks/useTrackerContext';
 import { SafeAvatar } from '../../components/SafeAvatar';
@@ -397,6 +398,40 @@ export const TimelinePicker: React.FC<TimelinePickerProps> = ({
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [recentTrackers, setRecentTrackers] = useState<string[]>([]);
   const [showSearch, setShowSearch] = useState(false);
+
+  // Hydrate + persist favorites and recent trackers across sessions.
+  useEffect(() => {
+    (async () => {
+      try {
+        const [favRaw, recentRaw] = await Promise.all([
+          AsyncStorage.getItem(TRACKER_PICKER_KEYS.FAVORITE_TRACKERS),
+          AsyncStorage.getItem(TRACKER_PICKER_KEYS.RECENT_TRACKERS),
+        ]);
+        if (favRaw) {
+          const arr = JSON.parse(favRaw);
+          if (Array.isArray(arr)) setFavorites(new Set(arr));
+        }
+        if (recentRaw) {
+          const arr = JSON.parse(recentRaw);
+          if (Array.isArray(arr)) setRecentTrackers(arr);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem(
+      TRACKER_PICKER_KEYS.FAVORITE_TRACKERS,
+      JSON.stringify([...favorites]),
+    ).catch(() => {});
+  }, [favorites]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(
+      TRACKER_PICKER_KEYS.RECENT_TRACKERS,
+      JSON.stringify(recentTrackers),
+    ).catch(() => {});
+  }, [recentTrackers]);
 
   const searchInputRef = useRef<TextInput>(null);
   const searchHeight = useSharedValue(0);

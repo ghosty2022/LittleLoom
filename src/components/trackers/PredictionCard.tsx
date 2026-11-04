@@ -8,7 +8,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { useBaby } from '../../context/BabyContext';
 import { useCustomization } from '../../hooks/useCustomization';
-import { getPredictions, formatMinutes, Prediction, PredictorType } from '../../services/ai/PredictorEngine';
+import {
+  getPredictions,
+  formatMinutes,
+  type Prediction,
+  type PredictorType,
+} from '../../services/ai/PredictorEngine';
 
 const DS = {
   primary: '#6366f1',

@@ -39,7 +39,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+// SDK 54+ uses the new File/Directory API. The legacy module is still
+// available under this path for compatibility, but prefer the next API.
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../../lib/supabase';
 import { useCustomization } from '../../hooks/useCustomization';
 import { LittleLoomAvatar, SkinTonePicker, BABY_EMOJIS, ILLUSTRATION_AVATARS, GRADIENT_PRESETS, GENDER_CONFIG, SKIN_TONES, type BabyGender } from '../../components/avatars/LittleLoomAvatars';

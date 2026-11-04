@@ -427,18 +427,44 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const isOwner = useMemo(() => {
     const effectiveProfile = authProfile;
     if (!effectiveProfile) return false;
+
     // `authProfile.role` is a GLOBAL hint and is wrong for anyone who
     // is Parent1 on one baby and Guardian on another. The authoritative
     // owner is `babies.parent1_id`. Fall back to the role hint only
     // when we have no baby yet (very first render).
-    if (currentBaby) {
+    //
+    // ── FIX: never rely on the cached role hint once a baby exists ──
+    // The old fallback (`effectiveProfile.role === 'parent1'`) was
+    // false-negative for users who joined via invite (role='guardian')
+    // but then became owner of their own baby. It also raced: if
+    // `currentBaby` was still a stub `{ id }` (no parent1_id) the
+    // memo returned false because `undefined === userId` is false.
+    //
+    // The DB row on `currentBaby` is the single source of truth. If
+    // we don't have `parent1_id` yet, deny — the caller will retry
+    // after `loadFamily` / `loadBabies` hydrates the row.
+    if (currentBaby?.parent1_id) {
       return currentBaby.parent1_id === effectiveProfile.id;
     }
+    if (currentBaby?.id) {
+      // We have an id but no parent1_id — the baby row hasn't been
+      // hydrated. Check the members list, which is loaded synchronously
+      // from the same query batch as `currentBaby`.
+      const me = state.members.find(
+        (m) => m.userId === effectiveProfile.id || m.id === effectiveProfile.id,
+      );
+      if (me) return me.role === UserRole.PARENT_1;
+      // Don't trust the global hint here — return false so callers
+      // surface a retry instead of a permanent "permission denied".
+      return false;
+    }
+    // No baby yet — only trust the global hint before the first baby
+    // exists (very first onboarding render).
     return (
       effectiveProfile.role === 'parent1' ||
       effectiveProfile.role === (UserRole.PARENT_1 as any)
     );
-  }, [authProfile, currentBaby]);
+  }, [authProfile, currentBaby, state.members]);
 
   // ─── Load family with user isolation ──────────────────────────
   const loadFamily = useCallback(async () => {
@@ -2394,7 +2420,30 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // ─── Invite Member ─────────────────────────────────────────────────────
   const inviteMember = useCallback(async (email: string, role: UserRole, relationship: string) => {
-    if (!isOwner || !authProfile || !currentBaby) {
+    // ── FIX: resolve ownership from the DB row, not the role hint ──
+    // Mirrors the fix in `generateInviteCode`. `isOwner` is false while
+    // `currentBaby` is still a stub; re-check against `babies.parent1_id`.
+    if (!authProfile?.id || !currentBaby?.id) {
+      showAlert('Permission Denied', 'Please select a baby profile first.');
+      return false;
+    }
+
+    const ownerId =
+      currentBaby.parent1_id ||
+      (await (async () => {
+        try {
+          const { data } = await supabase
+            .from('babies')
+            .select('parent1_id')
+            .eq('id', currentBaby.id)
+            .maybeSingle();
+          return data?.parent1_id ?? null;
+        } catch {
+          return null;
+        }
+      })());
+
+    if (ownerId !== authProfile.id) {
       showAlert('Permission Denied', 'Only the account creator can invite family members');
       return false;
     }
@@ -2892,7 +2941,31 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     inviteeEmail?: string,
     inviteePhone?: string
   ): Promise<{ code: string; success: boolean; message: string }> => {
-    if (!isOwner || !authProfile || !currentBaby) {
+    // ── FIX: resolve ownership from the DB row, not the role hint ──
+    // `isOwner` can be `false` for a genuine owner while the baby
+    // row is still hydrating (cold boot, baby switch, or a joiner
+    // who later created their own baby). Re-check against the
+    // authoritative `babies.parent1_id` before failing.
+    if (!authProfile?.id || !currentBaby?.id) {
+      return { code: '', success: false, message: 'Please select a baby profile first.' };
+    }
+
+    const ownerId =
+      currentBaby.parent1_id ||
+      (await (async () => {
+        try {
+          const { data } = await supabase
+            .from('babies')
+            .select('parent1_id')
+            .eq('id', currentBaby.id)
+            .maybeSingle();
+          return data?.parent1_id ?? null;
+        } catch {
+          return null;
+        }
+      })());
+
+    if (ownerId !== authProfile.id) {
       return { code: '', success: false, message: 'Only the account creator can invite family members' };
     }
 
@@ -3255,7 +3328,25 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // ─── Revoke Invite Code ───────────────────────────────────────────────
   const revokeInviteCode = useCallback(async (code: string): Promise<boolean> => {
-    if (!isOwner || !currentBaby) return false;
+    if (!authProfile?.id || !currentBaby?.id) return false;
+
+    // FIX: ownership from DB row, not role hint (see generateInviteCode)
+    const ownerId =
+      currentBaby.parent1_id ||
+      (await (async () => {
+        try {
+          const { data } = await supabase
+            .from('babies')
+            .select('parent1_id')
+            .eq('id', currentBaby.id)
+            .maybeSingle();
+          return data?.parent1_id ?? null;
+        } catch {
+          return null;
+        }
+      })());
+
+    if (ownerId !== authProfile.id) return false;
 
     try {
       const { error } = await supabase

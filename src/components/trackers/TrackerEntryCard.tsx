@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { format } from 'date-fns';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../hooks/useTrackerContext';
 import type { TrackerEntry } from '../../types/trackers';
