@@ -286,45 +286,103 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     // Fall back to the chat's cached participant name so we never
     // render "undefined". If BOTH are missing → inactive.
     const communityUser = otherId ? getUserById(otherId) : undefined;
-    // Authoritative "is this member active?" check: does the peer
-    // still have a family_members row on this baby?
     const liveFamilyMember = otherId
-      ? familyMembers.find(
-          (m: any) => m.id === otherId || m.userId === otherId,
-        )
-      : undefined;
-    const participant: any = otherId
-      ? (communityUser || liveFamilyMember || {
-          id: otherId,
-          displayName: item.participantNames?.[otherId] || item.name || 'Conversation',
-          avatar: item.participantAvatars?.[otherId],
-          onlineStatus: 'offline',
-        })
-      : undefined;
-    // Inactive ONLY when: peer has no Community profile AND no
-    // family_members row. A cached name alone is NOT enough — it
-    // may be a stale snapshot.
-    const isDeactivatedPeer =
-      !!otherId && !liveFamilyMember && !communityUser;
-
-    const isMyMessage = lastMessage?.senderId === currentUserId;
-    const isOnline = communityUser?.onlineStatus === 'online';
-    // Prefer the family relationship label ("Mother", "Father") over
-    // the role name — this is the human-readable label that matches
-    // what users see in the Family tree, chat headers, and the
-    // entry-attribution audit card.
-    const liveMemberForBadge = otherId
       ? familyMembers.find(
           (m: any) => m.id === otherId || (m as any).userId === otherId,
         )
       : undefined;
-    const familyRelationshipLabel = liveMemberForBadge?.relationship
-      ? String(liveMemberForBadge.relationship).trim()
-      : '';
-    const liveRoleBadge =
-      familyRelationshipLabel ||
-      (otherId ? (roleLabelsRef.current[otherId] || '') : '');
 
+    // 3-tier fallback: live member → chat snapshot → community
+    const snapshotName = otherId ? item.participantNames?.[otherId] : undefined;
+    const snapshotAvatar = otherId ? item.participantAvatars?.[otherId] : undefined;
+    const snapshotRole = otherId ? item.participantRoles?.[otherId] : undefined;
+
+    const participant: any = otherId
+      ? (liveFamilyMember
+          ? {
+              id: (liveFamilyMember as any).userId || liveFamilyMember.id,
+              displayName:
+                liveFamilyMember.fullName || snapshotName || item.name || 'Family Member',
+              avatar: liveFamilyMember.avatar || snapshotAvatar,
+              onlineStatus: communityUser?.onlineStatus ?? 'offline',
+              lastActive: (liveFamilyMember as any).lastActive,
+              role: liveFamilyMember.role || snapshotRole || 'guardian',
+              relationship: (liveFamilyMember as any).relationship,
+              isFamilyMember: true,
+            }
+          : communityUser
+            ? {
+                id: communityUser.id,
+                displayName: snapshotName || communityUser.displayName || 'Family Member',
+                avatar: snapshotAvatar || communityUser.avatar,
+                onlineStatus: communityUser.onlineStatus,
+                lastActive: communityUser.lastActive,
+                role: snapshotRole || 'viewer',
+                relationship: '',
+                isFamilyMember: false,
+              }
+            : snapshotName
+              ? {
+                  id: otherId,
+                  displayName: snapshotName,
+                  avatar: snapshotAvatar,
+                  onlineStatus: 'offline',
+                  lastActive: undefined,
+                  role: snapshotRole || 'guardian',
+                  relationship: '',
+                  isFamilyMember: true,
+                }
+              : undefined)
+      : undefined;
+
+    // Inactive ONLY when there's genuinely no data anywhere.
+    const isDeactivatedPeer =
+      !!otherId &&
+      !liveFamilyMember &&
+      !communityUser &&
+      !snapshotName;
+
+    const isMyMessage = lastMessage?.senderId === currentUserId;
+    const isOnline = participant?.onlineStatus === 'online';
+
+    const familyRelationshipLabel = liveFamilyMember?.relationship
+      ? String(liveFamilyMember.relationship).trim()
+      : '';
+
+    // Live role from `family_members` (authoritative, per-baby)
+    const liveRoleForThisChat = participant?.role
+      ? participant.role === 'parent1'
+        ? 'Primary Parent'
+        : participant.role === 'parent2'
+        ? 'Co-Parent'
+        : participant.role === 'guardian'
+        ? 'Guardian'
+        : participant.role === 'viewer'
+        ? 'Viewer'
+        : ''
+      : (otherId ? roleLabelsRef.current[otherId] || '' : '');
+
+    const liveRoleBadge =
+      familyRelationshipLabel || liveRoleForThisChat;
+
+    const lastActiveLabel = (() => {
+      if (isOnline) return 'Active now';
+      const raw = participant?.lastActive;
+      if (!raw) return 'Never logged in';
+      const ts = new Date(raw).getTime();
+      if (!Number.isFinite(ts)) return 'Never logged in';
+      const diff = Date.now() - ts;
+      if (diff < 60_000) return 'Active now';
+      const m = Math.floor(diff / 60_000);
+      if (m < 60) return `Active ${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `Active ${h}h ago`;
+      const d = Math.floor(h / 24);
+      if (d < 7) return `Active ${d}d ago`;
+      if (d < 30) return `Active ${Math.floor(d / 7)}w ago`;
+      return `Active ${Math.floor(d / 30)}mo ago`;
+    })();
+    
     return (
       <Animated.View entering={FadeInUp.delay(Math.min(index, 8) * 40).duration(320)}>
         <TouchableOpacity
@@ -415,6 +473,58 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
                 >
                   {participant?.displayName || item.name || 'Conversation'}
                 </Text>
+                {participant?.isFamilyMember && !isDeactivatedPeer && (
+                  <View
+                    style={{
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 5,
+                      backgroundColor: isDark ? `${LL.success}20` : `${LL.success}15`,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 2,
+                    }}
+                  >
+                    <Ionicons name="people" size={8} color={LL.success} />
+                    <Text
+                      style={{
+                        fontSize: 8,
+                        fontWeight: '800',
+                        color: LL.success,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.2,
+                      }}
+                    >
+                      Family
+                    </Text>
+                  </View>
+                )}
+                {participant && !participant.isFamilyMember && !isDeactivatedPeer && (
+                  <View
+                    style={{
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 5,
+                      backgroundColor: isDark ? `${LL.accent}20` : `${LL.accent}15`,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 2,
+                    }}
+                  >
+                    <Ionicons name="globe-outline" size={8} color={LL.accent} />
+                    <Text
+                      style={{
+                        fontSize: 8,
+                        fontWeight: '800',
+                        color: LL.accent,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.2,
+                      }}
+                    >
+                      Community
+                    </Text>
+                  </View>
+                )}
                 {isDeactivatedPeer && (
                   <View style={{
                     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
@@ -486,6 +596,29 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
                   </Text>
                 </LinearGradient>
               )}
+            </View>
+
+            {/* Last-active subtitle */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
+              <View
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: 2.5,
+                  backgroundColor: isOnline ? LL.success : participant?.lastActive ? LL.gray400 : LL.gray300,
+                }}
+              />
+              <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? LL.gray500 : LL.gray400 }}>
+                {lastActiveLabel}
+              </Text>
+              {liveRoleBadge ? (
+                <>
+                  <Text style={{ fontSize: 10, color: isDark ? LL.gray600 : LL.gray300 }}>·</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: LL.primary }}>
+                    {liveRoleBadge}
+                  </Text>
+                </>
+              ) : null}
             </View>
           </View>
 

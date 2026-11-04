@@ -1884,6 +1884,43 @@ const loadActivities = refreshTrackerEntries;
   const isInitialLoad = useRef(true);
   const dataLoaded = useRef(false);
 
+  // ── Silent background refresh ────────────────────────────────
+  // Every 45 s while the app is in the foreground, quietly re-fetch
+  // family + entries so:
+  //   • the family stack fills in when a member finishes their
+  //     first sync (no pull-to-refresh required)
+  //   • today's counters stay accurate across devices
+  //   • the smart notification panel surfaces new events without
+  //     the user having to navigate away
+  //
+  // This does NOT show a spinner. `loadBabies`, `loadActivities`,
+  // and `loadFamily` are already safe to call concurrently with a
+  // user-driven `onRefresh` — the Context layer serialises them.
+  useEffect(() => {
+    if (!userProfile?.id) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        await Promise.allSettled([
+          loadBabies(),
+          loadActivities(),
+          typeof loadFamily === 'function' ? loadFamily() : Promise.resolve(),
+        ]);
+      } catch {}
+    };
+
+    // Don't hammer on first render — start 45 s after mount.
+    timer = setInterval(tick, 45_000);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [userProfile?.id, loadBabies, loadActivities, loadFamily]);
+
 // Track the userId we hydrated cache for. If it changes (sign-out → sign-in),
 // we wipe the in-memory cache and reload scoped keys.
 const cacheHydratedForUserRef = useRef<string | null>(null);
@@ -2088,13 +2125,8 @@ useEffect(() => {
   }, []);
 
   /* ── Load data instantly on focus + mount ── */
-  useFocusEffect(
+   useFocusEffect(
     useCallback(() => {
-      // Always refresh the family on focus — the co-parent /
-      // guardian list is defined by `family_members` and can
-      // change on another device at any moment. Without this,
-      // `members` in `FamilyStack` stays stale until the user
-      // happens to navigate into FamilySharing.
       if (typeof loadFamily === 'function') {
         loadFamily().catch(() => {});
       }
@@ -2105,9 +2137,27 @@ useEffect(() => {
         dataLoaded.current = true;
       }
       rehydratePinStatus().catch(() => {});
+
+      // ── AppState-driven foreground refresh ─────────────────
+      // When the user returns from another app (e.g. camera,
+      // bank app), silently re-fetch the family + entries so any
+      // changes made on another device appear immediately.
+      const { AppState } = require('react-native');
+      const sub = AppState.addEventListener('change', async (state: string) => {
+        if (state !== 'active') return;
+        try {
+          await Promise.allSettled([
+            loadBabies(),
+            loadActivities(),
+            typeof loadFamily === 'function' ? loadFamily() : Promise.resolve(),
+          ]);
+        } catch {}
+      });
+      return () => {
+        sub.remove();
+      };
     }, [loadBabies, loadActivities, loadFamily, rehydratePinStatus])
   );
-
   useEffect(() => {
     loadBabies();
     loadActivities();

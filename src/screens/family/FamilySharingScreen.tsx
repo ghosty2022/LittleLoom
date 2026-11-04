@@ -768,7 +768,19 @@ const MemberCard = React.memo(({
                 <Text style={[styles.memberActiveText, { color: isDark ? DS.gray500 : DS.gray400 }]}>
                   {isOnline ? 'Active now' : `Active ${formatDistanceToNow(new Date(_lastActiveMs), { addSuffix: true })}`}
                 </Text>
-              ) : null}
+              ) : (
+                <Text style={[styles.memberActiveText, { color: isDark ? DS.gray500 : DS.gray400, fontStyle: 'italic' }]}>
+                  Never logged in
+                </Text>
+              )}
+              {(member as any).addedByName && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                  <Ionicons name="person-add-outline" size={10} color={isDark ? DS.gray500 : DS.gray400} />
+                  <Text style={[styles.memberActiveText, { color: isDark ? DS.gray500 : DS.gray400 }]} numberOfLines={1}>
+                    Invited by {(member as any).addedByName}
+                  </Text>
+                </View>
+              )}
             </View>
             <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray500 : DS.gray400} />
           </View>
