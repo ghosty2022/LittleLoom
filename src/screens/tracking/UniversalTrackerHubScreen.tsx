@@ -42,6 +42,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { getTrackerVisual } from '../../constants/trackerVisuals';
 import { scopedEntries, countToday, resolveLogger } from '../../utils/entrySelectors';
+// `entryTrackerId` is intentionally NOT imported — this screen uses
+// `normaliseTrackerId` for the strictest recovery, which handles
+// `tracker_id` and `data.trackerId` legacy shapes.
 import {
   format,
   differenceInDays,
@@ -153,95 +156,135 @@ interface DayGroup {
 /* ═══════════════════════════════════════════════════════════════════════════
    TRACKER CONFIGS
    ═══════════════════════════════════════════════════════════════════════════ */
-
-// NOTE: emoji/color/gradient/description are now sourced from
+// One entry per tracker: the SUB-ACTIONS array + a hard-typed category.
+// Visuals (emoji/color/gradient/description) come from
 // `constants/trackerVisuals.ts` via `getTrackerVisual()`. This map
-// keeps ONLY the sub-action shape used by the action sheet, so
-// there is one — and only one — source of truth for what a feed
-// looks like across Home / Hub / Timeline / FamilyDashboard.
-const TRACKER_SUB_ACTIONS: Record<string, TrackerConfig> = {
-  feed: [
-    { id: 'breast_left', label: 'Left Breast', icon: 'arrow-back-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'left' } },
-    { id: 'breast_right', label: 'Right Breast', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'right' } },
-    { id: 'breast_both', label: 'Both Sides', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { feedType: 'breast', side: 'both' } },
-    { id: 'bottle', label: 'Bottle', icon: 'beaker-outline', color: '#3b82f6', presetData: { feedType: 'bottle' } },
-    { id: 'solid', label: 'Solid Food', icon: 'restaurant-outline', color: '#f59e0b', presetData: { feedType: 'solid' } },
-  ],
-  sleep: [
-    { id: 'nap', label: 'Start Nap', icon: 'sunny-outline', color: '#10b981', presetData: { sleepType: 'nap', status: 'started' } },
-    { id: 'bedtime', label: 'Bedtime', icon: 'moon-outline', color: '#6366f1', presetData: { sleepType: 'night', status: 'started' } },
-    { id: 'end', label: 'End Sleep', icon: 'alarm-outline', color: '#f59e0b', presetData: { status: 'ended' } },
-  ],
-  diaper: [
-    { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet' } },
-    { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty' } },
-    { id: 'both', label: 'Both', icon: 'water', color: '#8B5CF6', presetData: { type: 'both' } },
-    { id: 'dry', label: 'Dry', icon: 'checkmark-circle-outline', color: '#10b981', presetData: { type: 'dry' } },
-  ],
-  potty: [
-    { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet', successful: true } },
-    { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty', successful: true } },
-    { id: 'both', label: 'Both', icon: 'water', color: '#667eea', presetData: { type: 'both', successful: true } },
-    { id: 'dry', label: 'Dry Attempt', icon: 'close-circle-outline', color: '#94a3b8', presetData: { type: 'dry', successful: false } },
-  ],
-  growth: [
-    { id: 'weight', label: 'Weight', icon: 'scale-outline', color: '#10b981', presetData: { measurementType: 'weight' } },
-    { id: 'height', label: 'Height', icon: 'resize-outline', color: '#3b82f6', presetData: { measurementType: 'height' } },
-    { id: 'head', label: 'Head', icon: 'ellipse-outline', color: '#f59e0b', presetData: { measurementType: 'head' } },
-  ],
-  milestone: [
-    { id: 'physical', label: 'Physical', icon: 'body-outline', color: '#f59e0b', presetData: { category: 'physical' } },
-    { id: 'cognitive', label: 'Cognitive', icon: 'bulb-outline', color: '#8b5cf6', presetData: { category: 'cognitive' } },
-    { id: 'social', label: 'Social', icon: 'people-outline', color: '#ec4899', presetData: { category: 'social' } },
-    { id: 'language', label: 'Language', icon: 'chatbubble-outline', color: '#3b82f6', presetData: { category: 'language' } },
-  ],
-  medication: [
-    { id: 'medicine', label: 'Medicine', icon: 'medical-outline', color: '#ef4444', presetData: { type: 'medicine' } },
-    { id: 'temperature', label: 'Temperature', icon: 'thermometer-outline', color: '#f59e0b', presetData: { type: 'temperature' } },
-    { id: 'symptom', label: 'Symptom', icon: 'alert-circle-outline', color: '#8b5cf6', presetData: { type: 'symptom' } },
-    { id: 'vaccine', label: 'Vaccination', icon: 'shield-checkmark-outline', color: '#10b981', presetData: { type: 'vaccine' } },
-  ],
-  pumping: [
-    { id: 'left', label: 'Left', icon: 'arrow-back-outline', color: '#f472b6', presetData: { side: 'left' } },
-    { id: 'right', label: 'Right', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { side: 'right' } },
-    { id: 'both', label: 'Both', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { side: 'both' } },
-  ],
-  bath: [
-    { id: 'bath', label: 'Log Bath', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'bath' } },
-    { id: 'sponge', label: 'Sponge Bath', icon: 'cloud-outline', color: '#93c5fd', presetData: { type: 'sponge' } },
-  ],
-  tummy_time: [
-    { id: 'tummy_time', label: 'Log Tummy Time', icon: 'fitness-outline', color: '#10b981', presetData: { type: 'tummy_time' } },
-  ],
-  reading: [
-    { id: 'reading', label: 'Log Reading', icon: 'book-outline', color: '#6366f1', presetData: { type: 'reading' } },
-  ],
-  walk: [
-    { id: 'walk', label: 'Log Walk', icon: 'walk-outline', color: '#0ea5e9', presetData: { type: 'walk' } },
-  ],
-  note: [
-    { id: 'note', label: 'Add Note', icon: 'document-text-outline', color: '#64748b', presetData: { type: 'note' } },
-  ],
+// carries ONLY the sub-action shape and the category bucket, so
+// there's one and only one place a tracker's color/emoji lives.
+type TrackerSubActionsMap = Record<string, {
+  category: TrackerConfig['category'];
+  subActions: TrackerSubAction[];
+}>;
+
+const TRACKER_SUB_ACTIONS: TrackerSubActionsMap = {
+  feed: {
+    category: 'essential',
+    subActions: [
+      { id: 'breast_left', label: 'Left Breast', icon: 'arrow-back-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'left' } },
+      { id: 'breast_right', label: 'Right Breast', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { feedType: 'breast', side: 'right' } },
+      { id: 'breast_both', label: 'Both Sides', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { feedType: 'breast', side: 'both' } },
+      { id: 'bottle', label: 'Bottle', icon: 'beaker-outline', color: '#3b82f6', presetData: { feedType: 'bottle' } },
+      { id: 'solid', label: 'Solid Food', icon: 'restaurant-outline', color: '#f59e0b', presetData: { feedType: 'solid' } },
+    ],
+  },
+  sleep: {
+    category: 'essential',
+    subActions: [
+      { id: 'nap', label: 'Start Nap', icon: 'sunny-outline', color: '#10b981', presetData: { sleepType: 'nap', status: 'started' } },
+      { id: 'bedtime', label: 'Bedtime', icon: 'moon-outline', color: '#6366f1', presetData: { sleepType: 'night', status: 'started' } },
+      { id: 'end', label: 'End Sleep', icon: 'alarm-outline', color: '#f59e0b', presetData: { status: 'ended' } },
+    ],
+  },
+  diaper: {
+    category: 'essential',
+    subActions: [
+      { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet' } },
+      { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty' } },
+      { id: 'both', label: 'Both', icon: 'water', color: '#8B5CF6', presetData: { type: 'both' } },
+      { id: 'dry', label: 'Dry', icon: 'checkmark-circle-outline', color: '#10b981', presetData: { type: 'dry' } },
+    ],
+  },
+  potty: {
+    category: 'development',
+    subActions: [
+      { id: 'wet', label: 'Wet', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'wet', successful: true } },
+      { id: 'dirty', label: 'Dirty', icon: 'flame-outline', color: '#8B4513', presetData: { type: 'dirty', successful: true } },
+      { id: 'both', label: 'Both', icon: 'water', color: '#667eea', presetData: { type: 'both', successful: true } },
+      { id: 'dry', label: 'Dry Attempt', icon: 'close-circle-outline', color: '#94a3b8', presetData: { type: 'dry', successful: false } },
+    ],
+  },
+  growth: {
+    category: 'health',
+    subActions: [
+      { id: 'weight', label: 'Weight', icon: 'scale-outline', color: '#10b981', presetData: { measurementType: 'weight' } },
+      { id: 'height', label: 'Height', icon: 'resize-outline', color: '#3b82f6', presetData: { measurementType: 'height' } },
+      { id: 'head', label: 'Head', icon: 'ellipse-outline', color: '#f59e0b', presetData: { measurementType: 'head' } },
+    ],
+  },
+  milestone: {
+    category: 'development',
+    subActions: [
+      { id: 'physical', label: 'Physical', icon: 'body-outline', color: '#f59e0b', presetData: { category: 'physical' } },
+      { id: 'cognitive', label: 'Cognitive', icon: 'bulb-outline', color: '#8b5cf6', presetData: { category: 'cognitive' } },
+      { id: 'social', label: 'Social', icon: 'people-outline', color: '#ec4899', presetData: { category: 'social' } },
+      { id: 'language', label: 'Language', icon: 'chatbubble-outline', color: '#3b82f6', presetData: { category: 'language' } },
+    ],
+  },
+  medication: {
+    category: 'health',
+    subActions: [
+      { id: 'medicine', label: 'Medicine', icon: 'medical-outline', color: '#ef4444', presetData: { type: 'medicine' } },
+      { id: 'temperature', label: 'Temperature', icon: 'thermometer-outline', color: '#f59e0b', presetData: { type: 'temperature' } },
+      { id: 'symptom', label: 'Symptom', icon: 'alert-circle-outline', color: '#8b5cf6', presetData: { type: 'symptom' } },
+      { id: 'vaccine', label: 'Vaccination', icon: 'shield-checkmark-outline', color: '#10b981', presetData: { type: 'vaccine' } },
+    ],
+  },
+  pumping: {
+    category: 'care',
+    subActions: [
+      { id: 'left', label: 'Left', icon: 'arrow-back-outline', color: '#f472b6', presetData: { side: 'left' } },
+      { id: 'right', label: 'Right', icon: 'arrow-forward-outline', color: '#f472b6', presetData: { side: 'right' } },
+      { id: 'both', label: 'Both', icon: 'swap-horizontal-outline', color: '#ec4899', presetData: { side: 'both' } },
+    ],
+  },
+  bath: {
+    category: 'care',
+    subActions: [
+      { id: 'bath', label: 'Log Bath', icon: 'water-outline', color: '#3b82f6', presetData: { type: 'bath' } },
+      { id: 'sponge', label: 'Sponge Bath', icon: 'cloud-outline', color: '#93c5fd', presetData: { type: 'sponge' } },
+    ],
+  },
+  tummy_time: {
+    category: 'development',
+    subActions: [
+      { id: 'tummy_time', label: 'Log Tummy Time', icon: 'fitness-outline', color: '#10b981', presetData: { type: 'tummy_time' } },
+    ],
+  },
+  reading: {
+    category: 'development',
+    subActions: [
+      { id: 'reading', label: 'Log Reading', icon: 'book-outline', color: '#6366f1', presetData: { type: 'reading' } },
+    ],
+  },
+  walk: {
+    category: 'care',
+    subActions: [
+      { id: 'walk', label: 'Log Walk', icon: 'walk-outline', color: '#0ea5e9', presetData: { type: 'walk' } },
+    ],
+  },
+  note: {
+    category: 'care',
+    subActions: [
+      { id: 'note', label: 'Add Note', icon: 'document-text-outline', color: '#64748b', presetData: { type: 'note' } },
+    ],
+  },
 };
+
+
 
 const getTrackerConfig = (id: string): TrackerConfig => {
   const v = getTrackerVisual(id);
+  const entry = TRACKER_SUB_ACTIONS[id];
   return {
     emoji: v.emoji,
     color: v.color,
     gradient: v.gradient,
     description: v.label,
-    category:
-      id === 'growth' || id === 'milestone' || id === 'tummy_time' || id === 'reading'
-        ? 'development'
-        : id === 'medication'
-        ? 'health'
-        : id === 'pumping' || id === 'bath' || id === 'walk' || id === 'note'
-        ? 'care'
-        : 'essential',
-    subActions: TRACKER_SUB_ACTIONS[id] || [
-      { id: 'default', label: 'Add Entry', icon: 'add-circle-outline', color: v.color },
-    ],
+    category: entry?.category ?? 'essential',
+    subActions:
+      entry?.subActions?.length
+        ? entry.subActions
+        : [{ id: 'default', label: 'Add Entry', icon: 'add-circle-outline', color: v.color }],
   };
 };
 
@@ -294,7 +337,7 @@ const formatDistanceToNow = (timestamp: number): string => {
 //   • { trackerId: 'diaper' }
 //   • { type: 'diaper' }
 //   • { tracker_id: 'diaper', data: { trackerId: 'diaper' } }
-// `entryTrackerId()` (utils/entrySelectors) normally handles this, but
+// `normaliseTrackerId()` (utils/entrySelectors) normally handles this, but
 // any row it returns `undefined` for (legacy, offline-queued, or rows
 // where `trackerId` was serialised into `data`) silently drops out of
 // the streak / today-counts / daily-summary counters. That is the bug
@@ -412,19 +455,15 @@ const getBabyAge = (birthDate?: string | Date) => {
  *   • type        (very old)
  * Returns undefined if none are present so callers can fall back.
  */
-const entryTrackerId = (entry: any): string | undefined => {
-  if (!entry || typeof entry !== 'object') return undefined;
-  const candidate =
-    entry.trackerId ??
-    entry.tracker_id ??
-    entry.tracker ??
-    (typeof entry.type === 'string' && !['wet', 'dirty', 'both', 'dry', 'note'].includes(entry.type)
-      ? entry.type
-      : undefined);
-  return typeof candidate === 'string' && candidate.length > 0
-    ? candidate
-    : undefined;
-};
+// `entryTrackerId` is already exported from `utils/entrySelectors`.
+// The local `['wet','dirty','both','dry','note'].includes(...)` guard
+// was silently dropping legitimate Note entries (`trackerId: 'note'`)
+// because `'note'` is a real tracker id. There is no good reason to
+// special-case it here — if a row has `trackerId`, use it.
+//
+// We simply re-export the shared helper so nothing else in this
+// file needs to change. Rename local uses below to `normaliseTrackerId`
+// (already imported above) and delete this whole block.
 
 // (deleted) — visuals come from constants/trackerVisuals.ts and
 // getTrackerConfig() above. No local fallback is needed.
