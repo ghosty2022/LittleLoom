@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 
 import { useCustomization } from '../../hooks/useCustomization';
 import { useTracker } from '../../hooks/useTrackerContext';
-import { TrackerEntry } from '../../types/trackers';
+import type { TrackerEntry } from '../../types/trackers';
 
 const DS = {
   primary: '#6366f1',

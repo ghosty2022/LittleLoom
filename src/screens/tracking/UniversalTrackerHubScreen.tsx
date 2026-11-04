@@ -2091,11 +2091,12 @@ QuickLogStrip.displayName = 'QuickLogStrip';
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const RecentActivityList = React.memo(({
-  entries, onViewAll, onEntryPress,
+  entries, onViewAll, onEntryPress, members = [],
 }: {
   entries: any[];
   onViewAll: () => void;
   onEntryPress: (entry: any) => void;
+  members?: any[];
 }) => {
   const theme = useHubTheme();
   const { borderRadiusValue = 14 } = useCustomization();
@@ -2215,7 +2216,17 @@ const RecentActivityList = React.memo(({
                                 </Text>
                                 <Text style={[styles.entryMeta, { color: theme.text.secondary }]} numberOfLines={1}>
                                   {fullDate}
-                                  {event?.loggedByName ? ` • by ${event.loggedByName}` : ''}
+                                  {(() => {
+                                    const by = event?.loggedBy;
+                                    const byName = String(event?.loggedByName || '').trim();
+                                    const member =
+                                      (by &&
+                                        (members.find((m: any) => m.userId === by) ||
+                                          members.find((m: any) => m.id === by))) ||
+                                      null;
+                                    const name = member?.fullName || byName;
+                                    return name ? ` • by ${name}` : '';
+                                  })()}
                                 </Text>
                               </View>
                               <View style={[styles.entryTypeBadge, { backgroundColor: `${cfg.color}12` }]}>
@@ -2684,7 +2695,9 @@ export default function UniversalTrackerHubScreen() {
         lastEntry: lastEntry
           ? new Date(lastEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : undefined,
-        hasSubActions: !!config.subActions?.length,
+        hasSubActions:
+          !!config.subActions?.length ||
+          !!t?.subActions?.length,   // honour custom trackers that defined their own sub-actions
       };
     });
   }, [trackers, entries, currentBaby?.id, currentBaby]);
@@ -2715,7 +2728,13 @@ export default function UniversalTrackerHubScreen() {
   const handleQuickLog = useCallback((trackerId: string, subActionId: string) => {
     const config = getTrackerConfig(trackerId);
     const action = config.subActions.find((a) => a.id === subActionId);
-    if (action) handleSubActionSelect(trackerId, action);
+    if (action) {
+      handleSubActionSelect(trackerId, action);
+    } else if (__DEV__) {
+      console.warn(
+        `[Hub] QuickLog sub-action "${subActionId}" not found for tracker "${trackerId}"`,
+      );
+    }
   }, [handleSubActionSelect]);
 
   const handleSwitchBaby = useCallback(() => {
@@ -2739,7 +2758,14 @@ export default function UniversalTrackerHubScreen() {
   const handleCreateCustom = useCallback(() => { HAPTIC_MEDIUM(); navigation.navigate('CreateCustomTracker'); }, [navigation]);
   const handleBrowseAll = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('AllTrackers'); }, [navigation]);
   const handleCalendarPress = useCallback(() => { HAPTIC_LIGHT(); navigation.navigate('Timeline'); }, [navigation]);
-  const handleAddPress = useCallback(() => { HAPTIC_MEDIUM(); navigation.navigate('AddEntry' as never); }, [navigation]);
+  const handleAddPress = useCallback(() => {
+    HAPTIC_MEDIUM();
+    if (!currentBaby) {
+      setShowBabyRequiredModal(true);
+      return;
+    }
+    navigation.navigate('AddEntry' as never);
+  }, [navigation, currentBaby]);
 
   const handlePinToggle = useCallback((id: string) => {
     HAPTIC_LIGHT();
@@ -2797,7 +2823,8 @@ export default function UniversalTrackerHubScreen() {
 
   const handleGoalPress = useCallback((trackerId: string) => {
     HAPTIC_LIGHT();
-    handleTrackerPress(trackerId, true);
+    const config = getTrackerConfig(trackerId);
+    handleTrackerPress(trackerId, !!config.subActions?.length);
   }, [handleTrackerPress]);
 
   const onRefresh = useCallback(async () => {
@@ -2853,6 +2880,15 @@ export default function UniversalTrackerHubScreen() {
         color: DS.warning,
         label: 'Streak',
         text: `${trackingStreak}-day streak — log today to keep it alive!`,
+        onPress: () => navigation.navigate('AddEntry' as never),
+      };
+    }
+    if (trackingStreak === 0 && entries.length > 0) {
+      return {
+        icon: 'flame-outline' as const,
+        color: DS.info,
+        label: 'Restart',
+        text: "You've broken your streak — log something today to restart",
         onPress: () => navigation.navigate('AddEntry' as never),
       };
     }
@@ -2927,7 +2963,11 @@ export default function UniversalTrackerHubScreen() {
           onAchievementsPress={handleViewAchievements}
           onCalendarPress={handleCalendarPress}
           onAddPress={handleAddPress}
-          unreadCount={achievements?.stats?.unlocked > 0 ? achievements.stats.unlocked : 0}
+          unreadCount={
+            Array.isArray(achievements?.newlyUnlocked)
+              ? achievements.newlyUnlocked.length
+              : 0
+          }
         />
 
         {/* ═══ INSIGHT RIBBON ═══ */}
@@ -2984,6 +3024,7 @@ export default function UniversalTrackerHubScreen() {
           entries={allTimelineEvents}
           onViewAll={handleViewTimeline}
           onEntryPress={handleEntryPress}
+          members={[]}
         />
 
         {/* ═══ QUICK LINKS ═══ */}

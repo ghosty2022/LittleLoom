@@ -1959,86 +1959,6 @@ const loadActivities = refreshTrackerEntries;
   const isInitialLoad = useRef(true);
   const dataLoaded = useRef(false);
 
-  // ── Silent background refresh ────────────────────────────────
-  // Every 45 s while the app is in the foreground, quietly re-fetch
-  // family + entries so:
-  //   • the family stack fills in when a member finishes their
-  //     first sync (no pull-to-refresh required)
-  //   • today's counters stay accurate across devices
-  //   • the smart notification panel surfaces new events without
-  //     the user having to navigate away
-  //
-  // This does NOT show a spinner. `loadBabies`, `loadActivities`,
-  // and `loadFamily` are already safe to call concurrently with a
-  // user-driven `onRefresh` — the Context layer serialises them.
-  useEffect(() => {
-    if (!userProfile?.id) return;
-
-    let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
-
-    const tick = async () => {
-      if (cancelled) return;
-      try {
-        await Promise.allSettled([
-          loadBabies(),
-          loadActivities(),
-          typeof loadFamily === 'function' ? loadFamily() : Promise.resolve(),
-        ]);
-      } catch {}
-
-      // ── NOTIFICATION ORCHESTRATOR ─────────────────────────
-      // Fires:
-      //   • achievement unlocked (per `pendingAchievements`)
-      //   • streak at risk (>= 20:00 local, no entry today)
-      //   • daily summary (20:30–21:30 window, entries exist)
-      //   • vaccine due (T-7 and T-0)
-      // Every category dedupes internally, so a 45-second tick
-      // cannot spam. Wrapped in its own try/catch because a
-      // notification failure must NEVER block the data refresh.
-      try {
-        const { runNotificationOrchestrator } = await import(
-          '../../services/NotificationOrchestrator'
-        );
-        await runNotificationOrchestrator({
-                    pendingAchievements: integrated?.pendingAchievements ?? [],
-          babyId: displayedBaby?.id ?? null,
-          babyName: displayedBaby?.name ?? 'your baby',
-          babyBirthDate: displayedBaby?.birthDate ?? null,
-          currentStreak: trackingStreakDays,
-          hasEntryToday: Object.values(todayCounts).some((n) => Number(n) > 0),
-          feedCount: todayCounts.feeds,
-          sleepHours: dailySummary?.sleepHours ?? 0,
-          diaperCount: todayCounts.diapers,
-        });
-      } catch (e) {
-        if (__DEV__) console.warn('[HomeScreen] Notification orchestrator failed:', e);
-      }
-    };
-
-    // Don't hammer on first render — start 45 s after mount.
-    timer = setInterval(tick, 45_000);
-    return () => {
-      cancelled = true;
-      if (timer) clearInterval(timer);
-    };
-  }, [
-    userProfile?.id,
-    loadBabies,
-    loadActivities,
-    loadFamily,
-    displayedBaby?.id,
-    displayedBaby?.name,
-    displayedBaby?.birthDate,
-    trackingStreakDays,
-    todayCounts,
-    // `dailySummary` lives BELOW this effect in the component body,
-    // so on the very first render it is still `undefined` while the
-    // dependency array is evaluated. Optional chaining prevents
-    // "Cannot read property 'sleepHours' of undefined" at render
-    // time. The effect will re-run once the memo materialises.
-    dailySummary?.sleepHours,
-  ]);
 
 // Track the userId we hydrated cache for. If it changes (sign-out → sign-in),
 // we wipe the in-memory cache and reload scoped keys.
@@ -2117,7 +2037,8 @@ useEffect(() => {
     const currentId = displayedBaby?.id;
     if (!currentId) return [];
     const list = Array.isArray(trackerEntriesRaw) ? trackerEntriesRaw : [];
-    return list.filter((e: any) => e?.babyId === currentId);
+    // Drop soft-deleted rows so today's KPIs / streak match Hub / Timeline.
+    return list.filter((e: any) => e?.babyId === currentId && !e?.isDeleted);
   }, [trackerEntriesRaw, displayedBaby?.id]);
 
   const getRecentTimelineEvents = useCallback(
@@ -2212,7 +2133,8 @@ useEffect(() => {
         icon: 'trending-up', iconColor: '#10b981', bgColor: '#10b981', timestamp: now,
       });
     }
-    const pottyStreak = getPottyStreak();
+    const pottyStreak =
+      typeof getPottyStreak === 'function' ? getPottyStreak() : 0;
     if (pottyStreak > 0 && pottyStreak % 7 === 0) {
       notifications.push({
         id: `streak-${pottyStreak}`, type: 'streak', priority: 'normal',
@@ -2650,16 +2572,6 @@ useEffect(() => {
   );
 
   // ── Header profile tap → EditGuardian (self) ────────────────
-  // The sticky header's avatar + greeting card both route here.
-  // It MUST mirror the MoreScreen profile-header behaviour:
-  //
-  //   • Parent 1 / Parent 2 → EditGuardian({ guardianId: me.id, mode: 'parent2' })
-  //   • Guardian / Viewer    → EditGuardian({ guardianId: me.id, mode: 'guardian' })
-  //
-  // We resolve the CURRENT baby's role for me (not the global
-  // `userProfile.role` hint) so a Parent1-on-BabyA / Guardian-on-BabyB
-  // user lands on the right editor for the active baby.
-  // ── Header profile tap → EditGuardian (self) ────────────────
   // This is the ONLY entry point for "tap my avatar". Every header
   // surface (sticky header, hero banner, settings menu) funnels here
   // so the routing logic lives in one place.
@@ -2787,10 +2699,15 @@ const allTimelineEvents = useMemo(() => {
   // 3) Offline cache fallback — ONLY if every cached row belongs to this
   // baby. Without this guard, after a baby switch the cache still holds
   // the previous baby's rows and they would be rendered as this baby's.
-  if (merged.length === 0 && cachedActivities.length > 0) {
-    const scoped = cachedActivities.filter((e: any) => e?.babyId === babyId);
+  // NOTE: `merged.length === 0` alone is not enough — if the live
+  // entries are empty but the cache has rows, we still want the cache.
+  // The `activityEvents` branch above already runs through this.
+  if (cachedActivities.length > 0 && merged.length === 0) {
+    const scoped = cachedActivities
+      .filter((e: any) => e?.babyId === babyId)
+      .sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
     if (scoped.length > 0) {
-      return [...scoped].sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0)).slice(0, 50);
+      return scoped.slice(0, 50);
     }
   }
 
@@ -2850,11 +2767,23 @@ useEffect(() => {
   // "empty," breaking the streak. `normaliseTrackerId` recovers
   // them, and diaper changes now extend the streak exactly like a
   // feed or a potty log.
+  // Any tracker that writes to the DB extends the streak. Keep this list
+  // in sync with `DEFAULT_TRACKERS` ids — a parent whose only log today
+  // was a pump / sunscreen / solid food should still see a streak of 1.
   const STREAK_TRACKER_IDS = useMemo(
     () => new Set([
       'feed', 'sleep', 'diaper', 'potty', 'medication',
-      'temperature', 'note', 'milestone', 'growth', 'pump',
-      'bath', 'play', 'walk', 'tummy_time', 'reading', 'symptom',
+      'temperature', 'note', 'milestone', 'growth',
+      'pump', 'pumping', 'bath', 'play', 'walk', 'tummy_time',
+      'reading', 'symptom', 'speech', 'mood', 'crying',
+      'solid_food', 'water', 'vitamin', 'allergen_intro',
+      'teething', 'allergy', 'skin_condition', 'doctor_visit',
+      'vaccine', 'nail_care', 'oral_hygiene', 'sunscreen',
+      'skin_care', 'accident', 'car_seat', 'babyproofing',
+      'bedtime', 'screen_time', 'photo', 'journal',
+      'trip', 'daycare', 'babysitter',
+      'reflux', 'colic', 'constipation', 'diarrhea',
+      'supply_inventory', 'expenses', 'cleaning',
     ]),
     [],
   );
@@ -2927,7 +2856,8 @@ useEffect(() => {
 
     const feeds = todayActivities.filter((a: any) => hasTracker(a, ['feed'])).length;
     const sleepEntries = todayActivities.filter((a: any) => hasTracker(a, ['sleep']));
-    const sleepHours = sleepEntries.reduce((sum: number, a: any) => sum + parseDurationToSeconds(a), 0) / 3600;
+    const sleepHours =
+      sleepEntries.reduce((sum: number, a: any) => sum + parseDurationToSeconds(a), 0) / 3600;
     const diapers = todayActivities.filter((a: any) => hasTracker(a, ['diaper'])).length;
 
     const yesterdayFeeds = yesterdayActivities.filter((a: any) => hasTracker(a, ['feed'])).length;
@@ -2947,6 +2877,89 @@ useEffect(() => {
   }, [allTimelineEvents, displayedBaby?.id]);
 
   /* ── Growth KPIs ── */
+
+ // ── Silent background refresh ────────────────────────────────
+  // Every 45 s while the app is in the foreground, quietly re-fetch
+  // family + entries so:
+  //   • the family stack fills in when a member finishes their
+  //     first sync (no pull-to-refresh required)
+  //   • today's counters stay accurate across devices
+  //   • the smart notification panel surfaces new events without
+  //     the user having to navigate away
+  //
+  // This does NOT show a spinner. `loadBabies`, `loadActivities`,
+  // and `loadFamily` are already safe to call concurrently with a
+  // user-driven `onRefresh` — the Context layer serialises them.
+  useEffect(() => {
+    if (!userProfile?.id) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        await Promise.allSettled([
+          loadBabies(),
+          loadActivities(),
+          typeof loadFamily === 'function' ? loadFamily() : Promise.resolve(),
+        ]);
+      } catch {}
+
+      // ── NOTIFICATION ORCHESTRATOR ─────────────────────────
+      // Fires:
+      //   • achievement unlocked (per `pendingAchievements`)
+      //   • streak at risk (>= 20:00 local, no entry today)
+      //   • daily summary (20:30–21:30 window, entries exist)
+      //   • vaccine due (T-7 and T-0)
+      // Every category dedupes internally, so a 45-second tick
+      // cannot spam. Wrapped in its own try/catch because a
+      // notification failure must NEVER block the data refresh.
+      try {
+        const { runNotificationOrchestrator } = await import(
+          '../../services/NotificationOrchestrator'
+        );
+        await runNotificationOrchestrator({
+                    pendingAchievements: integrated?.pendingAchievements ?? [],
+          babyId: displayedBaby?.id ?? null,
+          babyName: displayedBaby?.name ?? 'your baby',
+          babyBirthDate: displayedBaby?.birthDate ?? null,
+          currentStreak: trackingStreakDays,
+          hasEntryToday: Object.values(todayCounts).some((n) => Number(n) > 0),
+          feedCount: todayCounts.feeds,
+          sleepHours: dailySummary?.sleepHours ?? 0,
+          diaperCount: todayCounts.diapers,
+        });
+      } catch (e) {
+        if (__DEV__) console.warn('[HomeScreen] Notification orchestrator failed:', e);
+      }
+    };
+
+    // Don't hammer on first render — start 45 s after mount.
+    timer = setInterval(tick, 45_000);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [
+    userProfile?.id,
+    loadBabies,
+    loadActivities,
+    loadFamily,
+    displayedBaby?.id,
+    displayedBaby?.name,
+    displayedBaby?.birthDate,
+    trackingStreakDays,
+    todayCounts,
+    // `dailySummary` lives BELOW this effect in the component body,
+    // so on the very first render it is still `undefined` while the
+    // dependency array is evaluated. Optional chaining prevents
+    // "Cannot read property 'sleepHours' of undefined" at render
+    // time. The effect will re-run once the memo materialises.
+    dailySummary?.sleepHours,
+  ]);
+
+
 const growthStats = useMemo(() => {
   if (!hasBaby) return null;
   const babyId = displayedBaby?.id;
@@ -2963,8 +2976,18 @@ const growthStats = useMemo(() => {
 
       const current = data[0];
       const prev = data[1];
-      if (current) {
-        result[type] = { value: Number(current.value).toFixed(1), unit: current.unit, change: prev ? Number(current.value - prev.value).toFixed(1) : undefined, date: current.date };
+      const currVal = Number(current?.value);
+      const prevVal = Number(prev?.value);
+      if (current && Number.isFinite(currVal) && currVal > 0) {
+        result[type] = {
+          value: currVal.toFixed(1),
+          unit: current.unit,
+          change:
+            prev && Number.isFinite(prevVal) && prevVal > 0
+              ? Number(currVal - prevVal).toFixed(1)
+              : undefined,
+          date: current.date,
+        };
       }
     });
     if (result.height && result.weight) {
@@ -2979,13 +3002,18 @@ const growthStats = useMemo(() => {
   const unreadFamilyChatCount = useMemo(() => getFamilyChatUnread?.() || 0, [getFamilyChatUnread]);
   const totalUnread = unreadCommunityCount + unreadFamilyChatCount;
 
-  const activeSmartNotifications = useMemo(() =>
-    smartNotifications.filter(n => !n.dismissed).sort((a, b) => {
-      const priorityOrder: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
-      return priorityOrder[a.priority] - priorityOrder[b.priority];
-    }),
-    [smartNotifications]
-  );
+  const activeSmartNotifications = useMemo(() => {
+    const priorityOrder: Record<string, number> = {
+      urgent: 0, high: 1, normal: 2, low: 3,
+    };
+    return smartNotifications
+      .filter(n => !n.dismissed)
+      .sort((a, b) => {
+        const pa = priorityOrder[a?.priority as string] ?? 4;
+        const pb = priorityOrder[b?.priority as string] ?? 4;
+        return pa - pb;
+      });
+  }, [smartNotifications]);
 
   /* ── Vaccination reminders ── */
   const vaccinationReminders = useMemo((): VaccinationReminder[] => {

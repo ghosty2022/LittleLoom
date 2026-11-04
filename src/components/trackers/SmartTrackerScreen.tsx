@@ -173,22 +173,26 @@ export const SmartTrackerScreen: React.FC<SmartTrackerScreenProps> = ({ tracker,
     data: Record<string, unknown>,
     options: { title?: string; notes?: string; photoUris?: string[]; tags?: string[]; linkedEntryId?: string }
   ) => {
-    const entry = await addEntry(tracker.id, data, {
-      title: options.title || `${tracker.emoji} ${tracker.name}`,
-      notes: options.notes,
-      photoUris: options.photoUris,
-      tags: options.tags,
-    });
+    try {
+      const entry = await addEntry(tracker.id, data, {
+        title: options.title || `${tracker.emoji} ${tracker.name}`,
+        notes: options.notes,
+        photoUris: options.photoUris,
+        tags: options.tags,
+      });
 
-    if (!entry) return; 
+      if (!entry) return;
 
-    if (options.linkedEntryId) {
-      await linkEntries(entry.id, options.linkedEntryId, 'related');
+      if (options.linkedEntryId) {
+        await linkEntries(entry.id, options.linkedEntryId, 'related');
+      }
+
+      setFormPreset(null);
+      success('Saved!', `${tracker.emoji} ${tracker.name} logged successfully.`);
+      setMode('dashboard');
+    } catch (e) {
+      if (__DEV__) console.warn('[SmartTracker] handleSubmit failed:', e);
     }
-
-    setFormPreset(null);
-    success('Saved!', `${tracker.emoji} ${tracker.name} logged successfully.`);
-    setMode('dashboard');
   }, [tracker, addEntry, linkEntries, success]);
 
   const applyTemplate = useCallback((template: any) => {
