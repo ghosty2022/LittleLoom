@@ -69,7 +69,7 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { ShimmerLoader } from '../../components/UniversalSpinner';
 import { RelationshipBackfillBanner } from '../../components/RelationshipBackfillBanner';
 import { getTrackerVisual } from '../../constants/trackerVisuals';
-import { scopedEntries, countToday } from '../../utils/entrySelectors';
+import { scopedEntries, countToday, resolveLogger } from '../../utils/entrySelectors';
 // NOTE: `entryTrackerId` is no longer used here — every counter routes
 // through the local `normaliseTrackerId` helper (defined below), which
 // also recovers `tracker_id` and `data.trackerId` legacy rows that
@@ -225,27 +225,6 @@ interface VaccinationReminder {
 /* ═══════════════════════════════════════════════════════════════════════════
    TRACKER VISUAL CONFIG
    ═══════════════════════════════════════════════════════════════════════════ */
-const TRACKER_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string; label: string; emoji: string }> = {
-  potty: { icon: 'water-outline', color: '#06b6d4', label: 'Potty', emoji: '💧' },
-  feed: { icon: 'restaurant-outline', color: '#f59e0b', label: 'Feeding', emoji: '🍼' },
-  sleep: { icon: 'moon-outline', color: '#8b5cf6', label: 'Sleep', emoji: '😴' },
-  growth: { icon: 'trending-up-outline', color: '#10b981', label: 'Growth', emoji: '📏' },
-  medication: { icon: 'medical-outline', color: '#ef4444', label: 'Medication', emoji: '💊' },
-  milestone: { icon: 'trophy-outline', color: '#fbbf24', label: 'Milestone', emoji: '🏆' },
-  diaper: { icon: 'layers-outline', color: '#3b82f6', label: 'Diaper', emoji: '👶' },
-  note: { icon: 'document-text-outline', color: '#6b7280', label: 'Note', emoji: '📝' },
-  pump: { icon: 'swap-horizontal-outline', color: '#8b5cf6', label: 'Pump', emoji: '🔄' },
-  pumping: { icon: 'swap-horizontal-outline', color: '#8b5cf6', label: 'Pumping', emoji: '🔄' },
-  bath: { icon: 'water-outline', color: '#3b82f6', label: 'Bath', emoji: '🛁' },
-  play: { icon: 'game-controller-outline', color: '#ec4899', label: 'Play', emoji: '🎮' },
-  walk: { icon: 'walk-outline', color: '#10b981', label: 'Walk', emoji: '🚶' },
-  temperature: { icon: 'thermometer-outline', color: '#f97316', label: 'Temp', emoji: '🌡️' },
-  symptom: { icon: 'pulse-outline', color: '#ef4444', label: 'Symptom', emoji: '🤒' },
-  tummy_time: { icon: 'fitness-outline', color: '#10b981', label: 'Tummy Time', emoji: '🤸' },
-  reading: { icon: 'book-outline', color: '#6366f1', label: 'Reading', emoji: '📚' },
-  default: { icon: 'ellipse-outline', color: '#9ca3af', label: 'Activity', emoji: '•' },
-};
-
 // Canonical visual map now lives in constants/trackerVisuals.ts.
 // This thin adapter keeps existing `getTrackerCfg(...)` call sites
 // working while guaranteeing every screen agrees on emoji/color.

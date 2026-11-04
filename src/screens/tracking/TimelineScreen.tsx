@@ -67,7 +67,7 @@ import { useTimelineCorrelations } from '../../hooks/useTimelineCorrelations';
 import { TimelineCorrelation } from '../../components/trackers/TrackerCorrelationBadge';
 import type { RootStackParamList } from '../../types/navigation';
 import { getTrackerVisual } from '../../constants/trackerVisuals';
-import { scopedEntries, countToday } from '../../utils/entrySelectors';
+import { scopedEntries, countToday, resolveLogger } from '../../utils/entrySelectors';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 

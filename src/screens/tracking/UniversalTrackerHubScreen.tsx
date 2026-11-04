@@ -41,7 +41,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types/navigation';
 import { getTrackerVisual } from '../../constants/trackerVisuals';
-import { scopedEntries, countToday } from '../../utils/entrySelectors';
+import { scopedEntries, countToday, resolveLogger } from '../../utils/entrySelectors';
 import {
   format,
   differenceInDays,

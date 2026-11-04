@@ -60,7 +60,7 @@ import { SafeBabyAvatar } from '../../components/SafeAvatar';
 import { useDateTimePicker } from '../../hooks/useDateTimePicker';
 import type { RootStackParamList } from '../../types/navigation';
 import { getTrackerVisual } from '../../constants/trackerVisuals';
-import { scopedEntries, countToday } from '../../utils/entrySelectors';
+import { scopedEntries, countToday, resolveLogger } from '../../utils/entrySelectors';
 
 let Svg: any = null, Circle: any = null, Defs: any = null, SvgLinearGradient: any = null, Stop: any = null;
 try {

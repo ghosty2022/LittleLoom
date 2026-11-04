@@ -115,11 +115,10 @@ const HEADER_TOTAL_HEIGHT = HEADER_TOP_PADDING + 52;
 const HAPTIC_LIGHT = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
-const SKIP_KEYS = new Set([
-  'id', 'timestamp', 'babyId', 'type', 'title', 'icon',
-  'photoUris', 'photos', 'photo', 'notes', 'tags', 'location', 'syncedAt',
-  'loggedBy', 'loggedByName', 'loggedByRole', 'editedAt', 'editedBy', 'editedByName',
-]);
+// Use the shared source of truth from utils/entryFormatting.
+// (Do not fork this list — it must stay in sync with the PDF export,
+// AddEntry preview, and UniversalTrackerHub.)
+import { SKIP_ENTRY_KEYS as SKIP_KEYS } from '../../utils/entryFormatting';
 
 const ROLE_META: Record<string, { label: string; color: string }> = {
   parent1: { label: 'Primary Parent', color: DS.primary },
@@ -188,9 +187,7 @@ type FieldValue =
    HELPERS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const humanizeKey = (key: string): string =>
-  key.replace(/([A-Z])/g, ' $1').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
-    .replace(/^\w/, (c) => c.toUpperCase());
+import { prettifyFieldKey as humanizeKey } from '../../utils/entryFormatting';
 
 const formatDurationMin = (mins: number): string => {
   const h = Math.floor(mins / 60);
@@ -1156,61 +1153,18 @@ export default function EntryDetailScreen() {
       };
     }
 
-    const rawBy: any = (entry as any).loggedBy;
-    const rawByName: string = String((entry as any).loggedByName || '').trim();
-
-    // Look up the canonical member row for the logger.
-    const member =
-      (rawBy &&
-        (members.find((m: any) => m.userId === rawBy) ||
-          members.find((m: any) => m.id === rawBy))) ||
-      (rawByName &&
-        members.find(
-          (m: any) =>
-            (m.fullName || '').trim().toLowerCase() ===
-            rawByName.toLowerCase(),
-        )) ||
-      null;
-
-    // Role: prefer the LIVE family_members role; fall back to the
-    // historical snapshot (`loggedByRole`). Never default to
-    // 'parent1' — that was the "everyone shows as Primary Parent"
-    // bug. Unknown → 'viewer' so the label reads "Viewer" and
-    // callers can choose to hide it if they want.
+    const resolved = resolveLogger(entry, members);
     const liveRole: string = String(
-      (member as any)?.role || (entry as any).loggedByRole || 'viewer',
+      resolved.member?.role || entry.loggedByRole || 'viewer',
     ).toLowerCase();
 
-    // Relationship: prefer LIVE `relationship` (Mother/Father/etc.),
-    // which is what `getMemberDisplayLabel` produces.
-    const liveRelationship: string =
-      String((member as any)?.relationship || '').trim();
-
-    // The canonical human label — "Mother", "Father", "Guardian",
-    // "Primary Parent", "Co-Parent", "Viewer", or "Family Member".
-    const label: string = getMemberDisplayLabel({
-      role: liveRole,
-      relationship: liveRelationship,
-    });
-
-    // Display name: prefer LIVE `fullName` (handles rename); fall
-    // back to the historical `loggedByName` only if the member is
-    // gone.
-    const liveName: string =
-      String((member as any)?.fullName || '').trim() ||
-      rawByName ||
-      'You';
-
-    const liveAvatar: string =
-      String((member as any)?.avatar || '').trim();
-
     return {
-      name: liveName,
+      name: resolved.name,
       role: liveRole,
-      relationship: liveRelationship,
-      label,
-      avatar: liveAvatar,
-      member,
+      relationship: resolved.label,
+      label: resolved.label,
+      avatar: resolved.avatar,
+      member: resolved.member,
     };
   }, [entry, members]);
 
