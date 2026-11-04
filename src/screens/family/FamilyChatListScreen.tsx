@@ -572,19 +572,34 @@ const ChatListItem: React.FC<{
     isDirect &&
     !!otherParticipantId &&
     !liveMember;
+  // Prefer live member; fall back to the JSONB snapshot on the chat
+  // row. `liveMember.role` can be undefined if the peer is only in
+  // `participantRoles` (e.g. legacy chats created before the member
+  // joined). Never leave `role` undefined — the header uses it to
+  // pick the display label.
   const otherAvatar = liveMember?.avatar
     ?? (otherParticipantId ? chat.participantAvatars?.[otherParticipantId] : null);
-  const otherRole = liveMember?.role
-    ?? (otherParticipantId ? chat.participantRoles?.[otherParticipantId] : null);
+  const otherRoleRaw =
+    liveMember?.role ||
+    (otherParticipantId ? chat.participantRoles?.[otherParticipantId] : null) ||
+    'viewer';
+  const otherRole = otherRoleRaw;
   const statusColor = onlineStatus === 'online' ? DS.success : onlineStatus === 'away' ? DS.warning : DS.gray400;
 
   const otherRelationship = liveMember?.relationship;
+  // Prefer the LIVE relationship ("Mother", "Grandma") from
+  // FamilyContext. Fall back to the chat's stored snapshot.
+  // Never return "Family Member" unless we genuinely have no role
+  // and no relationship.
   const subtitle = isDirect
     ? (liveMember
-        ? getMemberDisplayLabel({ role: liveMember.role, relationship: liveMember.relationship })
+        ? getMemberDisplayLabel({
+            role: liveMember.role,
+            relationship: liveMember.relationship,
+          })
         : otherRelationship && otherRelationship.trim()
           ? canonicalizeRelationship(otherRelationship)
-          : 'Family Member')
+          : getMemberDisplayLabel({ role: otherRole, relationship: '' }))
     : `${chat.participants?.length || 0} family members`;
 
   const timeStr = (() => {

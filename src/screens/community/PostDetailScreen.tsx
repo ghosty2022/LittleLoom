@@ -155,7 +155,11 @@ const SensitiveImage = ({
   return (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={() => shouldBlur && setRevealed(true)}
+      onPress={(e) => {
+        if (!shouldBlur) return;
+        e?.stopPropagation?.();
+        setRevealed(true);
+      }}
       disabled={!shouldBlur}
       style={style}
     >

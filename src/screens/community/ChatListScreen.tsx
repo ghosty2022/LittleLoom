@@ -75,6 +75,7 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const { members: familyMembers } = useFamily();
   const {
     messages,
+    chats: dbChats,          // ← ADD: the DB-backed chat list
     isChatHidden,
     deleteChat,
     subscribeToChatMessages,
@@ -83,41 +84,77 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   // ── List refresh tick (declared first so effects below can bump it) ──
   const [listTick, setListTick] = useState(0);
 
-  // Community DMs live in the shared family_messages table keyed by
-  // the direct chat id "direct_<idA>_<idB>". Build the list from
-  // whatever direct chats the current user has.
+  // ── BUILD CHAT LIST FROM DB, NOT FROM MESSAGES ────────────────
+  // The old code synthesized chats from `messages` — which meant:
+  //   • A DM with zero messages never appeared.
+  //   • A DM created on Device A but not yet synced was invisible
+  //     on Device B until the first message arrived.
+  //   • A deleted chat reappeared when the peer sent a new message
+  //     (because `messages[chatKey]` got recreated by realtime).
+  //   • Names came from CommunityContext only, so a co-parent with
+  //     no Community profile showed as "Conversation".
+  //
+  // We now read `dbChats` (source of truth, hydrated by
+  // FamilyChatContext.performInitialSync) and enrich each row with
+  // live names from FamilyContext, falling back to the JSONB
+  // snapshot stored on the chat row, and only then to Community.
   const chats: FamilyChat[] = useMemo(() => {
     const meId = userProfile?.id;
     if (!meId) return [];
-    const out: FamilyChat[] = [];
-    const allMsgs = (messages ?? {}) as Record<string, FamilyMessage[]>;
-    Object.keys(allMsgs).forEach((chatKey) => {
-      if (!chatKey.startsWith('direct_')) return;
-      // Deleted-for-me chats must never reappear.
-      if (isChatHidden(chatKey)) return;
-      const parts = chatKey.replace('direct_', '').split('_');
-      if (!parts.includes(meId)) return;
-      const otherId = parts.find((p) => p !== meId);
-      if (!otherId) return;
-      const msgs = allMsgs[chatKey] ?? [];
-      const last = msgs[msgs.length - 1];
-      out.push({
-        id: chatKey,
-        type: 'direct',
-        name: getUserById(otherId)?.displayName || 'Conversation',
-        participants: parts,
-        unreadCount: msgs.filter((m) => !m.readBy?.includes(meId)).length,
-        createdAt: msgs[0]?.timestamp || new Date().toISOString(),
-        updatedAt: last?.timestamp || new Date().toISOString(),
-        isMuted: false,
-        familyCode: '',
-        lastMessage: last,
-      } as any);
-    });
-    return out.sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
-  }, [messages, userProfile?.id, getUserById, isChatHidden]);
+    const sourceChats: FamilyChat[] = Array.isArray(dbChats) ? dbChats : [];
+    return sourceChats
+      .filter((c) => {
+        if (!c) return false;
+        // Deleted-for-me chats must never reappear.
+        if (isChatHidden(c.id)) return false;
+        // Only chats this user is actually part of.
+        return Array.isArray(c.participants) && c.participants.includes(meId);
+      })
+      .map((c) => {
+        const otherId = (c.participants || []).find((p) => p !== meId);
+        const liveMember = otherId
+          ? familyMembers.find(
+              (m: any) => m.id === otherId || (m as any).userId === otherId,
+            )
+          : undefined;
+        const liveName =
+          liveMember?.fullName ||
+          (otherId ? c.participantNames?.[otherId] : undefined) ||
+          getUserById(otherId || '')?.displayName ||
+          c.name ||
+          'Conversation';
+        const liveAvatar =
+          liveMember?.avatar ||
+          (otherId ? c.participantAvatars?.[otherId] : undefined) ||
+          getUserById(otherId || '')?.avatar ||
+          c.avatar;
+        const liveRole =
+          liveMember?.role ||
+          (otherId ? c.participantRoles?.[otherId] : undefined);
+        return {
+          ...c,
+          name: liveName,
+          avatar: liveAvatar,
+          participantNames: {
+            ...(c.participantNames || {}),
+            ...(otherId && liveName ? { [otherId]: liveName } : {}),
+          },
+          participantAvatars: {
+            ...(c.participantAvatars || {}),
+            ...(otherId && liveAvatar ? { [otherId]: liveAvatar } : {}),
+          },
+          participantRoles: {
+            ...(c.participantRoles || {}),
+            ...(otherId && liveRole ? { [otherId]: liveRole } : {}),
+          },
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt || b.lastMessage?.timestamp || 0).getTime() -
+          new Date(a.updatedAt || a.lastMessage?.timestamp || 0).getTime(),
+      );
+  }, [dbChats, userProfile?.id, familyMembers, isChatHidden, getUserById]);
 
   const chatIdsKey = useMemo(
     () => chats.map(c => c.id).sort().join('|'),
@@ -272,7 +309,21 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
 
     const isMyMessage = lastMessage?.senderId === currentUserId;
     const isOnline = communityUser?.onlineStatus === 'online';
-    const liveRoleBadge = otherId ? (roleLabelsRef.current[otherId] || '') : '';
+    // Prefer the family relationship label ("Mother", "Father") over
+    // the role name — this is the human-readable label that matches
+    // what users see in the Family tree, chat headers, and the
+    // entry-attribution audit card.
+    const liveMemberForBadge = otherId
+      ? familyMembers.find(
+          (m: any) => m.id === otherId || (m as any).userId === otherId,
+        )
+      : undefined;
+    const familyRelationshipLabel = liveMemberForBadge?.relationship
+      ? String(liveMemberForBadge.relationship).trim()
+      : '';
+    const liveRoleBadge =
+      familyRelationshipLabel ||
+      (otherId ? (roleLabelsRef.current[otherId] || '') : '');
 
     return (
       <Animated.View entering={FadeInUp.delay(Math.min(index, 8) * 40).duration(320)}>

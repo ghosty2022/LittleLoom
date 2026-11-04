@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
+import { getMemberDisplayLabel } from '../../types/roles';
 import Animated, {
   Easing,
   FadeIn,
@@ -663,7 +664,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     resendMessage,
     addReaction,
     deleteMessage,
-  } = useFamilyChat();
+    pickAndSendImage,
+    pickAndSendFile,
+} = useFamilyChat();
 
   const { isDark } = useApp();
   const { userProfile } = useAuth();
@@ -690,11 +693,77 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const canSend = inputText.trim().length > 0 && !isBlocked;
 
   /* ── Chat bootstrap ──────────────────────────────────────── */
+  const { members: familyMembers } = useFamily();
+
   useEffect(() => {
     let cancelled = false;
     const init = async () => {
       setIsLoading(true);
-      const chatUser = getUserById(otherUserId);
+
+      // ── PEER IDENTITY (family first) ───────────────────────
+      // `getUserById` is a CommunityContext lookup — it returns
+      // `undefined` for co-parents / guardians who never set up
+      // a Community profile. That left the header with
+      // `user === undefined`, which the screen interpreted as
+      // "This member is no longer active" and blocked sending.
+      //
+      // Resolve the peer from:
+      //   1. FamilyContext.members (canonical, live)
+      //   2. chat.participantNames / participantAvatars (snapshot)
+      //   3. CommunityContext (public profile)
+      const chatForPeer = getChatById(initialChatId || '');
+      const familyPeer =
+        familyMembers.find((m: any) => m.id === otherUserId) ||
+        familyMembers.find((m: any) => (m as any).userId === otherUserId);
+
+      const communityPeer = getUserById(otherUserId);
+
+      const chatUser = familyPeer
+        ? {
+            id: familyPeer.id,
+            displayName: familyPeer.fullName,
+            handle: `@${(familyPeer.fullName || '').toLowerCase().replace(/\s+/g, '_')}`,
+            avatar: familyPeer.avatar,
+            isVerified: false,
+            onlineStatus: 'offline',
+            lastActive: (familyPeer as any).lastActive,
+            role: familyPeer.role,
+            relationship: (familyPeer as any).relationship,
+          }
+        : communityPeer
+          ? {
+              id: communityPeer.id,
+              displayName:
+                (chatForPeer?.participantNames as any)?.[otherUserId] ||
+                communityPeer.displayName,
+              handle:
+                communityPeer.handle ||
+                `@${(communityPeer.displayName || '').toLowerCase().replace(/\s+/g, '_')}`,
+              avatar:
+                (chatForPeer?.participantAvatars as any)?.[otherUserId] ||
+                communityPeer.avatar,
+              isVerified: communityPeer.isVerified,
+              onlineStatus: communityPeer.onlineStatus,
+              lastActive: communityPeer.lastActive,
+              role:
+                (chatForPeer?.participantRoles as any)?.[otherUserId] ||
+                'viewer',
+              relationship: '',
+            }
+          : (chatForPeer?.participantNames as any)?.[otherUserId]
+            ? {
+                id: otherUserId,
+                displayName: (chatForPeer!.participantNames as any)[otherUserId],
+                handle: '',
+                avatar: (chatForPeer!.participantAvatars as any)?.[otherUserId],
+                isVerified: false,
+                onlineStatus: 'offline',
+                lastActive: undefined,
+                role: (chatForPeer!.participantRoles as any)?.[otherUserId] || 'viewer',
+                relationship: '',
+              }
+            : null;
+
       if (cancelled) return;
       setUser(chatUser);
 
@@ -857,75 +926,53 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   /* ── Media handlers ──────────────────────────────────────── */
+  // ── Send image via FamilyChatContext ──────────────────────
+  // `pickAndSendImage` uploads to Supabase Storage
+  // (`chat_media` bucket) and stores the resulting **public
+  // https:// URL** on the message row. That's what makes the
+  // image visible on the RECEIVER's device.
+  //
+  // The old in-file implementation wrote to
+  // `FileSystem.documentDirectory` (a device-local `file://`
+  // path) and passed that URI as the message payload. The
+  // receiver's Image component then tried to load
+  // `file:///data/.../chat_img_123.jpg` on THEIR device — where
+  // that path doesn't exist — so the image was always broken
+  // for anyone except the sender.
   const handleImagePick = async (fromCamera = false) => {
     if (isBlocked) {
       sweetAlert.alert('Blocked', 'Unblock user to send images', 'warning');
       return;
     }
+    if (typeof pickAndSendImage !== 'function') {
+      sweetAlert.alert('Error', 'Image sending unavailable', 'warning');
+      return;
+    }
     try {
-      let result;
-      if (fromCamera) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-          sweetAlert.alert('Permission Required', 'Camera access is needed', 'warning');
-          return;
-        }
-        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [4, 3], quality: 0.8 });
-      } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          sweetAlert.alert('Permission Required', 'Photo library access is needed', 'warning');
-          return;
-        }
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        });
-      }
-
-      if (!result.canceled && result.assets[0]) {
-        const uri = result.assets[0].uri;
-        const dir = FileSystem.documentDirectory + 'community_chat_media/';
-        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-        const permanentUri = dir + `chat_img_${Date.now()}.jpg`;
-        await FileSystem.copyAsync({ from: uri, to: permanentUri });
-        await sendMessage(chatId, '📷 Photo', 'image', permanentUri);
-        setMessages(getChatMessages(chatId));
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      await pickAndSendImage(chatId, fromCamera);
+      setMessages(getChatMessages(chatId));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       console.error('[Chat] image pick failed:', err);
       sweetAlert.alert('Error', 'Failed to send image', 'error');
     }
   };
 
+  // ── Send file via FamilyChatContext ───────────────────────
+  // Same reasoning as images: the file must be uploaded to
+  // Supabase Storage and the PUBLIC URL persisted. A local
+  // `file://` URI is only valid on the sender's device.
   const handleFilePick = async () => {
     if (isBlocked) {
       sweetAlert.alert('Blocked', 'Unblock user to send files', 'warning');
       return;
     }
+    if (typeof pickAndSendFile !== 'function') {
+      sweetAlert.alert('Error', 'File sending unavailable', 'warning');
+      return;
+    }
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      const info = await FileSystem.getInfoAsync(asset.uri);
-      const size = info.exists && 'size' in info ? info.size : 0;
-
-      const dir = FileSystem.documentDirectory + 'community_chat_files/';
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-      const permanentUri = dir + `chat_file_${Date.now()}_${asset.name}`;
-      await FileSystem.copyAsync({ from: asset.uri, to: permanentUri });
-
-      const fileMeta: FileMetadata = {
-        name: asset.name || 'Unknown file',
-        size,
-        type: asset.mimeType || 'application/octet-stream',
-        uri: permanentUri,
-      };
-
-      await sendMessage(chatId, `📎 ${asset.name}`, 'file', permanentUri, fileMeta);
+      await pickAndSendFile(chatId);
       setMessages(getChatMessages(chatId));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
@@ -1117,16 +1164,29 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     if (!user) return '';
     if (isBlocked) return 'Blocked';
     if (typingUsers.length > 0) return 'typing...';
-    if (user.onlineStatus === 'online') return 'Online';
-    if (user.onlineStatus === 'away') return 'Away';
-    const lastActive = new Date(user.lastActive).getTime();
+
+    // Prefer the family relationship label ("Mother", "Father", …)
+    // over a raw online/offline string. Falls through to the
+    // presence state only when no relationship was set.
+    const relLabel = user.role
+      ? getMemberDisplayLabel({
+          role: user.role,
+          relationship: user.relationship,
+        })
+      : '';
+    const relSuffix = relLabel ? ` · ${relLabel}` : '';
+
+    if (user.onlineStatus === 'online') return `Online${relSuffix}`;
+    if (user.onlineStatus === 'away') return `Away${relSuffix}`;
+    const lastActive = user.lastActive ? new Date(user.lastActive).getTime() : 0;
     const diff = Date.now() - lastActive;
-    if (diff < 60_000) return 'Active now';
+    if (!lastActive) return relLabel || 'Family Member';
+    if (diff < 60_000) return `Active now${relSuffix}`;
     const minutes = Math.floor(diff / 60000);
-    if (minutes < 60) return `Active ${minutes}m ago`;
+    if (minutes < 60) return `Active ${minutes}m ago${relSuffix}`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `Active ${hours}h ago`;
-    return `Active ${Math.floor(hours / 24)}d ago`;
+    if (hours < 24) return `Active ${hours}h ago${relSuffix}`;
+    return `Active ${Math.floor(hours / 24)}d ago${relSuffix}`;
   };
 
   const renderMessage = ({ item, index }: { item: FamilyMessage; index: number }) => {

@@ -197,7 +197,16 @@ const BlurredImage = React.memo(
     return (
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={() => shouldBlur && setRevealed(true)}
+        // The parent `PostCard` wraps content in a TouchableOpacity
+        // (opens PostDetail). Without `stopPropagation` + an
+        // explicit "revealed" state, the outer touch wins and the
+        // blur never clears — which made images look permanently
+        // hidden to readers.
+        onPress={(e) => {
+          if (!shouldBlur) return;
+          e?.stopPropagation?.();
+          setRevealed(true);
+        }}
         disabled={!shouldBlur}
         style={styles.blurredImageContainer}
       >

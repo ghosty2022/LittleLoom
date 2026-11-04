@@ -1214,12 +1214,22 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           onResend={() => handleResend(item.id)}
           isFirstInGroup={isFirst}
           isLastInGroup={isLast}
-          onAvatarPress={(targetId) => {
-            // Open EditGuardian (member profile editor) for this peer.
+          onAvatarPress={(targetId, senderMember) => {
+            // Pick the editor mode from the peer's ACTUAL role, not
+            // a hardcoded `'guardian'`. A Parent 1 clicking on
+            // themselves from a co-parent's message should get the
+            // parent editor, not the guardian editor (which has a
+            // different permission set).
+            const role = String(senderMember?.role || '').toLowerCase();
+            const mode =
+              role === 'parent1' ? 'parent1'
+              : role === 'parent2' ? 'parent2'
+              : role === 'viewer' ? 'viewer'
+              : 'guardian';
             navigation.navigate('EditGuardian', {
               memberId: targetId,
               guardianId: targetId,
-              mode: 'guardian',
+              mode,
               fromChat: true,
             });
           }}
@@ -1269,10 +1279,16 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
                 members.find((m: any) => m.id === otherId) ||
                 members.find((m: any) => m.userId === otherId);
               const targetId = memberRow?.id || otherId; // fallback to userId
+              const role = String(memberRow?.role || '').toLowerCase();
+              const mode =
+                role === 'parent1' ? 'parent1'
+                : role === 'parent2' ? 'parent2'
+                : role === 'viewer' ? 'viewer'
+                : 'guardian';
               navigation.navigate('EditGuardian', {
                 memberId: targetId,
                 guardianId: targetId,
-                mode: 'guardian',
+                mode,
                 fromChat: true,
               });
             }
