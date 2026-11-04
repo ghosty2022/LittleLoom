@@ -2053,7 +2053,12 @@ const loadActivities = refreshTrackerEntries;
     displayedBaby?.birthDate,
     trackingStreakDays,
     todayCounts,
-    dailySummary.sleepHours,
+    // `dailySummary` lives BELOW this effect in the component body,
+    // so on the very first render it is still `undefined` while the
+    // dependency array is evaluated. Optional chaining prevents
+    // "Cannot read property 'sleepHours' of undefined" at render
+    // time. The effect will re-run once the memo materialises.
+    dailySummary?.sleepHours,
   ]);
 
 // Track the userId we hydrated cache for. If it changes (sign-out → sign-in),
