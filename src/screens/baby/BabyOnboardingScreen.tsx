@@ -178,6 +178,7 @@ const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 
 interface PulseHeaderProps {
   isDark: boolean;
   firstName: string;
+  greeting: string;
   babyCount: number;
   hasBabies: boolean;
   onSkip: () => void;
@@ -186,7 +187,7 @@ interface PulseHeaderProps {
 }
 
 const PulseHeader = React.memo<PulseHeaderProps>(({
-  isDark, firstName, babyCount, hasBabies, onSkip, onCreate, disabled,
+  isDark, firstName, greeting, babyCount, hasBabies, onSkip, onCreate, disabled,
 }) => {
   const pulse = useSharedValue(1);
   const rotate = useSharedValue(0);
@@ -239,7 +240,9 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
               {hasBabies ? `Hi ${firstName}!` : `Hey ${firstName}!`}
             </Text>
             <Text style={[styles.pulseSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
-              {hasBabies ? 'Choose a profile to continue' : 'Add your baby to start tracking'}
+              {hasBabies
+                ? `${greeting} — choose a profile to continue`
+                : `${greeting}! Let's add your baby to start tracking`}
             </Text>
           </View>
         </View>
@@ -394,6 +397,27 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
   const { darkMode, triggerHaptic } = useCustomization();
   const isDark = darkMode ?? false;
   const { toast } = useSweetAlert();
+
+  // ── Time-based salutation ─────────────────────────────────
+  // Mirrors HomeScreen's greeting so the user sees consistent
+  // language ("Good morning" at 8am, "Good evening" at 9pm) across
+  // both surfaces. Recomputed on a 60-second tick so a user who
+  // leaves the app open across the 12pm boundary sees the greeting
+  // update without needing to kill and reopen the app.
+  const [greeting, setGreeting] = useState('Good morning');
+  useEffect(() => {
+    const compute = () => {
+      const h = new Date().getHours();
+      if (h < 5) return 'Good night';
+      if (h < 12) return 'Good morning';
+      if (h < 17) return 'Good afternoon';
+      if (h < 21) return 'Good evening';
+      return 'Good night';
+    };
+    setGreeting(compute());
+    const timer = setInterval(() => setGreeting(compute()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [localLoading, setLocalLoading] = useState(true);
@@ -988,12 +1012,96 @@ export default function BabyOnboardingScreen({ navigation }: Props) {
         <PulseHeader
           isDark={isDark}
           firstName={firstName}
+          greeting={greeting}
           babyCount={displayBabies.length}
           hasBabies={displayHasBabies}
           onSkip={handleSkip}
           onCreate={handleCreateBaby}
           disabled={isProcessing}
         />
+
+        {/* ── SIGNED-IN USER RIBBON ────────────────────────────────
+            Confirms which account the user is currently signed in
+            as. Critical during onboarding: a user who has multiple
+            accounts (or who created a baby under a different email)
+            needs to see their OWN avatar + name before they panic
+            that "my babies are gone." This renders the live
+            `userProfile` from AuthContext, with a fallback to the
+            `SafeAvatar` placeholder if the auth session hasn't
+            finished hydrating. */}
+        <Animated.View
+          entering={FadeInDown.delay(60).springify()}
+          style={{ paddingHorizontal: DS.space.lg, marginTop: DS.space.md }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: DS.space.md,
+              paddingVertical: DS.space.md,
+              paddingHorizontal: DS.space.md,
+              borderRadius: DS.radius.lg,
+              borderWidth: 1,
+              backgroundColor: isDark ? DS.darkCard : DS.white,
+              borderColor: isDark ? DS.darkBorder : DS.gray200,
+            }}
+          >
+            <SafeAvatar
+              avatar={
+                (userProfile as any)?.avatar ||
+                (userProfile as any)?.avatar_url ||
+                (userProfile as any)?.community_avatar
+              }
+              size={44}
+              fallbackIcon="person"
+              fallbackColor={DS.primary}
+              borderWidth={2}
+              borderColor={isDark ? 'rgba(255,255,255,0.15)' : DS.white}
+            />
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '800',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.6,
+                  color: isDark ? DS.gray500 : DS.gray400,
+                }}
+              >
+                Signed in as
+              </Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: '700',
+                  color: isDark ? DS.white : DS.gray900,
+                  marginTop: 2,
+                }}
+                numberOfLines={1}
+              >
+                {userProfile?.fullName || 'Parent'}
+              </Text>
+              {(userProfile as any)?.email ? (
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '500',
+                    color: isDark ? DS.gray400 : DS.gray500,
+                    marginTop: 1,
+                  }}
+                  numberOfLines={1}
+                >
+                  {(userProfile as any).email}
+                </Text>
+              ) : null}
+            </View>
+            <Ionicons
+              name="shield-checkmark"
+              size={18}
+              color={DS.success}
+            />
+          </View>
+        </Animated.View>
 
         {/* Import existing */}
         {showImportOption && remoteBabies.length > 0 && !displayHasBabies && (

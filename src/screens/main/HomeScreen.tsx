@@ -2257,12 +2257,32 @@ useEffect(() => {
   }, [currentBaby?.id, currentBaby?.birthDate, currentBaby?.name, getPottyStreak]);
 
   /* ── Greeting / clock ── */
+  // Salutation is derived from the wall clock and MUST stay in sync
+  // with BabyOnboardingScreen's greeting for consistency. Both use
+  // the same buckets:
+  //   0–4:59   → Good night
+  //   5–11:59  → Good morning
+  //   12–16:59 → Good afternoon
+  //   17–20:59 → Good evening
+  //   21–23:59 → Good night
+  //
+  // Recomputed on a 60-second tick so a user who opens the app at
+  // 11:55 and stays in it sees "Good afternoon" flip to "Good
+  // evening" at 5pm without needing to kill the app.
   useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Good morning');
-    else if (hour < 18) setGreeting('Good afternoon');
-    else setGreeting('Good evening');
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    const computeGreeting = () => {
+      const h = new Date().getHours();
+      if (h < 5) return 'Good night';
+      if (h < 12) return 'Good morning';
+      if (h < 17) return 'Good afternoon';
+      if (h < 21) return 'Good evening';
+      return 'Good night';
+    };
+    setGreeting(computeGreeting());
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+      setGreeting(computeGreeting());
+    }, 60_000);
     return () => { clearInterval(timer); };
   }, []);
 
