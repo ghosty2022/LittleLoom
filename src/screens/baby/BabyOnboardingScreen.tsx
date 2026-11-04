@@ -37,7 +37,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RootStackParamList } from '../../types/navigation';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useSweetAlert } from '../../components/SweetAlert';
-import { SafeBabyAvatar } from '../../components/SafeAvatar';
+import { SafeBabyAvatar, SafeAvatar } from '../../components/SafeAvatar';
 import { supabase } from '@/utils/supabase';
 import {
   createBabyInDb,

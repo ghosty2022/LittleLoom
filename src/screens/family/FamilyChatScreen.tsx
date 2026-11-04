@@ -904,7 +904,7 @@ const ImagePreviewModal: React.FC<{ visible: boolean; imageUrl: string; onClose:
       </TouchableOpacity>
     </Modal>
   );
-};AndroidManifest.xml
+};
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MESSAGE BUBBLE
