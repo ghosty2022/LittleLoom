@@ -550,23 +550,9 @@ export const FamilyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (!resolvedBabyId) {
         // Retry with backoff — BabyContext may not have hydrated yet.
-        // Cold start on a slow device + RLS-protected reads can take
-        // 3-5 seconds, so 4 × ~400ms (the old budget) was barely
-        // enough and caused "no baby yet → empty family" flashes on
-        // the first real launch. 8 attempts with a 200ms base covers
-        // a 4-second worst case, and we cap the delay at 1000ms so
-        // the loop never feels stuck.
-        //
-        // We distinguish "no baby yet" (retryable) from "no baby
-        // ever" (terminal). The latter is when the user genuinely
-        // has 0 babies — in that case BabyContext's own
-        // `isInitialized` will be true and it won't emit
-        // `currentBaby` for us. See the guard below.
         // Reduce retry frequency to avoid log spam. 5 retries with
         // 1s spacing is enough to cover the BabyContext hydration
         // window without flooding the logs.
-      if (!resolvedBabyId) {
-        // Retry with backoff — BabyContext may not have hydrated yet.
         const attempt = (loadFamilyRetryCount.current ?? 0) + 1;
         loadFamilyRetryCount.current = attempt;
         if (attempt <= 5) {

@@ -2568,7 +2568,10 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             <MenuItem
               icon="language"
               title="Language"
-              value="English (US)"
+              value={
+                (require('../../hooks/useLanguage')?.useLanguage?.()?.language as string)
+                  || 'English (US)'
+              }
               onPress={() => navigation.navigate('LanguageSettings')}
               color="#fa8231"
               isDark={isDark}
@@ -2577,7 +2580,10 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
             <MenuItem
               icon="bar-chart"
               title="Units"
-              value="Metric (kg, cm)"
+              value={
+                (require('../../hooks/useUnits')?.useUnits?.()?.unitSystem as string)
+                  || 'Metric (kg, cm)'
+              }
               onPress={() => navigation.navigate('UnitSettings')}
               color="#5f27cd"
               isDark={isDark}
@@ -2925,7 +2931,17 @@ function MoreScreen({ navigation, route }: SettingsScreenProps) {
           onShare={handleShare}
           onSync={handleSync}
           onProfilePress={() => {
-            const guardianId = userProfile?.id || userProfile?.uid || 'parent1';
+            // `guardianId` must be a real auth UUID. Passing the
+            // literal 'parent1' string makes EditGuardianScreen's
+            // member lookup fail (it queries by userId / id), so the
+            // screen shows a blank "Unknown member" card.
+            const guardianId = userProfile?.id || userProfile?.uid;
+            if (!guardianId) {
+              // Auth hasn't hydrated — go to the family dashboard
+              // (which can hydrate it) instead of passing garbage.
+              navigation.navigate('Profile');
+              return;
+            }
             navigation.navigate('EditGuardian', {
               guardianId,
               mode: 'parent2',

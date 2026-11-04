@@ -69,7 +69,11 @@ import { useSweetAlert } from '../../components/SweetAlert';
 import { ShimmerLoader } from '../../components/UniversalSpinner';
 import { RelationshipBackfillBanner } from '../../components/RelationshipBackfillBanner';
 import { getTrackerVisual } from '../../constants/trackerVisuals';
-import { scopedEntries, countToday, entryTrackerId } from '../../utils/entrySelectors';
+import { scopedEntries, countToday } from '../../utils/entrySelectors';
+// NOTE: `entryTrackerId` is no longer used here — every counter routes
+// through the local `normaliseTrackerId` helper (defined below), which
+// also recovers `tracker_id` and `data.trackerId` legacy rows that
+// `entryTrackerId` misses. This is the fix for "diapers don't count."
 
 // Types
 import type { RootStackParamList } from '../../types/navigation';
@@ -248,6 +252,84 @@ const TRACKER_CONFIG: Record<string, { icon: keyof typeof Ionicons.glyphMap; col
 const getTrackerCfg = (type?: string) => {
   const v = getTrackerVisual(type);
   return { icon: v.icon, color: v.color, label: v.label, emoji: v.emoji };
+};
+
+// ── TRACKER IDENTITY NORMALISER ──────────────────────────────
+// Entries in the DB have shipped in three shapes over the app's life:
+//   • { trackerId: 'diaper' }
+//   • { type: 'diaper' }
+//   • { tracker_id: 'diaper', data: { trackerId: 'diaper' } }
+// `entryTrackerId()` (utils/entrySelectors) normally handles this, but
+// any row it returns `undefined` for (legacy, offline-queued, or rows
+// where `trackerId` was serialised into `data`) silently drops out of
+// the streak / today-counts / daily-summary counters. That is the bug
+// behind "diapers don't count in the streak / KPI."
+//
+// This helper is a superset of `entryTrackerId` and is used by every
+// counter in this screen. It NEVER returns `undefined` for a row that
+// has *any* of the recognised keys.
+const normaliseTrackerId = (entry: any): string | undefined => {
+  if (!entry) return undefined;
+  const raw =
+    entry.trackerId ??
+    entry.tracker_id ??
+    entry.type ??
+    entry.trackerType ??
+    entry?.data?.trackerId ??
+    entry?.data?.tracker_id ??
+    entry?.data?.type ??
+    undefined;
+  if (typeof raw !== 'string' || raw.length === 0) return undefined;
+  const s = raw.toLowerCase().trim();
+  // Aliases the app uses interchangeably.
+  if (s === 'nappy') return 'diaper';
+  if (s === 'feeding') return 'feed';
+  if (s === 'meds' || s === 'medicine') return 'medication';
+  if (s === 'temp' || s === 'fever') return 'temperature';
+  if (s === 'milestones' || s === 'achievement') return 'milestone';
+  return s;
+};
+
+// ── DURATION PARSER (seconds) ────────────────────────────────
+// `getDurationSeconds` in dailySummary previously assumed the raw
+// stored number was SECONDS. But sleep/pump/bath entries are written
+// by AddEntryScreen as { duration: <MINUTES> } (an integer count of
+// minutes, matching the UI slider). Result: a 90-minute nap rendered
+// as `0.0h` because 90 seconds = 0.025h. Fixed here: any bare number
+// below 600 is treated as minutes (no sane nap is <10 min recorded in
+// seconds), and explicit unit strings ("90m", "1.5h", "45 min") are
+// respected.
+const parseDurationToSeconds = (entry: any): number => {
+  const candidates = [
+    entry?.duration,
+    entry?.data?.duration,
+    entry?.data?.value,
+    entry?.value,
+    entry?.amount,
+  ];
+  for (const raw of candidates) {
+    if (raw == null) continue;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      // < 600 ⇒ stored as minutes. 600+ ⇒ already seconds.
+      return raw < 600 ? Math.round(raw * 60) : Math.round(raw);
+    }
+    const s = String(raw).trim().toLowerCase();
+    if (!s) continue;
+    const asNum = Number(s);
+    if (Number.isFinite(asNum)) {
+      return asNum < 600 ? Math.round(asNum * 60) : Math.round(asNum);
+    }
+    let total = 0;
+    const re = /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(s)) !== null) {
+      const n = parseFloat(m[1]);
+      const u = m[2][0];
+      total += u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n;
+    }
+    if (total > 0) return Math.round(total);
+  }
+  return 0;
 };
 
 const getDateTitle = (timestamp: number): string => {
@@ -1940,7 +2022,7 @@ const loadActivities = refreshTrackerEntries;
           '../../services/NotificationOrchestrator'
         );
         await runNotificationOrchestrator({
-                    pendingAchievements: integrated?.pendingAchievements ?? [],,
+                    pendingAchievements: integrated?.pendingAchievements ?? [],
           babyId: displayedBaby?.id ?? null,
           babyName: displayedBaby?.name ?? 'your baby',
           babyBirthDate: displayedBaby?.birthDate ?? null,
@@ -2221,7 +2303,7 @@ useEffect(() => {
             '../../services/NotificationOrchestrator'
           );
           await runNotificationOrchestrator({
-                      pendingAchievements: integrated?.pendingAchievements ?? [],,
+                      pendingAchievements: integrated?.pendingAchievements ?? [],
             babyId: displayedBaby?.id ?? null,
             babyName: displayedBaby?.name ?? 'your baby',
             babyBirthDate: displayedBaby?.birthDate ?? null,
@@ -2721,15 +2803,22 @@ useEffect(() => {
 }, [allTimelineEvents, userProfile?.id, displayedBaby?.id]);
 
   /* ── Real per-tracker today counts ── */
+  // Every counter routes through `normaliseTrackerId` (defined at the
+  // top of the file), which recovers legacy rows that only had
+  // `type` / `tracker_id` / `data.trackerId` set. Previously a diaper
+  // row written by an older build (where `trackerId` was missing and
+  // only `type: 'diaper'` existed) was silently dropped from both the
+  // KPI grid AND the streak. Now it counts everywhere.
   const todayCounts = useMemo(() => {
     if (!hasBaby) {
       return { feeds: 0, sleep: 0, diapers: 0, potty: 0, medication: 0, temperature: 0, note: 0, milestone: 0 };
     }
-    // Use the SAME selector Timeline / Hub / FamilyDashboard use.
-    // `entryTrackerId` normalises legacy rows where only `type` was set.
     const scoped = scopedEntries(allTimelineEvents, displayedBaby?.id);
     const countOf = (ids: string[]) =>
-      scoped.filter((a: any) => ids.includes(entryTrackerId(a))).length;
+      scoped.filter((a: any) => {
+        const id = normaliseTrackerId(a);
+        return id != null && ids.includes(id);
+      }).length;
     return {
       feeds: countOf(['feed']),
       sleep: countOf(['sleep']),
@@ -2743,12 +2832,34 @@ useEffect(() => {
   }, [allTimelineEvents, displayedBaby?.id]);
 
   /* ── Real potty-day streak ── */
+  // "Streak" = consecutive days with at least one logged activity of
+  // ANY recognised tracker (feed / sleep / diaper / potty / meds /
+  // temp / note / milestone). The old implementation routed rows
+  // through `entryTrackerId()` first, which drops legacy rows that
+  // stored the tracker under `type` or `data.trackerId` — so a day
+  // whose only entries were diapers from an older build counted as
+  // "empty," breaking the streak. `normaliseTrackerId` recovers
+  // them, and diaper changes now extend the streak exactly like a
+  // feed or a potty log.
+  const STREAK_TRACKER_IDS = useMemo(
+    () => new Set([
+      'feed', 'sleep', 'diaper', 'potty', 'medication',
+      'temperature', 'note', 'milestone', 'growth', 'pump',
+      'bath', 'play', 'walk', 'tummy_time', 'reading', 'symptom',
+    ]),
+    [],
+  );
+
   const trackingStreakDays = useMemo(() => {
+    if (!hasBaby) return 0;
     const scoped = scopedEntries(allTimelineEvents, displayedBaby?.id);
-    if (!hasBaby || scoped.length === 0) return 0;
+    if (scoped.length === 0) return 0;
+
     const dayKeys = new Set<string>();
     scoped.forEach((a: any) => {
       if (!a?.timestamp) return;
+      const id = normaliseTrackerId(a);
+      if (id == null || !STREAK_TRACKER_IDS.has(id)) return;
       const d = new Date(a.timestamp);
       d.setHours(0, 0, 0, 0);
       dayKeys.add(String(d.getTime()));
@@ -2760,6 +2871,10 @@ useEffect(() => {
     const todayTime = today.getTime();
     const DAY = 86400000;
 
+    // If today has no entries yet, look back one day so the streak
+    // doesn't flicker to 0 at midnight before the first log — but
+    // only if *yesterday* had entries. (Old behaviour was correct
+    // here; we preserve it.)
     let cursor = dayKeys.has(String(todayTime)) ? todayTime : todayTime - DAY;
     if (!dayKeys.has(String(cursor))) return 0;
 
@@ -2769,9 +2884,19 @@ useEffect(() => {
       cursor -= DAY;
     }
     return streak;
-  }, [allTimelineEvents, displayedBaby?.id]);
+  }, [allTimelineEvents, displayedBaby?.id, STREAK_TRACKER_IDS]);
 
   /* ── Daily summary with yesterday counts ── */
+  // Two bugs fixed here:
+  //   1. Sleep duration was interpreted as SECONDS even though
+  //      AddEntryScreen writes MINUTES (that's why a 90-minute nap
+  //      showed as 0.0h). `parseDurationToSeconds` (defined at the
+  //      top of the file) auto-detects the unit.
+  //   2. Feed / diaper / sleep filters only looked at `.type` and
+  //      `.trackerId`. Rows with only `tracker_id`, or where the
+  //      tracker was serialised under `data.trackerId`, were dropped
+  //      — so KPI diapers/feeds undercounted. `normaliseTrackerId`
+  //      recovers them.
   const dailySummary = useMemo((): DailySummary => {
     if (!hasBaby) return {
       feeds: 0, sleepHours: 0, diapers: 0, lastFeedTime: null, lastSleepTime: null,
@@ -2786,36 +2911,23 @@ useEffect(() => {
     const todayActivities = scoped.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), today));
     const yesterdayActivities = scoped.filter((a: any) => a?.timestamp && isSameDay(new Date(a.timestamp), yesterday));
 
-    const getDurationSeconds = (a: any): number => {
-      const raw = a?.data?.duration ?? a?.duration ?? a?.data?.value ?? 0;
-      if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-      const s = String(raw ?? '').trim().toLowerCase();
-      if (!s) return 0;
-      const asNum = Number(s);
-      if (Number.isFinite(asNum)) return asNum;
-      let total = 0;
-      const re = /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)/g;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(s)) !== null) {
-        const n = parseFloat(m[1]);
-        const u = m[2][0];
-        total += u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n;
-      }
-      return total;
+    const hasTracker = (a: any, ids: string[]) => {
+      const id = normaliseTrackerId(a);
+      return id != null && ids.includes(id);
     };
 
-    const feeds = todayActivities.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed').length;
-    const sleepEntries = todayActivities.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep');
-    const sleepHours = sleepEntries.reduce((sum: number, a: any) => sum + getDurationSeconds(a), 0) / 3600;
-    const diapers = todayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length;
+    const feeds = todayActivities.filter((a: any) => hasTracker(a, ['feed'])).length;
+    const sleepEntries = todayActivities.filter((a: any) => hasTracker(a, ['sleep']));
+    const sleepHours = sleepEntries.reduce((sum: number, a: any) => sum + parseDurationToSeconds(a), 0) / 3600;
+    const diapers = todayActivities.filter((a: any) => hasTracker(a, ['diaper'])).length;
 
-    const yesterdayFeeds = yesterdayActivities.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed').length;
-    const yesterdaySleepEntries = yesterdayActivities.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep');
-    const yesterdaySleepHours = yesterdaySleepEntries.reduce((sum: number, a: any) => sum + getDurationSeconds(a), 0) / 3600;
-    const yesterdayDiapers = yesterdayActivities.filter((a: any) => a.type === 'diaper' || a.trackerId === 'diaper').length;
+    const yesterdayFeeds = yesterdayActivities.filter((a: any) => hasTracker(a, ['feed'])).length;
+    const yesterdaySleepEntries = yesterdayActivities.filter((a: any) => hasTracker(a, ['sleep']));
+    const yesterdaySleepHours = yesterdaySleepEntries.reduce((sum: number, a: any) => sum + parseDurationToSeconds(a), 0) / 3600;
+    const yesterdayDiapers = yesterdayActivities.filter((a: any) => hasTracker(a, ['diaper'])).length;
 
-    const lastFeed = scoped.filter((a: any) => a.type === 'feed' || a.trackerId === 'feed')[0];
-    const lastSleep = scoped.filter((a: any) => a.type === 'sleep' || a.trackerId === 'sleep')[0];
+    const lastFeed = scoped.filter((a: any) => hasTracker(a, ['feed']))[0];
+    const lastSleep = scoped.filter((a: any) => hasTracker(a, ['sleep']))[0];
 
     return {
       feeds, sleepHours, diapers,

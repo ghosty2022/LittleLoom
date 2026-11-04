@@ -948,7 +948,13 @@ export default function AllTrackersScreen() {
     total: trackerCards.length,
     visible: visibleTrackers.length,
     pinned: pinnedIds.length,
-    logs: entries ? entries.length : 0,
+    // Scope `logs` to the ACTIVE baby and drop soft-deleted rows so
+    // the header stat agrees with Home / Hub / Timeline.
+    logs: currentBaby
+      ? entries.filter(
+          (e: any) => e && !e.isDeleted && e.babyId === currentBaby.id,
+        ).length
+      : 0,
     hidden: hiddenIds.length,
   };
 

@@ -289,6 +289,84 @@ const formatDistanceToNow = (timestamp: number): string => {
   try { return format(new Date(timestamp), 'MMM d'); } catch { return 'recently'; }
 };
 
+// ── TRACKER IDENTITY NORMALISER ──────────────────────────────
+// Entries in the DB have shipped in three shapes over the app's life:
+//   • { trackerId: 'diaper' }
+//   • { type: 'diaper' }
+//   • { tracker_id: 'diaper', data: { trackerId: 'diaper' } }
+// `entryTrackerId()` (utils/entrySelectors) normally handles this, but
+// any row it returns `undefined` for (legacy, offline-queued, or rows
+// where `trackerId` was serialised into `data`) silently drops out of
+// the streak / today-counts / daily-summary counters. That is the bug
+// behind "diapers don't count in the streak / KPI."
+//
+// This helper is a superset of `entryTrackerId` and is used by every
+// counter in this screen. It NEVER returns `undefined` for a row that
+// has *any* of the recognised keys.
+const normaliseTrackerId = (entry: any): string | undefined => {
+  if (!entry) return undefined;
+  const raw =
+    entry.trackerId ??
+    entry.tracker_id ??
+    entry.type ??
+    entry.trackerType ??
+    entry?.data?.trackerId ??
+    entry?.data?.tracker_id ??
+    entry?.data?.type ??
+    undefined;
+  if (typeof raw !== 'string' || raw.length === 0) return undefined;
+  const s = raw.toLowerCase().trim();
+  // Aliases the app uses interchangeably.
+  if (s === 'nappy') return 'diaper';
+  if (s === 'feeding') return 'feed';
+  if (s === 'meds' || s === 'medicine') return 'medication';
+  if (s === 'temp' || s === 'fever') return 'temperature';
+  if (s === 'milestones' || s === 'achievement') return 'milestone';
+  return s;
+};
+
+// ── DURATION PARSER (seconds) ────────────────────────────────
+// `getDurationSeconds` in dailySummary previously assumed the raw
+// stored number was SECONDS. But sleep/pump/bath entries are written
+// by AddEntryScreen as { duration: <MINUTES> } (an integer count of
+// minutes, matching the UI slider). Result: a 90-minute nap rendered
+// as `0.0h` because 90 seconds = 0.025h. Fixed here: any bare number
+// below 600 is treated as minutes (no sane nap is <10 min recorded in
+// seconds), and explicit unit strings ("90m", "1.5h", "45 min") are
+// respected.
+const parseDurationToSeconds = (entry: any): number => {
+  const candidates = [
+    entry?.duration,
+    entry?.data?.duration,
+    entry?.data?.value,
+    entry?.value,
+    entry?.amount,
+  ];
+  for (const raw of candidates) {
+    if (raw == null) continue;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      // < 600 ⇒ stored as minutes. 600+ ⇒ already seconds.
+      return raw < 600 ? Math.round(raw * 60) : Math.round(raw);
+    }
+    const s = String(raw).trim().toLowerCase();
+    if (!s) continue;
+    const asNum = Number(s);
+    if (Number.isFinite(asNum)) {
+      return asNum < 600 ? Math.round(asNum * 60) : Math.round(asNum);
+    }
+    let total = 0;
+    const re = /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(s)) !== null) {
+      const n = parseFloat(m[1]);
+      const u = m[2][0];
+      total += u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n;
+    }
+    if (total > 0) return Math.round(total);
+  }
+  return 0;
+};
+
 const getDateTitle = (timestamp: number): string => {
   if (!timestamp || typeof timestamp !== 'number' || isNaN(timestamp)) return 'Recent';
   try {
@@ -2364,7 +2442,7 @@ export default function UniversalTrackerHubScreen() {
   const insets = useSafeAreaInsets();
   const { fullThemeColors, themeColors, isDark, borderRadiusValue } = useCustomization();
   const tracker = useTracker();
-  const { entries, getEntries, trackers } = tracker;
+  const { entries: rawEntries, getEntries, trackers } = tracker;
   const { currentBaby, babies, isLoading: babyLoading, loadBabies, refreshCurrentBaby } = useBaby();
   const { success: showSuccess, error: showError, confirm: showConfirm } = useSweetAlert();
   const achievements = useTrackerAchievements();
@@ -2376,7 +2454,16 @@ export default function UniversalTrackerHubScreen() {
   const [showHiddenModal, setShowHiddenModal] = useState(false);
   const [pinnedTrackerIds, setPinnedTrackerIds] = useState<string[]>([]);
   const [hiddenTrackerIds, setHiddenTrackerIds] = useState<string[]>([]);
-
+  // Single baby-scoped entry list — every card below consumes this
+  // instead of the raw `tracker.entries`, so no card can
+  // accidentally include a sibling baby's rows. `useMemo` keeps it
+  // referentially stable so `React.memo` cards don't re-render
+  // unnecessarily.
+  const entries = useMemo(
+    () => (currentBaby ? scopedEntries(rawEntries, currentBaby.id) : []),
+    [rawEntries, currentBaby?.id],
+  );
+  
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (e) => {
@@ -2476,7 +2563,11 @@ export default function UniversalTrackerHubScreen() {
 
   const allTimelineEvents = useMemo(() => {
     if (!currentBaby) return [];
-    return [...(entries || [])]
+    // Route through `scopedEntries` so any legacy row that stored its
+    // tracker id in `type` / `data.trackerId` still appears here, AND
+    // so soft-deleted + sibling-baby rows are dropped consistently
+    // with Timeline / Home / EntryDetail.
+    return scopedEntries(entries, currentBaby.id)
       .filter((e: any) => e?.timestamp && typeof e.timestamp === 'number' && e.timestamp > 0)
       .sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0))
       .slice(0, 50);

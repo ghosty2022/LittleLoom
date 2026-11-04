@@ -610,7 +610,17 @@ const EntryIntelligencePanel = ({ entry, tracker, allEntries, accent, isDark }: 
 
   const stats = useMemo(() => {
     if (!entry || safeEntries.length === 0) return null;
-    const trackerEntries = safeEntries.filter((e: any) => e?.trackerId === entry.trackerId).sort((a: any, b: any) => a.timestamp - b.timestamp);
+    // Scope to the SAME baby as the entry being viewed. Without this,
+    // "this week" and "prev week" counts double-count rows belonging
+    // to a sibling baby profile that happens to share the tracker id.
+    const trackerEntries = safeEntries
+      .filter(
+        (e: any) =>
+          e?.trackerId === entry.trackerId &&
+          (!entry.babyId || e.babyId === entry.babyId) &&
+          !e.isDeleted,
+      )
+      .sort((a: any, b: any) => a.timestamp - b.timestamp);
     const entryIndex = trackerEntries.findIndex((e: any) => e.id === entry.id);
     const prevEntry = entryIndex > 0 ? trackerEntries[entryIndex - 1] : null;
     const sameDay = safeEntries.filter((e: any) => e && e.id !== entry.id && isSameDay(new Date(e.timestamp), new Date(entry.timestamp)));
@@ -1001,7 +1011,14 @@ export default function EntryDetailScreen() {
       return { prev: null as any, next: null as any, index: -1, total: 0 };
     }
     const raw = getEntries(entry.trackerId);
-    const list = Array.isArray(raw) ? raw.slice().sort((a: any, b: any) => a.timestamp - b.timestamp) : [];
+    // Drop soft-deleted rows AND anything outside this entry's baby so
+    // the prev/next navigator can't page into a deleted entry or a
+    // sibling baby's history.
+    const list = Array.isArray(raw)
+      ? raw
+          .filter((e: any) => e && !e.isDeleted && (!entry.babyId || e.babyId === entry.babyId))
+          .sort((a: any, b: any) => a.timestamp - b.timestamp)
+      : [];
     const index = list.findIndex((e: any) => e.id === entry.id);
     return {
       prev: index > 0 ? list[index - 1] : null,

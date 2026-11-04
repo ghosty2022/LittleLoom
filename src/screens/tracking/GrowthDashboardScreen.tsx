@@ -662,11 +662,15 @@ const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[
   const correlations = useMemo(() => {
     // Only count entries that belong to THIS baby, and only rows where the
     // value we're averaging is actually a finite positive number.
+    // Drop soft-deleted rows AND anything outside this baby so a
+    // stale row from a prior session can't skew the correlation
+    // averages. Matches the filter used by Home / Hub / Timeline.
     const sleep = trackerEntries
       .filter(
         (e: any) =>
-          e.trackerId === 'sleep' &&
-          e.babyId === baby?.id &&
+          e?.trackerId === 'sleep' &&
+          e?.babyId === baby?.id &&
+          !e?.isDeleted &&
           Number.isFinite(e.duration) &&
           e.duration > 0,
       )
@@ -674,7 +678,9 @@ const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[
 
     const feed = trackerEntries
       .filter((e: any) => {
-        if (e.trackerId !== 'feed' || e.babyId !== baby?.id) return false;
+        if (!e || e.trackerId !== 'feed' || e.babyId !== baby?.id || e.isDeleted) {
+          return false;
+        }
         const raw = Number(
           e?.data?.bottleAmount ?? e?.data?.amount ?? e?.amount,
         );
@@ -682,7 +688,9 @@ const HealthCorrelation = memo(({ trackerEntries, baby }: { trackerEntries: any[
       })
       .slice(-7);
 
-    const all = trackerEntries.filter((e: any) => e.babyId === baby?.id);
+    const all = trackerEntries.filter(
+      (e: any) => e?.babyId === baby?.id && !e?.isDeleted,
+    );
 
     const avgSleep =
       sleep.length > 0
