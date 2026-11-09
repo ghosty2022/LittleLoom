@@ -143,6 +143,7 @@ interface FamilyChatContextType extends FamilyChatState {
 
   pickAndSendImage: (chatId: string, fromCamera?: boolean) => Promise<void>;
   pickAndSendFile: (chatId: string) => Promise<void>;
+  pickAndSendVoice: (chatId: string, uri: string) => Promise<void>;
 
   setTypingStatus: (chatId: string, isTyping: boolean) => void;
   isUserTyping: (chatId: string, userId: string) => boolean;
@@ -1031,6 +1032,34 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           updated = current.filter(t => t.userId !== data.userId);
         }
         return { ...prev, typingUsers: { ...prev.typingUsers, [data.chatId]: updated } };
+      });
+    });
+
+    /* ─── Delivered broadcast (instant ✓✓) ──────────────────── */
+    channel.on('broadcast', { event: 'delivered' }, (payload: any) => {
+      const data = payload?.payload;
+      if (!data?.messageId || !data?.chatId) return;
+      if (data.deviceId === deviceIdRef.current) return;
+      setState(prev => {
+        const list = prev.messages[data.chatId];
+        if (!list) return prev;
+        let changed = false;
+        const updated = list.map(m => {
+          if (m.id !== data.messageId) return m;
+          if (
+            m.deliveryStatus === 'read' ||
+            m.deliveryStatus === 'delivered'
+          ) {
+            return m;
+          }
+          changed = true;
+          return { ...m, deliveryStatus: 'delivered' as const };
+        });
+        if (!changed) return prev;
+        return {
+          ...prev,
+          messages: { ...prev.messages, [data.chatId]: updated },
+        };
       });
     });
 
@@ -2562,6 +2591,41 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [sendMessage, sweetAlert],
   );
 
+  const pickAndSendVoice = useCallback(
+    async (chatId: string, uri: string): Promise<void> => {
+      const familyCode = familyCodeRef.current;
+      if (!familyCode) return;
+      try {
+        const ext = uri.split('.').pop() || 'm4a';
+        const storagePath = `chat_voice/${familyCode}/${Date.now()}.${ext}`;
+        const fileData = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const binary = base64ToUint8Array(fileData);
+        const { error: uploadError } = await supabase.storage
+          .from('chat_media')
+          .upload(storagePath, binary, {
+            contentType: 'audio/mp4',
+          });
+        if (uploadError) {
+          sweetAlert.alert('Error', 'Failed to upload voice message', 'error');
+          return;
+        }
+        const { data: urlData } = supabase.storage
+          .from('chat_media')
+          .getPublicUrl(storagePath);
+        await sendMessage(chatId, '🎤 Voice message', 'voice', urlData.publicUrl);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+          () => {},
+        );
+      } catch (error) {
+        console.error('[FamilyChat] Voice upload error:', error);
+        sweetAlert.alert('Error', 'Failed to send voice message', 'error');
+      }
+    },
+    [sendMessage, sweetAlert],
+  );
+
   const pickAndSendFile = useCallback(
     async (chatId: string): Promise<void> => {
       const familyCode = familyCodeRef.current;
@@ -3128,6 +3192,7 @@ const getChatMessages = useCallback(
       resendMessage,
       pickAndSendImage,
       pickAndSendFile,
+      pickAndSendVoice,
       setTypingStatus,
       isUserTyping,
       getTypingUsers,
@@ -3171,6 +3236,7 @@ const getChatMessages = useCallback(
       resendMessage,
       pickAndSendImage,
       pickAndSendFile,
+      pickAndSendVoice,
       setTypingStatus,
       isUserTyping,
       getTypingUsers,

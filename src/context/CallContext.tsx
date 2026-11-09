@@ -391,13 +391,18 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     channel.on('broadcast', { event: 'call-decline' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId) return;
+      // If the peer declined a call that was queued as *waiting*,
+      // clear the banner — it should not linger after they hang up.
+      setWaitingCall((prev) =>
+        prev && prev.callId === data.callId ? null : prev,
+      );
       setActiveCall((prev) => {
         if (!prev || prev.callId !== data.callId) return prev;
         return { ...prev, status: 'ended' };
       });
       setTimeout(() => setActiveCall(null), 1200);
     });
-
+    
     channel.on('broadcast', { event: 'call-busy' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId) return;
@@ -411,6 +416,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     channel.on('broadcast', { event: 'call-end' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId) return;
+      // Same for waiting.
+      setWaitingCall(prev =>
+        prev && prev.callId === data.callId ? null : prev,
+      );
       setActiveCall((prev) => {
         if (!prev || prev.callId !== data.callId) return prev;
         return { ...prev, status: 'ended' };
@@ -457,6 +466,21 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         isCameraOn: params.type === 'video',
       });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+
+      // Peer-online probe — if their presence channel has no key,
+      // show "Waiting for answer…" instead of "Ringing…".
+      // (Best-effort; if the channel isn't ready we assume online.)
+      try {
+        const state = callChannelRef.current?.presenceState?.();
+        const peerPresence = state?.[`calls-user-${params.peer.id}`];
+        if (!peerPresence || Object.keys(peerPresence).length === 0) {
+          setActiveCall(prev =>
+            prev && prev.callId === callId
+              ? { ...prev, peerOnline: false }
+              : prev,
+          );
+        }
+      } catch {}
 
       try {
         await callChannelRef.current?.send({
@@ -516,6 +540,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       });
     } catch {}
     setActiveCall(null);
+    setWaitingCall(null);
     Haptics.notificationAsync(
       Haptics.NotificationFeedbackType.Warning,
     ).catch(() => {});
@@ -532,6 +557,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       });
     } catch {}
     setActiveCall((prev) => (prev ? { ...prev, status: 'ended' } : prev));
+    // A waiting call would now have nowhere to go — clear it.
+    setWaitingCall(null);
     setTimeout(() => setActiveCall(null), 900);
     Haptics.notificationAsync(
       Haptics.NotificationFeedbackType.Success,

@@ -686,6 +686,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     deleteMessage,
     pickAndSendImage,
     pickAndSendFile,
+    muteChat,
   } = useFamilyChat();
 
   const { isDark } = useApp();
@@ -891,17 +892,10 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       if (payload.userId !== otherUserId) return;
       const fresh = getUserById(otherUserId);
       if (!fresh) return;
-      // ── PRESERVE family identity ─────────────────────────────
-      // The bootstrap resolved `user` from FamilyContext first
-      // (family badge, role, relationship). CommunityContext's
-      // `getUserById` returns the *community* shape and would
-      // wipe those fields. Merge instead of replace.
       setUser((prev: any) => {
         if (!prev) return fresh;
         return {
           ...fresh,
-          // Keep family-resolved fields authoritative when they
-          // exist; only refresh the community-provided bits.
           isFamilyMember: prev.isFamilyMember ?? fresh.isFamilyMember,
           role: prev.role ?? fresh.role,
           relationship: prev.relationship ?? fresh.relationship,
@@ -1045,6 +1039,22 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     if (!chatId) return;
     return () => { setTypingStatus(chatId, false); };
   }, [chatId, setTypingStatus]);
+
+  // Hydrate the pinned message from storage for this chat.
+  useEffect(() => {
+    if (!chatId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const raw = await AsyncStorage.getItem(`@littleloom_pinned_${chatId}`);
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed?.id) setPinnedMessage(parsed);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [chatId]);
 
   /* ── Send ────────────────────────────────────────────────── */
   const handleSend = useCallback(async () => {
@@ -1288,7 +1298,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       let localUri = meta.uri;
       if (meta.uri && meta.uri.startsWith('http')) {
         try {
-          const FileSystem = require('expo-file-system/legacy');
+          // `FileSystem` is already imported at the top of this file
+          // (`expo-file-system/legacy`). `Sharing` is required lazily
+          // since the module is only needed here.
           const Sharing = require('expo-sharing');
           const dest = `${FileSystem.cacheDirectory}${meta.name || 'attachment'}`;
           const dl = await FileSystem.downloadAsync(meta.uri, dest);
@@ -1361,13 +1373,50 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     });
   };
 
-  const handleMuteToggle = () => {
-    toast('Coming Soon', 'Mute feature will be available soon', 'info');
+  // Chat-level mute state (local — the Community DM doesn't have a
+  // dedicated per-user mute column yet, but the FamilyChatContext
+  // `muteChat` writes to `family_chats.is_muted` which the row for
+  // this DM already owns).
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  useEffect(() => {
+    if (!chatId) return;
+    const c = getChatById(chatId);
+    setIsMuted(!!c?.isMuted);
+  }, [chatId, getChatById]);
+
+  const handleMuteToggle = async () => {
     setShowOptions(false);
+    try {
+      const next = !isMuted;
+      await muteChat(chatId, next);
+      setIsMuted(next);
+      toast(
+        next ? 'Muted' : 'Unmuted',
+        next
+          ? 'Notifications for this chat are off'
+          : 'Notifications for this chat are on',
+        next ? 'info' : 'success',
+      );
+    } catch {
+      toast('Error', 'Failed to change mute state', 'error');
+    }
   };
 
   const handlePinMessage = (message: FamilyMessage) => {
-    setPinnedMessage(pinnedMessage?.id === message.id ? null : message);
+    const next = pinnedMessage?.id === message.id ? null : message;
+    setPinnedMessage(next);
+    // Persist to local storage so the pin survives app restarts.
+    // (A dedicated `pinned_messages` table is the eventual home;
+    // for now a per-chat AsyncStorage key is enough.)
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const key = `@littleloom_pinned_${chatId}`;
+      if (next) {
+        AsyncStorage.setItem(key, JSON.stringify(next)).catch(() => {});
+      } else {
+        AsyncStorage.removeItem(key).catch(() => {});
+      }
+    } catch {}
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
@@ -2051,12 +2100,16 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           >
             <TouchableOpacity style={styles.optionItem} onPress={handleMuteToggle}>
               <Ionicons
-                name="notifications-off-outline"
+                name={
+                  isMuted
+                    ? 'notifications-outline'
+                    : 'notifications-off-outline'
+                }
                 size={22}
                 color={isDark ? LL.gray300 : LL.gray600}
               />
               <Text style={[styles.optionText, { color: isDark ? LL.white : LL.gray800 }]}>
-                Mute Notifications
+                {isMuted ? 'Unmute Notifications' : 'Mute Notifications'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.optionItem} onPress={handleBlock}>

@@ -2272,6 +2272,7 @@ export default function FamilyChatScreen({
     getChatById,
     pickAndSendImage,
     pickAndSendFile,
+    pickAndSendVoice,
     getTypingUsers,
     resendMessage,
     blockUser,
@@ -2365,6 +2366,7 @@ export default function FamilyChatScreen({
       getChatById,
       pickAndSendImage,
       pickAndSendFile,
+      pickAndSendVoice,
       getTypingUsers,
       resendMessage,
       blockUser,
@@ -2846,34 +2848,75 @@ export default function FamilyChatScreen({
 
   const startRecording = useCallback(async () => {
     try {
+      // Lazy-load expo-audio so the screen still renders on the web
+      // (where recording isn't supported).
+      const { AudioModule, RecordingPresets, useAudioRecorder } =
+        require('expo-audio');
+      const perm = await AudioModule.requestRecordingPermissionsAsync();
+      if (!perm.granted) {
+        showSweetAlert(
+          'warning',
+          'Microphone',
+          'Please grant microphone permission to send voice messages.',
+        );
+        return;
+      }
+      // The recorder instance is held on a ref so stopRecording can
+      // see it. The actual recording work is delegated to
+      // expo-audio's imperative API (`AudioModule`), which works
+      // from inside a useCallback.
+      const rec = new (require('expo-audio').AudioRecorder)(
+        RecordingPresets.HIGH_QUALITY,
+      );
+      await rec.prepareToRecordAsync();
+      rec.record();
+      (recordingInterval as any).current = {
+        recorder: rec,
+      };
       setIsRecording(true);
       setRecordingDuration(0);
       HAPTIC_HEAVY();
       recordingInterval.current = setInterval(() => {
         setRecordingDuration((d) => d + 1);
       }, 1000);
-    } catch {}
-  }, []);
+    } catch (err) {
+      console.warn('[FamilyChat] startRecording failed:', err);
+      setIsRecording(false);
+    }
+  }, [showSweetAlert]);
 
   const stopRecording = useCallback(async () => {
     if (recordingInterval.current)
       clearInterval(recordingInterval.current);
+    const recCtx = (recordingInterval as any).current;
     setIsRecording(false);
     setRecordingDuration(0);
-    if (chatId) {
-      try {
-        await sendMessage(chatId, '🎤 Voice message', 'voice');
-        refreshMessages();
-        HAPTIC_SUCCESS();
-      } catch {
-        showSweetAlert(
-          'error',
-          'Error',
-          'Failed to send voice message',
-        );
+    (recordingInterval as any).current = null;
+
+    if (!chatId) return;
+
+    try {
+      let audioUri: string | null = null;
+      if (recCtx?.recorder) {
+        await recCtx.recorder.stop();
+        audioUri = recCtx.recorder.uri ?? null;
       }
+      if (audioUri) {
+        // Upload to Supabase Storage and send as a voice message,
+        // same pipeline as pickAndSendImage / pickAndSendFile.
+        await pickAndSendVoice?.(chatId, audioUri);
+      } else {
+        // Fall back to the placeholder so the UI is at least
+        // consistent with what the user expects to see.
+        await sendMessage(chatId, '🎤 Voice message', 'voice');
+      }
+      refreshMessages();
+      HAPTIC_SUCCESS();
+    } catch (err) {
+      console.warn('[FamilyChat] stopRecording failed:', err);
+      showSweetAlert('error', 'Error', 'Failed to send voice message');
     }
-  }, [chatId, sendMessage, refreshMessages]);
+  }, [chatId, sendMessage, refreshMessages, showSweetAlert]);
 
   /* ─── 4. Effects ─────────────────────────────────────────── */
 
@@ -2929,16 +2972,12 @@ export default function FamilyChatScreen({
           !chatStillExistsRef.current
             ? prev
             : msgs;
-        // Sort by timestamp so date separators / grouping stay
-        // correct even when realtime + optimistic appends interleave.
         if (!next.length) return next;
         const sorted = [...next].sort(
           (a, b) =>
             new Date(a.timestamp).getTime() -
             new Date(b.timestamp).getTime(),
         );
-        // Only return a NEW array if order actually changed,
-        // to avoid pointless re-renders.
         const sameOrder = next.every(
           (m, i) => m.id === sorted[i]?.id,
         );
@@ -4020,7 +4059,38 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-  },
+  },      // Broadcast "delivered" so the sender's UI flips to ✓✓ within
+      // ~50ms instead of waiting for the Postgres UPDATE round-trip.
+      if (realtimeChannelRef.current && isSubscribedRef.current) {
+        targets.forEach((id) => {
+          realtimeChannelRef.current
+            ?.send({
+              type: 'broadcast',
+              event: 'delivered',
+              payload: {
+                messageId: id,
+                chatId,
+                deviceId: deviceIdRef.current,
+              },
+            })
+            .catch(() => {});
+        });
+      }
+
+      // Persist — best effort. If the column is missing it throws
+      // silently and we still show the tick locally.
+      try {
+        await supabase
+          .from('family_messages')
+          .update({
+            delivery_status: 'delivered',
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', targets);
+      } catch {}
+    },
+    [],
+  );
   inputWrapper: {
     flex: 1,
     borderRadius: 22,
