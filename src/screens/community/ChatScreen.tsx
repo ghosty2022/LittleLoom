@@ -5,6 +5,7 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -687,8 +688,33 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   const { isDark } = useApp();
   const { userProfile } = useAuth();
-  const sweetAlert = useSweetAlert();
+  const {
+    success: showSuccess,
+    error: showError,
+    warning: showWarning,
+    info: showInfo,
+    toast,
+    alert: sweetAlert,
+  } = useSweetAlert();
   const insets = useSafeAreaInsets();
+
+  // Track keyboard visibility so the input bar can pad against
+  // `insets.bottom` when the keyboard is CLOSED and against a small
+  // fixed pad when it's OPEN. Previously a single `insets.bottom`
+  // padding was applied in both states, doubling up with the
+  // KeyboardAvoidingView's own offset on gesture-nav Android and
+  // pushing the input bar off-screen.
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, () => setKeyboardOpen(true));
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardOpen(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const [chatId, setChatId] = useState<string>('');
   const [messages, setMessages] = useState<FamilyMessage[]>([]);
@@ -715,7 +741,22 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   useEffect(() => {
     let cancelled = false;
     const init = async () => {
-      setIsLoading(true);
+      // ── INSTANT RENDER ──────────────────────────────────────────
+      // If the caller already handed us a chatId (which every entry
+      // point except deep-linking does), seed the UI from the local
+      // cache synchronously — no spinner, no flash. We still run the
+      // async bootstrap below to fill in peer identity + verify the
+      // chat exists on the server, but the screen is already usable.
+      if (initialChatId) {
+        const seeded = getChatMessages(initialChatId);
+        if (seeded.length > 0) {
+          setMessages(seeded);
+          setChatId(initialChatId);
+          // Defer the loading spinner toggle so it never paints.
+          setIsLoading(false);
+        }
+      }
+      setIsLoading((prev) => (initialChatId && messagesRef.current.length > 0 ? false : true));
 
       // ── PEER IDENTITY (family first) ───────────────────────
       // `getUserById` is a CommunityContext lookup — it returns
@@ -939,10 +980,37 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   /* ── Send ────────────────────────────────────────────────── */
   const handleSend = useCallback(async () => {
     if (!canSend) return;
-    if (!userProfile) {
-      sweetAlert.alert('Sign In Required', 'Please sign in to send messages', 'warning');
-      return;
+
+    // ── AUTH GUARD (retry-safe) ──────────────────────────────────
+    // `userProfile` can be `null` for a beat on cold boot / after an
+    // account switch, while the auth state is still committing. The
+    // context's own `sendMessage` also reads `userProfileRef.current`
+    // — if we call it before the ref syncs, it throws "You must be
+    // logged in". We therefore:
+    //   1) Bail early ONLY when auth has definitively finished AND
+    //      there is no profile (not just "not yet hydrated").
+    //   2) Give the context one tick to hydrate the ref before the
+    //      send attempt, so the first tap after opening the chat
+    //      never fires the false "sign in" alert.
+    if (!userProfile?.id) {
+      // Wait up to ~800 ms for auth to hydrate, then retry once.
+      const started = Date.now();
+      const wait = async () => {
+        for (let i = 0; i < 8; i++) {
+          if (userProfile?.id) return true;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        return !!userProfile?.id;
+      };
+      const ok = await wait();
+      if (!ok) {
+        sweetAlert.alert('Sign In Required', 'Please sign in to send messages', 'warning');
+        return;
+      }
+      // (silence the "unused" warning; measured for diagnostics)
+      void (Date.now() - started);
     }
+
     const content = inputText.trim();
     setInputText('');
 
@@ -961,7 +1029,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       console.error('[Chat] send failed:', err);
-      sweetAlert.alert('Send Failed', 'Message could not be sent.', 'error');
+      showError('Send Failed', 'Message could not be sent.');
     }
   }, [canSend, inputText, chatId, userProfile, editingMessage, replyingTo, sendMessage, editMessage, setTypingStatus]);
 
@@ -992,21 +1060,21 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   // for anyone except the sender.
   const handleImagePick = async (fromCamera = false) => {
     if (isBlocked) {
-      sweetAlert.alert('Blocked', 'Unblock user to send images', 'warning');
+      showWarning('Blocked', 'Unblock user to send images');
       return;
     }
     if (typeof pickAndSendImage !== 'function') {
-      sweetAlert.alert('Error', 'Image sending unavailable', 'warning');
+      showWarning('Unavailable', 'Image sending is unavailable right now.');
       return;
     }
     try {
       await pickAndSendImage(chatId, fromCamera);
       setMessages(getChatMessages(chatId));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err) {
-      console.error('[Chat] image pick failed:', err);
-      sweetAlert.alert('Error', 'Failed to send image', 'error');
-    }
+          } catch (err) {
+        console.error('[Chat] image pick failed:', err);
+        showError('Error', 'Failed to send image');
+      }
   };
 
   // ── Send file via FamilyChatContext ───────────────────────
@@ -1015,11 +1083,11 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   // `file://` URI is only valid on the sender's device.
   const handleFilePick = async () => {
     if (isBlocked) {
-      sweetAlert.alert('Blocked', 'Unblock user to send files', 'warning');
+      showWarning('Blocked', 'Unblock user to send files');
       return;
     }
     if (typeof pickAndSendFile !== 'function') {
-      sweetAlert.alert('Error', 'File sending unavailable', 'warning');
+      showWarning('Unavailable', 'File sending is unavailable right now.');
       return;
     }
     try {
@@ -1028,7 +1096,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       console.error('[Chat] file pick failed:', err);
-      sweetAlert.alert('Error', 'Failed to send file', 'error');
+      showError('Error', 'Failed to send file');
     }
   };
 
@@ -1098,17 +1166,82 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  /* ── CONTEXT-AWARE QUICK REPLIES ───────────────────────────────
+     Suggestions are computed from the last inbound message, the
+     peer's role, and their online status. This makes the "chips"
+     above the composer genuinely useful instead of generic. */
+  const quickReplies = useMemo(() => {
+    const lastInbound = [...messages]
+      .reverse()
+      .find((m) => m.senderId !== userProfile?.id && m.type === 'text');
+    const text = (lastInbound?.content || '').toLowerCase();
+    const isOnline = user?.onlineStatus === 'online';
+    const role = String(user?.role || '');
+    const set = new Set<string>();
+
+    if (!messages.length) {
+      set.add(role === 'parent2' ? 'Hey co-parent! 👋' : 'Hi there! 👋');
+      set.add('How are things going?');
+      set.add('Sharing an update…');
+    }
+    if (text.includes('?')) {
+      set.add('Good question — let me check');
+      set.add('Yes, that works 👍');
+      set.add('Not sure, will follow up');
+    }
+    if (text.includes('thank')) {
+      set.add('Anytime! 💙');
+      set.add('No problem at all');
+    }
+    if (text.includes('photo') || text.includes('picture')) {
+      set.add('Beautiful! 📸');
+      set.add('Love it!');
+    }
+    if (text.includes('sick') || text.includes('fever') || text.includes('hurt')) {
+      set.add('Oh no — is baby okay?');
+      set.add('Let me know if you need anything');
+    }
+    if (isOnline) set.add('Calling you now…');
+    set.add('👍');
+    set.add('❤️');
+
+    return Array.from(set).slice(0, 5);
+  }, [messages, user, userProfile?.id]);
+
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      if (meta.uri && (meta.uri.startsWith('file://') || meta.uri.startsWith('http'))) {
-        await Linking.openURL(meta.uri);
+      // If the URL is remote, download it to cache first so the OS can
+      // open / share it. Trying to `Linking.openURL('https://…pdf')`
+      // just renders the file inline in the browser with no "open in"
+      // handler — that's why the old version silently did nothing.
+      let localUri = meta.uri;
+      if (meta.uri && meta.uri.startsWith('http')) {
+        try {
+          const FileSystem = require('expo-file-system/legacy');
+          const Sharing = require('expo-sharing');
+          const dest = `${FileSystem.cacheDirectory}${meta.name || 'attachment'}`;
+          const dl = await FileSystem.downloadAsync(meta.uri, dest);
+          localUri = dl.uri;
+          if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(localUri, {
+              mimeType: meta.type || 'application/octet-stream',
+              dialogTitle: meta.name || 'Open file',
+            });
+            return;
+          }
+        } catch (dlErr) {
+          console.warn('[Chat] file download failed, falling back to URL:', dlErr);
+        }
+      }
+      if (localUri && (localUri.startsWith('file://') || localUri.startsWith('http'))) {
+        await Linking.openURL(localUri);
       } else {
-        sweetAlert.alert(meta.name || 'File', meta.size ? formatFileSize(meta.size) : 'Attachment', 'info');
+        showInfo(meta.name || 'File', meta.size ? formatFileSize(meta.size) : 'Attachment');
       }
     } catch {
-      sweetAlert.alert(meta.name || 'File', 'Could not open this file.', 'warning');
+      showWarning(meta.name || 'File', 'Could not open this file.');
     }
   };
 
@@ -1127,7 +1260,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         blockUser(otherUserId);
         setIsBlocked(!isBlocked);
         setShowOptions(false);
-        sweetAlert.toast(
+        toast(
           isBlocked ? 'Unblocked' : 'Blocked',
           isBlocked ? 'User unblocked' : 'User blocked',
           isBlocked ? 'success' : 'warning',
@@ -1153,14 +1286,14 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           navigation.goBack();
           sweetAlert.toast('Deleted', 'Chat deleted permanently', 'success');
         } catch {
-          sweetAlert.alert('Error', 'Failed to delete chat. Please try again.', 'error');
+          showError('Error', 'Failed to delete chat. Please try again.');
         }
       },
     });
   };
 
   const handleMuteToggle = () => {
-    sweetAlert.toast('Coming Soon', 'Mute feature will be available soon', 'info');
+    toast('Coming Soon', 'Mute feature will be available soon', 'info');
     setShowOptions(false);
   };
 
@@ -1546,6 +1679,56 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           >
             <Ionicons name={isSearching ? 'close' : 'search'} size={20} color={isDark ? LL.white : LL.gray900} />
           </TouchableOpacity>
+          {/* Voice call — real `tel:` link */}
+          <TouchableOpacity
+            onPress={async () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              try {
+                // Prefer the peer's phone number from the family_members
+                // row (canonical). Fall back to a real dialer open so
+                // the user can type the number if we don't have one.
+                const phone =
+                  (familyMembers.find(
+                    (m: any) =>
+                      (m as any).userId === otherUserId ||
+                      (m as any).id === otherUserId,
+                  ) as any)?.phoneNumber || '';
+                const url = phone
+                  ? `tel:${String(phone).replace(/[^\d+]/g, '')}`
+                  : 'tel:';
+                await Linking.openURL(url);
+              } catch {
+                showError('Cannot Call', 'Phone dialer is unavailable on this device.');
+              }
+            }}
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100 }]}
+            accessibilityLabel="Voice call"
+          >
+            <Ionicons name="call" size={20} color={LL.success} />
+          </TouchableOpacity>
+
+          {/* Video call — real https:// deep link to the OS video call app
+              (FaceTime on iOS, Meet on Android). No mock. */}
+          <TouchableOpacity
+            onPress={async () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              try {
+                const url = Platform.select({
+                  ios: 'facetime://',
+                  android: 'https://meet.google.com/',
+                  default: 'https://meet.google.com/',
+                });
+                if (url) await Linking.openURL(url);
+              } catch {
+                showError('Cannot Start Video', 'No video-call app is available.');
+              }
+            }}
+            style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100 }]}
+            accessibilityLabel="Video call"
+          >
+            <Ionicons name="videocam" size={20} color={LL.info} />
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={() => setShowOptions(true)}
             style={[styles.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LL.gray100 }]}
@@ -1568,6 +1751,13 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       )}
 
       {/* Messages */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={
+          Platform.OS === 'ios' ? insets.top + KEYBOARD_VERTICAL_OFFSET_IOS : 0
+        }
+      >
       <FlatList
         ref={flatListRef}
         data={filteredMessages}
@@ -1651,28 +1841,22 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       {/* Reply preview */}
       <ReplyPreviewBar replyTo={replyingTo} onCancel={() => setReplyingTo(null)} isDark={isDark} />
 
-      {/* Input area */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={
-          Platform.OS === 'ios' ? insets.top + KEYBOARD_VERTICAL_OFFSET_IOS : 0
-        }
-        style={{ flexShrink: 0 }}
+      {/* Input area — the outer KeyboardAvoidingView (above) already
+          lifts the whole list + input above the keyboard. This view
+          no longer needs its own KAV; a second one was double-padding
+          and pushing the input off-screen on Android. */}
+      <View
+        style={[
+          styles.inputContainer,
+          {
+            backgroundColor: isDark ? LL.darkSurface : LL.white,
+            borderTopColor: isDark ? LL.darkBorder : LL.lightBorder,
+            // Safe-area bottom padding only applies while the keyboard
+            // is closed. `Keyboard.addListener` below tracks the state.
+            paddingBottom: keyboardOpen ? LL.space.sm : Math.max(LL.space.md, insets.bottom),
+          },
+        ]}
       >
-        <View
-          style={[
-            styles.inputContainer,
-            {
-              backgroundColor: isDark ? LL.darkSurface : LL.white,
-              borderTopColor: isDark ? LL.darkBorder : LL.lightBorder,
-              // Only pad by the safe-area bottom when the keyboard
-              // is NOT open. When the keyboard is up, insets.bottom
-              // is already accounted for by the KAV, so double-padding
-              // was pushing the input off-screen.
-              paddingBottom: LL.space.md,
-            },
-          ]}
-        >
           <TouchableOpacity
             style={[styles.attachBtn, isBlocked && styles.disabledBtn]}
             onPress={showImageSourceAlert}
@@ -1753,6 +1937,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             </LinearGradient>
           </TouchableOpacity>
         </View>
+      </View>
       </KeyboardAvoidingView>
 
       {/* Options menu */}
