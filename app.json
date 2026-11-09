@@ -145,7 +145,12 @@
       "expo-video",
       "expo-sharing",
       "expo-ai-kit",
-      "react-native-blob-util"
+      "react-native-blob-util",
+      "@livekit/react-native-expo-plugin",
+"@config-plugins/react-native-webrtc",
+      "@config-plugins/react-native-blob-util",
+      "@config-plugins/react-native-pdf",
+      "react-native-purchases"
     ],
     "extra": {
       "eas": {
