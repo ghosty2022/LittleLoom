@@ -9,9 +9,10 @@ import React, {
   useState,
 } from 'react';
 import {
+  ActivityIndicator,
+  Image,
   Modal,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -21,52 +22,60 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { useAuth } from './AuthContext';
-import { subscribeToProfileChanges } from './AuthContext';
 import { supabase } from '@/utils/supabase';
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
    ═══════════════════════════════════════════════════════════════ */
-
 export type CallType = 'voice' | 'video';
 export type CallStatus =
-  | 'idle'          // no call
-  | 'ringing-out'   // I'm calling someone
-  | 'ringing-in'    // someone is calling me
-  | 'connecting'    // accepted, negotiating media
-  | 'active'        // call in progress
-  | 'ended';        // call finished
+  | 'idle'
+  | 'ringing-out'
+  | 'ringing-in'
+  | 'connecting'
+  | 'active'
+  | 'ended';
 
 export interface CallParticipant {
-  id: string;            // profiles.userId
+  id: string;
   name: string;
   avatar?: string;
   role?: string;
 }
 
 export interface ActiveCall {
-  callId: string;        // unique id for signalling
+  callId: string;
   chatId: string;
   type: CallType;
   status: CallStatus;
-  /** Who I'm calling (or who called me). */
   peer: CallParticipant;
-  /** When the call actually connected (ms since epoch). */
   connectedAt?: number;
-  /** When the call started ringing (ms). */
   ringingAt: number;
-  /** True if I started it. */
   isOutgoing: boolean;
   isMuted: boolean;
   isSpeaker: boolean;
   isCameraOn: boolean;
+  /** True when we've received a signal the peer is online (accepted or
+   *  send() succeeded against a subscribed channel). */
+  peerOnline?: boolean;
 }
 
 export interface CallContextType {
   activeCall: ActiveCall | null;
+  /** Secondary call waiting (busy state for incoming while on a call). */
+  waitingCall: ActiveCall | null;
   startCall: (params: {
     chatId: string;
     type: CallType;
@@ -78,16 +87,14 @@ export interface CallContextType {
   toggleMute: () => void;
   toggleSpeaker: () => void;
   toggleCamera: () => void;
-  /** Duration of an active call in seconds (0 when not active). */
   callDurationSec: number;
 }
 
 const CallContext = createContext<CallContextType | null>(null);
 
 /* ═══════════════════════════════════════════════════════════════
-   COLOURS (matching the family chat Aura palette)
+   COLOURS
    ═══════════════════════════════════════════════════════════════ */
-
 const DS = {
   primary: '#6366f1',
   accent: '#ec4899',
@@ -95,41 +102,148 @@ const DS = {
   warning: '#f59e0b',
   danger: '#ef4444',
   white: '#ffffff',
-  gray100: '#f5f5f4',
   gray400: '#a8a29e',
-  gray700: '#44403c',
-  gray900: '#1c1917',
   darkBg: '#0c0a09',
   darkCard: '#1c1917',
-  darkBorder: 'rgba(255,255,255,0.06)',
+};
+
+const RING_TIMEOUT_MS = 45_000; // auto-cancel if not answered
+const ACTIVE_MAX_MS = 60 * 60_000; // hard cap at 1h
+const SIGNAL_TIMEOUT_MS = 12_000; // ring → connecting grace
+
+const isImageUri = (v: string | undefined | null): boolean => {
+  if (!v || typeof v !== 'string') return false;
+  return (
+    v.startsWith('http') ||
+    v.startsWith('file://') ||
+    v.startsWith('data:')
+  );
 };
 
 /* ═══════════════════════════════════════════════════════════════
    PROVIDER
    ═══════════════════════════════════════════════════════════════ */
-
 export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { userProfile } = useAuth();
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [waitingCall, setWaitingCall] = useState<ActiveCall | null>(null);
   const [callDurationSec, setCallDurationSec] = useState(0);
 
   const callChannelRef = useRef<any>(null);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeMaxRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ringToneRef = useRef<Audio.Sound | null>(null);
+  const activeCallRef = useRef<ActiveCall | null>(null);
 
-  /* ── Keep the duration ticking while connected ─────────── */
+  // Keep a ref so setTimeout callbacks see the current call.
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
+
+  /* ── Ringtone management ───────────────────────────────── */
+  const stopRingTone = useCallback(async () => {
+    try {
+      if (ringToneRef.current) {
+        await ringToneRef.current.stopAsync().catch(() => {});
+        await ringToneRef.current.unloadAsync().catch(() => {});
+        ringToneRef.current = null;
+      }
+    } catch {}
+  }, []);
+
+  const playRingTone = useCallback(
+    async (kind: 'incoming' | 'outgoing') => {
+      try {
+        await stopRingTone();
+        // Fall back silently if the asset isn't bundled.
+        // (Drop `assets/sounds/ring_incoming.mp3` + `ring_outgoing.mp3`
+        // into your project; if missing, we just vibrate.)
+        const assetModule =
+          kind === 'incoming'
+            ? // @ts-ignore – asset resolution
+              require('../../assets/sounds/ring_incoming.mp3')
+            : // @ts-ignore
+              require('../../assets/sounds/ring_outgoing.mp3');
+
+        const { sound } = await Audio.Sound.createAsync(assetModule, {
+          isLooping: true,
+          volume: 0.8,
+        });
+        ringToneRef.current = sound;
+        await sound.playAsync().catch(() => {});
+      } catch {
+        // No bundled tone — Haptics will carry the "ringing" cue.
+      }
+    },
+    [stopRingTone],
+  );
+
+  /* ── Auto-cancel unanswered outgoing calls ─────────────── */
+  const scheduleRingTimeout = useCallback(
+    (callId: string) => {
+      if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+      ringTimeoutRef.current = setTimeout(() => {
+        const cur = activeCallRef.current;
+        if (cur?.callId === callId && cur.status === 'ringing-out') {
+          // Self-timeout: notify peer, then end.
+          callChannelRef.current
+            ?.send({
+              type: 'broadcast',
+              event: 'call-end',
+              payload: { callId, to: cur.peer.id, reason: 'timeout' },
+            })
+            .catch(() => {});
+          setActiveCall((prev) =>
+            prev && prev.callId === callId
+              ? { ...prev, status: 'ended' }
+              : prev,
+          );
+          stopRingTone();
+          setTimeout(() => setActiveCall(null), 1200);
+        }
+      }, RING_TIMEOUT_MS);
+    },
+    [stopRingTone],
+  );
+
+  /* ── Auto-end active calls after hard cap ──────────────── */
+  const scheduleActiveMax = useCallback(
+    (callId: string) => {
+      if (activeMaxRef.current) clearTimeout(activeMaxRef.current);
+      activeMaxRef.current = setTimeout(() => {
+        const cur = activeCallRef.current;
+        if (cur?.callId === callId && cur.status === 'active') {
+          callChannelRef.current
+            ?.send({
+              type: 'broadcast',
+              event: 'call-end',
+              payload: { callId, to: cur.peer.id, reason: 'timeout' },
+            })
+            .catch(() => {});
+          setActiveCall((prev) =>
+            prev && prev.callId === callId
+              ? { ...prev, status: 'ended' }
+              : prev,
+          );
+          setTimeout(() => setActiveCall(null), 1200);
+        }
+      }, ACTIVE_MAX_MS);
+    },
+    [],
+  );
+
+  /* ── Duration ticker ───────────────────────────────────── */
   useEffect(() => {
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
       durationIntervalRef.current = null;
     }
-    if (
-      activeCall?.status === 'active' &&
-      activeCall?.connectedAt
-    ) {
+    if (activeCall?.status === 'active' && activeCall?.connectedAt) {
       setCallDurationSec(
         Math.max(0, Math.floor((Date.now() - activeCall.connectedAt) / 1000)),
       );
@@ -149,12 +263,42 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [activeCall?.status, activeCall?.connectedAt]);
 
-  /* ── Signalling channel ──────────────────────────────────── */
-  // A single Supabase broadcast channel scoped to the signed-in
-  // user. It carries call-offer, call-answer, call-decline, and
-  // call-end events between the two participants. WebRTC SDP/ICE
-  // can also travel on this channel — see `attachPeerConnection`
-  // comment at the bottom.
+  /* ── Ring tone follows status ──────────────────────────── */
+  useEffect(() => {
+    if (!activeCall) {
+      stopRingTone();
+      return;
+    }
+    if (activeCall.status === 'ringing-in') {
+      playRingTone('incoming');
+    } else if (activeCall.status === 'ringing-out') {
+      playRingTone('outgoing');
+      scheduleRingTimeout(activeCall.callId);
+    } else if (
+      activeCall.status === 'connecting' ||
+      activeCall.status === 'active'
+    ) {
+      stopRingTone();
+      if (activeCall.status === 'active') {
+        scheduleActiveMax(activeCall.callId);
+      }
+    } else if (activeCall.status === 'ended') {
+      stopRingTone();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCall?.status, activeCall?.callId]);
+
+  /* ── Cleanup timers on unmount ─────────────────────────── */
+  useEffect(() => {
+    return () => {
+      if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
+      if (activeMaxRef.current) clearTimeout(activeMaxRef.current);
+      stopRingTone();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ── Signalling channel ────────────────────────────────── */
   useEffect(() => {
     const meId = userProfile?.id;
     if (!meId) return;
@@ -163,13 +307,40 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       config: { broadcast: { self: false } },
     });
 
-    // Peer starts a call → show "Incoming call" for me.
     channel.on('broadcast', { event: 'call-offer' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId || !data?.from) return;
-      // Don't double-show if we already have a call.
+
       setActiveCall((prev) => {
-        if (prev && prev.callId !== data.callId) return prev;
+        if (prev) {
+          // ── CALL WAITING ────────────────────────────────────
+          // Already on a call → flag as waiting instead of dropping.
+          if (prev.callId !== data.callId) {
+            setWaitingCall({
+              callId: data.callId,
+              chatId: data.chatId,
+              type: data.type,
+              status: 'ringing-in',
+              peer: data.from,
+              ringingAt: Date.now(),
+              isOutgoing: false,
+              isMuted: false,
+              isSpeaker: false,
+              isCameraOn: false,
+              peerOnline: true,
+            });
+            // Auto-answer the sender with "busy"
+            callChannelRef.current
+              ?.send({
+                type: 'broadcast',
+                event: 'call-busy',
+                payload: { callId: data.callId, to: data.from.id },
+              })
+              .catch(() => {});
+            return prev;
+          }
+          return prev;
+        }
         return {
           callId: data.callId,
           chatId: data.chatId,
@@ -181,6 +352,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
           isMuted: false,
           isSpeaker: false,
           isCameraOn: false,
+          peerOnline: true,
         };
       });
       Haptics.notificationAsync(
@@ -188,7 +360,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       ).catch(() => {});
     });
 
-    // Peer accepted my call.
     channel.on('broadcast', { event: 'call-answer' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId) return;
@@ -201,6 +372,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
           ...prev,
           status: 'active',
           connectedAt: Date.now(),
+          peerOnline: true,
         };
       });
       Haptics.notificationAsync(
@@ -208,7 +380,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       ).catch(() => {});
     });
 
-    // Peer declined my call.
     channel.on('broadcast', { event: 'call-decline' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId) return;
@@ -219,7 +390,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       setTimeout(() => setActiveCall(null), 1200);
     });
 
-    // Either side ended the call.
+    channel.on('broadcast', { event: 'call-busy' }, (payload: any) => {
+      const data = payload?.payload;
+      if (!data?.callId) return;
+      setActiveCall((prev) => {
+        if (!prev || prev.callId !== data.callId) return prev;
+        return { ...prev, status: 'ended' };
+      });
+      setTimeout(() => setActiveCall(null), 1200);
+    });
+
     channel.on('broadcast', { event: 'call-end' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId) return;
@@ -230,7 +410,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       setTimeout(() => setActiveCall(null), 1200);
     });
 
-    channel.subscribe();
+    channel.subscribe((status: string) => {
+      if (__DEV__) console.log('[Call] channel', status);
+    });
     callChannelRef.current = channel;
 
     return () => {
@@ -241,7 +423,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [userProfile?.id]);
 
-  /* ── Actions ─────────────────────────────────────────────── */
+  /* ── Actions ───────────────────────────────────────────── */
   const startCall = useCallback(
     async (params: {
       chatId: string;
@@ -264,7 +446,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         isOutgoing: true,
         isMuted: false,
         isSpeaker: false,
-        isCameraOn: false,
+        isCameraOn: params.type === 'video',
       });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
@@ -305,7 +487,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         payload: { callId: call.callId, to: call.peer.id },
       });
     } catch {}
-    // Small handshake window, then active.
     setTimeout(() => {
       setActiveCall((prev) =>
         prev && prev.callId === call.callId
@@ -375,6 +556,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   const value = useMemo<CallContextType>(
     () => ({
       activeCall,
+      waitingCall,
       startCall,
       acceptCall,
       declineCall,
@@ -386,6 +568,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     }),
     [
       activeCall,
+      waitingCall,
       startCall,
       acceptCall,
       declineCall,
@@ -406,13 +589,90 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   GLOBAL CALL OVERLAY — the actual in-app call screen
+   GLOBAL CALL OVERLAY
    ═══════════════════════════════════════════════════════════════ */
-
 const formatDuration = (sec: number) => {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
+const AvatarOrInitial: React.FC<{
+  avatar?: string;
+  name?: string;
+  size: number;
+}> = ({ avatar, name, size }) => {
+  const hasImage = isImageUri(avatar);
+  const initial =
+    (name || '?').trim().charAt(0).toUpperCase() || '?';
+  if (hasImage) {
+    return (
+      <Image
+        source={{ uri: avatar! }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+        }}
+        resizeMode="cover"
+      />
+    );
+  }
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        style={{
+          fontSize: size * 0.45,
+          color: DS.white,
+          fontWeight: '800',
+        }}
+      >
+        {initial}
+      </Text>
+    </View>
+  );
+};
+
+const PulsingRing: React.FC = () => {
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(0.55);
+  useEffect(() => {
+    scale.value = withRepeat(
+      withSequence(
+        withTiming(1.25, { duration: 900, easing: Easing.out(Easing.ease) }),
+        withTiming(1, { duration: 900 }),
+      ),
+      -1,
+      false,
+    );
+    opacity.value = withRepeat(
+      withSequence(withTiming(0.05, { duration: 900 }), withTiming(0.55, { duration: 900 })),
+      -1,
+      false,
+    );
+  }, [opacity, scale]);
+  const anim = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFillObject,
+        { borderRadius: 999, backgroundColor: DS.success },
+        anim,
+      ]}
+    />
+  );
 };
 
 const CallOverlay: React.FC = () => {
@@ -422,6 +682,7 @@ const CallOverlay: React.FC = () => {
 
   const {
     activeCall,
+    waitingCall,
     acceptCall,
     declineCall,
     endCall,
@@ -432,7 +693,8 @@ const CallOverlay: React.FC = () => {
   } = ctx;
 
   const isVideo = activeCall.type === 'video';
-  const isIncoming = !activeCall.isOutgoing && activeCall.status === 'ringing-in';
+  const isIncoming =
+    !activeCall.isOutgoing && activeCall.status === 'ringing-in';
   const isActive =
     activeCall.status === 'active' ||
     activeCall.status === 'connecting';
@@ -442,7 +704,9 @@ const CallOverlay: React.FC = () => {
   const statusLabel = (() => {
     switch (activeCall.status) {
       case 'ringing-out':
-        return 'Ringing…';
+        return activeCall.peerOnline === false
+          ? 'Waiting for answer…'
+          : 'Ringing…';
       case 'ringing-in':
         return isVideo ? 'Incoming video call' : 'Incoming voice call';
       case 'connecting':
@@ -480,12 +744,49 @@ const CallOverlay: React.FC = () => {
           pointerEvents="none"
         />
 
-        <View style={[styles.overlayContent, { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 40 }]}>
-          {/* Peer avatar / video preview */}
+        {/* CALL WAITING BANNER */}
+        {waitingCall && (
+          <View
+            style={[
+              styles.waitingBanner,
+              { top: insets.top + 16 },
+            ]}
+          >
+            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+            <Ionicons name="call" size={16} color={DS.success} />
+            <Text style={styles.waitingText} numberOfLines={1}>
+              {waitingCall.peer.name} is calling…
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                // End current, switch to waiting call
+                endCall();
+                setWaitingCallInContext(waitingCall);
+              }}
+              style={styles.waitingBtn}
+            >
+              <Text style={styles.waitingBtnText}>Switch</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View
+          style={[
+            styles.overlayContent,
+            {
+              paddingTop: insets.top + 60,
+              paddingBottom: insets.bottom + 40,
+            },
+          ]}
+        >
           <View style={styles.peerWrap}>
             {isVideo && isActive && activeCall.isCameraOn ? (
               <View style={styles.videoPreview}>
-                <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+                <BlurView
+                  intensity={40}
+                  tint="dark"
+                  style={StyleSheet.absoluteFill}
+                />
                 <Ionicons name="videocam" size={64} color="rgba(255,255,255,0.35)" />
                 <Text style={styles.videoHint}>
                   Video streaming — connect react-native-webrtc
@@ -493,51 +794,69 @@ const CallOverlay: React.FC = () => {
               </View>
             ) : (
               <View style={styles.avatarRing}>
+                {activeCall.status === 'ringing-out' && (
+                  <PulsingRing />
+                )}
                 <LinearGradient
                   colors={[DS.primary, DS.accent]}
                   style={StyleSheet.absoluteFill}
                 />
                 <View style={styles.avatarInner}>
-                  {activeCall.peer.avatar ? (
-                    <Text style={styles.avatarText}>
-                      {activeCall.peer.avatar}
-                    </Text>
-                  ) : (
-                    <Text style={styles.avatarText}>{peerInitial}</Text>
-                  )}
+                  <AvatarOrInitial
+                    avatar={
+                      // Never pass a raw URL to a <Text>; only the
+                      // avatar string when it's a *short* emoji.
+                      activeCall.peer.avatar &&
+                      activeCall.peer.avatar.length <= 4
+                        ? activeCall.peer.avatar
+                        : undefined
+                    }
+                    name={activeCall.peer.name || peerInitial}
+                    size={148}
+                  />
                 </View>
               </View>
             )}
           </View>
 
           <Text style={styles.peerName}>{activeCall.peer.name}</Text>
-          <Text style={styles.statusLabel}>{statusLabel}</Text>
+          <View style={styles.statusRow}>
+            {activeCall.status === 'ringing-out' && (
+              <ActivityIndicator size="small" color={DS.white} />
+            )}
+            <Text style={styles.statusLabel}>{statusLabel}</Text>
+          </View>
 
-          {/* Controls */}
           <View style={styles.controls}>
             {isIncoming && (
               <>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: DS.danger }]}
-                  onPress={declineCall}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons
-                    name="call"
-                    size={28}
-                    color={DS.white}
-                    style={{ transform: [{ rotate: '135deg' }] }}
-                  />
-                </TouchableOpacity>
-                <Text style={styles.actionLabel}>Decline</Text>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: DS.success }]}
-                  onPress={acceptCall}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="call" size={28} color={DS.white} />
-                </TouchableOpacity>
-                <Text style={styles.actionLabel}>Accept</Text>
+                <View style={styles.actionRow}>
+                  <View style={styles.controlGroup}>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: DS.danger }]}
+                      onPress={declineCall}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name="call"
+                        size={28}
+                        color={DS.white}
+                        style={{ transform: [{ rotate: '135deg' }] }}
+                      />
+                    </TouchableOpacity>
+                    <Text style={styles.actionLabel}>Decline</Text>
+                  </View>
+                  <View style={styles.controlGroup}>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: DS.success }]}
+                      onPress={acceptCall}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="call" size={28} color={DS.white} />
+                    </TouchableOpacity>
+                    <Text style={styles.actionLabel}>Accept</Text>
+                  </View>
+                </View>
               </>
             )}
 
@@ -582,7 +901,9 @@ const CallOverlay: React.FC = () => {
                       activeOpacity={0.85}
                     >
                       <Ionicons
-                        name={activeCall.isSpeaker ? 'volume-high' : 'volume-medium'}
+                        name={
+                          activeCall.isSpeaker ? 'volume-high' : 'volume-medium'
+                        }
                         size={22}
                         color={DS.white}
                       />
@@ -644,7 +965,6 @@ const CallOverlay: React.FC = () => {
 /* ═══════════════════════════════════════════════════════════════
    HOOK
    ═══════════════════════════════════════════════════════════════ */
-
 export const useCall = (): CallContextType => {
   const ctx = useContext(CallContext);
   if (!ctx) throw new Error('useCall must be used within CallProvider');
@@ -654,7 +974,6 @@ export const useCall = (): CallContextType => {
 /* ═══════════════════════════════════════════════════════════════
    STYLES
    ═══════════════════════════════════════════════════════════════ */
-
 const styles = StyleSheet.create({
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   glowTop: {
@@ -699,8 +1018,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#1c1917',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  avatarText: { fontSize: 72, color: DS.white, fontWeight: '800' },
   videoPreview: {
     width: 260,
     height: 340,
@@ -729,11 +1048,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: -0.4,
   },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
   statusLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.72)',
-    marginTop: 8,
     letterSpacing: 0.3,
   },
   controls: {
@@ -780,6 +1104,45 @@ const styles = StyleSheet.create({
     color: DS.white,
     letterSpacing: 0.4,
     marginTop: 6,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    maxWidth: 320,
+    marginBottom: 16,
+  },
+  waitingBanner: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    zIndex: 10,
+  },
+  waitingText: {
+    flex: 1,
+    color: DS.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  waitingBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: DS.success,
+    borderRadius: 8,
+  },
+  waitingBtnText: {
+    color: DS.white,
+    fontSize: 11,
+    fontWeight: '700',
   },
 });
 

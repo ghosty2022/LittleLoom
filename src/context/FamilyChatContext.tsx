@@ -1640,24 +1640,27 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const now = new Date().toISOString();
       const displayName = name || `${getCurrentBaby()?.name || 'Family'} Group`;
 
-      const { error } = await supabase.from('family_chats').insert({
-        id: chatId,
-        type: 'group',
-        name: displayName,
-        participants: members.map(m => (m as any).userId || m.id),
-        participant_roles: participantRoles,
-        participant_names: participantNames,
-        participant_avatars: participantAvatars,
-        unread_count: 0,
-        created_at: now,
-        updated_at: now,
-        avatar: avatar || '👨‍👩‍👧‍👦',
-        is_muted: false,
-        family_code: familyCode,
-        is_pinned: true,
-      });
+      const { error } = await supabase.from('family_chats').upsert(
+        {
+          id: chatId,
+          type: 'group',
+          name: displayName,
+          participants: members.map(m => (m as any).userId || m.id),
+          participant_roles: participantRoles,
+          participant_names: participantNames,
+          participant_avatars: participantAvatars,
+          unread_count: 0,
+          created_at: now,
+          updated_at: now,
+          avatar: avatar || '👨‍👩‍👧‍👦',
+          is_muted: false,
+          family_code: familyCode,
+          is_pinned: true,
+        },
+        { onConflict: 'id', ignoreDuplicates: true },
+      );
 
-      if (error) {
+      if (error && (error as any).code !== '23505') {
         console.error('[FamilyChat] Create group error:', error);
         sweetAlert.alert('Error', 'Failed to create family group', 'error');
         return '';
@@ -1771,10 +1774,18 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
 
+      // ── DIRECT CHATS ARE GLOBAL (family-agnostic) ─────────────
+      // The chat id is deterministic (`direct_<sorted-uids>`), so
+      // the row already exists regardless of which family it was
+      // created under. Filtering by `family_code` here would miss
+      // it after a baby switch / on another device whose active
+      // family differs from the one that created the DM, causing
+      // an INSERT with an existing primary key → 23505.
+      //
+      // We therefore look up by participants ONLY.
       const { data: existing } = await supabase
         .from('family_chats')
         .select('*')
-        .eq('family_code', familyCode)
         .eq('type', 'direct')
         .contains('participants', [me.id, actualUserId])
         .maybeSingle();
@@ -1783,6 +1794,32 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         // If the user re-opens a previously hidden DM, un-hide it.
         if (hiddenChatsRef.current.has(existing.id)) {
           await unhideChat(existing.id);
+        }
+        // If it exists on the server but not locally (e.g. created
+        // on another device / under a different family), adopt it
+        // into local state so the caller can navigate straight in.
+        if (!chatsRef.current.some(c => c.id === existing.id)) {
+          const adopted: FamilyChat = {
+            id: existing.id,
+            type: existing.type,
+            name: existing.name,
+            participants: existing.participants ?? [],
+            participantRoles: existing.participant_roles || {},
+            participantNames: existing.participant_names || {},
+            participantAvatars: existing.participant_avatars || {},
+            unreadCount: existing.unread_count || 0,
+            createdAt: existing.created_at,
+            updatedAt: existing.updated_at,
+            avatar: existing.avatar || undefined,
+            isMuted: existing.is_muted || false,
+            familyCode: existing.family_code,
+            isPinned: existing.is_pinned || false,
+          };
+          setState(prev =>
+            prev.chats.some(c => c.id === adopted.id)
+              ? prev
+              : { ...prev, chats: [adopted, ...prev.chats] },
+          );
         }
         return existing.id;
       }
@@ -1803,24 +1840,30 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         [actualUserId]: memberAvatar,
       };
 
-      const { error } = await supabase.from('family_chats').insert({
-        id: chatId,
-        type: 'direct',
-        name: memberName || 'Family Member',
-        participants: [me.id, actualUserId],
-        participant_roles: participantRoles,
-        participant_names: participantNames,
-        participant_avatars: participantAvatars,
-        unread_count: 0,
-        created_at: now,
-        updated_at: now,
-        avatar: memberAvatar,
-        is_muted: false,
-        family_code: familyCode,
-        is_pinned: false,
-      });
+      const { error } = await supabase.from('family_chats').upsert(
+        {
+          id: chatId,
+          type: 'direct',
+          name: memberName || 'Family Member',
+          participants: [me.id, actualUserId],
+          participant_roles: participantRoles,
+          participant_names: participantNames,
+          participant_avatars: participantAvatars,
+          unread_count: 0,
+          created_at: now,
+          updated_at: now,
+          avatar: memberAvatar,
+          is_muted: false,
+          family_code: familyCode,
+          is_pinned: false,
+        },
+        { onConflict: 'id', ignoreDuplicates: true },
+      );
 
-      if (error) {
+      // `ignoreDuplicates: true` + 23505 both mean "someone else already
+      // created this DM (or it existed under a different family code)".
+      // That's not an error for the caller — the chat id is valid.
+      if (error && (error as any).code !== '23505') {
         console.error('[FamilyChat] Create direct chat error:', error);
         sweetAlert.alert('Error', 'Failed to create chat: ' + error.message, 'error');
         return '';
