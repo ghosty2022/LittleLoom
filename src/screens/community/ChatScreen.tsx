@@ -667,6 +667,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   const otherUserId = (route.params as any)?.chatId ?? (route.params as any)?.userId;
   const initialChatId = (route.params as any)?.chatId as string | undefined;
   const { getUserById, getUserRole, updateOnlineStatus } = useCommunity();
+  const { members: familyMembers } = useFamily();
   const {
     getOrCreateDirectChat,
     getChatById,
@@ -868,7 +869,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       cancelled = true;
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [otherUserId]);
+  }, [otherUserId, familyMembers]);
 
   // ── Keep `isBlocked` in sync with CommunityContext ──────────
   // If I block/unblock from another screen, this chat must reflect
