@@ -7,6 +7,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Linking as RNLinking,
   Modal,
   Platform,
   Share,
@@ -25,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format, isSameWeek, isToday, isYesterday } from 'date-fns';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
+import * as Linking from 'expo-linking';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, {
   FadeIn,
@@ -48,33 +50,22 @@ import { FamilyMessage, FileMetadata, useFamilyChat } from '../../context/Family
 import { useAuth, subscribeToProfileChanges } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
-import { useMedia } from '../../context/MediaContext';
 
 type FamilyChatScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyChat'>;
 const { width, height } = Dimensions.get('window');
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
-
-// Keyboard-avoidance offsets must be derived from the ACTUAL header
-// height (status bar + 14px pad on Android, 52px notch pad on iOS)
-// plus the ~64px pulse-card height + its 12px outer margin. A fixed
-// 90 (the old value) was wrong on both platforms and caused the input
-// to detach from the keyboard.
 const KEYBOARD_VERTICAL_OFFSET =
   Platform.OS === 'ios' ? HEADER_TOP_PADDING + 76 : 0;
 
-// Cap system font scaling so extremely large accessibility text
-// doesn't blow out chat bubbles or the input bar.
 import { Text as RNText, TextInput as RNTextInput } from 'react-native';
 const capScaling = (n: number) => Math.min(n, 1.35);
-// @ts-ignore - patch defaults once per module load
+// @ts-ignore
 RNText.defaultProps = { ...(RNText.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
 // @ts-ignore
 RNTextInput.defaultProps = { ...(RNTextInput.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN SYSTEM — Aura
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ DESIGN TOKENS ════════════════ */
 const DS = {
   primary: '#6366f1',
   primaryLight: '#818cf8',
@@ -113,9 +104,6 @@ const HAPTIC_MEDIUM = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medi
 const HAPTIC_HEAVY = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
 const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   HELPERS
-   ═══════════════════════════════════════════════════════════════════════════ */
 const isImageUri = (v: string | undefined | null): boolean => {
   if (!v || typeof v !== 'string') return false;
   return v.startsWith('http') || v.startsWith('file://') || v.startsWith('data:');
@@ -128,14 +116,7 @@ const isEmoji = (v: string | undefined | null): boolean => {
 
 const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🎉', '👏', '🔥'];
 
-// `QUICK_REPLIES` is now context-aware — computed inside the screen
-// from the last inbound message, peer role, and online status. The
-// old static list ("On my way!", "Sounds good!") felt generic and
-// never matched the actual conversation, which is why users ignored it.
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   GRADIENT TEXT
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ GRADIENT TEXT ════════════════ */
 const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: {
   children: React.ReactNode; style?: any; colors?: string[];
 }) => {
@@ -159,9 +140,7 @@ const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PRESSABLE SCALE
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ PRESSABLE SCALE ════════════════ */
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 const PressableScale = React.memo<{
   children: React.ReactNode; onPress?: () => void; onLongPress?: () => void;
@@ -184,9 +163,7 @@ const PressableScale = React.memo<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PULSING DOT
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ PULSING DOT ════════════════ */
 const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
   const pulse = useSharedValue(1);
   const halo = useSharedValue(1);
@@ -207,9 +184,7 @@ const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SAFE AVATAR
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ SAFE AVATAR ════════════════ */
 const SafeAvatar: React.FC<{
   avatar?: string | null; size?: number; fallbackEmoji?: string; fallbackColor?: string;
 }> = ({ avatar, size = 44, fallbackEmoji = '👤', fallbackColor = DS.primary }) => {
@@ -233,9 +208,7 @@ const SafeAvatar: React.FC<{
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PULSE HEADER
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ PULSE HEADER (FAMILY) ════════════════ */
 interface PulseHeaderProps {
   isDark: boolean;
   headerName: string;
@@ -250,7 +223,6 @@ interface PulseHeaderProps {
   onVideo: () => void;
   onVoice: () => void;
   onOptions: () => void;
-  /** Cross-link to the Community DM with the same peer (direct chats only). */
   onOpenCommunityChat?: () => void;
 }
 
@@ -328,7 +300,6 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
                 <Ionicons name="people-outline" size={18} color={showUserBubbles ? DS.primary : (isDark ? DS.gray300 : DS.gray600)} />
               </View>
             </PressableScale>
-            {/* Cross-link: open the Community DM with the same peer */}
             <PressableScale onPress={onOpenCommunityChat ?? (() => {})} activeScale={0.9}>
               <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
                 <Ionicons name="globe-outline" size={18} color={DS.accent} />
@@ -356,9 +327,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SWEET ALERT
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ SWEET ALERT ════════════════ */
 const SweetAlertChat: React.FC<{
   visible: boolean; type: 'success' | 'error' | 'warning' | 'info';
   title: string; message: string; onClose: () => void;
@@ -403,9 +372,7 @@ const SweetAlertChat: React.FC<{
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   DELIVERY STATUS
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ DELIVERY STATUS ════════════════ */
 const DeliveryStatus: React.FC<{ status: FamilyMessage['deliveryStatus'] }> = ({ status }) => {
   if (status === 'sending') return <ActivityIndicator size={12} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />;
   if (status === 'failed') return <Ionicons name="alert-circle" size={14} color={DS.white} style={{ marginLeft: 4 }} />;
@@ -415,9 +382,7 @@ const DeliveryStatus: React.FC<{ status: FamilyMessage['deliveryStatus'] }> = ({
   return null;
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   FILE BUBBLE
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ FILE BUBBLE ════════════════ */
 const FileBubble: React.FC<{ fileMeta?: FileMetadata; isMe: boolean; onPress: () => void }> = ({ fileMeta, isMe, onPress }) => {
   if (!fileMeta) return null;
   const formatFileSize = (bytes: number) => {
@@ -449,9 +414,7 @@ const FileBubble: React.FC<{ fileMeta?: FileMetadata; isMe: boolean; onPress: ()
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   USER BUBBLE
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ USER BUBBLE ════════════════ */
 const UserBubble: React.FC<{ member: any; isDark: boolean; onPress: () => void }> = ({ member, isDark, onPress }) => {
   const roleColor = member.role === 'parent1' ? DS.primary : member.role === 'parent2' ? DS.accent : DS.success;
   const onlineStatus = (() => {
@@ -483,17 +446,12 @@ const UserBubble: React.FC<{ member: any; isDark: boolean; onPress: () => void }
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   MESSAGE INFO MODAL
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ MESSAGE INFO MODAL ════════════════ */
 const MessageInfoModal: React.FC<{
   visible: boolean; onClose: () => void; message: FamilyMessage | null;
   isDark: boolean; members: any[];
 }> = ({ visible, onClose, message, isDark, members }) => {
   if (!message) return null;
-  // Prefer the LIVE member from FamilyContext; fall back to the frozen
-  // snapshot stored on the message row. `senderId` can be either a
-  // family_members.id or a profiles.userId — match both.
   const sender =
     members.find((m) => m.id === message.senderId) ||
     members.find((m) => (m as any).userId === message.senderId);
@@ -578,9 +536,7 @@ const MessageInfoModal: React.FC<{
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   DATE SEPARATOR
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ DATE SEPARATOR ════════════════ */
 const DateSeparator: React.FC<{ date: string; isDark: boolean }> = ({ date, isDark }) => {
   const d = new Date(date);
   const text = isToday(d) ? 'Today' : isYesterday(d) ? 'Yesterday' : isSameWeek(d, new Date()) ? format(d, 'EEEE') : format(d, 'MMMM d, yyyy');
@@ -595,9 +551,7 @@ const DateSeparator: React.FC<{ date: string; isDark: boolean }> = ({ date, isDa
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   TYPING INDICATOR
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ TYPING INDICATOR ════════════════ */
 const TypingIndicator: React.FC<{ isDark: boolean }> = ({ isDark }) => {
   const dot1 = useSharedValue(0);
   const dot2 = useSharedValue(0);
@@ -618,25 +572,22 @@ const TypingIndicator: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     return () => clearInterval(interval);
   }, [dot1, dot2, dot3]);
 
-  const dotStyle = (val: any) => useAnimatedStyle(() => ({
-    transform: [{ translateY: val.value * -4 }],
-    opacity: 0.4 + val.value * 0.6,
-  }));
+  const s1 = useAnimatedStyle(() => ({ transform: [{ translateY: dot1.value * -4 }], opacity: 0.4 + dot1.value * 0.6 }));
+  const s2 = useAnimatedStyle(() => ({ transform: [{ translateY: dot2.value * -4 }], opacity: 0.4 + dot2.value * 0.6 }));
+  const s3 = useAnimatedStyle(() => ({ transform: [{ translateY: dot3.value * -4 }], opacity: 0.4 + dot3.value * 0.6 }));
 
   return (
     <View style={[styles.typingBubble, { backgroundColor: isDark ? DS.darkSurface : DS.white }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <Animated.View style={[styles.typingDot, { backgroundColor: DS.primary }, dotStyle(dot1)]} />
-        <Animated.View style={[styles.typingDot, { backgroundColor: DS.primary }, dotStyle(dot2)]} />
-        <Animated.View style={[styles.typingDot, { backgroundColor: DS.primary }, dotStyle(dot3)]} />
+        <Animated.View style={[styles.typingDot, { backgroundColor: DS.primary }, s1]} />
+        <Animated.View style={[styles.typingDot, { backgroundColor: DS.primary }, s2]} />
+        <Animated.View style={[styles.typingDot, { backgroundColor: DS.primary }, s3]} />
       </View>
     </View>
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SOFT OPTIONS SHEET — matches the MoreScreen CustomModal aesthetic
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ SOFT OPTIONS SHEET ════════════════ */
 interface SoftOption {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
@@ -677,7 +628,7 @@ const SoftOptionsSheet: React.FC<{
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={{ flex: 1 }} onPress={onClose}>
+      <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose}>
         <Animated.View
           style={[
             {
@@ -703,13 +654,7 @@ const SoftOptionsSheet: React.FC<{
                   borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)',
                 }}
               >
-                <SoftOptionsBody
-                  title={title}
-                  message={message}
-                  options={options}
-                  isDark={isDark}
-                  onClose={onClose}
-                />
+                <SoftOptionsBody title={title} message={message} options={options} isDark={isDark} onClose={onClose} />
               </BlurView>
             </Animated.View>
           ) : (
@@ -725,17 +670,11 @@ const SoftOptionsSheet: React.FC<{
                 cardStyle,
               ]}
             >
-              <SoftOptionsBody
-                title={title}
-                message={message}
-                options={options}
-                isDark={isDark}
-                onClose={onClose}
-              />
+              <SoftOptionsBody title={title} message={message} options={options} isDark={isDark} onClose={onClose} />
             </Animated.View>
           )}
         </Animated.View>
-      </Pressable>
+      </TouchableOpacity>
     </Modal>
   );
 };
@@ -749,49 +688,19 @@ const SoftOptionsBody: React.FC<{
 }> = ({ title, message, options, isDark, onClose }) => (
   <>
     <View style={{ alignItems: 'center', marginBottom: 12 }}>
-      <View
-        style={{
-          width: 40,
-          height: 4,
-          borderRadius: 2,
-          backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
-          marginBottom: 14,
-        }}
-      />
-      <Text
-        style={{
-          fontSize: 18,
-          fontWeight: '800',
-          color: isDark ? DS.white : DS.gray900,
-          textAlign: 'center',
-        }}
-      >
+      <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)', marginBottom: 14 }} />
+      <Text style={{ fontSize: 18, fontWeight: '800', color: isDark ? DS.white : DS.gray900, textAlign: 'center' }}>
         {title}
       </Text>
       {!!message && (
-        <Text
-          style={{
-            fontSize: 13,
-            fontWeight: '500',
-            marginTop: 4,
-            textAlign: 'center',
-            color: isDark ? DS.gray400 : DS.gray500,
-          }}
-        >
+        <Text style={{ fontSize: 13, fontWeight: '500', marginTop: 4, textAlign: 'center', color: isDark ? DS.gray400 : DS.gray500 }}>
           {message}
         </Text>
       )}
     </View>
     <View style={{ marginTop: 6 }}>
       {options.map((opt, i) => (
-        <PressableScale
-          key={i}
-          onPress={() => {
-            onClose();
-            opt.onPress();
-          }}
-          activeScale={0.98}
-        >
+        <PressableScale key={i} onPress={() => { onClose(); opt.onPress(); }} activeScale={0.98}>
           <View
             style={{
               flexDirection: 'row',
@@ -813,40 +722,19 @@ const SoftOptionsBody: React.FC<{
                 backgroundColor: opt.destructive ? 'rgba(239,68,68,0.12)' : `${opt.color}18`,
               }}
             >
-              <Ionicons
-                name={opt.icon}
-                size={18}
-                color={opt.destructive ? DS.danger : opt.color}
-              />
+              <Ionicons name={opt.icon} size={18} color={opt.destructive ? DS.danger : opt.color} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 15,
-                  fontWeight: '700',
-                  color: opt.destructive ? DS.danger : isDark ? DS.white : DS.gray900,
-                }}
-              >
+              <Text style={{ fontSize: 15, fontWeight: '700', color: opt.destructive ? DS.danger : isDark ? DS.white : DS.gray900 }}>
                 {opt.label}
               </Text>
               {!!opt.subtitle && (
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: '500',
-                    marginTop: 1,
-                    color: isDark ? DS.gray500 : DS.gray500,
-                  }}
-                >
+                <Text style={{ fontSize: 12, fontWeight: '500', marginTop: 1, color: isDark ? DS.gray500 : DS.gray500 }}>
                   {opt.subtitle}
                 </Text>
               )}
             </View>
-            <Ionicons
-              name="chevron-forward"
-              size={16}
-              color={isDark ? DS.gray600 : DS.gray300}
-            />
+            <Ionicons name="chevron-forward" size={16} color={isDark ? DS.gray600 : DS.gray300} />
           </View>
         </PressableScale>
       ))}
@@ -854,9 +742,7 @@ const SoftOptionsBody: React.FC<{
   </>
 );
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   MESSAGE REACTIONS
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ MESSAGE REACTIONS ════════════════ */
 const MessageReactions: React.FC<{
   reactions: { emoji: string; userId: string; userName: string }[];
   isMe: boolean; onPress: (emoji: string) => void; isDark: boolean;
@@ -881,9 +767,7 @@ const MessageReactions: React.FC<{
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   IMAGE PREVIEW MODAL
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ IMAGE PREVIEW MODAL ════════════════ */
 const ImagePreviewModal: React.FC<{ visible: boolean; imageUrl: string; onClose: () => void; isDark: boolean }> = ({ visible, imageUrl, onClose, isDark }) => {
   const [loading, setLoading] = useState(true);
   return (
@@ -911,9 +795,7 @@ const ImagePreviewModal: React.FC<{ visible: boolean; imageUrl: string; onClose:
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   MESSAGE BUBBLE
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ MESSAGE BUBBLE ════════════════ */
 const MessageBubble: React.FC<{
   message: FamilyMessage; isMe: boolean; isDark: boolean; member?: any;
   showAvatar: boolean; onReaction: (emoji: string) => void; onReply: () => void;
@@ -921,11 +803,9 @@ const MessageBubble: React.FC<{
   onImagePress: (url: string) => void; onFilePress: (meta?: FileMetadata) => void;
   onResend: () => void; isFirstInGroup: boolean; isLastInGroup: boolean;
   onAvatarPress?: (targetId: string, member: any) => void;
-  showSweetAlert: (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => void;
 }> = ({
   message, isMe, isDark, member, showAvatar, onReaction, onReply, onDelete, onEdit, onInfo,
   onImagePress, onFilePress, onResend, isFirstInGroup, isLastInGroup, onAvatarPress,
-  showSweetAlert,
 }) => {
   const [showActions, setShowActions] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -954,10 +834,7 @@ const MessageBubble: React.FC<{
           onPress={() => {
             if (!member) return;
             const targetId = member.id || (member as any).userId;
-            if (targetId) {
-              // MemberBubble needs navigation; pass via prop instead of hooking
-              onAvatarPress?.(targetId, member);
-            }
+            if (targetId) onAvatarPress?.(targetId, member);
           }}
           style={{ marginRight: 8 }}
         >
@@ -1045,7 +922,6 @@ const MessageBubble: React.FC<{
         <MessageReactions reactions={message.reactions || []} isMe={isMe} onPress={onReaction} isDark={isDark} />
       </View>
 
-      {/* Actions Modal */}
       <Modal visible={showActions} transparent animationType="fade" onRequestClose={() => setShowActions(false)} statusBarTranslucent>
         <TouchableOpacity style={styles.actionBackdrop} onPress={() => setShowActions(false)} activeOpacity={1}>
           <BlurView intensity={isDark ? 80 : 95} tint={isDark ? 'dark' : 'light'} style={[styles.actionMenu, { backgroundColor: isDark ? 'rgba(30,30,35,0.95)' : 'rgba(255,255,255,0.95)' }]}>
@@ -1087,9 +963,7 @@ const ActionItem: React.FC<{ icon: any; label: string; color: string; onPress: (
   </PressableScale>
 );
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   REPLY PREVIEW BAR
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ REPLY PREVIEW ════════════════ */
 const ReplyPreview: React.FC<{ replyTo: { id: string; content: string; senderName: string } | null; onCancel: () => void; isDark: boolean }> = ({ replyTo, onCancel, isDark }) => {
   if (!replyTo) return null;
   return (
@@ -1108,29 +982,17 @@ const ReplyPreview: React.FC<{ replyTo: { id: string; content: string; senderNam
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   MAIN SCREEN
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ MAIN SCREEN ════════════════ */
 export default function FamilyChatScreen({ navigation, route }: FamilyChatScreenProps) {
   const { chatId: initialChatId, memberId, memberName, memberAvatar } = route.params || {};
-  const {
-    getOrCreateDirectChat, getChatMessages, sendMessage, editMessage, markChatRead,
-    deleteMessage, addReaction, setTypingStatus, getChatById, pickAndSendImage,
-    pickAndSendFile, getTypingUsers, resendMessage, blockUser, isUserBlocked, setCurrentChatId,
-    deleteChat, isChatHidden,
-  } = useFamilyChat();
+  const ctx = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
-  const { pickImage } = useMedia();
   const { darkMode } = useCustomization();
   const insets = useSafeAreaInsets();
 
   const isDark = darkMode ?? false;
 
-  // Track keyboard visibility so the input bar can pad against
-  // `insets.bottom` when closed and a small fixed pad when open.
-  // Without this, gesture-nav Android had double padding and the
-  // input slid off the top of the screen while typing.
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -1165,78 +1027,50 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const messagesRef = useRef<FamilyMessage[]>([]);
   const chatStillExistsRef = useRef(true);
 
-  const { subscribeToChatMessages, familyCode: activeFamilyCode } = useFamilyChat();
-
-  // ── STABLE CONTEXT SNAPSHOT ────────────────────────────────
-  // `useFamilyChat()` returns a NEW object every render, so every
-  // function it hands back (getChatById, getChatMessages, sendMessage,
-  // refreshEntries, etc.) has a new identity on every render. If we
-  // list them in any useCallback dependency array, that callback is
-  // recreated on every render — which cascades into `renderMessage`
-  // being recreated, which causes FlatList to remount every cell on
-  // every render and makes the screen feel sluggish.
-  //
-  // The functions themselves are stable-by-behaviour: they close over
-  // refs internally and don't change behaviour between renders. So we
-  // capture them ONCE and use the snapshot for the rest of the screen.
-  const ctxRef = useRef<ReturnType<typeof useFamilyChat> | null>(null);
+  // ── STABLE CTX SNAPSHOT ──
+  // We capture the context functions ONCE so our useCallbacks don't
+  // get recreated every render (which was causing FlatList to remount
+  // rows on every keystroke).
+  const ctxRef = useRef<any>(null);
   if (!ctxRef.current) {
-    // First render only — capture the live function references.
     ctxRef.current = {
-      getOrCreateDirectChat,
-      getChatMessages,
-      sendMessage,
-      editMessage,
-      markChatRead,
-      deleteMessage,
-      addReaction,
-      setTypingStatus,
-      getChatById,
-      pickAndSendImage,
-      pickAndSendFile,
-      getTypingUsers,
-      resendMessage,
-      blockUser,
-      isUserBlocked,
-      setCurrentChatId,
-      deleteChat,
-      isChatHidden,
-      subscribeToChatMessages,
-      familyCode: activeFamilyCode,
-    } as any;
+      getOrCreateDirectChat: ctx.getOrCreateDirectChat,
+      getChatMessages: ctx.getChatMessages,
+      sendMessage: ctx.sendMessage,
+      editMessage: ctx.editMessage,
+      markChatRead: ctx.markChatRead,
+      deleteMessage: ctx.deleteMessage,
+      addReaction: ctx.addReaction,
+      setTypingStatus: ctx.setTypingStatus,
+      getChatById: ctx.getChatById,
+      pickAndSendImage: ctx.pickAndSendImage,
+      pickAndSendFile: ctx.pickAndSendFile,
+      getTypingUsers: ctx.getTypingUsers,
+      resendMessage: ctx.resendMessage,
+      blockUser: ctx.blockUser,
+      isUserBlocked: ctx.isUserBlocked,
+      setCurrentChatId: ctx.setCurrentChatId,
+      deleteChat: ctx.deleteChat,
+      isChatHidden: ctx.isChatHidden,
+      subscribeToChatMessages: ctx.subscribeToChatMessages,
+      familyCode: ctx.familyCode,
+    };
   }
-  const ctx = ctxRef.current!;
+  const C = ctxRef.current;
 
-  // ── DEAD-ZONE-SAFE ORDER ──────────────────────────────────────
-  // Every `const` MUST be declared before any hook/effect above it
-  // that reads it. The previous order had `initializeChat` below the
-  // effect that calls it, and `headerInfo` below the memos that read
-  // `headerInfo.status` / `headerInfo.name`. Both are TDZ crashes on
-  // React's first render — the whole component fails to construct,
-  // which is what the "Cannot access 'X' before initialization" at
-  // line 1114 was reporting.
-  //
-  // The order below is:
-  //   1. Pure helpers (no hooks, no other consts)
-  //   2. Derived memos whose deps are only state/context
-  //   3. Functions that read those memos
-  //   4. Effects that call those functions
-  // ─────────────────────────────────────────────────────────────
-
-  /* ─── 1. Pure helpers (no dependency on other consts) ─────── */
-
+  /* ── Pure helpers ── */
   const formatDuration = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
-  const getMemberById = (id: string) =>
+  const getMemberById = useCallback((id: string) =>
     members.find((m) => m.id === id) ||
-    members.find((m: any) => m.userId === id);
+    members.find((m: any) => m.userId === id),
+    [members]);
 
-  const showSweetAlert = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+  const showSweetAlert = useCallback((type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
     setAlert({ visible: true, type, title, message });
-  };
+  }, []);
 
-  /* ─── 2. Derived memos (depend only on state/context) ────── */
-
+  /* ── Derived memos ── */
   const headerInfo = useMemo(() => {
     if (!chatInfo) return { name: memberName || 'Chat', avatar: memberAvatar || '💬', status: '' };
     if (chatInfo.type === 'group') {
@@ -1256,21 +1090,20 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
       avatar: member?.avatar || memberAvatar || '👤',
       status,
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatInfo, memberName, memberAvatar, userProfile, members]);
+  }, [chatInfo, memberName, memberAvatar, userProfile?.id, getMemberById]);
 
   const otherMembers = useMemo(
     () => members.filter((m) => m.id !== userProfile?.id && m.userId !== userProfile?.id),
-    [members, userProfile],
+    [members, userProfile?.id],
   );
 
   const typingText = useMemo(() => {
-    const typingUsers = getTypingUsers(chatId);
-    const others = typingUsers.filter((u) => u.userId !== userProfile?.id);
+    const list = C.getTypingUsers(chatId) as any[];
+    const others = (list || []).filter((u) => u.userId !== userProfile?.id);
     if (!others.length) return '';
     if (others.length === 1) return `${others[0].userName} is typing...`;
     return `${others.length} people are typing...`;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, userProfile?.id]);
 
   const quickReplies = useMemo<string[]>(() => {
@@ -1312,44 +1145,28 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   }, [messages, headerInfo.status, chatInfo, userProfile?.id]);
 
   const chatOptions = useMemo<SoftOption[]>(() => {
-    const otherId = chatInfo?.participants?.find(
-      (p: string) => p !== userProfile?.id,
-    );
-    const blocked = isUserBlocked(otherId || '');
-    const peerName =
-      headerInfo.name ||
-      (chatInfo?.type === 'group' ? 'this group' : 'this conversation');
-
+    const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
+    const blocked = C.isUserBlocked(otherId || '');
+    const peerName = headerInfo.name || (chatInfo?.type === 'group' ? 'this group' : 'this conversation');
     const opts: SoftOption[] = [];
-
     if (otherId) {
       opts.push({
         icon: blocked ? 'checkmark-circle-outline' : 'ban-outline',
         label: blocked ? 'Unblock User' : 'Block User',
-        subtitle: blocked
-          ? 'Receive messages from them again'
-          : 'Stop receiving messages from them',
+        subtitle: blocked ? 'Receive messages from them again' : 'Stop receiving messages from them',
         color: blocked ? DS.success : DS.danger,
         destructive: !blocked,
         onPress: () => {
-          blockUser(otherId);
-          const nowBlocked = isUserBlocked(otherId);
-          showSweetAlert(
-            nowBlocked ? 'warning' : 'success',
-            nowBlocked ? 'Blocked' : 'Unblocked',
-            nowBlocked ? 'User blocked' : 'User unblocked',
-          );
+          C.blockUser(otherId);
+          const nowBlocked = C.isUserBlocked(otherId);
+          showSweetAlert(nowBlocked ? 'warning' : 'success', nowBlocked ? 'Blocked' : 'Unblocked', nowBlocked ? 'User blocked' : 'User unblocked');
         },
       });
     }
-
     opts.push({
       icon: 'trash-outline',
       label: chatInfo?.type === 'group' ? 'Delete for Me' : 'Delete Chat',
-      subtitle:
-        chatInfo?.type === 'group'
-          ? 'Hide this group from your list'
-          : 'Remove conversation permanently',
+      subtitle: chatInfo?.type === 'group' ? 'Hide this group from your list' : 'Remove conversation permanently',
       color: DS.danger,
       destructive: true,
       onPress: () => {
@@ -1363,7 +1180,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
               style: 'destructive',
               onPress: async () => {
                 try {
-                  await deleteChat(chatId);
+                  await C.deleteChat(chatId);
                   navigation.goBack();
                 } catch {
                   showSweetAlert('error', 'Error', 'Failed to delete chat.');
@@ -1374,188 +1191,141 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         );
       },
     });
-
     return opts;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    chatInfo,
-    chatInfo?.participants,
-    chatInfo?.type,
-    chatId,
-    headerInfo.name,
-    isUserBlocked,
-    userProfile?.id,
-    blockUser,
-    deleteChat,
-    navigation,
-  ]);
+  }, [chatInfo, chatId, headerInfo.name, userProfile?.id, navigation, showSweetAlert]);
 
-  /* ─── 3. Functions that read the memos above ─────────────── */
-
+  /* ── Handlers ── */
   const refreshMessages = useCallback(() => {
     if (!chatId) return;
-    const msgs = getChatMessages(chatId);
-    setMessages(msgs);
-  }, [chatId, getChatMessages]);
+    setMessages(C.getChatMessages(chatId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
   const initializeChat = useCallback(async () => {
     if (initialChatId) {
-      const seeded = getChatMessages(initialChatId);
+      const seeded = C.getChatMessages(initialChatId);
       if (seeded.length > 0) {
         messagesRef.current = seeded;
         setMessages(seeded);
         setChatId(initialChatId);
-        setChatInfo(getChatById(initialChatId) ?? null);
+        setChatInfo(C.getChatById(initialChatId) ?? null);
         setIsLoading(false);
-      } else {
-        setIsLoading(true);
       }
-    } else {
-      setIsLoading(true);
     }
-
     let targetChatId = initialChatId;
     if (!targetChatId && memberId) {
       const member = members.find((m) => m.id === memberId);
-      targetChatId = await getOrCreateDirectChat(memberId, member);
+      targetChatId = await C.getOrCreateDirectChat(memberId, member);
     }
-
-    if (targetChatId && isChatHidden(targetChatId)) {
+    if (targetChatId && C.isChatHidden(targetChatId)) {
       navigation.goBack();
       return;
     }
-
     if (targetChatId) {
-      const chat = getChatById(targetChatId);
-      const seed = getChatMessages(targetChatId);
+      const chat = C.getChatById(targetChatId);
+      const seed = C.getChatMessages(targetChatId);
       setChatInfo(chat);
       messagesRef.current = seed;
       setMessages(seed);
       setChatId(targetChatId);
     }
     setIsLoading(false);
-  }, [
-    initialChatId,
-    memberId,
-    members,
-    getChatMessages,
-    getChatById,
-    getOrCreateDirectChat,
-    isChatHidden,
-    navigation,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialChatId, memberId, members, navigation]);
 
   const handleSend = useCallback(async () => {
     if (!inputText.trim() || !chatId) return;
     const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
-    if (otherId && isUserBlocked(otherId)) {
-      showSweetAlert('warning', 'Blocked', 'You have blocked this user. Unblock to send messages.');
+    if (otherId && C.isUserBlocked(otherId)) {
+      showSweetAlert('warning', 'Blocked', 'You have blocked this user.');
       return;
     }
-    if (!userProfile) {
+    if (!userProfile?.id) {
       showSweetAlert('error', 'Error', 'Please sign in to send messages');
       return;
     }
-
     const content = inputText.trim();
     setInputText('');
-
-    if (editingMessage) {
-      await editMessage(chatId, editingMessage, content);
-      setEditingMessage(null);
-      showSweetAlert('success', 'Updated!', 'Message has been edited successfully');
-    } else {
-      await sendMessage(chatId, content, 'text', undefined, undefined, replyingTo?.id);
-    }
-
-    setReplyingTo(null);
-    setTypingStatus(chatId, false);
-    refreshMessages();
-    setTimeout(() => { flatListRef.current?.scrollToEnd({ animated: true }); }, 100);
-    HAPTIC_SUCCESS();
-  }, [
-    inputText,
-    chatId,
-    userProfile,
-    editingMessage,
-    replyingTo,
-    sendMessage,
-    editMessage,
-    setTypingStatus,
-    chatInfo,
-    isUserBlocked,
-    refreshMessages,
-  ]);
-
-  const handleInputChange = useCallback(
-    (text: string) => {
-      setInputText(text);
-      if (text.length > 0) {
-        const now = Date.now();
-        if (now - lastTypingSentRef.current > 1500) {
-          lastTypingSentRef.current = now;
-          setTypingStatus(chatId, true);
-        }
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
-          lastTypingSentRef.current = 0;
-          setTypingStatus(chatId, false);
-        }, 3000);
+    try {
+      if (editingMessage) {
+        await C.editMessage(chatId, editingMessage, content);
+        setEditingMessage(null);
+        showSweetAlert('success', 'Updated!', 'Message has been edited successfully');
       } else {
-        lastTypingSentRef.current = 0;
-        setTypingStatus(chatId, false);
+        await C.sendMessage(chatId, content, 'text', undefined, undefined, replyingTo?.id);
       }
-    },
-    [chatId, setTypingStatus],
-  );
+      setReplyingTo(null);
+      C.setTypingStatus(chatId, false);
+      refreshMessages();
+      setTimeout(() => { flatListRef.current?.scrollToEnd({ animated: true }); }, 100);
+      HAPTIC_SUCCESS();
+    } catch {
+      showSweetAlert('error', 'Send Failed', 'Message could not be sent.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputText, chatId, userProfile?.id, editingMessage, replyingTo, chatInfo, refreshMessages, showSweetAlert]);
 
-  const handleImagePick = useCallback(
-    async (fromCamera: boolean = false) => {
-      HAPTIC_MEDIUM();
-      try {
-        await pickAndSendImage(chatId, fromCamera);
-        refreshMessages();
-        showSweetAlert('success', 'Photo Sent! 📷', 'Your photo has been shared');
-      } catch {
-        showSweetAlert('error', 'Error', 'Failed to send photo');
+  const handleInputChange = useCallback((text: string) => {
+    setInputText(text);
+    if (text.length > 0) {
+      const now = Date.now();
+      if (now - lastTypingSentRef.current > 1500) {
+        lastTypingSentRef.current = now;
+        C.setTypingStatus(chatId, true);
       }
-    },
-    [chatId, pickAndSendImage, refreshMessages],
-  );
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        lastTypingSentRef.current = 0;
+        C.setTypingStatus(chatId, false);
+      }, 3000);
+    } else {
+      lastTypingSentRef.current = 0;
+      C.setTypingStatus(chatId, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
+  const handleImagePick = useCallback(async (fromCamera: boolean = false) => {
+    HAPTIC_MEDIUM();
+    try {
+      await C.pickAndSendImage(chatId, fromCamera);
+      refreshMessages();
+      showSweetAlert('success', 'Photo Sent! 📷', 'Your photo has been shared');
+    } catch {
+      showSweetAlert('error', 'Error', 'Failed to send photo');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, refreshMessages, showSweetAlert]);
 
   const handleFilePick = useCallback(async () => {
     HAPTIC_MEDIUM();
     try {
-      await pickAndSendFile(chatId);
+      await C.pickAndSendFile(chatId);
       refreshMessages();
       showSweetAlert('success', 'File Sent! 📎', 'Your file has been shared');
     } catch {
       showSweetAlert('error', 'Error', 'Failed to send file');
     }
-  }, [chatId, pickAndSendFile, refreshMessages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, refreshMessages, showSweetAlert]);
 
-  const showImageSourceAlert = useCallback(() => {
-    handleImagePick(false);
-  }, [handleImagePick]);
+  const showImageSourceAlert = useCallback(() => { handleImagePick(false); }, [handleImagePick]);
 
-  const handleReaction = useCallback(
-    async (messageId: string, emoji: string) => {
-      await addReaction(chatId, messageId, emoji);
-      refreshMessages();
-      HAPTIC_LIGHT();
-    },
-    [chatId, addReaction, refreshMessages],
-  );
+  const handleReaction = useCallback(async (messageId: string, emoji: string) => {
+    await C.addReaction(chatId, messageId, emoji);
+    refreshMessages();
+    HAPTIC_LIGHT();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, refreshMessages]);
 
-  const handleDelete = useCallback(
-    async (messageId: string) => {
-      await deleteMessage(chatId, messageId);
-      refreshMessages();
-      showSweetAlert('success', 'Deleted', 'Message has been removed');
-      HAPTIC_SUCCESS();
-    },
-    [chatId, deleteMessage, refreshMessages],
-  );
+  const handleDelete = useCallback(async (messageId: string) => {
+    await C.deleteMessage(chatId, messageId);
+    refreshMessages();
+    showSweetAlert('success', 'Deleted', 'Message has been removed');
+    HAPTIC_SUCCESS();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, refreshMessages, showSweetAlert]);
 
   const handleEdit = useCallback((message: FamilyMessage) => {
     setEditingMessage(message.id);
@@ -1566,9 +1336,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const handleReply = useCallback((message: FamilyMessage) => {
     setReplyingTo({
       id: message.id,
-      content:
-        message.content ||
-        (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
+      content: message.content || (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
       senderName: message.senderName,
     });
     inputRef.current?.focus();
@@ -1594,7 +1362,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           const dl = await FileSystem.downloadAsync(meta.uri, dest);
           localUri = dl.uri;
         } catch (dlErr) {
-          console.warn('[FamilyChat] file download failed, opening URL:', dlErr);
+          console.warn('[FamilyChat] file download failed:', dlErr);
         }
       }
       const Sharing = require('expo-sharing');
@@ -1609,24 +1377,20 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     } catch {
       showSweetAlert('error', 'Error', 'Could not open file');
     }
-  }, []);
+  }, [showSweetAlert]);
 
-  const handleResend = useCallback(
-    async (messageId: string) => {
-      await resendMessage(chatId, messageId);
-      refreshMessages();
-    },
-    [chatId, resendMessage, refreshMessages],
-  );
+  const handleResend = useCallback(async (messageId: string) => {
+    await C.resendMessage(chatId, messageId);
+    refreshMessages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, refreshMessages]);
 
   const startRecording = useCallback(async () => {
     try {
       setIsRecording(true);
       setRecordingDuration(0);
       HAPTIC_HEAVY();
-      recordingInterval.current = setInterval(() => {
-        setRecordingDuration((d) => d + 1);
-      }, 1000);
+      recordingInterval.current = setInterval(() => setRecordingDuration((d) => d + 1), 1000);
     } catch {}
   }, []);
 
@@ -1636,29 +1400,28 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     setRecordingDuration(0);
     if (chatId) {
       try {
-        await sendMessage(chatId, '🎤 Voice message', 'voice');
+        await C.sendMessage(chatId, '🎤 Voice message', 'voice');
         refreshMessages();
         HAPTIC_SUCCESS();
       } catch {
         showSweetAlert('error', 'Error', 'Failed to send voice message');
       }
     }
-  }, [chatId, sendMessage, refreshMessages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, refreshMessages, showSweetAlert]);
 
-  /* ─── 4. Effects (may safely reference all of the above) ─── */
-
+  /* ── Effects ── */
   useEffect(() => {
-    if (chatId) setCurrentChatId(chatId);
-    return () => { setCurrentChatId(null); };
-  }, [chatId, setCurrentChatId]);
+    if (chatId) C.setCurrentChatId(chatId);
+    return () => { C.setCurrentChatId(null); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
-  // Family-switch guard
   useEffect(() => {
     if (!chatId) return;
-    const fresh = getChatById(chatId);
+    const fresh = C.getChatById(chatId);
     const chatFamily = fresh?.familyCode;
-    const switchedFamily =
-      chatFamily && activeFamilyCode && chatFamily !== activeFamilyCode;
+    const switchedFamily = chatFamily && C.familyCode && chatFamily !== C.familyCode;
     if ((!fresh && !chatStillExistsRef.current) || switchedFamily) {
       if (chatStillExistsRef.current) {
         chatStillExistsRef.current = false;
@@ -1667,12 +1430,12 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     } else if (fresh) {
       chatStillExistsRef.current = true;
     }
-  }, [chatId, activeFamilyCode, getChatById, navigation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, navigation]);
 
-  // Live message sync
   useEffect(() => {
-    if (!chatId || !subscribeToChatMessages) return;
-    const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
+    if (!chatId) return;
+    const unsub = C.subscribeToChatMessages(chatId, (_cid: string, msgs: FamilyMessage[]) => {
       setMessages((prev) =>
         msgs.length === 0 && prev.length > 0 && !chatStillExistsRef.current ? prev : msgs,
       );
@@ -1680,7 +1443,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
       const hasUnread = !!meId && msgs.some((m) => !m.readBy?.includes(meId));
       if (hasUnread && lastMarkedCountRef.current !== msgs.length) {
         lastMarkedCountRef.current = msgs.length;
-        markChatRead(chatId);
+        C.markChatRead(chatId);
       }
       const prevCount = messagesRef.current.length;
       messagesRef.current = msgs;
@@ -1689,100 +1452,67 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
       }
     });
     return unsub;
-  }, [chatId, subscribeToChatMessages, markChatRead, userProfile?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, userProfile?.id]);
 
-  // Chat bootstrap
   useEffect(() => {
     initializeChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialChatId, memberId]);
 
-  // Realtime profile-change: refresh chatInfo participants
   useEffect(() => {
     if (!chatId) return;
     const unsub = subscribeToProfileChanges(() => {
-      const fresh = getChatById(chatId);
+      const fresh = C.getChatById(chatId);
       if (fresh) setChatInfo(fresh);
     });
     return unsub;
-  }, [chatId, getChatById]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
-  /* ─── 5. renderMessage (safe after all consts above) ─────── */
-  const renderMessage = useCallback(
-    ({ item, index }: { item: FamilyMessage; index: number }) => {
-      const isMe = item.senderId === userProfile?.id;
-      const member = item.senderId !== 'system' ? getMemberById(item.senderId) : undefined;
-      const prev = messages[index - 1];
-      const next = messages[index + 1];
-      const isFirst =
-        !prev ||
-        prev.senderId !== item.senderId ||
-        new Date(item.timestamp).getTime() - new Date(prev.timestamp).getTime() > 300000;
-      const isLast =
-        !next ||
-        next.senderId !== item.senderId ||
-        new Date(next.timestamp).getTime() - new Date(item.timestamp).getTime() > 300000;
-      const showDateSep =
-        !prev || new Date(prev.timestamp).toDateString() !== new Date(item.timestamp).toDateString();
+  /* ── renderMessage ── */
+  const renderMessage = useCallback(({ item, index }: { item: FamilyMessage; index: number }) => {
+    const isMe = item.senderId === userProfile?.id;
+    const member = item.senderId !== 'system' ? getMemberById(item.senderId) : undefined;
+    const prev = messages[index - 1];
+    const next = messages[index + 1];
+    const isFirst = !prev || prev.senderId !== item.senderId || new Date(item.timestamp).getTime() - new Date(prev.timestamp).getTime() > 300000;
+    const isLast = !next || next.senderId !== item.senderId || new Date(next.timestamp).getTime() - new Date(item.timestamp).getTime() > 300000;
+    const showDateSep = !prev || new Date(prev.timestamp).toDateString() !== new Date(item.timestamp).toDateString();
 
-      return (
-        <View>
-          {showDateSep && <DateSeparator date={item.timestamp} isDark={isDark} />}
-          <MessageBubble
-            message={item}
-            isMe={isMe}
-            isDark={isDark}
-            member={member}
-            showAvatar={isFirst}
-            onReaction={(emoji) => handleReaction(item.id, emoji)}
-            onReply={() => handleReply(item)}
-            onDelete={() => handleDelete(item.id)}
-            onEdit={() => handleEdit(item)}
-            onInfo={() => handleMessageInfo(item)}
-            onImagePress={handleImagePress}
-            onFilePress={handleFilePress}
-            onResend={() => handleResend(item.id)}
-            isFirstInGroup={isFirst}
-            isLastInGroup={isLast}
-            onAvatarPress={(targetId, senderMember) => {
-              const role = String(senderMember?.role || '').toLowerCase();
-              const mode =
-                role === 'parent1'
-                  ? 'parent1'
-                  : role === 'parent2'
-                  ? 'parent2'
-                  : role === 'viewer'
-                  ? 'viewer'
-                  : 'guardian';
-              navigation.navigate('EditGuardian', {
-                memberId: targetId,
-                guardianId: targetId,
-                mode,
-                fromChat: true,
-              });
-            }}
-            showSweetAlert={showSweetAlert}
-          />
-        </View>
-      );
-    },
-    [
-      messages,
-      userProfile?.id,
-      isDark,
-      getMemberById,
-      handleReaction,
-      handleReply,
-      handleDelete,
-      handleEdit,
-      handleMessageInfo,
-      handleImagePress,
-      handleFilePress,
-      handleResend,
-      showSweetAlert,
-      navigation,
-    ],
-  );
+    return (
+      <View>
+        {showDateSep && <DateSeparator date={item.timestamp} isDark={isDark} />}
+        <MessageBubble
+          message={item}
+          isMe={isMe}
+          isDark={isDark}
+          member={member}
+          showAvatar={isFirst}
+          onReaction={(emoji) => handleReaction(item.id, emoji)}
+          onReply={() => handleReply(item)}
+          onDelete={() => handleDelete(item.id)}
+          onEdit={() => handleEdit(item)}
+          onInfo={() => handleMessageInfo(item)}
+          onImagePress={handleImagePress}
+          onFilePress={handleFilePress}
+          onResend={() => handleResend(item.id)}
+          isFirstInGroup={isFirst}
+          isLastInGroup={isLast}
+          onAvatarPress={(targetId, senderMember) => {
+            const role = String(senderMember?.role || '').toLowerCase();
+            const mode =
+              role === 'parent1' ? 'parent1'
+              : role === 'parent2' ? 'parent2'
+              : role === 'viewer' ? 'viewer'
+              : 'guardian';
+            navigation.navigate('EditGuardian', { memberId: targetId, guardianId: targetId, mode, fromChat: true });
+          }}
+        />
+      </View>
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, userProfile?.id, isDark, getMemberById, handleReaction, handleReply, handleDelete, handleEdit, handleMessageInfo, handleImagePress, handleFilePress, handleResend, navigation]);
 
   if (isLoading) {
     return (
@@ -1804,7 +1534,6 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
       <MessageInfoModal visible={showMessageInfo} onClose={() => setShowMessageInfo(false)} message={selectedMessage} isDark={isDark} members={members} />
       <ImagePreviewModal visible={!!previewImageUrl} imageUrl={previewImageUrl || ''} onClose={() => setPreviewImageUrl(null)} isDark={isDark} />
 
-      {/* Pulse header */}
       <View style={{ paddingTop: HEADER_TOP_PADDING }}>
         <PulseHeader
           isDark={isDark}
@@ -1819,36 +1548,20 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
             if (chatInfo?.type === 'direct') {
               const otherId = chatInfo.participants?.find((p: string) => p !== userProfile?.id);
               if (!otherId) return;
-              // Resolve the family_members row (id may differ from userId)
               const memberRow =
                 members.find((m: any) => m.id === otherId) ||
                 members.find((m: any) => m.userId === otherId);
-              const targetId = memberRow?.id || otherId; // fallback to userId
+              const targetId = memberRow?.id || otherId;
               const role = String(memberRow?.role || '').toLowerCase();
-              const mode =
-                role === 'parent1' ? 'parent1'
-                : role === 'parent2' ? 'parent2'
-                : role === 'viewer' ? 'viewer'
-                : 'guardian';
-              navigation.navigate('EditGuardian', {
-                memberId: targetId,
-                guardianId: targetId,
-                mode,
-                fromChat: true,
-              });
+              const mode = role === 'parent1' ? 'parent1' : role === 'parent2' ? 'parent2' : role === 'viewer' ? 'viewer' : 'guardian';
+              navigation.navigate('EditGuardian', { memberId: targetId, guardianId: targetId, mode, fromChat: true });
             }
           }}
           onToggleUsers={() => setShowUserBubbles(!showUserBubbles)}
           onVideo={async () => {
             HAPTIC_LIGHT();
             try {
-              // Open the OS video-call app. FaceTime on iOS, Meet on
-              // Android. Real deep links, no mock UI.
-              const url = Platform.select({
-                ios: 'facetime://',
-                android: 'https://meet.google.com/',
-                default: 'https://meet.google.com/',
-              });
+              const url = Platform.select({ ios: 'facetime://', android: 'https://meet.google.com/', default: 'https://meet.google.com/' });
               if (url) await Linking.openURL(url);
             } catch {
               showSweetAlert('error', 'Cannot Start Video', 'No video-call app is available.');
@@ -1857,19 +1570,12 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           onVoice={async () => {
             HAPTIC_LIGHT();
             try {
-              const phone =
-                (chatInfo?.type === 'direct'
-                  ? members.find(
-                      (m: any) =>
-                        m.userId ===
-                          chatInfo?.participants?.find((p: string) => p !== userProfile?.id) ||
-                        m.id ===
-                          chatInfo?.participants?.find((p: string) => p !== userProfile?.id),
-                    )
-                  : undefined) as any;
-              const url = phone?.phoneNumber
-                ? `tel:${String(phone.phoneNumber).replace(/[^\d+]/g, '')}`
-                : 'tel:';
+              const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
+              const peer = otherId
+                ? members.find((m: any) => m.userId === otherId || m.id === otherId)
+                : undefined;
+              const phone = (peer as any)?.phoneNumber || '';
+              const url = phone ? `tel:${String(phone).replace(/[^\d+]/g, '')}` : 'tel:';
               await Linking.openURL(url);
             } catch {
               showSweetAlert('error', 'Cannot Call', 'Phone dialer is unavailable.');
@@ -1890,7 +1596,6 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         />
       </View>
 
-      {/* User bubbles row */}
       {showUserBubbles && (
         <Animated.View entering={FadeInDown} style={[styles.userBubblesRow, { borderBottomColor: isDark ? DS.darkBorder : DS.gray200 }]}>
           <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.md, paddingVertical: 8 }}>
@@ -1908,44 +1613,34 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={KEYBOARD_VERTICAL_OFFSET}
       >
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingTop: DS.space.md, paddingBottom: 20 }}
-        showsVerticalScrollIndicator={false}
-        // ── KEY FIX ──────────────────────────────────────────
-        // Do NOT scrollToEnd on every content-size change while
-        // typing. That handler fires on EVERY keystroke (because
-        // the input grows / the KeyboardAvoidingView shrinks the
-        // list), yanking the whole message list upward and making
-        // it look like the screen slid off. We only auto-scroll
-        // when a NEW MESSAGE actually arrives — handled inside the
-        // `subscribeToChatMessages` effect below.
-        onContentSizeChange={() => { /* no-op — see subscription */ }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        removeClippedSubviews={false}
-        // Prevent the list from scrolling behind the header on
-        // Android when the keyboard resizes the window.
-        style={{ flex: 1 }}
-        ListEmptyComponent={
-          <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: DS.space.lg }}>
-            <View style={[styles.emptyChatIcon, { backgroundColor: `${DS.primary}15` }]}>
-              <Ionicons name="chatbubbles-outline" size={40} color={DS.primary} />
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingTop: DS.space.md, paddingBottom: 20 }}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => {}}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          removeClippedSubviews={false}
+          style={{ flex: 1 }}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: DS.space.lg }}>
+              <View style={[styles.emptyChatIcon, { backgroundColor: `${DS.primary}15` }]}>
+                <Ionicons name="chatbubbles-outline" size={40} color={DS.primary} />
+              </View>
+              <Text style={[styles.emptyChatTitle, { color: isDark ? DS.white : DS.gray900 }]}>No messages yet</Text>
+              <Text style={[styles.emptyChatSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Start the conversation!</Text>
             </View>
-            <Text style={[styles.emptyChatTitle, { color: isDark ? DS.white : DS.gray900 }]}>No messages yet</Text>
-            <Text style={[styles.emptyChatSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Start the conversation!</Text>
-          </View>
-        }
-      />
+          }
+        />
 
-      {typingText && (
-        <View style={{ paddingHorizontal: DS.space.lg, marginBottom: 4 }}>
-          <TypingIndicator isDark={isDark} />
-        </View>
-      )}
+        {typingText !== '' && (
+          <View style={{ paddingHorizontal: DS.space.lg, marginBottom: 4 }}>
+            <TypingIndicator isDark={isDark} />
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       <ReplyPreview replyTo={replyingTo} onCancel={() => setReplyingTo(null)} isDark={isDark} />
@@ -1971,11 +1666,6 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         <View style={[styles.inputBar, {
           backgroundColor: isDark ? 'rgba(12,10,9,0.98)' : 'rgba(255,255,255,0.98)',
           borderTopColor: isDark ? DS.darkBorder : DS.gray200,
-          // Pad against the safe-area bottom ONLY when the keyboard
-          // is closed. When it's open, the KAV offset already lifts
-          // the bar above the home-indicator / gesture zone, so a
-          // second `insets.bottom` would double-pad and push the
-          // input off the top of the visible screen.
           paddingBottom: keyboardOpen ? 8 : Math.max(10, insets.bottom),
         }]}>
           <TouchableOpacity style={styles.inputIconBtn} onPress={showImageSourceAlert}>
@@ -2032,11 +1722,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         visible={showOptionsSheet}
         onClose={() => setShowOptionsSheet(false)}
         title={chatInfo?.type === 'group' ? 'Group Chat' : headerInfo.name || 'Chat'}
-        message={
-          chatInfo?.type === 'group'
-            ? `${chatInfo.participants?.length || 0} members`
-            : headerInfo.status
-        }
+        message={chatInfo?.type === 'group' ? `${chatInfo.participants?.length || 0} members` : headerInfo.status}
         isDark={isDark}
         options={chatOptions}
       />
@@ -2044,11 +1730,8 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   STYLES
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ════════════════ STYLES ════════════════ */
 const styles = StyleSheet.create({
-  /* Pulse header */
   pulseWrap: {
     marginHorizontal: DS.space.lg, borderRadius: DS.radius['2xl'], padding: DS.space.md,
     overflow: 'hidden', borderWidth: 1, ...DS.shadow.md, position: 'relative',
@@ -2065,7 +1748,6 @@ const styles = StyleSheet.create({
   pulseSub: { fontSize: 11, fontWeight: '600', flex: 1 },
   pulseIconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
 
-  /* Alert */
   alertOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 9999, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 100 },
   alertContainer: { minWidth: 260, maxWidth: 320, borderRadius: 20, overflow: 'hidden', ...DS.shadow.lg },
   alertGradient: { alignItems: 'center', paddingVertical: DS.space.lg, paddingHorizontal: DS.space.xl, gap: 6 },
@@ -2074,19 +1756,16 @@ const styles = StyleSheet.create({
   alertDismiss: { marginTop: 6 },
   alertDismissText: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
 
-  /* File bubble */
   fileBubble: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 14, marginVertical: 2, gap: 10 },
   fileIcon: { width: 40, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   fileName: { fontSize: 13, fontWeight: '600' },
   fileSize: { fontSize: 11, fontWeight: '500', marginTop: 1 },
 
-  /* User bubble */
   userBubble: { alignItems: 'center', paddingHorizontal: 8, gap: 3 },
   userBubbleStatus: { position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
   userBubbleName: { fontSize: 11, fontWeight: '700', marginTop: 3, maxWidth: 60, textAlign: 'center' },
   userBubbleRole: { fontSize: 9, fontWeight: '600' },
 
-  /* Info Modal */
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   infoModal: { width: '100%', maxWidth: 400, maxHeight: '80%', borderRadius: DS.radius['2xl'], overflow: 'hidden', ...DS.shadow.lg },
   infoModalHeader: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md, padding: DS.space.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.05)' },
@@ -2099,40 +1778,29 @@ const styles = StyleSheet.create({
   infoReaction: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   infoReactionName: { fontSize: 11, fontWeight: '600' },
 
-  /* Date separator */
   dateSep: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: DS.space.lg, marginVertical: DS.space.md },
   dateLine: { flex: 1, height: 1 },
   dateBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10, marginHorizontal: DS.space.md },
   dateText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  /* Typing */
   typingBubble: { alignSelf: 'flex-start', padding: 10, borderRadius: 16, ...DS.shadow.sm },
   typingDot: { width: 7, height: 7, borderRadius: 3.5 },
 
-  /* Reactions */
   reactionsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 },
   reactionsRight: { alignSelf: 'flex-end', marginRight: 6 },
   reactionsLeft: { alignSelf: 'flex-start', marginLeft: 48 },
   reactionChip: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1 },
   reactionCount: { fontSize: 10, fontWeight: '700' },
 
-  /* Image preview */
   imagePreviewOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.9)' },
   imageCloseBtn: { position: 'absolute', top: 60, right: 20 },
   imageCloseBlur: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
 
-  /* Message bubbles */
   messageContainer: { marginVertical: 2, paddingHorizontal: DS.space.lg, flexDirection: 'row' },
   myContainer: { justifyContent: 'flex-end' },
   theirContainer: { justifyContent: 'flex-start' },
   senderName: { fontSize: 11, fontWeight: '700', marginBottom: 3, marginLeft: 4 },
-  bubble: {
-    maxWidth: Math.min(width * 0.78, 520),
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 16,
-    flexShrink: 1,
-  },
+  bubble: { maxWidth: Math.min(width * 0.78, 520), paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16, flexShrink: 1 },
   myBubble: { borderBottomRightRadius: 4 },
   myBubbleLast: { borderBottomRightRadius: 16 },
   theirBubble: { borderBottomLeftRadius: 4, borderWidth: 1 },
@@ -2147,35 +1815,28 @@ const styles = StyleSheet.create({
   timestamp: { fontSize: 10, fontWeight: '500' },
   editedLabel: { fontSize: 9, fontWeight: '500' },
 
-  /* Actions menu */
   actionBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
   actionMenu: { width: width * 0.85, maxHeight: height * 0.7, borderRadius: DS.radius['2xl'], padding: DS.space.md, overflow: 'hidden' },
   emojiRow: { paddingVertical: 10, paddingHorizontal: 6, borderBottomWidth: 1 },
   emojiButton: { padding: 6, marginHorizontal: 2 },
 
-  /* Reply bar */
   replyBar: { flexDirection: 'row', alignItems: 'center', padding: DS.space.md, borderTopWidth: 1 },
 
-  /* User bubbles row */
   userBubblesRow: { borderBottomWidth: 1 },
 
-  /* Empty chat */
   emptyChatIcon: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
   emptyChatTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
   emptyChatSub: { fontSize: 12, fontWeight: '500' },
 
-  /* Quick replies */
   quickReply: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
   quickReplyText: { fontSize: 12, fontWeight: '600' },
 
-  /* Input bar */
   inputBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: DS.space.md, paddingTop: 8, paddingBottom: 10, gap: 4, borderTopWidth: 1 },
   inputIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   inputWrapper: { flex: 1, borderRadius: 22, paddingHorizontal: 14, borderWidth: 1, maxHeight: 100 },
   input: { fontSize: 14, fontWeight: '500', paddingVertical: 9, maxHeight: 90, flexShrink: 1 },
   sendBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', ...DS.shadow.md },
 
-  /* Recording overlay */
   recordingOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: DS.space.md },
   recordingBar: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 22, backgroundColor: 'rgba(30,30,46,0.95)' },
   recordingDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },

@@ -396,8 +396,15 @@ export default function ContextProvider({ children }: ContextProviderProps) {
                       <ActivitySyncBridge>
                         <MediaProvider>
                           <FamilyChatWrapper>
-                            <CommunityProvider>
-                              <SafetyProvider>
+                            {/* CallProvider is scoped inside
+                                FamilyChatWrapper so the in-app call
+                                overlay sits on top of ANY screen the
+                                user is on, but is still cleaned up
+                                when FamilyChatProvider unmounts on
+                                sign-out. */}
+                            <CallProvider>
+                              <CommunityProvider>
+                                <SafetyProvider>
                                 {/* AIBootstrapGate runs AI warm-up on
                                     app launch + baby change */}
                                 <AIBootstrapGate />
