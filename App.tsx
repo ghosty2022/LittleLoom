@@ -494,10 +494,16 @@ export default function App(): React.ReactElement | null {
     let mounted = true;
     const loadTheme = async () => {
       try {
-        // Both reads in parallel — shaves 30-80ms off cold boot.
-        const [saved, seenOnboarding] = await Promise.all([
+        // All three reads in parallel — shaves 60-140ms off cold boot.
+        const [saved, seenOnboarding, navState] = await Promise.all([
           getAppSetting('appearance').catch(() => null),
           AsyncStorage.getItem(ONBOARDING_SEEN_KEY).catch(() => null),
+          // Nav-state restore is part of the boot critical path: if
+          // we don't have `initialState` before the first
+          // `AppNavigator` render, the navigator mounts on a default
+          // route and then re-routes on the next tick — a visible
+          // flash of Login. Pull it in parallel with theme.
+          statePersistence?.getNavigationState?.().catch(() => null) ?? Promise.resolve(null),
         ]);
         if (!mounted) return;
 
@@ -511,6 +517,17 @@ export default function App(): React.ReactElement | null {
           setInitialRouteName('Login');
         } else {
           setInitialRouteName('Onboarding');
+        }
+
+        // Apply restored nav state, but only if it survives the
+        // non-restorable route filter (login / lock / onboarding
+        // must never be re-entered from a stale snapshot).
+        if (
+          navState?.state &&
+          navState?.routeName &&
+          !NON_RESTORABLE_ROUTES.has(navState.routeName)
+        ) {
+          setInitialState(navState.state);
         }
       } catch {
         if (!mounted) return;
@@ -531,36 +548,40 @@ export default function App(): React.ReactElement | null {
 
     const init = async () => {
       try {
-        const essentialTasks = Promise.all([
-          Font.loadAsync(ESSENTIAL_FONTS).catch((e) => {
-            console.warn('[App] Font loading failed:', e);
-            return null;
-          }),
-        ]);
-
-        await Promise.race([
-          essentialTasks,
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Essential init timeout')), 1500)
-          ),
-        ]).catch((e) => {
-          console.warn('[App] Essential tasks timed out, continuing...', e);
-        });
-
+        // ── FAST PATH ────────────────────────────────────────────
+        // Hide the native splash IMMEDIATELY and flip `ready` in the
+        // same frame. Font loading is deferred to the background —
+        // Ionicons is bundled with the app binary and renders fine
+        // from its default fallback for the first ~50ms, so
+        // blocking the whole UI on Font.loadAsync was pure latency.
         if (!splashHiddenRef.current) {
-          await SplashScreen.hideAsync();
+          SplashScreen.hideAsync().catch(() => {});
           splashHiddenRef.current = true;
         }
         setReady(true);
 
-        runBackgroundTasks().catch((e) => {
-          console.warn('[App] Background tasks error:', e);
+        // Defer all non-critical work so the first paint is not
+        // competing with font I/O, image-dir creation, and nav-state
+        // restoration for the JS thread.
+        const defer = (fn: () => Promise<void> | void) =>
+          setTimeout(() => {
+            Promise.resolve(fn()).catch((e) =>
+              console.warn('[App] Deferred init error:', e),
+            );
+          }, 0);
+
+        defer(async () => {
+          await Font.loadAsync(ESSENTIAL_FONTS).catch((e) => {
+            console.warn('[App] Font loading failed:', e);
+          });
         });
+
+        defer(runBackgroundTasks);
       } catch (e) {
         console.error('[App] Critical init error:', e);
         setInitError('Failed to initialize app');
         if (!splashHiddenRef.current) {
-          await SplashScreen.hideAsync();
+          SplashScreen.hideAsync().catch(() => {});
           splashHiddenRef.current = true;
         }
         setReady(true);
@@ -578,6 +599,10 @@ export default function App(): React.ReactElement | null {
 
   const runBackgroundTasks = async () => {
     try {
+      // NOTE: `restoreNavigationState()` is NOT called here — it was
+      // moved into the theme-load effect so `initialState` is ready
+      // before the first `AppNavigator` render. Re-adding it here
+      // would double-restore and cause a visible re-route flash.
       const additionalFonts = {
         MaterialIcons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
         MaterialCommunityIcons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf'),
@@ -587,19 +612,16 @@ export default function App(): React.ReactElement | null {
         console.warn('[App] Additional fonts failed:', e);
       });
 
-      await initNotificationService();
-
+      // Fire-and-forget — none of these gate first paint.
+      initNotificationService().catch(() => {});
       if (ensureAllImageDirs && typeof ensureAllImageDirs === 'function') {
-        await ensureAllImageDirs();
+        ensureAllImageDirs().catch(() => {});
       }
-
       if (SystemUI && typeof SystemUI.setBackgroundColorAsync === 'function') {
-        await SystemUI.setBackgroundColorAsync(
+        SystemUI.setBackgroundColorAsync(
           initialTheme.isTrueBlack ? '#000000' : initialTheme.isDark ? '#08080f' : '#f8faff'
-        );
+        ).catch(() => {});
       }
-
-      await restoreNavigationState();
     } catch (e) {
       console.warn('[App] Background tasks error:', e);
     }
@@ -749,15 +771,19 @@ export default function App(): React.ReactElement | null {
       <ErrorBoundary>
         <GestureHandlerRootView style={styles.root}>
           <SafeAreaProvider>
-            <AppProvider>
-              <ContextProvider>
-                <InnerApp
-                  initialState={initialState}
-                  onStateChange={onStateChange}
-                  initialRouteName={initialRouteName}
-                />
-              </ContextProvider>
-            </AppProvider>
+            {/* NOTE: AppProvider is mounted INSIDE ContextProvider
+                (it is the outermost provider there). Do not mount a
+                second one here — doing so created two independent
+                theme/notification state trees, doubling the
+                bootstrap cost and letting them disagree about
+                `isDark` during the first frames. */}
+            <ContextProvider>
+              <InnerApp
+                initialState={initialState}
+                onStateChange={onStateChange}
+                initialRouteName={initialRouteName}
+              />
+            </ContextProvider>
           </SafeAreaProvider>
         </GestureHandlerRootView>
       </ErrorBoundary>

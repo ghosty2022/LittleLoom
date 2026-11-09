@@ -33,7 +33,11 @@ import { updateSectionState } from '../../hooks/useIntelligentSplash';
 const { width: SCREEN_W } = Dimensions.get('window');
 const ONBOARDING_KEY = '@littleloom_community_onboarding_v3';
 const SELECTED_TOPICS_KEY = '@community_selected_topics_v2';
-const MIN_TOPICS = 5;
+// Single minimum, referenced by the Continue button AND the
+// auto-select fallback. Kept at 3 so a user who manually picked 3
+// topics isn't trapped behind a "select 2 more" wall while the
+// navigator already considers them onboarded.
+const MIN_TOPICS = 3;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);

@@ -1063,7 +1063,16 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     let isValid = false;
     try {
       if (method === 'biometric') {
-        
+        // Re-check capabilities BEFORE prompting — `hasHardwareAsync`
+        // and `isEnrolledAsync` can return stale values after the
+        // user adds/removes a fingerprint while the app is
+        // backgrounded. Without the refresh, an "enrolled" device
+        // shows the biometric prompt and it silently no-ops on the
+        // OS side, leaving the user stuck on the lock screen.
+        try {
+          await refreshBiometricStatus();
+        } catch {}
+
         let hasHardware = false;
         let isEnrolled = false;
         try {
@@ -1117,7 +1126,7 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
     } finally {
       setTimeout(() => { unlockInProgressRef.current = false; }, 300);
     }
-  }, [authenticateWithBiometric, verifyPin, state.settings.isBiometricEnabled]);
+  }, [authenticateWithBiometric, verifyPin, state.settings.isBiometricEnabled, refreshBiometricStatus]);
 
   const forceUnlock = useCallback(async () => {
     await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'false');
