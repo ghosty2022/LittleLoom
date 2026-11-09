@@ -2358,6 +2358,7 @@ export default function FamilyChatScreen({
       sendMessage,
       editMessage,
       markChatRead,
+      markMessagesDelivered,
       deleteMessage,
       addReaction,
       setTypingStatus,
@@ -2921,14 +2922,28 @@ export default function FamilyChatScreen({
           markMessagesDelivered(chatId, undelivered);
         }
       }
-      setMessages((prev) =>
-        msgs.length === 0 &&
-        prev.length > 0 &&
-        !chatStillExistsRef.current
-          ? prev
-          : msgs,
-      );
-      const meId = userProfile?.id;
+      setMessages((prev) => {
+        const next =
+          msgs.length === 0 &&
+          prev.length > 0 &&
+          !chatStillExistsRef.current
+            ? prev
+            : msgs;
+        // Sort by timestamp so date separators / grouping stay
+        // correct even when realtime + optimistic appends interleave.
+        if (!next.length) return next;
+        const sorted = [...next].sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() -
+            new Date(b.timestamp).getTime(),
+        );
+        // Only return a NEW array if order actually changed,
+        // to avoid pointless re-renders.
+        const sameOrder = next.every(
+          (m, i) => m.id === sorted[i]?.id,
+        );
+        return sameOrder ? next : sorted;
+      });
       const hasUnread =
         !!meId && msgs.some((m) => !m.readBy?.includes(meId));
       if (
@@ -2952,6 +2967,7 @@ export default function FamilyChatScreen({
     chatId,
     subscribeToChatMessages,
     markChatRead,
+    markMessagesDelivered,
     userProfile?.id,
   ]);
 
@@ -2960,6 +2976,15 @@ export default function FamilyChatScreen({
     initializeChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialChatId, memberId]);
+
+  // Mark the chat read as soon as we mount with a valid chatId.
+  // Without this, opening the chat while it was already in the
+  // background never clears the unread badge for a message that
+  // arrived BEFORE this screen focused.
+  useEffect(() => {
+    if (!chatId) return;
+    markChatRead(chatId);
+  }, [chatId, markChatRead]);
 
   // Realtime profile-change: refresh chatInfo participants
   useEffect(() => {

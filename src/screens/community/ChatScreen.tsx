@@ -675,6 +675,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     sendMessage,
     editMessage,
     markChatRead,
+    markMessagesDelivered,
     setTypingStatus,
     getTypingUsers,
     deleteChat,
@@ -887,13 +888,33 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   useEffect(() => {
     if (!otherUserId) return;
     const unsub = subscribeToProfileChanges((payload) => {
-      // Peer's profile changed → swap in the new snapshot.
-      if (payload.userId === otherUserId) {
-        const fresh = getUserById(otherUserId);
-        if (fresh) setUser(fresh);
-      }
-      // My own profile changed → community context already broadcast;
-      // my own messages will re-render from message stream, no action.
+      if (payload.userId !== otherUserId) return;
+      const fresh = getUserById(otherUserId);
+      if (!fresh) return;
+      // ── PRESERVE family identity ─────────────────────────────
+      // The bootstrap resolved `user` from FamilyContext first
+      // (family badge, role, relationship). CommunityContext's
+      // `getUserById` returns the *community* shape and would
+      // wipe those fields. Merge instead of replace.
+      setUser((prev: any) => {
+        if (!prev) return fresh;
+        return {
+          ...fresh,
+          // Keep family-resolved fields authoritative when they
+          // exist; only refresh the community-provided bits.
+          isFamilyMember: prev.isFamilyMember ?? fresh.isFamilyMember,
+          role: prev.role ?? fresh.role,
+          relationship: prev.relationship ?? fresh.relationship,
+          displayName:
+            prev.isFamilyMember && prev.displayName
+              ? prev.displayName
+              : fresh.displayName,
+          avatar:
+            prev.isFamilyMember && prev.avatar
+              ? prev.avatar
+              : fresh.avatar,
+        };
+      });
     });
     return unsub;
   }, [otherUserId, getUserById]);
@@ -910,19 +931,29 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     const iv = setInterval(() => {
       const fresh = getUserById(otherUserId);
       if (fresh) {
-        setUser((prev) => {
-          // Only update when the visible fields actually changed to
-          // avoid needless re-renders.
-          if (
-            prev &&
-            prev.avatar === fresh.avatar &&
-            prev.displayName === fresh.displayName &&
-            prev.onlineStatus === fresh.onlineStatus &&
-            prev.lastActive === fresh.lastActive
-          ) {
-            return prev;
-          }
-          return fresh;
+        setUser((prev: any) => {
+          if (!prev) return fresh;
+          // Merge — see the profile-change effect above.
+          return {
+            ...prev,
+            // Community-owned fields:
+            onlineStatus: fresh.onlineStatus,
+            lastActive: fresh.lastActive,
+            isVerified: fresh.isVerified,
+            handle: fresh.handle || prev.handle,
+            // Family-owned fields (fall back to community when null):
+            displayName:
+              prev.isFamilyMember && prev.displayName
+                ? prev.displayName
+                : fresh.displayName,
+            avatar:
+              prev.isFamilyMember && prev.avatar
+                ? prev.avatar
+                : fresh.avatar,
+            role: prev.role ?? fresh.role,
+            relationship: prev.relationship ?? '',
+            isFamilyMember: prev.isFamilyMember ?? false,
+          };
         });
       }
     }, 45_000);
@@ -950,11 +981,27 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         return next;
       });
       const meId = userProfile?.id;
+      // ── DELIVERED TICKS (double grey) ────────────────────────
+      // Any inbound message we just received is now 'delivered'
+      // to us — mark it so the sender sees ✓✓ instead of ✓.
+      if (meId) {
+        const undelivered = msgs
+          .filter(
+            (m) =>
+              m.senderId !== meId &&
+              (m.deliveryStatus === 'sent' ||
+                m.deliveryStatus === 'sending'),
+          )
+          .map((m) => m.id);
+        if (undelivered.length > 0) {
+          markMessagesDelivered(chatId, undelivered);
+        }
+      }
       const hasUnread = !!meId && msgs.some((m) => !m.readBy?.includes(meId));
       if (hasUnread) markChatRead(chatId);
     });
     return unsub;
-  }, [chatId, subscribeToChatMessages, markChatRead, userProfile?.id]);
+  }, [chatId, subscribeToChatMessages, markChatRead, markMessagesDelivered, userProfile?.id]);
 
   /* ── Focus re-sync ──────────────────────────────────────── */
   // If I block/unblock this peer from another screen, or their
@@ -965,7 +1012,25 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
       if (!otherUserId) return;
       setIsBlocked(isUserBlocked(otherUserId));
       const fresh = getUserById(otherUserId);
-      if (fresh) setUser(fresh);
+      if (fresh) {
+        setUser((prev: any) => {
+          if (!prev) return fresh;
+          return {
+            ...prev,
+            onlineStatus: fresh.onlineStatus,
+            lastActive: fresh.lastActive,
+            isVerified: fresh.isVerified,
+            displayName:
+              prev.isFamilyMember && prev.displayName
+                ? prev.displayName
+                : fresh.displayName,
+            avatar:
+              prev.isFamilyMember && prev.avatar
+                ? prev.avatar
+                : fresh.avatar,
+          };
+        });
+      }
       if (chatId) {
         const fresh2 = getChatMessages(chatId);
         setMessages(fresh2);
@@ -1143,7 +1208,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
   };
 
   const handleReply = (message: FamilyMessage) => {
-    Haptics.impactAsync(ImpactFeedbackStyle.Light);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const isMe = message.senderId === userProfile?.id;
     // For my own messages, always say "You" — never show the peer's
     // name. For peer messages, prefer the LIVE name from

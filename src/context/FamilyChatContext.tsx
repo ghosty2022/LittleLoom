@@ -136,6 +136,7 @@ interface FamilyChatContextType extends FamilyChatState {
   ) => Promise<void>;
   editMessage: (chatId: string, messageId: string, newContent: string) => Promise<void>;
   markChatRead: (chatId: string) => Promise<void>;
+  markMessagesDelivered: (chatId: string, messageIds: string[]) => Promise<void>;
   deleteMessage: (chatId: string, messageId: string) => Promise<void>;
   clearChat: (chatId: string) => Promise<void>;
   resendMessage: (chatId: string, messageId: string) => Promise<void>;
@@ -821,7 +822,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             replyToPreview: (raw.reply_to_preview as string) || undefined,
             isEdited: (raw.is_edited as boolean) || false,
             editedAt: (raw.edited_at as string) || undefined,
-            deliveryStatus: 'sent',
+            deliveryStatus:
+              (raw.delivery_status as FamilyMessage['deliveryStatus']) ||
+              'sent',
           };
 
           // If this chat is hidden for me, drop the message entirely.
@@ -908,6 +911,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   content: (raw.content as string) || msg.content,
                   isEdited: (raw.is_edited as boolean) || msg.isEdited,
                   editedAt: (raw.edited_at as string) || msg.editedAt,
+                  deliveryStatus:
+                    (raw.delivery_status as FamilyMessage['deliveryStatus']) ||
+                    msg.deliveryStatus,
                 }
               : msg,
           );
@@ -1078,7 +1084,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             replyToPreview: (raw.reply_to_preview as string) || undefined,
             isEdited: (raw.is_edited as boolean) || false,
             editedAt: (raw.edited_at as string) || undefined,
-            deliveryStatus: 'sent',
+            deliveryStatus:
+              (raw.delivery_status as FamilyMessage['deliveryStatus']) ||
+              'sent',
           };
           if (hiddenChatsRef.current.has(message.chatId)) return;
           const existingChat = chatsRef.current.find(c => c.id === message.chatId);
@@ -1156,6 +1164,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                   content: (raw.content as string) || msg.content,
                   isEdited: (raw.is_edited as boolean) || msg.isEdited,
                   editedAt: (raw.edited_at as string) || msg.editedAt,
+                  deliveryStatus:
+                    (raw.delivery_status as FamilyMessage['deliveryStatus']) ||
+                    msg.deliveryStatus,
                 }
               : msg,
           );
@@ -1515,7 +1526,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             replyToPreview: row.reply_to_preview || undefined,
             isEdited: row.is_edited || false,
             editedAt: row.edited_at || undefined,
-            deliveryStatus: 'sent',
+            deliveryStatus: (row.delivery_status as FamilyMessage['deliveryStatus']) || 'sent',
           }));
           if (messages[chat.id].length > 0) {
             chat.lastMessage = messages[chat.id][messages[chat.id].length - 1];
@@ -1847,7 +1858,17 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       let actualUserId = memberId;
       let memberName = memberInfo?.fullName || '';
-      let memberAvatar = memberInfo?.avatar || '👤';
+      // Only accept a SHORT emoji as an avatar snapshot. If the
+      // caller passed an http/file URI, `family_chats.participant_avatars`
+      // stores that string, and every screen that reads it (call
+      // overlay, chat list) would try to render the URL as text.
+      // Prefer '👤' — the hydrate-from-`profiles` step in
+      // `performInitialSync` will pull the real image when it's
+      // available.
+      let memberAvatar =
+        memberInfo?.avatar && memberInfo.avatar.length <= 4
+          ? memberInfo.avatar
+          : '👤';
       let memberRole = memberInfo?.role || 'guardian';
 
       const isUUID =
@@ -2212,7 +2233,15 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const resendMessage = useCallback(
     async (chatId: string, messageId: string): Promise<void> => {
       const message = messagesRef.current[chatId]?.find(m => m.id === messageId);
-      if (!message || message.deliveryStatus !== 'failed') return;
+      // Accept `failed` OR stuck-at-`sending` (network dropped
+      // mid-insert). Both should be retryable.
+      if (
+        !message ||
+        (message.deliveryStatus !== 'failed' &&
+          message.deliveryStatus !== 'sending')
+      ) {
+        return;
+      }
 
       setState(prev => ({
         ...prev,
@@ -2307,6 +2336,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         .update({
           read: true,
           read_by: [...new Set([...unread.flatMap(m => m.readBy), me.id])],
+          // Flip to READ so the sender sees blue double ticks.
+          delivery_status: 'read',
+          updated_at: new Date().toISOString(),
         })
         .in('id', ids);
 
@@ -2317,7 +2349,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setState(prev => {
         const updatedMessages = (prev.messages[chatId] ?? []).map(m =>
           ids.includes(m.id) && !m.readBy.includes(me.id)
-            ? { ...m, read: true, readBy: [...m.readBy, me.id] }
+            ? {
+                ...m,
+                read: true,
+                readBy: [...m.readBy, me.id],
+                deliveryStatus: 'read' as const,
+              }
             : m,
         );
         const updatedChats = prev.chats.map(c =>
@@ -2325,6 +2362,81 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         );
         return { ...prev, chats: updatedChats, messages: { ...prev.messages, [chatId]: updatedMessages } };
       });
+    },
+    [],
+  );
+
+  /**
+   * Mark messages DELIVERED (double grey ticks) when this device
+   * receives them via realtime / broadcast.
+   *
+   * Marks only the peer's messages — our own messages stay
+   * 'sent'/'delivered'/'read' based on what the *peer* reports.
+   */
+  const markMessagesDelivered = useCallback(
+    async (chatId: string, messageIds: string[]) => {
+      if (!messageIds.length) return;
+      const me = userProfileRef.current;
+      if (!me?.id) return;
+
+      // Only touch messages we did NOT send ourselves, and only
+      // those currently in 'sent'/'sending' state.
+      const targets =
+        messagesRef.current[chatId]
+          ?.filter(
+            m =>
+              messageIds.includes(m.id) &&
+              m.senderId !== me.id &&
+              (m.deliveryStatus === 'sent' ||
+                m.deliveryStatus === 'sending'),
+          )
+          .map(m => m.id) ?? [];
+
+      if (targets.length === 0) return;
+
+      // Optimistic local update.
+      setState(prev => {
+        const list = prev.messages[chatId] ?? [];
+        const updated = list.map(m =>
+          targets.includes(m.id)
+            ? { ...m, deliveryStatus: 'delivered' as const }
+            : m,
+        );
+        return {
+          ...prev,
+          messages: { ...prev.messages, [chatId]: updated },
+        };
+      });
+
+      // Broadcast "delivered" so the sender's UI flips to ✓✓ within
+      // ~50ms instead of waiting for the Postgres UPDATE round-trip.
+      if (realtimeChannelRef.current && isSubscribedRef.current) {
+        targets.forEach((id) => {
+          realtimeChannelRef.current
+            ?.send({
+              type: 'broadcast',
+              event: 'delivered',
+              payload: {
+                messageId: id,
+                chatId,
+                deviceId: deviceIdRef.current,
+              },
+            })
+            .catch(() => {});
+        });
+      }
+
+      // Persist — best effort. If the column is missing it throws
+      // silently and we still show the tick locally.
+      try {
+        await supabase
+          .from('family_messages')
+          .update({
+            delivery_status: 'delivered',
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', targets);
+      } catch {}
     },
     [],
   );
@@ -2750,11 +2862,14 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (isDirect) {
         // Physical delete — either participant may delete a 1:1 DM.
+        // Direct chats are GLOBAL (family-agnostic). Filtering by
+        // the *current* `family_code` silently no-ops after a baby
+        // switch because the row lives under the creating family's
+        // code. Match on id ONLY.
         const { error } = await supabase
           .from('family_chats')
           .delete()
-          .eq('id', chatId)
-          .eq('family_code', familyCode);
+          .eq('id', chatId);
         if (error && __DEV__) {
           console.warn('[FamilyChat] deleteChat (direct) failed:', error.message);
         }
@@ -3007,6 +3122,7 @@ const getChatMessages = useCallback(
       sendMessage,
       editMessage,
       markChatRead,
+      markMessagesDelivered,
       deleteMessage,
       clearChat,
       resendMessage,
@@ -3049,6 +3165,7 @@ const getChatMessages = useCallback(
       sendMessage,
       editMessage,
       markChatRead,
+      markMessagesDelivered,
       deleteMessage,
       clearChat,
       resendMessage,

@@ -418,7 +418,14 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
               );
               return;
             }
-            navigation.navigate('Chat', { chatId: otherId } as any);
+            // Pass BOTH: the *real* chat id (so the screen opens
+            // instantly with a seeded buffer) and the peer user id
+            // (so the screen can hydrate peer identity even before
+            // the chat row is fetched).
+            navigation.navigate('Chat', {
+              chatId: item.id,
+              userId: otherId,
+            } as any);
           }}
           onLongPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

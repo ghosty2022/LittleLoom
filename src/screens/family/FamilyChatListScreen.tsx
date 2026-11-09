@@ -734,6 +734,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     chats, getUnreadCount, getOrCreateDirectChat, shareFamilyCode, deleteChat,
     pinChat, muteChat, getTypingUsers, createFamilyGroup,
     subscribeToChatMessages,
+    forceSync,
   } = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
@@ -814,11 +815,22 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     HAPTIC_LIGHT();
-    setTimeout(() => {
-      setRefreshing(false);
+    try {
+      if (typeof forceSync === 'function') {
+        await forceSync();
+      } else {
+        // Fallback so a stale `useFamilyChat()` value never leaves
+        // the spinner up.
+        await new Promise((r) => setTimeout(r, 600));
+      }
       HAPTIC_SUCCESS();
-    }, 1000);
-  }, []);
+    } catch {
+      // Swallow — a failed refresh should NOT block the spinner
+      // from clearing.
+    } finally {
+      setRefreshing(false);
+    }
+  }, [forceSync]);
 
   const ensureDirExists = async () => {
     const dir = FileSystem.documentDirectory + 'group_images/';
