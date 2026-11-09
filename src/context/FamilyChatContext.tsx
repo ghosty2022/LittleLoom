@@ -1526,13 +1526,70 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       chatsRef.current = chats;
       messagesRef.current = messages;
 
-      setState(prev => ({
-        ...prev,
-        chats,
-        messages,
-        isLoading: false,
-        isSynced: true,
-      }));
+      setState(prev => {
+        // ── MERGE, don't replace ────────────────────────────────
+        // Realtime may have delivered messages/chats while the
+        // network fetch was in flight. Replacing wholesale wiped
+        // them until the next sync — that's the "disappearing then
+        // reappearing on refresh" bug.
+        const prevChatsById = new Map(prev.chats.map(c => [c.id, c]));
+        const mergedChats = chats.map(c => {
+          const existing = prevChatsById.get(c.id);
+          if (!existing) return c;
+          // Keep the *fresher* lastMessage/unreadCount from realtime.
+          const existingTs = existing.lastMessage
+            ? new Date(existing.lastMessage.timestamp).getTime()
+            : 0;
+          const fetchedTs = c.lastMessage
+            ? new Date(c.lastMessage.timestamp).getTime()
+            : 0;
+          if (existingTs > fetchedTs) {
+            return {
+              ...c,
+              lastMessage: existing.lastMessage,
+              updatedAt: existing.updatedAt,
+              unreadCount: Math.max(c.unreadCount, existing.unreadCount),
+            };
+          }
+          return c;
+        });
+        // Include any chats realtime added that the DB fetch missed.
+        prev.chats.forEach(existing => {
+          if (!mergedChats.some(c => c.id === existing.id)) {
+            mergedChats.push(existing);
+          }
+        });
+
+        const mergedMessages: Record<string, FamilyMessage[]> = { ...messages };
+        Object.keys(prev.messages).forEach(chatId => {
+          const fetched = mergedMessages[chatId] ?? [];
+          const live = prev.messages[chatId] ?? [];
+          if (live.length === 0) return;
+          // Merge by id so a realtime message received during the
+          // fetch isn't dropped.
+          const byId = new Map<string, FamilyMessage>();
+          fetched.forEach(m => byId.set(m.id, m));
+          live.forEach(m => {
+            if (!byId.has(m.id)) byId.set(m.id, m);
+          });
+          mergedMessages[chatId] = Array.from(byId.values()).sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() -
+              new Date(b.timestamp).getTime(),
+          );
+        });
+
+        chatsRef.current = mergedChats;
+        messagesRef.current = mergedMessages;
+
+        return {
+          ...prev,
+          chats: mergedChats,
+          messages: mergedMessages,
+          isLoading: false,
+          isSynced: true,
+        };
+      });
 
       setupRealtimeListeners();
     } catch (error) {
@@ -1571,10 +1628,61 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
         if (!isMountedRef.current) return;
-        // Clear the "initialised" flag so performInitialSync re-runs.
-        isInitializedRef.current = false;
-        performInitialSync().catch(() => {});
-      }, 350);
+        // ── DO NOT wipe chats ─────────────────────────────────
+        // We only need to re-hydrate participant names/avatars.
+        // Re-running performInitialSync here used to REPLACE the
+        // whole chat list (flash / disappearing chats).
+        // Instead, refresh names/avatars in-place.
+        (async () => {
+          try {
+            const participantIds = new Set<string>();
+            chatsRef.current.forEach(c => {
+              (c.participants || []).forEach(p => participantIds.add(p));
+            });
+            if (participantIds.size === 0) return;
+            const { data: profs } = await supabase
+              .from('profiles')
+              .select(
+                'id, full_name, community_display_name, community_avatar, avatar_url, avatar',
+              )
+              .in('id', Array.from(participantIds));
+            if (!profs || profs.length === 0) return;
+            const map: Record<string, { name?: string; avatar?: string }> = {};
+            profs.forEach((p: any) => {
+              map[p.id] = {
+                name: p.community_display_name || p.full_name,
+                avatar: p.community_avatar || p.avatar_url || p.avatar,
+              };
+            });
+            setState(prev => ({
+              ...prev,
+              chats: prev.chats.map(c => {
+                const nextNames = { ...(c.participantNames || {}) };
+                const nextAvatars = { ...(c.participantAvatars || {}) };
+                let changed = false;
+                (c.participants || []).forEach(p => {
+                  const m = map[p];
+                  if (m?.name && nextNames[p] !== m.name) {
+                    nextNames[p] = m.name;
+                    changed = true;
+                  }
+                  if (m?.avatar && nextAvatars[p] !== m.avatar) {
+                    nextAvatars[p] = m.avatar;
+                    changed = true;
+                  }
+                });
+                return changed
+                  ? {
+                      ...c,
+                      participantNames: nextNames,
+                      participantAvatars: nextAvatars,
+                    }
+                  : c;
+              }),
+            }));
+          } catch {}
+        })();
+      }, 400);
     });
 
     return () => {

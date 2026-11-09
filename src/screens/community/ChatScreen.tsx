@@ -1814,37 +1814,65 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         {/* Reply preview */}
         <ReplyPreviewBar replyTo={replyingTo} onCancel={() => setReplyingTo(null)} isDark={isDark} />
 
-        {/* Context-aware quick replies — only when the composer is empty. */}
         {!inputText.trim() && !editingMessage && quickReplies.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: LL.space.lg, paddingVertical: 6, gap: 6 }}
-            keyboardShouldPersistTaps="handled"
+          <View
+            style={{
+              // Fixed height prevents the list from jittering as
+              // chips re-render on each keystroke.
+              height: 44,
+              justifyContent: 'center',
+            }}
           >
-            {quickReplies.map((reply) => (
-              <TouchableOpacity
-                key={reply}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setInputText(reply);
-                }}
-                activeOpacity={0.8}
-                style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 7,
-                  borderRadius: 16,
-                  backgroundColor: isDark ? 'rgba(99,102,241,0.14)' : `${LL.primary}10`,
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(99,102,241,0.3)' : `${LL.primary}25`,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? LL.primaryLight : LL.primary }}>
-                  {reply}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{
+                paddingHorizontal: LL.space.lg,
+                paddingVertical: 6,
+                gap: 8,
+                alignItems: 'center',
+              }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {quickReplies.map((reply) => (
+                <TouchableOpacity
+                  key={reply}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setInputText(reply);
+                  }}
+                  activeOpacity={0.8}
+                  style={{
+                    // Fixed height + single-line so chips never wrap
+                    // or grow the row.
+                    height: 32,
+                    maxWidth: 260,
+                    paddingHorizontal: 14,
+                    borderRadius: 16,
+                    justifyContent: 'center',
+                    backgroundColor: isDark
+                      ? 'rgba(99,102,241,0.14)'
+                      : `${LL.primary}10`,
+                    borderWidth: 1,
+                    borderColor: isDark
+                      ? 'rgba(99,102,241,0.3)'
+                      : `${LL.primary}25`,
+                  }}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      color: isDark ? LL.primaryLight : LL.primary,
+                    }}
+                  >
+                    {reply}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
         )}
 
         {/* Input bar */}

@@ -2265,6 +2265,7 @@ export default function FamilyChatScreen({
     sendMessage,
     editMessage,
     markChatRead,
+    markMessagesDelivered,
     deleteMessage,
     addReaction,
     setTypingStatus,
@@ -2905,6 +2906,21 @@ export default function FamilyChatScreen({
   useEffect(() => {
     if (!chatId || !subscribeToChatMessages) return;
     const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
+      // ── Mark incoming messages DELIVERED (double grey ticks) ──
+      const meId = userProfile?.id;
+      if (meId) {
+        const undelivered = msgs
+          .filter(
+            (m) =>
+              m.senderId !== meId &&
+              (m.deliveryStatus === 'sent' ||
+                m.deliveryStatus === 'sending'),
+          )
+          .map((m) => m.id);
+        if (undelivered.length > 0) {
+          markMessagesDelivered(chatId, undelivered);
+        }
+      }
       setMessages((prev) =>
         msgs.length === 0 &&
         prev.length > 0 &&
@@ -3338,13 +3354,15 @@ export default function FamilyChatScreen({
 
       <View style={{ flexShrink: 0 }}>
         {!inputText && !replyingTo && quickReplies.length > 0 && (
+          <View style={{ height: 44, justifyContent: 'center' }}>
           <Animated.ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{
               paddingHorizontal: DS.space.md,
               paddingVertical: 6,
-              gap: 6,
+              gap: 8,
+              alignItems: 'center',
             }}
             keyboardShouldPersistTaps="handled"
           >
