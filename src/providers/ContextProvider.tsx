@@ -106,8 +106,18 @@ const SecurityAuthBridge: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const auth = useAuth();
 
+  // Remount SecurityProvider whenever the signed-in user identity
+  // changes. Without this the provider keeps the PREVIOUS account's
+  // `isSecurityLocked`, PIN flag, and biometric flags across a
+  // sign-out → sign-in cycle, so a fresh account either skips the
+  // biometric gate entirely or inherits the old lock state.
+  const securityKey = `${auth.userProfile?.id ?? 'anon'}::${
+    auth.isAuthenticated ? 'in' : 'out'
+  }`;
+
   return (
     <SecurityProvider
+      key={securityKey}
       isAuthenticated={auth.isAuthenticated}
       setupComplete={auth.setupComplete}
       setSetupCompleteCallback={auth.setSetupCompleteCallback}

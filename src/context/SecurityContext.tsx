@@ -376,6 +376,17 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
       const isBiometricEnabled = biometricEnabled === 'true';
       const hasSecurityEnabled = isBiometricEnabled || hasPin || isAppLockEnabled;
 
+      // ── COLD-BOOT RE-LOCK ─────────────────────────────────────
+      // If the user has ANY security enabled we must show the lock
+      // screen at launch, regardless of how the app was last closed
+      // (swiped away, killed by OS, device reboot, OTA restart).
+      //
+      // Previously we only re-locked when
+      // `littleloom_security_lock === 'true'`, which is only written
+      // by the manual "Lock Now" button. A normal kill therefore
+      // dropped the user straight into the app without biometrics.
+      const shouldLockOnBoot = hasSecurityEnabled;
+
       console.log('[Security] loadSecurityState - biometricEnabled from storage:', biometricEnabled);
       console.log('[Security] loadSecurityState - isBiometricEnabled:', isBiometricEnabled);
 
@@ -388,9 +399,18 @@ export const SecurityProvider: React.FC<SecurityProviderProps> = ({
         } catch {}
       }
 
+      // Keep the AsyncStorage lock flag in sync with the derived
+      // decision so `AppNavigator` (which reads the flag directly
+      // before `SecurityContext` finishes hydrating) also locks.
+      if (hasSecurityEnabled) {
+        try {
+          await AsyncStorage.setItem(ASYNC_KEYS.SECURITY_LOCK, 'true');
+        } catch {}
+      }
+
       return {
         isLoading: false,
-        isSecurityLocked: (securityLocked === 'true') && hasSecurityEnabled,
+        isSecurityLocked: shouldLockOnBoot,
         securityQuestions,
         settings: {
           ...defaultSettings,

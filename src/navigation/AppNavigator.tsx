@@ -873,6 +873,12 @@ function NavigationContent({
         break;
 
       case 'LOGIN':
+        // Guard: if auth is still settling (`sessionChecked === false`)
+        // a transient false negative would blow away the session lock
+        // flags AND reset the navigator to Login. Wait one tick and
+        // re-evaluate; the effect will fire again when
+        // `sessionChecked` flips.
+        if (!sessionChecked) break;
         (async () => {
           try {
             await AsyncStorage.removeItem('littleloom_security_lock');
@@ -1035,117 +1041,140 @@ function NavigationContent({
     >
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ flex: 1 }} collapsable={false}>
-        <Stack.Navigator
-          initialRouteName={resolvedInitialRoute as any}
-          screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
-        >
-          <Stack.Screen
-            name="Onboarding"
-            component={OnboardingScreen}
-            options={{ animation: 'fade', gestureEnabled: false }}
-          />
-          <Stack.Group screenOptions={{ animation: 'slide_from_bottom' }}>
+          <Stack.Navigator
+            initialRouteName={resolvedInitialRoute as any}
+            screenOptions={{
+              headerShown: false,
+              // UNIFORM default — every non-modal screen slides in
+              // from the right. This is what users expect from a
+              // stack navigator and eliminates the "some screens
+              // come from below / some fade / some from the left"
+              // inconsistency.
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          >
+            {/* ── AUTH / ONBOARDING ─────────────────────────────────
+                These are the only screens allowed a non-slide
+                transition, because they replace the whole app
+                context rather than push a new layer. */}
+            <Stack.Screen
+              name="Onboarding"
+              component={OnboardingScreen}
+              options={{ animation: 'fade', gestureEnabled: false }}
+            />
             <Stack.Screen
               name="Login"
               component={LoginScreen}
-              options={{ gestureEnabled: false, animation: 'none' }}
+              options={{ gestureEnabled: false, animation: 'fade' }}
             />
             <Stack.Screen
               name="SignUp"
               component={SignUpScreen}
-              options={{ gestureEnabled: false, animation: 'none' }}
+              options={{ gestureEnabled: false, animation: 'fade' }}
             />
-            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen
+              name="ForgotPassword"
+              component={ForgotPasswordScreen}
+              options={{ animation: 'slide_from_right' }}
+            />
             <Stack.Screen
               name="ForcedPasswordChange"
               component={ForcedPasswordChangeScreen}
               options={{ gestureEnabled: false, animation: 'fade' }}
             />
-          </Stack.Group>
 
-          <Stack.Screen
-            name="QRScanner"
-            component={QRScannerScreen}
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-
-          <Stack.Group screenOptions={{ animation: 'slide_from_right' }}>
-            <Stack.Screen name="CoParentInviteScreen" component={CoParentInviteScreen} options={{ gestureEnabled: false }} />
-            <Stack.Screen name="BabyOptional" component={BabyOnboardingScreen} options={{ gestureEnabled: false }} />
-            <Stack.Screen name="CreateBabyProfile" component={BabyProfileCreateScreen} options={{ gestureEnabled: false }} />
-          </Stack.Group>
-
-          <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade', gestureEnabled: false }} />
-
-          <Stack.Screen name="Timeline" component={TimelineScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="EntryDetail" component={EntryDetailScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="PottyTracker" component={TimelineScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="FeedTracker" component={TimelineScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="SleepTracker" component={TimelineScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="CommunityProfile" component={CommunityProfileScreen} options={{ animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
-          <Stack.Screen name="Profile" component={FamilyDashboardScreen} options={{ animation: 'none' }} />
-          <Stack.Screen
-            name="SwitchBaby"
-            component={BabySelectorScreen}
-            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-          />
-          <Stack.Screen name="EditProfile" component={BabyProfileScreen} />
-          <Stack.Screen name="EditGuardian" component={EditGuardianScreen} />
-          <Stack.Screen name="SecureAccessList" component={FamilySharingScreen} />
-          <Stack.Screen name="Gallery" component={GalleryScreen} />
-          <Stack.Screen name="FamilyChatList" component={FamilyChatListScreen} />
-          <Stack.Screen name="FamilyChat" component={FamilyChatScreen} />
-          <Stack.Screen name="BackupRestore" component={BackupRestoreScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="ContactSupport" component={ContactSupportScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="About" component={AboutScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="UnitSettings" component={UnitSettingsScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="AIManagement" component={AIManagementScreen} options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="VaccinationSchedule" component={VaccinationScheduleScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="PediatricianPDFExport" component={PediatricianPDFExport} options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} options={{ animation: 'none' }} />
-
-          <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
-            <Stack.Screen name="AddEntry" component={AddEntryScreen} />
-            <Stack.Screen name="Achievements" component={AchievementsScreen} />
-            <Stack.Screen name="GrowthDashboard" component={GrowthDashboardScreen} />
-            <Stack.Screen name="Insights" component={InsightsScreen} />
-            <Stack.Screen name="TrackerReminders" component={TrackerRemindersScreen} />
-            <Stack.Screen name="FamilySharing" component={FamilySharingScreen} />
-            <Stack.Screen name="SoundMixer" component={SoundMixerScreen} />
-            <Stack.Screen name="Customize" component={CustomizeScreen} />
-          </Stack.Group>
-
-          <Stack.Group screenOptions={{ presentation: 'fullScreenModal', animation: 'fade' }}>
-            <Stack.Screen name="SecurityLock" component={SecurityLockScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="BiometricSetup" component={BiometricSetupScreen} />
-            <Stack.Screen name="SecurityCenter" component={SecurityCenterScreen} />
+            {/* ── SETUP FLOW ─────────────────────────────────────── */}
             <Stack.Screen
-              name="VaultLock"
-              component={VaultLockScreen}
-              options={{ headerShown: false, animation: 'slide_from_bottom' }}
+              name="CoParentInviteScreen"
+              component={CoParentInviteScreen}
+              options={{ gestureEnabled: false }}
             />
-          </Stack.Group>
+            <Stack.Screen
+              name="BabyOptional"
+              component={BabyOnboardingScreen}
+              options={{ gestureEnabled: false }}
+            />
+            <Stack.Screen
+              name="CreateBabyProfile"
+              component={BabyProfileCreateScreen}
+              options={{ gestureEnabled: false }}
+            />
 
-          <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
-          <Stack.Screen name="AllTrackers" component={AllTrackersScreen} options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
-          <Stack.Screen name="More" component={MoreScreen} options={{ animation: 'none' }} />
+            {/* ── MAIN TABS (fade — tab shell replaces the stack) ── */}
+            <Stack.Screen
+              name="Main"
+              component={MainTabs}
+              options={{ animation: 'fade', gestureEnabled: false }}
+            />
 
-          <Stack.Screen
-            name="TimelinePicker"
-            component={TimelinePickerRoute}
-            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
-          />
-        </Stack.Navigator>
+            {/* ── EVERYTHING ELSE: uniform slide_from_right ──────── */}
+            <Stack.Screen name="QRScanner" component={QRScannerScreen} options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom', gestureEnabled: false }} />
+            <Stack.Screen name="Timeline" component={TimelineScreen} />
+            <Stack.Screen name="EntryDetail" component={EntryDetailScreen} />
+            <Stack.Screen name="PottyTracker" component={TimelineScreen} />
+            <Stack.Screen name="FeedTracker" component={TimelineScreen} />
+            <Stack.Screen name="SleepTracker" component={TimelineScreen} />
+            <Stack.Screen name="CommunityProfile" component={CommunityProfileScreen} />
+            <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
+            <Stack.Screen name="Profile" component={FamilyDashboardScreen} />
+            <Stack.Screen name="EditProfile" component={BabyProfileScreen} />
+            <Stack.Screen name="EditGuardian" component={EditGuardianScreen} />
+            <Stack.Screen name="SecureAccessList" component={FamilySharingScreen} />
+            <Stack.Screen name="Gallery" component={GalleryScreen} />
+            <Stack.Screen name="FamilyChatList" component={FamilyChatListScreen} />
+            <Stack.Screen name="FamilyChat" component={FamilyChatScreen} />
+            <Stack.Screen name="BackupRestore" component={BackupRestoreScreen} />
+            <Stack.Screen name="HelpCenter" component={HelpCenterScreen} />
+            <Stack.Screen name="ContactSupport" component={ContactSupportScreen} />
+            <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+            <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
+            <Stack.Screen name="About" component={AboutScreen} />
+            <Stack.Screen name="LanguageSettings" component={LanguageSettingsScreen} />
+            <Stack.Screen name="UnitSettings" component={UnitSettingsScreen} />
+            <Stack.Screen name="AIManagement" component={AIManagementScreen} />
+            <Stack.Screen name="VaccinationSchedule" component={VaccinationScheduleScreen} />
+            <Stack.Screen name="PediatricianPDFExport" component={PediatricianPDFExport} />
+            <Stack.Screen name="SafetyCorner" component={SafetyCornerScreen} />
+            <Stack.Screen name="UniversalTrackerHub" component={UniversalTrackerHubScreen} />
+            <Stack.Screen name="AllTrackers" component={AllTrackersScreen} />
+            <Stack.Screen name="CreateCustomTracker" component={CreateCustomTrackerScreen} />
+            <Stack.Screen name="More" component={MoreScreen} />
+
+            {/* ── MODALS: slide_from_bottom (intentionally different) ── */}
+            <Stack.Screen
+              name="SwitchBaby"
+              component={BabySelectorScreen}
+              options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+            />
+            <Stack.Group screenOptions={{ presentation: 'modal', animation: 'slide_from_bottom' }}>
+              <Stack.Screen name="AddEntry" component={AddEntryScreen} />
+              <Stack.Screen name="Achievements" component={AchievementsScreen} />
+              <Stack.Screen name="GrowthDashboard" component={GrowthDashboardScreen} />
+              <Stack.Screen name="Insights" component={InsightsScreen} />
+              <Stack.Screen name="TrackerReminders" component={TrackerRemindersScreen} />
+              <Stack.Screen name="FamilySharing" component={FamilySharingScreen} />
+              <Stack.Screen name="SoundMixer" component={SoundMixerScreen} />
+              <Stack.Screen name="Customize" component={CustomizeScreen} />
+              <Stack.Screen
+                name="TimelinePicker"
+                component={TimelinePickerRoute}
+                options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+              />
+            </Stack.Group>
+
+            {/* ── SECURITY: fullScreenModal + fade (lock overlays) ── */}
+            <Stack.Group screenOptions={{ presentation: 'fullScreenModal', animation: 'fade' }}>
+              <Stack.Screen name="SecurityLock" component={SecurityLockScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="BiometricSetup" component={BiometricSetupScreen} />
+              <Stack.Screen name="SecurityCenter" component={SecurityCenterScreen} />
+              <Stack.Screen
+                name="VaultLock"
+                component={VaultLockScreen}
+                options={{ headerShown: false, animation: 'slide_from_bottom' }}
+              />
+            </Stack.Group>
+          </Stack.Navigator>
       </View>
     </NavigationContainer>
   );

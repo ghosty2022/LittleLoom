@@ -202,9 +202,21 @@ const SPLASH_SCREEN_OPTIONS = {
   contentStyle: { backgroundColor: CommunityColors.background.main },
 };
 
+// Uniform transition for every non-modal Community screen.
+// Only CreatePost / Report / Profile (modals) override this.
 const MAIN_SCREEN_OPTIONS = {
   headerShown: false,
   animation: 'slide_from_right' as const,
+  gestureEnabled: true,
+  contentStyle: { backgroundColor: CommunityColors.background.main },
+};
+
+// Modals open from the bottom — intentionally distinct so the user
+// can tell "this is a modal, swipe down / dismiss" vs "this is a
+// pushed screen, swipe back". Everything else uses MAIN_SCREEN_OPTIONS.
+const MODAL_SCREEN_OPTIONS = {
+  headerShown: false,
+  animation: 'slide_from_bottom' as const,
   gestureEnabled: true,
   contentStyle: { backgroundColor: CommunityColors.background.main },
 };
@@ -933,16 +945,16 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         <Stack.Screen
           name="CommunityProfile"
           component={CommunityProfileScreen}
-          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+          options={MODAL_SCREEN_OPTIONS}
         />
         <Stack.Screen
           name="CommunityVerification"
           component={CommunityVerificationScreen}
-          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+          options={MODAL_SCREEN_OPTIONS}
         />
         <Stack.Screen
           name="CommunityOnboarding"
-          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+          options={MODAL_SCREEN_OPTIONS}
         >
           {(props) => (
             <CommunityOnboardingScreen
@@ -984,10 +996,10 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
           options={{ animation: 'fade' }}
         />
         <Stack.Screen name="Topic" component={TopicScreen} />
-        <Stack.Screen 
-          name="CreatePost" 
-          component={CreatePostScreen} 
-          options={{ animation: 'slide_from_bottom', gestureEnabled: false }} 
+        <Stack.Screen
+          name="CreatePost"
+          component={CreatePostScreen}
+          options={MODAL_SCREEN_OPTIONS}
         />
         <Stack.Screen name="PostDetail" component={PostDetailScreen} />
         <Stack.Screen name="CommunityMemberProfile" component={CommunityMemberProfileScreen} />
@@ -997,16 +1009,16 @@ const CommunityNavigator = React.memo(({ onFullscreenStateChange }: { onFullscre
         <Stack.Screen
           name="CommunityProfile"
           component={CommunityProfileScreen}
-          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+          options={MODAL_SCREEN_OPTIONS}
         />
         <Stack.Screen
           name="CommunityVerification"
           component={CommunityVerificationScreen}
-          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+          options={MODAL_SCREEN_OPTIONS}
         />
         <Stack.Screen
           name="CommunityOnboarding"
-          options={{ animation: 'slide_from_bottom', gestureEnabled: false }}
+          options={MODAL_SCREEN_OPTIONS}
         >
           {(props) => (
             <CommunityOnboardingScreen

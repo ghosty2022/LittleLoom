@@ -1599,7 +1599,15 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setState((p) => ({ ...p, selectedTopics: ids }));
     }
 
-    return { completed: ids.length >= 3, hasTopics: ids.length > 0 };
+    // Single source of truth: a user is "onboarded" the moment they
+    // have at least ONE topic, because every downstream consumer
+    // (feed filter, notifications, topic chips) works with 1+. The
+    // "3 topics minimum" rule is only enforced *inside* the
+    // onboarding screen's Continue button — it must never be the
+    // gate that decides onboarding-vs-main, or a user who picked 2
+    // topics is bounced back into onboarding on every cold boot.
+    const hasTopics = ids.length > 0;
+    return { completed: hasTopics, hasTopics };
   }, []);
 
   const syncUserProfileAcrossPosts = useCallback(

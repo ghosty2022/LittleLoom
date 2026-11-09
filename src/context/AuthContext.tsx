@@ -682,14 +682,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!session) {
-        await new Promise((r) => setTimeout(r, 400));
-        const { data: { session: retry } } = await supabase.auth.getSession();
-
-        if (retry?.user) {
-          if (isMounted.current) {
-            setState((prev) => ({ ...prev, session: retry }));
+        // Give supabase-js two more chances — a cold boot can resolve
+        // `getSession()` to `null` for ~1 s while it refreshes from
+        // its own AsyncStorage-backed store.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          await new Promise((r) => setTimeout(r, 600));
+          const { data: { session: retry } } = await supabase.auth.getSession();
+          if (retry?.user) {
+            if (isMounted.current) {
+              setState((prev) => ({ ...prev, session: retry }));
+            }
+            return true;
           }
-          return true;
         }
 
         if (__DEV__) console.warn('[Auth] No session — clearing local state');
@@ -3066,10 +3070,29 @@ try {
         let userProfile = null;
         let effectiveSession = session;
 
-        if (session && token) {
+        // ── FIX: accept a live Supabase session even if the SecureStore
+        //    token hasn't hydrated yet. On cold boot the keychain can
+        //    still be locked for a few hundred ms after the JS bundle
+        //    starts; the session in AsyncStorage (managed by
+        //    supabase-js) is already present though. Trusting only
+        //    `token && session` made every launch look signed-out.
+        //
+        // The token is only used for local sanity checks — the actual
+        // auth gate is `session?.user`. If we have a session we are
+        // authenticated; re-persist the token opportunistically once
+        // SecureStore is ready.
+        if (session?.user) {
           isValidSession = true;
           if (userProfileStr) {
             try { userProfile = JSON.parse(userProfileStr); } catch {}
+          }
+          if (!token) {
+            try {
+              await secureStorage.setItem(
+                SECURE_KEYS.AUTH_TOKEN,
+                session.access_token || '',
+              );
+            } catch {}
           }
 
           supabase.auth.getUser().then(({ error }) => {
@@ -3082,6 +3105,13 @@ try {
             }
           }).catch(() => {});
         } else if (token && !session) {
+          // We have a stored token but supabase-js reports no session.
+          // Try to recover it from supabase-js's own storage BEFORE
+          // declaring the user signed-out. Previously this branch only
+          // recovered when `token && !session` AND `getSession()` had
+          // already resolved — but the recovery attempt itself lived
+          // inside this branch so a transient `getSession()` miss on
+          // slow devices dropped the user onto Login.
           try {
             const keys = await AsyncStorage.getAllKeys();
             const authKey = keys.find(k => k.includes('auth-token') || k.includes('supabase.auth'));
@@ -3237,8 +3267,8 @@ try {
         if (isMounted.current) {
           setState({
             isLoading: false,
-            isAuthenticated: isValidSession && !!token,
-            userToken: isValidSession ? token : null,
+            isAuthenticated: isValidSession,
+            userToken: isValidSession ? (token || effectiveSession?.access_token || null) : null,
             userProfile: isValidSession ? userProfile : null,
             onboardingComplete: effectiveOnboardingComplete,
             hasSeenOnboarding: hasSeenOnboarding === 'true' || (isValidSession && !!token),
