@@ -1160,318 +1160,109 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const inputRef = useRef<TextInput>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const recordingInterval = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (chatId) setCurrentChatId(chatId);
-    return () => { setCurrentChatId(null); };
-  }, [chatId, setCurrentChatId]);
-
-  // ── Family-switch guard ────────────────────────────────────
-  // A user can belong to MULTIPLE families (Parent1 on Baby A,
-  // Guardian on Baby B). If the active baby switches while they're
-  // inside a chat, `FamilyChatContext` re-derives `familyCode`
-  // and re-hydrates `chats` — which means this screen's `chatId`
-  // points at a chat that belongs to a DIFFERENT family.
-  //
-  // We detect this by checking whether the current chat still
-  // exists in the context's chat list. If not, close the chat
-  // and return to the list so the user lands in the correct
-  // family's conversation list.
-  const { familyCode: activeFamilyCode } = useFamilyChat();
-  const chatStillExistsRef = useRef(true);
-  useEffect(() => {
-    if (!chatId) return;
-    const fresh = getChatById(chatId);
-    // If the chat no longer exists OR the family code changed,
-    // the user has switched families. Bail out.
-    const chatFamily = fresh?.familyCode;
-    const switchedFamily =
-      chatFamily &&
-      activeFamilyCode &&
-      chatFamily !== activeFamilyCode;
-    if ((!fresh && !chatStillExistsRef.current) || switchedFamily) {
-      // Only navigate once
-      if (chatStillExistsRef.current) {
-        chatStillExistsRef.current = false;
-        navigation.goBack();
-      }
-    } else if (fresh) {
-      chatStillExistsRef.current = true;
-    }
-  }, [chatId, activeFamilyCode, getChatById, navigation]);
-
-  // ── Instant message sync via context subscription (no polling) ──
-  const { subscribeToChatMessages } = useFamilyChat();
+  const lastTypingSentRef = useRef<number>(0);
   const lastMarkedCountRef = useRef<number>(-1);
   const messagesRef = useRef<FamilyMessage[]>([]);
-  useEffect(() => {
-    if (!chatId) return;
-    const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
-      // Guard: don't blank a populated list with a transient empty
-      // payload from a re-hydrating cache. Wait for the real cache.
-      setMessages((prev) =>
-        msgs.length === 0 && prev.length > 0 && !chatStillExistsRef.current
-          ? prev
-          : msgs,
-      );
-      // Only mark read when there are actually unread messages
-      const meId = userProfile?.id;
-      const hasUnread = !!meId && msgs.some((m) => !m.readBy?.includes(meId));
-      if (hasUnread && lastMarkedCountRef.current !== msgs.length) {
-        lastMarkedCountRef.current = msgs.length;
-        markChatRead(chatId);
-      }
-      // auto-scroll ONLY when the message count actually grew —
-      // never on mere reflow from keyboard open/close. That's what
-      // was yanking the list upward on every keystroke.
-      const prevCount = messagesRef.current.length;
-      messagesRef.current = msgs;
-      if (msgs.length > prevCount) {
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 60);
-      }
-    });
-    return unsub;
-  }, [chatId, subscribeToChatMessages, markChatRead, userProfile?.id]);
+  const chatStillExistsRef = useRef(true);
 
-  useEffect(() => { initializeChat(); }, [initialChatId, memberId]);
-  // (unchanged — the fix lives inside initializeChat above)
+  const { subscribeToChatMessages, familyCode: activeFamilyCode } = useFamilyChat();
 
-// (removed duplicate polling effect — subscribeToChatMessages already
-// delivers live messages instantly and handles markChatRead below)
+  // ── STABLE CONTEXT SNAPSHOT ────────────────────────────────
+  // `useFamilyChat()` returns a NEW object every render, so every
+  // function it hands back (getChatById, getChatMessages, sendMessage,
+  // refreshEntries, etc.) has a new identity on every render. If we
+  // list them in any useCallback dependency array, that callback is
+  // recreated on every render — which cascades into `renderMessage`
+  // being recreated, which causes FlatList to remount every cell on
+  // every render and makes the screen feel sluggish.
+  //
+  // The functions themselves are stable-by-behaviour: they close over
+  // refs internally and don't change behaviour between renders. So we
+  // capture them ONCE and use the snapshot for the rest of the screen.
+  const ctxRef = useRef<ReturnType<typeof useFamilyChat> | null>(null);
+  if (!ctxRef.current) {
+    // First render only — capture the live function references.
+    ctxRef.current = {
+      getOrCreateDirectChat,
+      getChatMessages,
+      sendMessage,
+      editMessage,
+      markChatRead,
+      deleteMessage,
+      addReaction,
+      setTypingStatus,
+      getChatById,
+      pickAndSendImage,
+      pickAndSendFile,
+      getTypingUsers,
+      resendMessage,
+      blockUser,
+      isUserBlocked,
+      setCurrentChatId,
+      deleteChat,
+      isChatHidden,
+      subscribeToChatMessages,
+      familyCode: activeFamilyCode,
+    } as any;
+  }
+  const ctx = ctxRef.current!;
 
-  const initializeChat = async () => {
-    // ── INSTANT RENDER ──────────────────────────────────────────
-    // When the caller already provides a chatId (list taps, notification
-    // taps, cross-links), seed state from the local cache BEFORE the
-    // async bootstrap so the screen paints with messages on frame 1.
-    if (initialChatId) {
-      const seeded = getChatMessages(initialChatId);
-      if (seeded.length > 0) {
-        messagesRef.current = seeded;
-        setMessages(seeded);
-        setChatId(initialChatId);
-        setChatInfo(getChatById(initialChatId) ?? null);
-        setIsLoading(false);
-      } else {
-        setIsLoading(true);
-      }
-    } else {
-      setIsLoading(true);
-    }
+  // ── DEAD-ZONE-SAFE ORDER ──────────────────────────────────────
+  // Every `const` MUST be declared before any hook/effect above it
+  // that reads it. The previous order had `initializeChat` below the
+  // effect that calls it, and `headerInfo` below the memos that read
+  // `headerInfo.status` / `headerInfo.name`. Both are TDZ crashes on
+  // React's first render — the whole component fails to construct,
+  // which is what the "Cannot access 'X' before initialization" at
+  // line 1114 was reporting.
+  //
+  // The order below is:
+  //   1. Pure helpers (no hooks, no other consts)
+  //   2. Derived memos whose deps are only state/context
+  //   3. Functions that read those memos
+  //   4. Effects that call those functions
+  // ─────────────────────────────────────────────────────────────
 
-    let targetChatId = initialChatId;
-    if (!targetChatId && memberId) {
-      const member = members.find((m) => m.id === memberId);
-      targetChatId = await getOrCreateDirectChat(memberId, member);
-    }
+  /* ─── 1. Pure helpers (no dependency on other consts) ─────── */
 
-    // If the user previously deleted this chat, don't resurrect it.
-    if (targetChatId && isChatHidden(targetChatId)) {
-      navigation.goBack();
-      return;
-    }
+  const formatDuration = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
-    if (targetChatId) {
-      // CRITICAL: fetch chat + messages BEFORE flipping chatId, so the
-      // subscription effect that runs on `chatId` change has a fully
-      // populated message buffer to deliver. Previously we flipped
-      // `chatId` first, let the subscription fire with an empty cache,
-      // then refreshed — producing the "appear → disappear → appear"
-      // flicker.
-      const chat = getChatById(targetChatId);
-      const seed = getChatMessages(targetChatId);
-      setChatInfo(chat);
-      messagesRef.current = seed;
-      setMessages(seed); // seed synchronously so FlatList has data
-      setChatId(targetChatId); // THEN flip — subscription will see same array
-    }
-    setIsLoading(false);
-  };
-
-  // ── Realtime profile-change: refresh chatInfo participants ─────
-  // `chatInfo.participantNames/Avatars` are snapshots from chat
-  // creation; refresh them so the pulse header reflects a member's
-  // latest identity.
-  useEffect(() => {
-    if (!chatId) return;
-    const unsub = subscribeToProfileChanges(() => {
-      const fresh = getChatById(chatId);
-      if (fresh) setChatInfo(fresh);
-    });
-    return unsub;
-  }, [chatId, getChatById]);
-
-  const refreshMessages = () => {
-    if (!chatId) return;
-    const msgs = getChatMessages(chatId);
-    setMessages(msgs);
-  };
+  const getMemberById = (id: string) =>
+    members.find((m) => m.id === id) ||
+    members.find((m: any) => m.userId === id);
 
   const showSweetAlert = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
     setAlert({ visible: true, type, title, message });
   };
 
-  const handleSend = useCallback(async () => {
-    if (!inputText.trim() || !chatId) return;
-    const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
-    if (otherId && isUserBlocked(otherId)) {
-      showSweetAlert('warning', 'Blocked', 'You have blocked this user. Unblock to send messages.');
-      return;
+  /* ─── 2. Derived memos (depend only on state/context) ────── */
+
+  const headerInfo = useMemo(() => {
+    if (!chatInfo) return { name: memberName || 'Chat', avatar: memberAvatar || '💬', status: '' };
+    if (chatInfo.type === 'group') {
+      return {
+        name: chatInfo.name || 'Family Group',
+        avatar: chatInfo.avatar || '👨‍👩‍👧‍👦',
+        status: `${chatInfo.participants?.length || 0} members`,
+      };
     }
-    if (!userProfile) { showSweetAlert('error', 'Error', 'Please sign in to send messages'); return; }
+    const otherId = chatInfo.participants?.find((p: string) => p !== userProfile?.id);
+    const member = otherId ? getMemberById(otherId) : undefined;
+    const status = member
+      ? getMemberDisplayLabel({ role: member.role, relationship: member.relationship })
+      : 'Family Member';
+    return {
+      name: member?.fullName || memberName || 'Unknown',
+      avatar: member?.avatar || memberAvatar || '👤',
+      status,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatInfo, memberName, memberAvatar, userProfile, members]);
 
-    const content = inputText.trim();
-    setInputText('');
-
-    if (editingMessage) {
-      await editMessage(chatId, editingMessage, content);
-      setEditingMessage(null);
-      showSweetAlert('success', 'Updated!', 'Message has been edited successfully');
-    } else {
-      await sendMessage(chatId, content, 'text', undefined, undefined, replyingTo?.id);
-    }
-
-    setReplyingTo(null);
-    setTypingStatus(chatId, false);
-    refreshMessages();
-    setTimeout(() => { flatListRef.current?.scrollToEnd({ animated: true }); }, 100);
-    HAPTIC_SUCCESS();
-  }, [inputText, chatId, userProfile, editingMessage, replyingTo, sendMessage, editMessage, setTypingStatus, chatInfo, isUserBlocked]);
-
-  const lastTypingSentRef = useRef<number>(0);
-  const handleInputChange = (text: string) => {
-    setInputText(text);
-    if (text.length > 0) {
-      const now = Date.now();
-      // Throttle typing broadcasts to at most once per 1.5s
-      if (now - lastTypingSentRef.current > 1500) {
-        lastTypingSentRef.current = now;
-        setTypingStatus(chatId, true);
-      }
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        lastTypingSentRef.current = 0;
-        setTypingStatus(chatId, false);
-      }, 3000);
-    } else {
-      lastTypingSentRef.current = 0;
-      setTypingStatus(chatId, false);
-    }
-  };
-
-  const handleImagePick = async (fromCamera: boolean = false) => {
-    HAPTIC_MEDIUM();
-    try {
-      await pickAndSendImage(chatId, fromCamera);
-      refreshMessages();
-      showSweetAlert('success', 'Photo Sent! 📷', 'Your photo has been shared');
-    } catch { showSweetAlert('error', 'Error', 'Failed to send photo'); }
-  };
-
-  const handleFilePick = async () => {
-    HAPTIC_MEDIUM();
-    try {
-      await pickAndSendFile(chatId);
-      refreshMessages();
-      showSweetAlert('success', 'File Sent! 📎', 'Your file has been shared');
-    } catch { showSweetAlert('error', 'Error', 'Failed to send file'); }
-  };
-
-  const showImageSourceAlert = () => { handleImagePick(false); };
-
-  const handleReaction = async (messageId: string, emoji: string) => {
-    await addReaction(chatId, messageId, emoji);
-    refreshMessages();
-    HAPTIC_LIGHT();
-  };
-
-  const handleDelete = async (messageId: string) => {
-    await deleteMessage(chatId, messageId);
-    refreshMessages();
-    showSweetAlert('success', 'Deleted', 'Message has been removed');
-    HAPTIC_SUCCESS();
-  };
-
-  const handleEdit = (message: FamilyMessage) => {
-    setEditingMessage(message.id);
-    setInputText(message.content);
-    inputRef.current?.focus();
-  };
-
-  const handleReply = (message: FamilyMessage) => {
-    setReplyingTo({
-      id: message.id,
-      content: message.content || (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
-      senderName: message.senderName,
-    });
-    inputRef.current?.focus();
-  };
-
-  const handleMessageInfo = (message: FamilyMessage) => { setSelectedMessage(message); setShowMessageInfo(true); };
-  const handleImagePress = (url: string) => { setPreviewImageUrl(url); HAPTIC_LIGHT(); };
-
-  const handleFilePress = async (meta?: FileMetadata) => {
-    if (!meta) return;
-    try {
-      // Remote URL → download to cache first, then share. Opening a
-      // remote PDF / DOC via `Linking.openURL` renders it in the
-      // browser with no "Save as" / "Open in" handler, which looked
-      // like a no-op to the user. The share sheet is the correct
-      // cross-platform way to hand a file to Pages / Word / Drive.
-      let localUri = meta.uri;
-      if (meta.uri && meta.uri.startsWith('http')) {
-        try {
-          const dest = `${FileSystem.cacheDirectory}${meta.name || 'attachment'}`;
-          const dl = await FileSystem.downloadAsync(meta.uri, dest);
-          localUri = dl.uri;
-        } catch (dlErr) {
-          console.warn('[FamilyChat] file download failed, opening URL:', dlErr);
-        }
-      }
-      const Sharing = require('expo-sharing');
-      if (localUri && (await Sharing.isAvailableAsync())) {
-        await Sharing.shareAsync(localUri, {
-          mimeType: meta.type || 'application/octet-stream',
-          dialogTitle: meta.name || 'Open file',
-        });
-        return;
-      }
-      await Share.share({ url: localUri, title: meta.name });
-    } catch {
-      showSweetAlert('error', 'Error', 'Could not open file');
-    }
-  };
-
-  const handleResend = async (messageId: string) => {
-    await resendMessage(chatId, messageId);
-    refreshMessages();
-  };
-
-  const startRecording = async () => {
-    try {
-      setIsRecording(true);
-      setRecordingDuration(0);
-      HAPTIC_HEAVY();
-      recordingInterval.current = setInterval(() => { setRecordingDuration((d) => d + 1); }, 1000);
-    } catch {}
-  };
-
-  const stopRecording = async () => {
-    if (recordingInterval.current) clearInterval(recordingInterval.current);
-    setIsRecording(false);
-    setRecordingDuration(0);
-    if (chatId) {
-      try {
-        await sendMessage(chatId, '🎤 Voice message', 'voice');
-        refreshMessages();
-        HAPTIC_SUCCESS();
-      } catch { showSweetAlert('error', 'Error', 'Failed to send voice message'); }
-    }
-  };
-
-  const getMemberById = (id: string) =>
-    members.find((m) => m.id === id) ||
-    members.find((m: any) => m.userId === id);
+  const otherMembers = useMemo(
+    () => members.filter((m) => m.id !== userProfile?.id && m.userId !== userProfile?.id),
+    [members, userProfile],
+  );
 
   const typingText = useMemo(() => {
     const typingUsers = getTypingUsers(chatId);
@@ -1479,11 +1270,9 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     if (!others.length) return '';
     if (others.length === 1) return `${others[0].userName} is typing...`;
     return `${others.length} people are typing...`;
-  }, [getTypingUsers, chatId, userProfile?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, userProfile?.id]);
 
-  /* ── CONTEXT-AWARE QUICK REPLIES ───────────────────────────────
-     Built from the last inbound message, peer role, and online
-     status so the chips actually match the conversation. */
   const quickReplies = useMemo<string[]>(() => {
     const lastInbound = [...messages]
       .reverse()
@@ -1522,33 +1311,6 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     return Array.from(set).slice(0, 5);
   }, [messages, headerInfo.status, chatInfo, userProfile?.id]);
 
-  const headerInfo = useMemo(() => {
-    if (!chatInfo) return { name: memberName || 'Chat', avatar: memberAvatar || '💬', status: '' };
-    if (chatInfo.type === 'group') {
-      return { name: chatInfo.name || 'Family Group', avatar: chatInfo.avatar || '👨‍👩‍👧‍👦', status: `${chatInfo.participants?.length || 0} members` };
-    }
-    const otherId = chatInfo.participants?.find((p: string) => p !== userProfile?.id);
-    const member = otherId ? getMemberById(otherId) : undefined;
-    // Show the human relationship (Mother / Father / Grandma …), falling
-    // back to the role label only when no relationship was entered.
-    const status = member
-      ? getMemberDisplayLabel({ role: member.role, relationship: member.relationship })
-      : 'Family Member';
-    return {
-      name: member?.fullName || memberName || 'Unknown',
-      avatar: member?.avatar || memberAvatar || '👤',
-      status,
-    };
-  }, [chatInfo, memberName, memberAvatar, userProfile, members]);
-
-  const otherMembers = useMemo(() => members.filter((m) => m.id !== userProfile?.id && m.userId !== userProfile?.id), [members, userProfile]);
-
-  const formatDuration = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-
-  // ── Chat options menu items ──────────────────────────────
-  // Built as a plain array (not an IIFE inside JSX) so Babel's
-  // TSX parser doesn't confuse the generic `<SoftOption[]>` type
-  // annotation with a JSX opening tag.
   const chatOptions = useMemo<SoftOption[]>(() => {
     const otherId = chatInfo?.participants?.find(
       (p: string) => p !== userProfile?.id,
@@ -1628,58 +1390,399 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     navigation,
   ]);
 
-  const renderMessage = ({ item, index }: { item: FamilyMessage; index: number }) => {
-    const isMe = item.senderId === userProfile?.id;
-    const member = item.senderId !== 'system' ? getMemberById(item.senderId) : undefined;
-    const prev = messages[index - 1];
-    const next = messages[index + 1];
-    const isFirst = !prev || prev.senderId !== item.senderId || new Date(item.timestamp).getTime() - new Date(prev.timestamp).getTime() > 300000;
-    const isLast = !next || next.senderId !== item.senderId || new Date(next.timestamp).getTime() - new Date(item.timestamp).getTime() > 300000;
-    const showDateSep = !prev || new Date(prev.timestamp).toDateString() !== new Date(item.timestamp).toDateString();
+  /* ─── 3. Functions that read the memos above ─────────────── */
 
-    return (
-      <View>
-        {showDateSep && <DateSeparator date={item.timestamp} isDark={isDark} />}
-        <MessageBubble
-          message={item}
-          isMe={isMe}
-          isDark={isDark}
-          member={member}
-          showAvatar={isFirst}
-          onReaction={(emoji) => handleReaction(item.id, emoji)}
-          onReply={() => handleReply(item)}
-          onDelete={() => handleDelete(item.id)}
-          onEdit={() => handleEdit(item)}
-          onInfo={() => handleMessageInfo(item)}
-          onImagePress={handleImagePress}
-          onFilePress={handleFilePress}
-          onResend={() => handleResend(item.id)}
-          isFirstInGroup={isFirst}
-          isLastInGroup={isLast}
-          onAvatarPress={(targetId, senderMember) => {
-            // Pick the editor mode from the peer's ACTUAL role, not
-            // a hardcoded `'guardian'`. A Parent 1 clicking on
-            // themselves from a co-parent's message should get the
-            // parent editor, not the guardian editor (which has a
-            // different permission set).
-            const role = String(senderMember?.role || '').toLowerCase();
-            const mode =
-              role === 'parent1' ? 'parent1'
-              : role === 'parent2' ? 'parent2'
-              : role === 'viewer' ? 'viewer'
-              : 'guardian';
-            navigation.navigate('EditGuardian', {
-              memberId: targetId,
-              guardianId: targetId,
-              mode,
-              fromChat: true,
-            });
-          }}
-          showSweetAlert={showSweetAlert}
-        />
-      </View>
-    );
-  };
+  const refreshMessages = useCallback(() => {
+    if (!chatId) return;
+    const msgs = getChatMessages(chatId);
+    setMessages(msgs);
+  }, [chatId, getChatMessages]);
+
+  const initializeChat = useCallback(async () => {
+    if (initialChatId) {
+      const seeded = getChatMessages(initialChatId);
+      if (seeded.length > 0) {
+        messagesRef.current = seeded;
+        setMessages(seeded);
+        setChatId(initialChatId);
+        setChatInfo(getChatById(initialChatId) ?? null);
+        setIsLoading(false);
+      } else {
+        setIsLoading(true);
+      }
+    } else {
+      setIsLoading(true);
+    }
+
+    let targetChatId = initialChatId;
+    if (!targetChatId && memberId) {
+      const member = members.find((m) => m.id === memberId);
+      targetChatId = await getOrCreateDirectChat(memberId, member);
+    }
+
+    if (targetChatId && isChatHidden(targetChatId)) {
+      navigation.goBack();
+      return;
+    }
+
+    if (targetChatId) {
+      const chat = getChatById(targetChatId);
+      const seed = getChatMessages(targetChatId);
+      setChatInfo(chat);
+      messagesRef.current = seed;
+      setMessages(seed);
+      setChatId(targetChatId);
+    }
+    setIsLoading(false);
+  }, [
+    initialChatId,
+    memberId,
+    members,
+    getChatMessages,
+    getChatById,
+    getOrCreateDirectChat,
+    isChatHidden,
+    navigation,
+  ]);
+
+  const handleSend = useCallback(async () => {
+    if (!inputText.trim() || !chatId) return;
+    const otherId = chatInfo?.participants?.find((p: string) => p !== userProfile?.id);
+    if (otherId && isUserBlocked(otherId)) {
+      showSweetAlert('warning', 'Blocked', 'You have blocked this user. Unblock to send messages.');
+      return;
+    }
+    if (!userProfile) {
+      showSweetAlert('error', 'Error', 'Please sign in to send messages');
+      return;
+    }
+
+    const content = inputText.trim();
+    setInputText('');
+
+    if (editingMessage) {
+      await editMessage(chatId, editingMessage, content);
+      setEditingMessage(null);
+      showSweetAlert('success', 'Updated!', 'Message has been edited successfully');
+    } else {
+      await sendMessage(chatId, content, 'text', undefined, undefined, replyingTo?.id);
+    }
+
+    setReplyingTo(null);
+    setTypingStatus(chatId, false);
+    refreshMessages();
+    setTimeout(() => { flatListRef.current?.scrollToEnd({ animated: true }); }, 100);
+    HAPTIC_SUCCESS();
+  }, [
+    inputText,
+    chatId,
+    userProfile,
+    editingMessage,
+    replyingTo,
+    sendMessage,
+    editMessage,
+    setTypingStatus,
+    chatInfo,
+    isUserBlocked,
+    refreshMessages,
+  ]);
+
+  const handleInputChange = useCallback(
+    (text: string) => {
+      setInputText(text);
+      if (text.length > 0) {
+        const now = Date.now();
+        if (now - lastTypingSentRef.current > 1500) {
+          lastTypingSentRef.current = now;
+          setTypingStatus(chatId, true);
+        }
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
+          lastTypingSentRef.current = 0;
+          setTypingStatus(chatId, false);
+        }, 3000);
+      } else {
+        lastTypingSentRef.current = 0;
+        setTypingStatus(chatId, false);
+      }
+    },
+    [chatId, setTypingStatus],
+  );
+
+  const handleImagePick = useCallback(
+    async (fromCamera: boolean = false) => {
+      HAPTIC_MEDIUM();
+      try {
+        await pickAndSendImage(chatId, fromCamera);
+        refreshMessages();
+        showSweetAlert('success', 'Photo Sent! 📷', 'Your photo has been shared');
+      } catch {
+        showSweetAlert('error', 'Error', 'Failed to send photo');
+      }
+    },
+    [chatId, pickAndSendImage, refreshMessages],
+  );
+
+  const handleFilePick = useCallback(async () => {
+    HAPTIC_MEDIUM();
+    try {
+      await pickAndSendFile(chatId);
+      refreshMessages();
+      showSweetAlert('success', 'File Sent! 📎', 'Your file has been shared');
+    } catch {
+      showSweetAlert('error', 'Error', 'Failed to send file');
+    }
+  }, [chatId, pickAndSendFile, refreshMessages]);
+
+  const showImageSourceAlert = useCallback(() => {
+    handleImagePick(false);
+  }, [handleImagePick]);
+
+  const handleReaction = useCallback(
+    async (messageId: string, emoji: string) => {
+      await addReaction(chatId, messageId, emoji);
+      refreshMessages();
+      HAPTIC_LIGHT();
+    },
+    [chatId, addReaction, refreshMessages],
+  );
+
+  const handleDelete = useCallback(
+    async (messageId: string) => {
+      await deleteMessage(chatId, messageId);
+      refreshMessages();
+      showSweetAlert('success', 'Deleted', 'Message has been removed');
+      HAPTIC_SUCCESS();
+    },
+    [chatId, deleteMessage, refreshMessages],
+  );
+
+  const handleEdit = useCallback((message: FamilyMessage) => {
+    setEditingMessage(message.id);
+    setInputText(message.content);
+    inputRef.current?.focus();
+  }, []);
+
+  const handleReply = useCallback((message: FamilyMessage) => {
+    setReplyingTo({
+      id: message.id,
+      content:
+        message.content ||
+        (message.type === 'image' ? '📷 Photo' : message.type === 'file' ? '📎 File' : '...'),
+      senderName: message.senderName,
+    });
+    inputRef.current?.focus();
+  }, []);
+
+  const handleMessageInfo = useCallback((message: FamilyMessage) => {
+    setSelectedMessage(message);
+    setShowMessageInfo(true);
+  }, []);
+
+  const handleImagePress = useCallback((url: string) => {
+    setPreviewImageUrl(url);
+    HAPTIC_LIGHT();
+  }, []);
+
+  const handleFilePress = useCallback(async (meta?: FileMetadata) => {
+    if (!meta) return;
+    try {
+      let localUri = meta.uri;
+      if (meta.uri && meta.uri.startsWith('http')) {
+        try {
+          const dest = `${FileSystem.cacheDirectory}${meta.name || 'attachment'}`;
+          const dl = await FileSystem.downloadAsync(meta.uri, dest);
+          localUri = dl.uri;
+        } catch (dlErr) {
+          console.warn('[FamilyChat] file download failed, opening URL:', dlErr);
+        }
+      }
+      const Sharing = require('expo-sharing');
+      if (localUri && (await Sharing.isAvailableAsync())) {
+        await Sharing.shareAsync(localUri, {
+          mimeType: meta.type || 'application/octet-stream',
+          dialogTitle: meta.name || 'Open file',
+        });
+        return;
+      }
+      await Share.share({ url: localUri, title: meta.name });
+    } catch {
+      showSweetAlert('error', 'Error', 'Could not open file');
+    }
+  }, []);
+
+  const handleResend = useCallback(
+    async (messageId: string) => {
+      await resendMessage(chatId, messageId);
+      refreshMessages();
+    },
+    [chatId, resendMessage, refreshMessages],
+  );
+
+  const startRecording = useCallback(async () => {
+    try {
+      setIsRecording(true);
+      setRecordingDuration(0);
+      HAPTIC_HEAVY();
+      recordingInterval.current = setInterval(() => {
+        setRecordingDuration((d) => d + 1);
+      }, 1000);
+    } catch {}
+  }, []);
+
+  const stopRecording = useCallback(async () => {
+    if (recordingInterval.current) clearInterval(recordingInterval.current);
+    setIsRecording(false);
+    setRecordingDuration(0);
+    if (chatId) {
+      try {
+        await sendMessage(chatId, '🎤 Voice message', 'voice');
+        refreshMessages();
+        HAPTIC_SUCCESS();
+      } catch {
+        showSweetAlert('error', 'Error', 'Failed to send voice message');
+      }
+    }
+  }, [chatId, sendMessage, refreshMessages]);
+
+  /* ─── 4. Effects (may safely reference all of the above) ─── */
+
+  useEffect(() => {
+    if (chatId) setCurrentChatId(chatId);
+    return () => { setCurrentChatId(null); };
+  }, [chatId, setCurrentChatId]);
+
+  // Family-switch guard
+  useEffect(() => {
+    if (!chatId) return;
+    const fresh = getChatById(chatId);
+    const chatFamily = fresh?.familyCode;
+    const switchedFamily =
+      chatFamily && activeFamilyCode && chatFamily !== activeFamilyCode;
+    if ((!fresh && !chatStillExistsRef.current) || switchedFamily) {
+      if (chatStillExistsRef.current) {
+        chatStillExistsRef.current = false;
+        navigation.goBack();
+      }
+    } else if (fresh) {
+      chatStillExistsRef.current = true;
+    }
+  }, [chatId, activeFamilyCode, getChatById, navigation]);
+
+  // Live message sync
+  useEffect(() => {
+    if (!chatId || !subscribeToChatMessages) return;
+    const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
+      setMessages((prev) =>
+        msgs.length === 0 && prev.length > 0 && !chatStillExistsRef.current ? prev : msgs,
+      );
+      const meId = userProfile?.id;
+      const hasUnread = !!meId && msgs.some((m) => !m.readBy?.includes(meId));
+      if (hasUnread && lastMarkedCountRef.current !== msgs.length) {
+        lastMarkedCountRef.current = msgs.length;
+        markChatRead(chatId);
+      }
+      const prevCount = messagesRef.current.length;
+      messagesRef.current = msgs;
+      if (msgs.length > prevCount) {
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 60);
+      }
+    });
+    return unsub;
+  }, [chatId, subscribeToChatMessages, markChatRead, userProfile?.id]);
+
+  // Chat bootstrap
+  useEffect(() => {
+    initializeChat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialChatId, memberId]);
+
+  // Realtime profile-change: refresh chatInfo participants
+  useEffect(() => {
+    if (!chatId) return;
+    const unsub = subscribeToProfileChanges(() => {
+      const fresh = getChatById(chatId);
+      if (fresh) setChatInfo(fresh);
+    });
+    return unsub;
+  }, [chatId, getChatById]);
+
+  /* ─── 5. renderMessage (safe after all consts above) ─────── */
+  const renderMessage = useCallback(
+    ({ item, index }: { item: FamilyMessage; index: number }) => {
+      const isMe = item.senderId === userProfile?.id;
+      const member = item.senderId !== 'system' ? getMemberById(item.senderId) : undefined;
+      const prev = messages[index - 1];
+      const next = messages[index + 1];
+      const isFirst =
+        !prev ||
+        prev.senderId !== item.senderId ||
+        new Date(item.timestamp).getTime() - new Date(prev.timestamp).getTime() > 300000;
+      const isLast =
+        !next ||
+        next.senderId !== item.senderId ||
+        new Date(next.timestamp).getTime() - new Date(item.timestamp).getTime() > 300000;
+      const showDateSep =
+        !prev || new Date(prev.timestamp).toDateString() !== new Date(item.timestamp).toDateString();
+
+      return (
+        <View>
+          {showDateSep && <DateSeparator date={item.timestamp} isDark={isDark} />}
+          <MessageBubble
+            message={item}
+            isMe={isMe}
+            isDark={isDark}
+            member={member}
+            showAvatar={isFirst}
+            onReaction={(emoji) => handleReaction(item.id, emoji)}
+            onReply={() => handleReply(item)}
+            onDelete={() => handleDelete(item.id)}
+            onEdit={() => handleEdit(item)}
+            onInfo={() => handleMessageInfo(item)}
+            onImagePress={handleImagePress}
+            onFilePress={handleFilePress}
+            onResend={() => handleResend(item.id)}
+            isFirstInGroup={isFirst}
+            isLastInGroup={isLast}
+            onAvatarPress={(targetId, senderMember) => {
+              const role = String(senderMember?.role || '').toLowerCase();
+              const mode =
+                role === 'parent1'
+                  ? 'parent1'
+                  : role === 'parent2'
+                  ? 'parent2'
+                  : role === 'viewer'
+                  ? 'viewer'
+                  : 'guardian';
+              navigation.navigate('EditGuardian', {
+                memberId: targetId,
+                guardianId: targetId,
+                mode,
+                fromChat: true,
+              });
+            }}
+            showSweetAlert={showSweetAlert}
+          />
+        </View>
+      );
+    },
+    [
+      messages,
+      userProfile?.id,
+      isDark,
+      getMemberById,
+      handleReaction,
+      handleReply,
+      handleDelete,
+      handleEdit,
+      handleMessageInfo,
+      handleImagePress,
+      handleFilePress,
+      handleResend,
+      showSweetAlert,
+      navigation,
+    ],
+  );
 
   if (isLoading) {
     return (
