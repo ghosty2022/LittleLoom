@@ -1861,7 +1861,25 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       replyToId?: string,
     ): Promise<void> => {
       const familyCode = familyCodeRef.current;
-      const me = userProfileRef.current;
+      let me = userProfileRef.current;
+
+      // ── AUTH REF HYDRATION GUARD ────────────────────────────────
+      // `userProfileRef` is synced by a `useEffect` on `userProfile`
+      // — on cold boot or right after an account switch there is a
+      // one-tick window where the SCREEN has `userProfile` but the
+      // ref inside this callback is still `null`. The old code threw
+      // "You must be logged in to send messages" in that window,
+      // even though the user clearly was signed in.
+      //
+      // Fix: give the ref up to ~800 ms to hydrate before declaring
+      // the user signed-out. This is a no-op in the happy path.
+      if (!me) {
+        for (let i = 0; i < 8 && !me; i++) {
+          await new Promise((r) => setTimeout(r, 100));
+          me = userProfileRef.current;
+        }
+      }
+
       if (!familyCode || !me) {
         sweetAlert.alert('Error', 'You must be logged in to send messages', 'info');
         return;

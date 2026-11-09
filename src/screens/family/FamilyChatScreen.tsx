@@ -5,6 +5,7 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -126,7 +127,11 @@ const isEmoji = (v: string | undefined | null): boolean => {
 };
 
 const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🎉', '👏', '🔥'];
-const QUICK_REPLIES = ['On my way!', 'Sounds good!', 'I love this!', 'Thanks for sharing'];
+
+// `QUICK_REPLIES` is now context-aware — computed inside the screen
+// from the last inbound message, peer role, and online status. The
+// old static list ("On my way!", "Sounds good!") felt generic and
+// never matched the actual conversation, which is why users ignored it.
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GRADIENT TEXT
@@ -1122,6 +1127,19 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
 
   const isDark = darkMode ?? false;
 
+  // Track keyboard visibility so the input bar can pad against
+  // `insets.bottom` when closed and a small fixed pad when open.
+  // Without this, gesture-nav Android had double padding and the
+  // input slid off the top of the screen while typing.
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, () => setKeyboardOpen(true));
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardOpen(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
   const [messages, setMessages] = useState<FamilyMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [chatId, setChatId] = useState<string>(initialChatId || '');
@@ -1222,7 +1240,25 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
 // delivers live messages instantly and handles markChatRead below)
 
   const initializeChat = async () => {
-    setIsLoading(true);
+    // ── INSTANT RENDER ──────────────────────────────────────────
+    // When the caller already provides a chatId (list taps, notification
+    // taps, cross-links), seed state from the local cache BEFORE the
+    // async bootstrap so the screen paints with messages on frame 1.
+    if (initialChatId) {
+      const seeded = getChatMessages(initialChatId);
+      if (seeded.length > 0) {
+        messagesRef.current = seeded;
+        setMessages(seeded);
+        setChatId(initialChatId);
+        setChatInfo(getChatById(initialChatId) ?? null);
+        setIsLoading(false);
+      } else {
+        setIsLoading(true);
+      }
+    } else {
+      setIsLoading(true);
+    }
+
     let targetChatId = initialChatId;
     if (!targetChatId && memberId) {
       const member = members.find((m) => m.id === memberId);
@@ -1377,10 +1413,33 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
   const handleFilePress = async (meta?: FileMetadata) => {
     if (!meta) return;
     try {
-      const fileInfo = await FileSystem.getInfoAsync(meta.uri);
-      if (!fileInfo.exists) { showSweetAlert('error', 'File Not Found', 'The file no longer exists'); return; }
-      await Share.share({ url: meta.uri, title: meta.name });
-    } catch { showSweetAlert('error', 'Error', 'Could not share file'); }
+      // Remote URL → download to cache first, then share. Opening a
+      // remote PDF / DOC via `Linking.openURL` renders it in the
+      // browser with no "Save as" / "Open in" handler, which looked
+      // like a no-op to the user. The share sheet is the correct
+      // cross-platform way to hand a file to Pages / Word / Drive.
+      let localUri = meta.uri;
+      if (meta.uri && meta.uri.startsWith('http')) {
+        try {
+          const dest = `${FileSystem.cacheDirectory}${meta.name || 'attachment'}`;
+          const dl = await FileSystem.downloadAsync(meta.uri, dest);
+          localUri = dl.uri;
+        } catch (dlErr) {
+          console.warn('[FamilyChat] file download failed, opening URL:', dlErr);
+        }
+      }
+      const Sharing = require('expo-sharing');
+      if (localUri && (await Sharing.isAvailableAsync())) {
+        await Sharing.shareAsync(localUri, {
+          mimeType: meta.type || 'application/octet-stream',
+          dialogTitle: meta.name || 'Open file',
+        });
+        return;
+      }
+      await Share.share({ url: localUri, title: meta.name });
+    } catch {
+      showSweetAlert('error', 'Error', 'Could not open file');
+    }
   };
 
   const handleResend = async (messageId: string) => {
@@ -1421,6 +1480,47 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
     if (others.length === 1) return `${others[0].userName} is typing...`;
     return `${others.length} people are typing...`;
   }, [getTypingUsers, chatId, userProfile?.id]);
+
+  /* ── CONTEXT-AWARE QUICK REPLIES ───────────────────────────────
+     Built from the last inbound message, peer role, and online
+     status so the chips actually match the conversation. */
+  const quickReplies = useMemo<string[]>(() => {
+    const lastInbound = [...messages]
+      .reverse()
+      .find((m) => m.senderId !== userProfile?.id && m.type === 'text');
+    const text = (lastInbound?.content || '').toLowerCase();
+    const isOnline = (headerInfo.status || '').toLowerCase().includes('online');
+    const role = String(chatInfo?.participantRoles?.[
+      chatInfo?.participants?.find((p: string) => p !== userProfile?.id) || ''
+    ] || '').toLowerCase();
+    const set = new Set<string>();
+    if (!messages.length) {
+      set.add(role === 'parent2' ? 'Hey co-parent! 👋' : 'Hi there! 👋');
+      set.add('How are things going?');
+      set.add('Sharing an update…');
+    }
+    if (text.includes('?')) {
+      set.add('Good question — let me check');
+      set.add('Yes, that works 👍');
+      set.add('Not sure, will follow up');
+    }
+    if (text.includes('thank')) {
+      set.add('Anytime! 💙');
+      set.add('No problem at all');
+    }
+    if (text.includes('photo') || text.includes('picture')) {
+      set.add('Beautiful! 📸');
+      set.add('Love it!');
+    }
+    if (text.includes('sick') || text.includes('fever') || text.includes('hurt')) {
+      set.add('Oh no — is baby okay?');
+      set.add('Let me know if you need anything');
+    }
+    if (isOnline) set.add('Calling you now…');
+    set.add('👍');
+    set.add('❤️');
+    return Array.from(set).slice(0, 5);
+  }, [messages, headerInfo.status, chatInfo, userProfile?.id]);
 
   const headerInfo = useMemo(() => {
     if (!chatInfo) return { name: memberName || 'Chat', avatar: memberAvatar || '💬', status: '' };
@@ -1636,8 +1736,42 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
             }
           }}
           onToggleUsers={() => setShowUserBubbles(!showUserBubbles)}
-          onVideo={() => { HAPTIC_LIGHT(); showSweetAlert('info', 'Video Call', 'Video calling feature coming soon! 📹'); }}
-          onVoice={() => { HAPTIC_LIGHT(); showSweetAlert('info', 'Voice Call', 'Voice calling feature coming soon! 📞'); }}
+          onVideo={async () => {
+            HAPTIC_LIGHT();
+            try {
+              // Open the OS video-call app. FaceTime on iOS, Meet on
+              // Android. Real deep links, no mock UI.
+              const url = Platform.select({
+                ios: 'facetime://',
+                android: 'https://meet.google.com/',
+                default: 'https://meet.google.com/',
+              });
+              if (url) await Linking.openURL(url);
+            } catch {
+              showSweetAlert('error', 'Cannot Start Video', 'No video-call app is available.');
+            }
+          }}
+          onVoice={async () => {
+            HAPTIC_LIGHT();
+            try {
+              const phone =
+                (chatInfo?.type === 'direct'
+                  ? members.find(
+                      (m: any) =>
+                        m.userId ===
+                          chatInfo?.participants?.find((p: string) => p !== userProfile?.id) ||
+                        m.id ===
+                          chatInfo?.participants?.find((p: string) => p !== userProfile?.id),
+                    )
+                  : undefined) as any;
+              const url = phone?.phoneNumber
+                ? `tel:${String(phone.phoneNumber).replace(/[^\d+]/g, '')}`
+                : 'tel:';
+              await Linking.openURL(url);
+            } catch {
+              showSweetAlert('error', 'Cannot Call', 'Phone dialer is unavailable.');
+            }
+          }}
           onOpenCommunityChat={
             chatInfo?.type === 'direct'
               ? () => {
@@ -1666,6 +1800,11 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         </Animated.View>
       )}
 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={KEYBOARD_VERTICAL_OFFSET}
+      >
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -1704,17 +1843,19 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
           <TypingIndicator isDark={isDark} />
         </View>
       )}
+      </KeyboardAvoidingView>
 
       <ReplyPreview replyTo={replyingTo} onCancel={() => setReplyingTo(null)} isDark={isDark} />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={KEYBOARD_VERTICAL_OFFSET}
-        style={{ flexShrink: 0 }}
-      >
-        {!inputText && !replyingTo && (
-          <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: DS.space.md, paddingVertical: 6, gap: 6 }}>
-            {QUICK_REPLIES.map((reply, i) => (
+      <View style={{ flexShrink: 0 }}>
+        {!inputText && !replyingTo && quickReplies.length > 0 && (
+          <Animated.ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: DS.space.md, paddingVertical: 6, gap: 6 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            {quickReplies.map((reply, i) => (
               <PressableScale key={i} onPress={() => { setInputText(reply); setTimeout(() => handleSend(), 50); }} activeScale={0.94}>
                 <View style={[styles.quickReply, { backgroundColor: `${DS.primary}10`, borderColor: `${DS.primary}20` }]}>
                   <Text style={[styles.quickReplyText, { color: DS.primary }]}>{reply}</Text>
@@ -1727,11 +1868,12 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
         <View style={[styles.inputBar, {
           backgroundColor: isDark ? 'rgba(12,10,9,0.98)' : 'rgba(255,255,255,0.98)',
           borderTopColor: isDark ? DS.darkBorder : DS.gray200,
-          // The KeyboardAvoidingView already offsets the input by the
-          // keyboard height. Adding `insets.bottom` again while the
-          // keyboard is open was pushing the input bar off the top of
-          // the visible screen on gesture-nav Android phones.
-          // `paddingBottom` comes from the styles object (`10`).
+          // Pad against the safe-area bottom ONLY when the keyboard
+          // is closed. When it's open, the KAV offset already lifts
+          // the bar above the home-indicator / gesture zone, so a
+          // second `insets.bottom` would double-pad and push the
+          // input off the top of the visible screen.
+          paddingBottom: keyboardOpen ? 8 : Math.max(10, insets.bottom),
         }]}>
           <TouchableOpacity style={styles.inputIconBtn} onPress={showImageSourceAlert}>
             <Ionicons name="image-outline" size={22} color={DS.primary} />
@@ -1781,7 +1923,7 @@ export default function FamilyChatScreen({ navigation, route }: FamilyChatScreen
             </BlurView>
           </View>
         )}
-      </KeyboardAvoidingView>
+      </View>
 
       <SoftOptionsSheet
         visible={showOptionsSheet}

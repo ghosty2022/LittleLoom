@@ -732,6 +732,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Declared HERE (above the bootstrap effect) so the effect's
+  // `messagesRef.current` read does not throw a TDZ ReferenceError.
+  const messagesRef = useRef<FamilyMessage[]>([]);
 
   const canSend = inputText.trim().length > 0 && !isBlocked;
 
@@ -926,7 +929,6 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
 
   // Live-update messages once chatId is known
   const { subscribeToChatMessages } = useFamilyChat();
-  const messagesRef = useRef<FamilyMessage[]>([]);
   useEffect(() => {
     if (!chatId || !subscribeToChatMessages) return;
     const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
@@ -1502,7 +1504,26 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
     );
   }
 
-  /* ── Main render ────────────────────────────────────────── */
+  /* ── Main render ──────────────────────────────────────────
+      Structure:
+        <View root>
+          <Header />
+          <KeyboardAvoidingView flex:1>
+            <FlatList messages />
+            <TypingIndicator />
+            <BlockedBanner />
+            <ReplyBar />
+            <QuickReplies />
+            <InputBar />
+          </KeyboardAvoidingView>
+          <OptionsModal />
+        </View>
+
+      The keyboard avoidance wraps EVERYTHING below the header, so
+      the message list shrinks and the input sits above the keyboard
+      — that is what keeps the composer + last messages visible while
+      typing. There is exactly ONE KeyboardAvoidingView and ONE
+      closing `</View>` for the input bar container. */
   return (
     <View style={[styles.container, { backgroundColor: isDark ? LL.darkBg : LL.lightBg }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
@@ -1527,7 +1548,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         isDark={isDark}
       />
 
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────── */}
       <View
         style={[
           styles.header,
@@ -1572,75 +1593,74 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             )}
           </View>
           <View style={{ flex: 1 }}>
-
-          <View style={styles.nameRow}>
-            <Text
-              style={[
-                styles.userName,
-                { color: isBlocked ? (isDark ? LL.gray500 : LL.gray400) : isDark ? LL.white : LL.gray900 },
-              ]}
-              numberOfLines={1}
-            >
-              {user?.displayName ?? 'Unknown member'}
-            </Text>
-            {user?.isVerified && !isBlocked && (
-              <View style={[styles.verifiedBadge, { backgroundColor: LL.primary }]}>
-                <Ionicons name="checkmark" size={10} color={LL.white} />
-              </View>
-            )}
-            {user?.isFamilyMember && !isBlocked && (
-              <View
-                style={{
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 6,
-                  backgroundColor: isDark ? `${LL.success}20` : `${LL.success}15`,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 3,
-                }}
+            <View style={styles.nameRow}>
+              <Text
+                style={[
+                  styles.userName,
+                  { color: isBlocked ? (isDark ? LL.gray500 : LL.gray400) : isDark ? LL.white : LL.gray900 },
+                ]}
+                numberOfLines={1}
               >
-                <Ionicons name="people" size={9} color={LL.success} />
-                <Text
+                {user?.displayName ?? 'Unknown member'}
+              </Text>
+              {user?.isVerified && !isBlocked && (
+                <View style={[styles.verifiedBadge, { backgroundColor: LL.primary }]}>
+                  <Ionicons name="checkmark" size={10} color={LL.white} />
+                </View>
+              )}
+              {user?.isFamilyMember && !isBlocked && (
+                <View
                   style={{
-                    fontSize: 8,
-                    fontWeight: '800',
-                    color: LL.success,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.3,
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 6,
+                    backgroundColor: isDark ? `${LL.success}20` : `${LL.success}15`,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 3,
                   }}
                 >
-                  Family
-                </Text>
-              </View>
-            )}
-            {!user?.isFamilyMember && user && !isBlocked && (
-              <View
-                style={{
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 6,
-                  backgroundColor: isDark ? `${LL.accent}20` : `${LL.accent}15`,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 3,
-                }}
-              >
-                <Ionicons name="globe-outline" size={9} color={LL.accent} />
-                <Text
+                  <Ionicons name="people" size={9} color={LL.success} />
+                  <Text
+                    style={{
+                      fontSize: 8,
+                      fontWeight: '800',
+                      color: LL.success,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.3,
+                    }}
+                  >
+                    Family
+                  </Text>
+                </View>
+              )}
+              {!user?.isFamilyMember && user && !isBlocked && (
+                <View
                   style={{
-                    fontSize: 8,
-                    fontWeight: '800',
-                    color: LL.accent,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.3,
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 6,
+                    backgroundColor: isDark ? `${LL.accent}20` : `${LL.accent}15`,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 3,
                   }}
                 >
-                  Community
-                </Text>
-              </View>
-            )}
-          </View>
+                  <Ionicons name="globe-outline" size={9} color={LL.accent} />
+                  <Text
+                    style={{
+                      fontSize: 8,
+                      fontWeight: '800',
+                      color: LL.accent,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.3,
+                    }}
+                  >
+                    Community
+                  </Text>
+                </View>
+              )}
+            </View>
 
             <Text
               style={[
@@ -1684,9 +1704,6 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             onPress={async () => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               try {
-                // Prefer the peer's phone number from the family_members
-                // row (canonical). Fall back to a real dialer open so
-                // the user can type the number if we don't have one.
                 const phone =
                   (familyMembers.find(
                     (m: any) =>
@@ -1707,8 +1724,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             <Ionicons name="call" size={20} color={LL.success} />
           </TouchableOpacity>
 
-          {/* Video call — real https:// deep link to the OS video call app
-              (FaceTime on iOS, Meet on Android). No mock. */}
+          {/* Video call — real deep link to the OS video-call app. */}
           <TouchableOpacity
             onPress={async () => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1738,9 +1754,7 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         </View>
       </View>
 
-      {/* Inactive member banner — replaces the old full-screen
-          "User not found" dead-end so the chat shell still renders
-          and the user can read history / go back. */}
+      {/* Inactive member banner */}
       {!user && (
         <View style={[styles.blockedBanner, { backgroundColor: `${LL.error}12`, marginTop: LL.space.sm }]}>
           <Ionicons name="person-remove" size={18} color={LL.error} />
@@ -1750,7 +1764,8 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
         </View>
       )}
 
-      {/* Messages */}
+      {/* ── KAV wraps list + everything below so the whole column
+             shrinks above the keyboard. ───────────────────────── */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1758,105 +1773,130 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
           Platform.OS === 'ios' ? insets.top + KEYBOARD_VERTICAL_OFFSET_IOS : 0
         }
       >
-      <FlatList
-        ref={flatListRef}
-        data={filteredMessages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messagesList}
-        showsVerticalScrollIndicator={false}
-        // ── KEY FIX ──────────────────────────────────────────
-        // Never scroll on content-size change (fires per keystroke).
-        // Auto-scroll is handled by the message-count watcher below.
-        onContentSizeChange={() => {}}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        style={{ flex: 1 }}
-        ListHeaderComponent={renderListHeader}
-        ListEmptyComponent={
-          searchQuery ? (
-            <View style={styles.emptyChat}>
-              <Ionicons name="search-outline" size={48} color={isDark ? LL.gray600 : LL.gray300} />
-              <Text style={[styles.emptyText, { color: isDark ? LL.gray400 : LL.gray500 }]}>
-                No messages found
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.emptyChat}>
-              <LinearGradient
-                colors={
-                  isDark
-                    ? ['rgba(99,102,241,0.22)', 'rgba(236,72,153,0.12)']
-                    : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.05)']
-                }
-                style={styles.emptyIconBg}
-              >
-                <Ionicons name="chatbubbles-outline" size={40} color={LL.primary} />
-              </LinearGradient>
-              <Text style={[styles.emptyTitle, { color: isDark ? LL.white : LL.gray800 }]}>
-                No messages yet
-              </Text>
-              <Text style={[styles.emptySubtext, { color: isDark ? LL.gray400 : LL.gray500 }]}>
-                Say hello to start the conversation!
-              </Text>
-            </View>
-          )
-        }
-      />
+        <FlatList
+          ref={flatListRef}
+          data={filteredMessages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.messagesList}
+          showsVerticalScrollIndicator={false}
+          // Never scroll on content-size change (fires per keystroke).
+          // Auto-scroll is handled by the message-count watcher above.
+          onContentSizeChange={() => {}}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          style={{ flex: 1 }}
+          ListHeaderComponent={renderListHeader}
+          ListEmptyComponent={
+            searchQuery ? (
+              <View style={styles.emptyChat}>
+                <Ionicons name="search-outline" size={48} color={isDark ? LL.gray600 : LL.gray300} />
+                <Text style={[styles.emptyText, { color: isDark ? LL.gray400 : LL.gray500 }]}>
+                  No messages found
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.emptyChat}>
+                <LinearGradient
+                  colors={
+                    isDark
+                      ? ['rgba(99,102,241,0.22)', 'rgba(236,72,153,0.12)']
+                      : ['rgba(99,102,241,0.10)', 'rgba(236,72,153,0.05)']
+                  }
+                  style={styles.emptyIconBg}
+                >
+                  <Ionicons name="chatbubbles-outline" size={40} color={LL.primary} />
+                </LinearGradient>
+                <Text style={[styles.emptyTitle, { color: isDark ? LL.white : LL.gray800 }]}>
+                  No messages yet
+                </Text>
+                <Text style={[styles.emptySubtext, { color: isDark ? LL.gray400 : LL.gray500 }]}>
+                  Say hello to start the conversation!
+                </Text>
+              </View>
+            )
+          }
+        />
 
-      {/* Typing indicator */}
-      {typingUsers.length > 0 && !isBlocked && (
-        <Animated.View entering={FadeIn.duration(300)} style={styles.typingContainer}>
-          <View
-            style={[
-              styles.typingBubble,
-              {
-                backgroundColor: isDark ? LL.darkCard : LL.white,
-                borderColor: isDark ? LL.darkBorder : LL.lightBorder,
-                borderWidth: 1,
-              },
-            ]}
-          >
-            <Text style={[styles.typingLabel, { color: isDark ? LL.gray400 : LL.gray500 }]}>
-              {/* `user` is re-hydrated from CommunityContext on every
-                  profile change, so this stays fresh. */}
-              {user?.displayName ?? 'Someone'} is typing
-            </Text>
-            <TypingDots isDark={isDark} />
+        {/* Typing indicator */}
+        {typingUsers.length > 0 && !isBlocked && (
+          <Animated.View entering={FadeIn.duration(300)} style={styles.typingContainer}>
+            <View
+              style={[
+                styles.typingBubble,
+                {
+                  backgroundColor: isDark ? LL.darkCard : LL.white,
+                  borderColor: isDark ? LL.darkBorder : LL.lightBorder,
+                  borderWidth: 1,
+                },
+              ]}
+            >
+              <Text style={[styles.typingLabel, { color: isDark ? LL.gray400 : LL.gray500 }]}>
+                {user?.displayName ?? 'Someone'} is typing
+              </Text>
+              <TypingDots isDark={isDark} />
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Blocked banner */}
+        {isBlocked && (
+          <View style={[styles.blockedBanner, { backgroundColor: `${LL.error}12` }]}>
+            <Ionicons name="ban" size={18} color={LL.error} />
+            <Text style={[styles.blockedBannerText, { color: LL.error }]}>You have blocked this user</Text>
+            <TouchableOpacity onPress={handleBlock}>
+              <Text style={[styles.unblockText, { color: LL.primary }]}>Unblock</Text>
+            </TouchableOpacity>
           </View>
-        </Animated.View>
-      )}
+        )}
 
-      {/* Blocked banner */}
-      {isBlocked && (
-        <View style={[styles.blockedBanner, { backgroundColor: `${LL.error}12` }]}>
-          <Ionicons name="ban" size={18} color={LL.error} />
-          <Text style={[styles.blockedBannerText, { color: LL.error }]}>You have blocked this user</Text>
-          <TouchableOpacity onPress={handleBlock}>
-            <Text style={[styles.unblockText, { color: LL.primary }]}>Unblock</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        {/* Reply preview */}
+        <ReplyPreviewBar replyTo={replyingTo} onCancel={() => setReplyingTo(null)} isDark={isDark} />
 
-      {/* Reply preview */}
-      <ReplyPreviewBar replyTo={replyingTo} onCancel={() => setReplyingTo(null)} isDark={isDark} />
+        {/* Context-aware quick replies — only when the composer is empty. */}
+        {!inputText.trim() && !editingMessage && quickReplies.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: LL.space.lg, paddingVertical: 6, gap: 6 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            {quickReplies.map((reply) => (
+              <TouchableOpacity
+                key={reply}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setInputText(reply);
+                }}
+                activeOpacity={0.8}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  borderRadius: 16,
+                  backgroundColor: isDark ? 'rgba(99,102,241,0.14)' : `${LL.primary}10`,
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(99,102,241,0.3)' : `${LL.primary}25`,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? LL.primaryLight : LL.primary }}>
+                  {reply}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
-      {/* Input area — the outer KeyboardAvoidingView (above) already
-          lifts the whole list + input above the keyboard. This view
-          no longer needs its own KAV; a second one was double-padding
-          and pushing the input off-screen on Android. */}
-      <View
-        style={[
-          styles.inputContainer,
-          {
-            backgroundColor: isDark ? LL.darkSurface : LL.white,
-            borderTopColor: isDark ? LL.darkBorder : LL.lightBorder,
-            // Safe-area bottom padding only applies while the keyboard
-            // is closed. `Keyboard.addListener` below tracks the state.
-            paddingBottom: keyboardOpen ? LL.space.sm : Math.max(LL.space.md, insets.bottom),
-          },
-        ]}
-      >
+        {/* Input bar */}
+        <View
+          style={[
+            styles.inputContainer,
+            {
+              backgroundColor: isDark ? LL.darkSurface : LL.white,
+              borderTopColor: isDark ? LL.darkBorder : LL.lightBorder,
+              paddingBottom: keyboardOpen ? LL.space.sm : Math.max(LL.space.md, insets.bottom),
+            },
+          ]}
+        >
           <TouchableOpacity
             style={[styles.attachBtn, isBlocked && styles.disabledBtn]}
             onPress={showImageSourceAlert}
@@ -1937,10 +1977,9 @@ export default function ChatScreen({ navigation, route }: ChatScreenProps) {
             </LinearGradient>
           </TouchableOpacity>
         </View>
-      </View>
       </KeyboardAvoidingView>
 
-      {/* Options menu */}
+      {/* ── Options menu ─────────────────────────────────── */}
       <Modal
         visible={showOptions}
         transparent

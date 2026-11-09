@@ -75,10 +75,11 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
   const { members: familyMembers } = useFamily();
   const {
     messages,
-    chats: dbChats,          // ← ADD: the DB-backed chat list
+    chats: dbChats,
     isChatHidden,
     deleteChat,
     subscribeToChatMessages,
+    forceSync,
   } = useFamilyChat() as any;
 
   // ── List refresh tick (declared first so effects below can bump it) ──
@@ -206,7 +207,14 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatIdsKey, subscribeToChatMessages]);
   
-  const refresh = undefined;
+  // Real refresh — the old `const refresh = undefined` made pull-to-
+  // refresh a fake 600 ms delay and prevented the list from re-syncing
+  // when a peer created a new DM from another device.
+  const refresh = useCallback(async () => {
+    if (typeof forceSync === 'function') {
+      await forceSync();
+    }
+  }, [forceSync]);
 
   const { isDark } = useApp();
 
@@ -254,8 +262,12 @@ export default function ChatListScreen({ navigation }: ChatListScreenProps) {
         (otherId && c.participantNames?.[otherId]) ||
         c.name ||
         '';
+      const roleLabel = otherId
+        ? (roleLabelsRef.current[otherId] || '').toLowerCase()
+        : '';
       return (
         name.toLowerCase().includes(q) ||
+        roleLabel.includes(q) ||
         (c.lastMessage?.content || '').toLowerCase().includes(q)
       );
     });
