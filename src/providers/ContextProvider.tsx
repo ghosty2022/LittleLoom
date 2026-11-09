@@ -53,6 +53,7 @@ import { UserProvider } from '@/context/UserContext';
 import { BabyProvider, useBaby } from '@/context/BabyContext';
 import { FamilyProvider } from '@/context/FamilyContext';
 import { FamilyChatProvider } from '@/context/FamilyChatContext';
+import { CallProvider } from '@/context/CallContext';
 import { ActivityProvider, useActivity } from '@/context/ActivityContext';
 import { SecurityProvider } from '@/context/SecurityContext';
 import { MediaProvider } from '@/context/MediaContext';
@@ -413,6 +414,7 @@ export default function ContextProvider({ children }: ContextProviderProps) {
                                 </SweetAlertWrapper>
                               </SafetyProvider>
                             </CommunityProvider>
+                            </CallProvider>
                           </FamilyChatWrapper>
                         </MediaProvider>
                       </ActivitySyncBridge>
