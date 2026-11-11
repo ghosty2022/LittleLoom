@@ -1111,7 +1111,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 16,
     elevation: 8,
-   },
+  },
   actionLabel: {
     fontSize: 12,
     fontWeight: '700',
