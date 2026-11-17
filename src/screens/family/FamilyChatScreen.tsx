@@ -60,6 +60,7 @@ import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
 import { useMedia } from '../../context/MediaContext';
 import { useCall } from '../../context/CallContext';
+import { resolveDisplayNames } from '../../utils/displayName';
 
 type FamilyChatScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -67,8 +68,11 @@ type FamilyChatScreenProps = NativeStackScreenProps<
 >;
 const { width, height } = Dimensions.get('window');
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
+// Safe-area top is handled by `useSafeAreaInsets()` below — this
+// constant is only used to keep the KeyboardAvoidingView offset in
+// sync with the header. Keep it tiny so the header hugs the notch.
 const HEADER_TOP_PADDING =
-  Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
+  Platform.OS === 'ios' ? 12 : STATUS_BAR_HEIGHT + 4;
 
 const KEYBOARD_VERTICAL_OFFSET =
   Platform.OS === 'ios' ? HEADER_TOP_PADDING + 76 : 0;
@@ -1711,6 +1715,7 @@ const MessageBubble: React.FC<{
     title: string,
     message: string,
   ) => void;
+  nameMap: Record<string, string>;
 }> = ({
   message,
   isMe,
@@ -1729,6 +1734,7 @@ const MessageBubble: React.FC<{
   isLastInGroup,
   onAvatarPress,
   showSweetAlert,
+  nameMap,
 }) => {
   const [showActions, setShowActions] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -1801,10 +1807,12 @@ const MessageBubble: React.FC<{
 
       <View style={[!isMe && !showAvatar && { marginLeft: 40 }]}>
         {!isMe && showAvatar && message.type !== 'system' && (
-          <Text style={[styles.senderName, { color: roleColor }]}>
-            {message.senderName}
-          </Text>
-        )}
+  <Text style={[styles.senderName, { color: roleColor }]}>
+    {nameMap[message.senderId] ||
+      member?.fullName ||
+      message.senderName}
+  </Text>
+)}
 
         <Animated.View style={anim}>
           <TouchableOpacity
@@ -2327,6 +2335,7 @@ export default function FamilyChatScreen({
   );
   const [showMessageInfo, setShowMessageInfo] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [nameMap, setNameMap] = useState<Record<string, string>>({});
   const [alert, setAlert] = useState<{
     visible: boolean;
     type: 'success' | 'error' | 'warning' | 'info';
@@ -2422,12 +2431,17 @@ export default function FamilyChatScreen({
         })
       : 'Family Member';
     return {
-      name: member?.fullName || memberName || 'Unknown',
+      name:
+        (member?.id && nameMap[member.id]) ||
+        (member?.userId && nameMap[member.userId]) ||
+        member?.fullName ||
+        memberName ||
+        'Unknown',
       avatar: member?.avatar || memberAvatar || '👤',
       status,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatInfo, memberName, memberAvatar, userProfile, members]);
+  }, [chatInfo, memberName, memberAvatar, userProfile, members, nameMap]);
 
   const otherMembers = useMemo(
     () =>
@@ -2966,22 +2980,20 @@ export default function FamilyChatScreen({
         }
       }
       setMessages((prev) => {
-        const next =
-          msgs.length === 0 &&
-          prev.length > 0 &&
-          !chatStillExistsRef.current
-            ? prev
-            : msgs;
-        if (!next.length) return next;
-        const sorted = [...next].sort(
+        if (msgs.length === 0 && prev.length > 0 && !chatStillExistsRef.current) {
+          return prev;
+        }
+        // Merge so a transient empty/partial snapshot never blanks
+        // the list (that was the disappear → reappear flash).
+        const byId = new Map<string, FamilyMessage>();
+        prev.forEach((m) => byId.set(m.id, m));
+        msgs.forEach((m) => byId.set(m.id, m));
+        const merged = Array.from(byId.values()).sort(
           (a, b) =>
             new Date(a.timestamp).getTime() -
             new Date(b.timestamp).getTime(),
         );
-        const sameOrder = next.every(
-          (m, i) => m.id === sorted[i]?.id,
-        );
-        return sameOrder ? next : sorted;
+        return merged;
       });
       const hasUnread =
         !!meId && msgs.some((m) => !m.readBy?.includes(meId));
@@ -3002,19 +3014,30 @@ export default function FamilyChatScreen({
       }
     });
     return unsub;
-  }, [
-    chatId,
-    subscribeToChatMessages,
-    markChatRead,
-    markMessagesDelivered,
-    userProfile?.id,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, userProfile?.id]);
 
   // Chat bootstrap
   useEffect(() => {
     initializeChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialChatId, memberId]);
+
+  // Resolve fresh display names from `profiles` so chat and calls
+  // never diverge on a stale `family_members.full_name`.
+  useEffect(() => {
+    const ids = Array.from(
+      new Set(messages.map((m) => m.senderId).filter(Boolean)),
+    );
+    if (ids.length === 0) return;
+    let cancelled = false;
+    resolveDisplayNames(ids).then((map) => {
+      if (!cancelled) setNameMap((prev) => ({ ...prev, ...map }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [messages.length]);
 
   // Mark the chat read as soon as we mount with a valid chatId.
   // Without this, opening the chat while it was already in the
@@ -3103,6 +3126,7 @@ export default function FamilyChatScreen({
               });
             }}
             showSweetAlert={showSweetAlert}
+            nameMap={nameMap}
           />
         </View>
       );
@@ -3200,8 +3224,8 @@ export default function FamilyChatScreen({
         isDark={isDark}
       />
 
-      {/* Pulse header */}
-      <View style={{ paddingTop: HEADER_TOP_PADDING }}>
+      {/* Pulse header — safe-area inset + minimal breathing room */}
+      <View style={{ paddingTop: insets.top + HEADER_TOP_PADDING }}>
         <PulseHeader
           isDark={isDark}
           headerName={headerInfo.name}
@@ -3349,7 +3373,7 @@ export default function FamilyChatScreen({
           renderItem={renderMessage}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{
-            paddingTop: DS.space.md,
+            paddingTop: DS.space.xs,
             paddingBottom: 20,
           }}
           showsVerticalScrollIndicator={false}

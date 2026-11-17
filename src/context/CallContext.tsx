@@ -21,7 +21,6 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-// expo-audio is accessed through useRingtones (hooks/useRingtones.ts)
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
@@ -105,6 +104,8 @@ export interface CallContextType {
   toggleSpeaker: () => void;
   toggleCamera: () => void;
   callDurationSec: number;
+  callHistory: CallHistoryEntry[];
+  clearCallHistory: () => Promise<void>;
 }
 
 const CallContext = createContext<CallContextType | null>(null);
@@ -126,6 +127,44 @@ const DS = {
 
 const RING_TIMEOUT_MS = 45_000;
 const ACTIVE_MAX_MS = 60 * 60_000;
+
+/* ═══════════════════════════════════════════════════════════════
+   CALL HISTORY PERSISTENCE (single declaration)
+   ═══════════════════════════════════════════════════════════════ */
+async function logCallHistory(entry: {
+  callId: string;
+  chatId: string;
+  type: CallType;
+  status: CallHistoryStatus;
+  peerId: string;
+  peerName: string;
+  peerAvatar?: string;
+  startedAt: number;
+  endedAt?: number;
+  durationSec?: number;
+  userId: string;
+}) {
+  try {
+    await supabase.from('call_history').insert({
+      call_id: entry.callId,
+      chat_id: entry.chatId,
+      type: entry.type,
+      status: entry.status,
+      peer_id: entry.peerId,
+      peer_name: entry.peerName,
+      peer_avatar: entry.peerAvatar ?? null,
+      started_at: new Date(entry.startedAt).toISOString(),
+      ended_at: entry.endedAt
+        ? new Date(entry.endedAt).toISOString()
+        : null,
+      duration_sec: entry.durationSec ?? 0,
+      user_id: entry.userId,
+    });
+  } catch (e) {
+    if (__DEV__) console.warn('[CallHistory] insert failed', e);
+  }
+}
+
 const isImageUri = (v: string | undefined | null): boolean => {
   if (!v || typeof v !== 'string') return false;
   return (
@@ -145,6 +184,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [waitingCall, setWaitingCall] = useState<ActiveCall | null>(null);
   const [callDurationSec, setCallDurationSec] = useState(0);
+  const [callHistory, setCallHistory] = useState<CallHistoryEntry[]>([]);
 
   const callChannelRef = useRef<any>(null);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
@@ -161,18 +201,64 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     activeCallRef.current = activeCall;
   }, [activeCall]);
 
-  /* ── Ringtone management (expo-audio, shared hook) ─────── */
+  /* ── Call history loader ───────────────────────────────── */
+  const refreshCallHistory = useCallback(async () => {
+    const me = userProfile?.id;
+    if (!me) return;
+    try {
+      const { data } = await supabase
+        .from('call_history')
+        .select('*')
+        .eq('user_id', me)
+        .order('started_at', { ascending: false })
+        .limit(200);
+      if (!data) return;
+      setCallHistory(
+        data.map((r: any) => ({
+          id: r.id,
+          callId: r.call_id,
+          chatId: r.chat_id,
+          type: r.type,
+          status: r.status,
+          peerId: r.peer_id,
+          peerName: r.peer_name || 'Family Member',
+          peerAvatar: r.peer_avatar || undefined,
+          startedAt: new Date(r.started_at).getTime(),
+          endedAt: r.ended_at ? new Date(r.ended_at).getTime() : undefined,
+          durationSec: r.duration_sec || 0,
+        })),
+      );
+    } catch (e) {
+      if (__DEV__) console.warn('[CallHistory] load failed', e);
+    }
+  }, [userProfile?.id]);
+
+  const clearCallHistory = useCallback(async () => {
+    const me = userProfile?.id;
+    if (!me) return;
+    try {
+      await supabase.from('call_history').delete().eq('user_id', me);
+    } catch (e) {
+      if (__DEV__) console.warn('[CallHistory] clear failed', e);
+    }
+    setCallHistory([]);
+  }, [userProfile?.id]);
+
+  useEffect(() => {
+    refreshCallHistory();
+  }, [refreshCallHistory]);
+
+  /* ── Ringtone management (shared expo-audio hook) ──────── */
   const { start: startRingtone, stop: stopRingtone } = useRingtones();
 
   const playRingtone = useCallback(
     (kind: 'incoming' | 'outgoing') => {
-      // Shared hook owns the player; never create a second one here.
       startRingtone(kind).catch(() => {
         // Fallback: haptic pattern that mimics a ringtone.
-        let n = 0;
         if (ringHapticIntervalRef.current) {
           clearInterval(ringHapticIntervalRef.current);
         }
+        let n = 0;
         ringHapticIntervalRef.current = setInterval(() => {
           n++;
           if (kind === 'incoming') {
@@ -391,8 +477,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     channel.on('broadcast', { event: 'call-decline' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId) return;
-      // If the peer declined a call that was queued as *waiting*,
-      // clear the banner — it should not linger after they hang up.
       setWaitingCall((prev) =>
         prev && prev.callId === data.callId ? null : prev,
       );
@@ -402,7 +486,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       setTimeout(() => setActiveCall(null), 1200);
     });
-    
+
     channel.on('broadcast', { event: 'call-busy' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId) return;
@@ -416,8 +500,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     channel.on('broadcast', { event: 'call-end' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.callId) return;
-      // Same for waiting.
-      setWaitingCall(prev =>
+      setWaitingCall((prev) =>
         prev && prev.callId === data.callId ? null : prev,
       );
       setActiveCall((prev) => {
@@ -479,7 +562,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         peerAvatar: params.peer.avatar,
         startedAt: Date.now(),
         userId: me.id,
-      });
+      }).then(() => refreshCallHistory());
 
       // Peer-online probe — if their presence channel has no key,
       // show "Waiting for answer…" instead of "Ringing…".
@@ -488,7 +571,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         const state = callChannelRef.current?.presenceState?.();
         const peerPresence = state?.[`calls-user-${params.peer.id}`];
         if (!peerPresence || Object.keys(peerPresence).length === 0) {
-          setActiveCall(prev =>
+          setActiveCall((prev) =>
             prev && prev.callId === callId
               ? { ...prev, peerOnline: false }
               : prev,
@@ -517,7 +600,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         console.warn('[Call] offer send failed:', e);
       }
     },
-    [userProfile],
+    [userProfile, refreshCallHistory],
   );
 
   const acceptCall = useCallback(async () => {
@@ -542,7 +625,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         peerAvatar: call.peer.avatar,
         startedAt: call.ringingAt,
         userId: userProfile.id,
-      });
+      }).then(() => refreshCallHistory());
     }
     setTimeout(() => {
       setActiveCall((prev) =>
@@ -554,7 +637,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     Haptics.notificationAsync(
       Haptics.NotificationFeedbackType.Success,
     ).catch(() => {});
-  }, [activeCall]);
+  }, [activeCall, userProfile?.id, refreshCallHistory]);
 
   const declineCall = useCallback(async () => {
     const call = activeCall;
@@ -566,12 +649,26 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         payload: { callId: call.callId, to: call.peer.id },
       });
     } catch {}
+    if (userProfile?.id) {
+      logCallHistory({
+        callId: call.callId,
+        chatId: call.chatId,
+        type: call.type,
+        status: 'declined',
+        peerId: call.peer.id,
+        peerName: call.peer.name,
+        peerAvatar: call.peer.avatar,
+        startedAt: call.ringingAt,
+        endedAt: Date.now(),
+        userId: userProfile.id,
+      }).then(() => refreshCallHistory());
+    }
     setActiveCall(null);
     setWaitingCall(null);
     Haptics.notificationAsync(
       Haptics.NotificationFeedbackType.Warning,
     ).catch(() => {});
-  }, [activeCall]);
+  }, [activeCall, userProfile?.id, refreshCallHistory]);
 
   const endCall = useCallback(async () => {
     const call = activeCall;
@@ -598,16 +695,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
           ? Math.floor((Date.now() - call.connectedAt) / 1000)
           : 0,
         userId: userProfile.id,
-      });
+      }).then(() => refreshCallHistory());
     }
     setActiveCall((prev) => (prev ? { ...prev, status: 'ended' } : prev));
-    // A waiting call would now have nowhere to go — clear it.
     setWaitingCall(null);
     setTimeout(() => setActiveCall(null), 900);
     Haptics.notificationAsync(
       Haptics.NotificationFeedbackType.Success,
     ).catch(() => {});
-  }, [activeCall]);
+  }, [activeCall, userProfile?.id, refreshCallHistory]);
 
   const toggleMute = useCallback(() => {
     setActiveCall((prev) => (prev ? { ...prev, isMuted: !prev.isMuted } : prev));
@@ -640,6 +736,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       toggleSpeaker,
       toggleCamera,
       callDurationSec,
+      callHistory,
+      clearCallHistory,
     }),
     [
       activeCall,
@@ -652,6 +750,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       toggleSpeaker,
       toggleCamera,
       callDurationSec,
+      callHistory,
+      clearCallHistory,
     ],
   );
 
@@ -815,7 +915,6 @@ const CallOverlay: React.FC = () => {
           pointerEvents="none"
         />
 
-        {/* CALL WAITING BANNER */}
         {waitingCall && (
           <View style={[styles.waitingBanner, { top: insets.top + 16 }]}>
             <BlurView
@@ -866,10 +965,6 @@ const CallOverlay: React.FC = () => {
                 />
                 <View style={styles.avatarInner}>
                   <AvatarOrInitial
-                    // Pass the raw avatar through — `AvatarOrInitial`
-                    // renders an <Image> for http/file/data URIs and
-                    // falls back to the initial letter otherwise.
-                    // NEVER render a URI as <Text>.
                     avatar={activeCall.peer.avatar}
                     name={activeCall.peer.name || peerInitial}
                     size={148}
@@ -1202,38 +1297,4 @@ const styles = StyleSheet.create({
   },
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   CALL HISTORY PERSISTENCE
-   ═══════════════════════════════════════════════════════════════ */
-async function logCallHistory(entry: {
-  callId: string;
-  chatId: string;
-  type: CallType;
-  status: 'incoming' | 'outgoing' | 'missed' | 'declined' | 'answered';
-  peerId: string;
-  peerName: string;
-  peerAvatar?: string;
-  startedAt: number;
-  endedAt?: number;
-  durationSec?: number;
-  userId: string;
-}) {
-  try {
-    await supabase.from('call_history').insert({
-      call_id: entry.callId,
-      chat_id: entry.chatId,
-      type: entry.type,
-      status: entry.status,
-      peer_id: entry.peerId,
-      peer_name: entry.peerName,
-      peer_avatar: entry.peerAvatar ?? null,
-      started_at: new Date(entry.startedAt).toISOString(),
-      ended_at: entry.endedAt ? new Date(entry.endedAt).toISOString() : null,
-      duration_sec: entry.durationSec ?? 0,
-      user_id: entry.userId,
-    });
-  } catch (e) {
-    if (__DEV__) console.warn('[CallHistory] insert failed', e);
-  }
-}
 export default CallProvider;
