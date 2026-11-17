@@ -71,7 +71,10 @@ const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 // Keep this SMALL so the pulse card hugs the notch.
 const HEADER_TOP_PADDING = 4;
 
-const KEYBOARD_VERTICAL_OFFSET = Platform.OS === 'ios' ? 78 : 0;
+// Measured at runtime from insets + the fixed 44-px sticky-header row.
+// Do NOT bake a magic number here — on notched devices the pulse card
+// is 4 px under `insets.top`, but the *sticky* header that actually
+// offsets the KeyboardAvoidingView is exactly 44 px tall.
 
 import { Text as RNText, TextInput as RNTextInput } from 'react-native';
 const capScaling = (n: number) => Math.min(n, 1.35);

@@ -105,6 +105,17 @@ export interface CallContextType {
   toggleCamera: () => void;
   callDurationSec: number;
   callHistory: CallHistoryEntry[];
+  groupedCallHistory: Array<{
+    peerId: string;
+    peerName: string;
+    peerAvatar?: string;
+    chatId: string;
+    type: 'voice' | 'video';
+    count: number;
+    missedCount: number;
+    latest: CallHistoryEntry;
+    entries: CallHistoryEntry[];
+  }>;
   clearCallHistory: () => Promise<void>;
 }
 
@@ -808,8 +819,55 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }, []);
 
-  const value = useMemo<CallContextType>(
-    () => ({
+  /** Grouped view of `callHistory` for the two list screens.
+   *  - one row per `peerId`
+   *  - `count` = total dials
+   *  - `latest` = most recent entry (for status colour / time label)
+   *  - `missedCount` = dials whose status was missed/declined
+   *  - `entries` = all dials, newest first (used by the detail sheet)
+   */
+  const groupedCallHistory = useMemo(() => {
+    type Group = {
+      peerId: string;
+      peerName: string;
+      peerAvatar?: string;
+      chatId: string;
+      type: 'voice' | 'video';
+      count: number;
+      missedCount: number;
+      latest: CallHistoryEntry;
+      entries: CallHistoryEntry[];
+    };
+    const byPeer = new Map<string, Group>();
+    const sorted = [...callHistory].sort(
+      (a, b) =>
+        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+    );
+    for (const e of sorted) {
+      const key = e.peerId || e.chatId;
+      let g = byPeer.get(key);
+      if (!g) {
+        g = {
+          peerId: e.peerId,
+          peerName: e.peerName,
+          peerAvatar: e.peerAvatar,
+          chatId: e.chatId,
+          type: e.type,
+          count: 0,
+          missedCount: 0,
+          latest: e,
+          entries: [],
+        };
+        byPeer.set(key, g);
+      }
+      g.count += 1;
+      if (e.status === 'missed' || e.status === 'declined') g.missedCount += 1;
+      g.entries.push(e);
+    }
+    return Array.from(byPeer.values());
+  }, [callHistory]);
+
+  const value = useMemo<CallContextType>(() => ({
       activeCall,
       waitingCall,
       startCall,

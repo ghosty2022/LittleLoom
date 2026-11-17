@@ -684,11 +684,12 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     pinChat, muteChat, getTypingUsers, createFamilyGroup,
     subscribeToChatMessages,
     forceSync,
+    isSynced, isLoading,
   } = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
   const { darkMode } = useCustomization();
-  const { startCall, callHistory } = useCall();
+  const { startCall, callHistory, groupedCallHistory } = useCall();
   const insets = useSafeAreaInsets();
   const isDark = darkMode ?? false;
   const chatsRef = useRef<FamilyChat[]>(chats);
@@ -702,6 +703,9 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     return unsub;
   }, [userProfile?.id]);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
+  useEffect(() => {
+    if (isSynced) hasEverSyncedRef.current = true;
+  }, [isSynced]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -716,6 +720,10 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const [alert, setAlert] = useState<{ visible: boolean; type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }>({ visible: false, type: 'success', title: '', message: '' });
   const [showOptionsSheet, setShowOptionsSheet] = useState(false);
   const [nameMap, setNameMap] = useState<Record<string, string>>({});
+  // Once the provider has completed a successful sync we never want to
+  // flash the "No chats yet" card again just because pull-to-refresh
+  // momentarily empties `chats`.
+  const hasEverSyncedRef = useRef(false);
 
   // Resolve fresh names from `profiles` so the list never shows
   // the stale snapshot written into `chat.name` at creation time.
@@ -787,6 +795,9 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     HAPTIC_LIGHT();
     try {
       if (typeof forceSync === 'function') {
+        // Keep the current list rendered until the new data lands —
+        // `forceSync` re-sets `chats` inside the provider but that
+        // is followed by a merged setState, so this stays safe.
         await forceSync();
       } else {
         await new Promise((r) => setTimeout(r, 600));
@@ -1118,81 +1129,111 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
 
         {renderMembersRow()}
 
-        {callHistory.length > 0 && (
-          <View style={{ marginTop: DS.space.md }}>
-            <SectionHeader
-              title="Recent Calls"
-              subtitle={`${callHistory.length} call${callHistory.length === 1 ? '' : 's'}`}
-              icon="call-outline"
-              color={DS.success}
-              action={
+        {/* ─── Last call (single row, tap → full history) ─── */}
+        {groupedCallHistory.length > 0 && (() => {
+          // Most recent dial across every peer.
+          const latestGroup = [...groupedCallHistory].sort(
+            (a, b) =>
+              new Date(b.latest.startedAt).getTime() -
+              new Date(a.latest.startedAt).getTime(),
+          )[0];
+          if (!latestGroup) return null;
+          const h = latestGroup.latest;
+          const missed = h.status === 'missed' || h.status === 'declined';
+          const resolvedName = nameMap[h.peerId] || h.peerName;
+          const statusColor = missed ? DS.danger : h.status === 'outgoing' ? DS.success : DS.info;
+          const statusLabel = missed
+            ? 'Missed'
+            : h.status === 'outgoing'
+            ? 'Outgoing'
+            : 'Received';
+          return (
+            <View style={{ marginTop: DS.space.md }}>
+              <SectionHeader
+                title="Calls"
+                subtitle={`${groupedCallHistory.length} contact${groupedCallHistory.length === 1 ? '' : 's'}`}
+                icon="call-outline"
+                color={DS.success}
+                action={
+                  <PressableScale
+                    onPress={() => navigation.navigate('CallHistory' as never)}
+                    activeScale={0.94}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: DS.success }}>
+                      See all
+                    </Text>
+                  </PressableScale>
+                }
+              />
+              <View style={{ paddingHorizontal: DS.space.lg }}>
                 <PressableScale
                   onPress={() => navigation.navigate('CallHistory' as never)}
-                  activeScale={0.94}
+                  activeScale={0.97}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: DS.success }}>
-                    See all
-                  </Text>
-                </PressableScale>
-              }
-            />
-            <View style={{ paddingHorizontal: DS.space.lg, gap: 6 }}>
-              {callHistory.slice(0, 3).map((h) => {
-                const missed = h.status === 'missed' || h.status === 'declined';
-                const resolvedName = nameMap[h.peerId] || h.peerName;
-                return (
-                  <PressableScale
-                    key={h.id}
-                    onPress={async () => {
-                      HAPTIC_LIGHT();
-                      const peer = {
-                        id: h.peerId,
-                        name: resolvedName,
-                        avatar: h.peerAvatar,
-                      };
-                      await startCall({ chatId: h.chatId, type: h.type, peer });
-                    }}
-                    activeScale={0.97}
-                  >
-                    <View style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      padding: 12,
-                      borderRadius: DS.radius.lg,
-                      backgroundColor: isDark ? DS.darkCard : DS.white,
-                      borderWidth: 1,
-                      borderColor: isDark ? DS.darkBorder : DS.gray200,
-                    }}>
-                      <SafeAvatar avatar={h.peerAvatar} size={40} fallbackEmoji="👤" fallbackColor={missed ? DS.danger : DS.success} />
-                      <View style={{ flex: 1, marginLeft: 10 }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: missed ? DS.danger : (isDark ? DS.white : DS.gray900) }} numberOfLines={1}>
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 12,
+                    borderRadius: DS.radius.lg,
+                    backgroundColor: isDark ? DS.darkCard : DS.white,
+                    borderWidth: 1,
+                    borderColor: isDark ? DS.darkBorder : DS.gray200,
+                  }}>
+                    <SafeAvatar avatar={h.peerAvatar} size={40} fallbackEmoji="👤" fallbackColor={statusColor} />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: missed ? DS.danger : (isDark ? DS.white : DS.gray900), flexShrink: 1 }} numberOfLines={1}>
                           {resolvedName}
                         </Text>
-                        <Text style={{ fontSize: 11, color: isDark ? DS.gray400 : DS.gray500 }} numberOfLines={1}>
-                          {missed
-                            ? 'Missed'
-                            : h.status === 'outgoing'
-                            ? 'Outgoing'
-                            : 'Received'}{' '}
-                          {h.type} call
-                          {h.durationSec > 0
-                            ? ` · ${Math.floor(h.durationSec / 60)}m ${h.durationSec % 60}s`
-                            : ''}
-                        </Text>
+                        {latestGroup.count > 1 && (
+                          <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, backgroundColor: `${DS.primary}18` }}>
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: DS.primary }}>
+                              {latestGroup.count}×
+                            </Text>
+                          </View>
+                        )}
+                        {latestGroup.missedCount > 0 && (
+                          <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, backgroundColor: `${DS.danger}18` }}>
+                            <Text style={{ fontSize: 10, fontWeight: '800', color: DS.danger }}>
+                              {latestGroup.missedCount} missed
+                            </Text>
+                          </View>
+                        )}
                       </View>
-                      <Ionicons name={h.type === 'video' ? 'videocam' : 'call'} size={18} color={DS.success} />
+                      <Text style={{ fontSize: 11, color: isDark ? DS.gray400 : DS.gray500 }} numberOfLines={1}>
+                        {statusLabel} · {h.type} ·{' '}
+                        {new Date(h.startedAt).toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </Text>
                     </View>
-                  </PressableScale>
-                );
-              })}
+                    <PressableScale
+                      onPress={async (e?: any) => {
+                        e?.stopPropagation?.();
+                        HAPTIC_LIGHT();
+                        const peer = { id: h.peerId, name: resolvedName, avatar: h.peerAvatar };
+                        await startCall({ chatId: h.chatId, type: h.type, peer });
+                      }}
+                      activeScale={0.9}
+                    >
+                      <View style={{ padding: 8 }}>
+                        <Ionicons name={h.type === 'video' ? 'videocam' : 'call'} size={20} color={statusColor} />
+                      </View>
+                    </PressableScale>
+                  </View>
+                </PressableScale>
+              </View>
             </View>
-          </View>
-        )}
+          );
+        })()}
 
         <View style={{ marginTop: DS.space.lg }}>
           <SectionHeader title="Conversations" subtitle={`${sortedChats.length} chat${sortedChats.length !== 1 ? 's' : ''}`} icon="chatbubbles-outline" color={DS.accent} />
           <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
-            {sortedChats.length === 0 ? (
+            {(isSynced || hasEverSyncedRef.current) && sortedChats.length === 0 ? (
               <Animated.View entering={FadeIn} style={[styles.emptyCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
                 <View style={[styles.emptyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
                   <Text style={{ fontSize: 36 }}>💬</Text>
