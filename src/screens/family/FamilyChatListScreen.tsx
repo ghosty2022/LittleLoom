@@ -66,6 +66,18 @@ const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 // small breathing room above the sticky header.
 const HEADER_TOP_PADDING = 4;
 
+function useKeyboardHeight() {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) => setHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvt, () => setHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  return height;
+}
+
 import { Text as RNText, TextInput as RNTextInput } from 'react-native';
 const capScaling = (n: number) => Math.min(n, 1.35);
 // @ts-ignore

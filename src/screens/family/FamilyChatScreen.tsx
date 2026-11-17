@@ -72,6 +72,18 @@ const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
 // Keep this SMALL so the pulse card hugs the notch.
 const HEADER_TOP_PADDING = 4;
 
+function useKeyboardHeight() {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) => setHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvt, () => setHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  return height;
+}
+
 // Measured at runtime from insets + the fixed 44-px sticky-header row.
 // Do NOT bake a magic number here — on notched devices the pulse card
 // is 4 px under `insets.top`, but the *sticky* header that actually
@@ -2384,6 +2396,7 @@ export default function FamilyChatScreen({
   const { startCall, activeCall, minimizeCall } = useCall();
   const insets = useSafeAreaInsets();
   const isDark = darkMode ?? false;
+  const keyboardHeight = useKeyboardHeight();
 
   /* ── State ───────────────────────────────────────────────── */
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -3456,10 +3469,7 @@ export default function FamilyChatScreen({
         </Animated.View>
       )}
 
-      <KeyboardAvoidingView
-  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-  keyboardVerticalOffset={insets.top + HEADER_TOP_PADDING + 44}
-      >
+      <View style={{ flex: 1, paddingBottom: keyboardHeight }}>
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -3524,16 +3534,15 @@ export default function FamilyChatScreen({
             <TypingIndicator isDark={isDark} />
           </View>
         )}
-      </KeyboardAvoidingView>
 
-      <ReplyPreview
-        replyTo={replyingTo}
-        onCancel={() => setReplyingTo(null)}
-        isDark={isDark}
-      />
+        <ReplyPreview
+          replyTo={replyingTo}
+          onCancel={() => setReplyingTo(null)}
+          isDark={isDark}
+        />
 
-      <View style={{ flexShrink: 0 }}>
-        {!inputText && !replyingTo && quickReplies.length > 0 && (
+        <View style={{ flexShrink: 0 }}>
+          {!inputText && !replyingTo && quickReplies.length > 0 && (
           <View style={{ height: 44, justifyContent: 'center' }}>
             <Animated.ScrollView
               horizontal
@@ -3683,11 +3692,14 @@ export default function FamilyChatScreen({
                   }
                 />
               </View>
-            </PressableScale>
+                                    </PressableScale>
           )}
         </View>
+        </View>
       </View>
-
+    </View>
+  );
+}
       {/* Options sheet */}
       <SoftOptionsSheet
         visible={showOptionsSheet}
