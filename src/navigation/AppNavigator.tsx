@@ -1124,6 +1124,11 @@ function NavigationContent({
             <Stack.Screen name="Gallery" component={GalleryScreen} />
             <Stack.Screen name="FamilyChatList" component={FamilyChatListScreen} />
             <Stack.Screen name="FamilyChat" component={FamilyChatScreen} />
+<Stack.Screen
+  name="CallHistory"
+  component={require('../screens/family/CallHistoryScreen').default}
+  options={{ headerShown: false, presentation: 'modal' }}
+/>
             <Stack.Screen name="BackupRestore" component={BackupRestoreScreen} />
             <Stack.Screen name="HelpCenter" component={HelpCenterScreen} />
             <Stack.Screen name="ContactSupport" component={ContactSupportScreen} />

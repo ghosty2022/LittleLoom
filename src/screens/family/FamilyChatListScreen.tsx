@@ -409,6 +409,17 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
                     <Ionicons name="person-add" size={18} color={isDark ? DS.gray300 : DS.gray600} />
                   </View>
                 </PressableScale>
+                <PressableScale
+                  onPress={() => {
+                    HAPTIC_LIGHT();
+                    navigation.navigate('CallHistory' as never);
+                  }}
+                  activeScale={0.9}
+                >
+                  <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
+                    <Ionicons name="call" size={18} color={DS.success} />
+                  </View>
+                </PressableScale>
               </View>
             </View>
 
@@ -561,7 +572,8 @@ const ChatListItem: React.FC<{
   unreadCount: number; isTyping?: boolean; onlineStatus?: 'online' | 'away' | 'offline';
   userId?: string;
   otherMembers?: FamilyMember[];
-}> = ({ chat, isDark, onPress, onLongPress, unreadCount, isTyping, onlineStatus, userId, otherMembers }) => {
+  nameMap?: Record<string, string>;
+}> = ({ chat, isDark, onPress, onLongPress, unreadCount, isTyping, onlineStatus, userId, otherMembers, nameMap }) => {
   const isDirect = chat.type === 'direct';
   // For direct chats, find the *other* participant. `participantRoles`
   // and `participantAvatars` are `Record<userId, value>` keyed by the
@@ -672,7 +684,11 @@ const ChatListItem: React.FC<{
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
               <Text style={[styles.chatName, { color: isDark ? DS.white : DS.gray900 }]} numberOfLines={1}>
-                {chat.name}
+                {isDirect
+                  ? (otherParticipantId && nameMap?.[otherParticipantId]) ||
+                    liveMember?.fullName ||
+                    chat.name
+                  : chat.name}
               </Text>
               {isDeactivatedPeer && (
                 <View style={{
@@ -741,6 +757,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const { members } = useFamily();
   const { userProfile } = useAuth();
   const { darkMode } = useCustomization();
+  const { startCall, callHistory } = useCall();
   const insets = useSafeAreaInsets();
   const isDark = darkMode ?? false;
   const chatsRef = useRef<FamilyChat[]>(chats);
@@ -767,6 +784,28 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const [isUploading, setIsUploading] = useState(false);
   const [alert, setAlert] = useState<{ visible: boolean; type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }>({ visible: false, type: 'success', title: '', message: '' });
   const [showOptionsSheet, setShowOptionsSheet] = useState(false);
+  const [nameMap, setNameMap] = useState<Record<string, string>>({});
+
+  // Resolve fresh names from `profiles` so the list never shows
+  // the stale snapshot written into `chat.name` at creation time.
+  useEffect(() => {
+    const ids = new Set<string>();
+    chats.forEach((c: FamilyChat) => {
+      if (c.type === 'direct') {
+        c.participants?.forEach((p) => {
+          if (p && p !== userProfile?.id) ids.add(p);
+        });
+      }
+    });
+    if (ids.size === 0) return;
+    let cancelled = false;
+    resolveDisplayNames(Array.from(ids)).then((map) => {
+      if (!cancelled) setNameMap(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [chats, userProfile?.id]);
 
   // ── Instant list updates on any inbound message ─────────────
   // Subscribing to each chat's message stream is 100x cheaper
@@ -1157,6 +1196,71 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
         {/* Members row */}
         {renderMembersRow()}
 
+        {/* Recent Calls strip — pulls from useCall().callHistory */}
+        {callHistory.length > 0 && (
+          <View style={{ marginTop: DS.space.md }}>
+            <SectionHeader
+              title="Recent Calls"
+              subtitle={`${callHistory.length} call${callHistory.length === 1 ? '' : 's'}`}
+              icon="call-outline"
+              color={DS.success}
+              action={
+                <PressableScale
+                  onPress={() => navigation.navigate('CallHistory' as never)}
+                  activeScale={0.94}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: DS.success }}>
+                    See all
+                  </Text>
+                </PressableScale>
+              }
+            />
+            <View style={{ paddingHorizontal: DS.space.lg, gap: 6 }}>
+              {callHistory.slice(0, 3).map((h) => {
+                const missed = h.status === 'missed' || h.status === 'declined';
+                const resolvedName = nameMap[h.peerId] || h.peerName;
+                return (
+                  <PressableScale
+                    key={h.id}
+                    onPress={async () => {
+                      HAPTIC_LIGHT();
+                      const peer = {
+                        id: h.peerId,
+                        name: resolvedName,
+                        avatar: h.peerAvatar,
+                      };
+                      await startCall({ chatId: h.chatId, type: h.type, peer });
+                    }}
+                    activeScale={0.97}
+                  >
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      padding: 12,
+                      borderRadius: DS.radius.lg,
+                      backgroundColor: isDark ? DS.darkCard : DS.white,
+                      borderWidth: 1,
+                      borderColor: isDark ? DS.darkBorder : DS.gray200,
+                    }}>
+                      <SafeAvatar avatar={h.peerAvatar} size={40} fallbackEmoji="👤" fallbackColor={missed ? DS.danger : DS.success} />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: missed ? DS.danger : (isDark ? DS.white : DS.gray900) }} numberOfLines={1}>
+                          {resolvedName}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: isDark ? DS.gray400 : DS.gray500 }} numberOfLines={1}>
+                          {missed ? 'Missed' : h.status === 'outgoing' ? 'Outgoing' : 'Received'} {h.type} call
+                          {h.durationSec > 0 ? ` · ${Math.floor(h.durationSec / 60)}m ${h.durationSec % 60}s` : ''}
+                        </Text>
+                      </View>
+                      <Ionicons name={h.type === 'video' ? 'videocam' : 'call'} size={18} color={DS.success} />
+                    </View>
+                  </PressableScale>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Chats list */}
         <View style={{ marginTop: DS.space.lg }}>
           <SectionHeader title="Conversations" subtitle={`${sortedChats.length} chat${sortedChats.length !== 1 ? 's' : ''}`} icon="chatbubbles-outline" color={DS.accent} />
@@ -1190,6 +1294,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
                     onlineStatus={chat.type === 'direct' ? getOnlineStatus(chat.participants.find((p) => p !== userProfile?.id) || '') : undefined}
                     userId={userProfile?.id}
                     otherMembers={otherMembers}
+                    nameMap={nameMap}
                   />
                 </Animated.View>
               ))

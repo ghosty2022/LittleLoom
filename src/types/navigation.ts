@@ -168,6 +168,7 @@ export interface AuthState {
 
 
 export type RootStackParamList = {
+  CallHistory: undefined;
   
   Splash: undefined;
   Onboarding: undefined;

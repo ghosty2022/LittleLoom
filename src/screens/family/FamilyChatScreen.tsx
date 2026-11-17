@@ -1716,6 +1716,11 @@ const MessageBubble: React.FC<{
     message: string,
   ) => void;
   nameMap: Record<string, string>;
+  onCallBack?: (p: {
+    chatId: string;
+    peer: { id: string; name: string; avatar?: string };
+    type: 'video' | 'voice';
+  }) => void;
 }> = ({
   message,
   isMe,
@@ -1735,6 +1740,7 @@ const MessageBubble: React.FC<{
   onAvatarPress,
   showSweetAlert,
   nameMap,
+  onCallBack,
 }) => {
   const [showActions, setShowActions] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -1892,7 +1898,99 @@ const MessageBubble: React.FC<{
                 </TouchableOpacity>
               )}
 
-              {message.type === 'image' && message.imageUrl ? (
+              {message.type === 'call' ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 8,
+                    gap: 10,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isMe
+                        ? 'rgba(255,255,255,0.18)'
+                        : `${DS.primary}15`,
+                    }}
+                  >
+                    <Ionicons
+                      name={
+                        (message as any).metadata?.callType === 'video'
+                          ? 'videocam'
+                          : 'call'
+                      }
+                      size={18}
+                      color={isMe ? DS.white : DS.primary}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: isMe
+                          ? DS.white
+                          : isDark
+                          ? DS.gray100
+                          : DS.gray900,
+                      }}
+                    >
+                      {message.content}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '500',
+                        marginTop: 2,
+                        color: isMe
+                          ? 'rgba(255,255,255,0.7)'
+                          : isDark
+                          ? DS.gray400
+                          : DS.gray500,
+                      }}
+                    >
+                      Tap to call back
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const meta = (message as any).metadata || {};
+                      if (!meta.peerId) return;
+                      onCallBack?.({
+                        chatId: message.chatId ?? chatId,
+                        peer: {
+                          id: meta.peerId,
+                          name: meta.peerName,
+                          avatar: meta.peerAvatar,
+                        },
+                        type: meta.callType === 'video' ? 'video' : 'voice',
+                      });
+                    }}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isMe
+                        ? 'rgba(255,255,255,0.18)'
+                        : `${DS.primary}15`,
+                    }}
+                  >
+                    <Ionicons
+                      name="call-outline"
+                      size={16}
+                      color={isMe ? DS.white : DS.primary}
+                    />
+                  </TouchableOpacity>
+                </View>
+              ) : message.type === 'image' && message.imageUrl ? (
                 <TouchableOpacity
                   onPress={() => onImagePress(message.imageUrl!)}
                   activeOpacity={0.9}
@@ -2295,7 +2393,34 @@ export default function FamilyChatScreen({
   const insets = useSafeAreaInsets();
   // In-app calling — no dialer, no FaceTime.
   const { startCall } = useCall();
+const { chats } = useFamilyChat();
+const { callHistory } = useCall();
+const [nameMap, setNameMap] = useState<Record<string, string>>({});
 
+// Resolve fresh display names from `profiles` for every peer
+// that appears in this list. This is what keeps chat names in
+// sync with the Calls screen.
+useEffect(() => {
+  const ids = new Set<string>();
+  chats.forEach((c: any) => {
+    if (c.type === 'direct') {
+      c.participants?.forEach((p: string) => {
+        if (p !== userProfile?.id) ids.add(p);
+      });
+    }
+  });
+  callHistory.forEach((h) => {
+    if (h.peerId && h.peerId !== userProfile?.id) ids.add(h.peerId);
+  });
+  if (ids.size === 0) return;
+  let cancelled = false;
+  resolveDisplayNames(Array.from(ids)).then((map) => {
+    if (!cancelled) setNameMap(map);
+  });
+  return () => {
+    cancelled = true;
+  };
+}, [chats, callHistory, userProfile?.id]);
   const isDark = darkMode ?? false;
 
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -2335,14 +2460,49 @@ export default function FamilyChatScreen({
   );
   const [showMessageInfo, setShowMessageInfo] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
-  const [nameMap, setNameMap] = useState<Record<string, string>>({});
   const [alert, setAlert] = useState<{
     visible: boolean;
     type: 'success' | 'error' | 'warning' | 'info';
     title: string;
     message: string;
   }>({ visible: false, type: 'success', title: '', message: '' });
+
+  // Fresh names from `profiles` so the chat header and bubbles
+  // never show the stale `family_members.full_name`.
+  useEffect(() => {
+    const ids = Array.from(new Set(messages.map((m) => m.senderId).filter(Boolean)));
+    if (ids.length === 0) return;
+    let cancelled = false;
+    resolveDisplayNames(ids).then((map) => {
+      if (!cancelled) setNameMap(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [messages.length]);
   const [showOptionsSheet, setShowOptionsSheet] = useState(false);
+  const [nameMap, setNameMap] = useState<Record<string, string>>({});
+
+  // Resolve fresh names from `profiles` so the list never shows
+  // the stale snapshot written into `chat.name` at creation time.
+  useEffect(() => {
+    const ids = new Set<string>();
+    chats.forEach((c: FamilyChat) => {
+      if (c.type === 'direct') {
+        c.participants?.forEach((p) => {
+          if (p && p !== userProfile?.id) ids.add(p);
+        });
+      }
+    });
+    if (ids.size === 0) return;
+    let cancelled = false;
+    resolveDisplayNames(Array.from(ids)).then((map) => {
+      if (!cancelled) setNameMap(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [chats, userProfile?.id]);
 
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -2795,6 +2955,22 @@ export default function FamilyChatScreen({
     inputRef.current?.focus();
   }, []);
 
+              {message.type === 'call' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 10 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: isMe ? 'rgba(255,255,255,0.18)' : `${DS.primary}15` }}>
+                    <Ionicons name={(message as any).metadata?.callType === 'video' ? 'videocam' : 'call'} size={18} color={isMe ? DS.white : DS.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: isMe ? DS.white : isDark ? DS.gray100 : DS.gray900 }}>
+                      {message.content}
+                    </Text>
+                    <Text style={{ fontSize: 11, fontWeight: '500', marginTop: 2, color: isMe ? 'rgba(255,255,255,0.7)' : isDark ? DS.gray400 : DS.gray500 }}>
+                      Tap to call back
+                    </Text>
+                  </View>
+                </View>
+              ) : message.type === 'image' && message.imageUrl ? (
+
   const handleReply = useCallback((message: FamilyMessage) => {
     setReplyingTo({
       id: message.id,
@@ -3127,6 +3303,10 @@ export default function FamilyChatScreen({
             }}
             showSweetAlert={showSweetAlert}
             nameMap={nameMap}
+            onCallBack={(p) => {
+              HAPTIC_MEDIUM();
+              startCall(p);
+            }}
           />
         </View>
       );
