@@ -34,6 +34,7 @@ import { ensureAllImageDirs } from '@/utils/imageUtils';
 
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { GlobalAudioPlayer } from '@/components/GlobalAudioPlayer';
+import { InCallPill } from '@/components/InCallPill';
 
 import { AIBootstrapGate } from '@/components/AIBootstrapGate';
 
@@ -272,6 +273,11 @@ const InnerApp: React.FC<InnerAppProps> = React.memo(({ initialState, onStateCha
             initialRouteName={initialRouteName}
           />
           <GlobalAudioPlayer />
+          {/* Global minimized-call pill — overlays every screen. Must be
+              rendered as a sibling of AppNavigator so it sits above the
+              navigator's view hierarchy. `useCall()` requires CallProvider
+              to be an ancestor, which it is via ContextProvider. */}
+          <InCallPill />
         </View>
         <StatusBar style={isDark ? 'light' : 'dark'} />
       </ModalProvider>

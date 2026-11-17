@@ -684,7 +684,8 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     pinChat, muteChat, getTypingUsers, createFamilyGroup,
     subscribeToChatMessages,
     forceSync,
-    isSynced, isLoading,
+    isSynced,
+    isLoading,
   } = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
@@ -706,6 +707,9 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   useEffect(() => {
     if (isSynced) hasEverSyncedRef.current = true;
   }, [isSynced]);
+  useEffect(() => {
+    if (isSynced) hasEverSyncedRef.current = true;
+  }, [isSynced]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -720,6 +724,8 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const [alert, setAlert] = useState<{ visible: boolean; type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }>({ visible: false, type: 'success', title: '', message: '' });
   const [showOptionsSheet, setShowOptionsSheet] = useState(false);
   const [nameMap, setNameMap] = useState<Record<string, string>>({});
+  const hasEverSyncedRef = useRef(false);
+  const hasEverSyncedRef = useRef(false);
   // Once the provider has completed a successful sync we never want to
   // flash the "No chats yet" card again just because pull-to-refresh
   // momentarily empties `chats`.
@@ -1233,7 +1239,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
         <View style={{ marginTop: DS.space.lg }}>
           <SectionHeader title="Conversations" subtitle={`${sortedChats.length} chat${sortedChats.length !== 1 ? 's' : ''}`} icon="chatbubbles-outline" color={DS.accent} />
           <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
-            {(isSynced || hasEverSyncedRef.current) && sortedChats.length === 0 ? (
+            {(isSynced || hasEverSyncedRef.current) &&             {(isSynced || hasEverSyncedRef.current) && sortedChats.length === 0 ? (
               <Animated.View entering={FadeIn} style={[styles.emptyCard, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
                 <View style={[styles.emptyIcon, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : DS.gray100 }]}>
                   <Text style={{ fontSize: 36 }}>💬</Text>

@@ -8,6 +8,7 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Dimensions,
   FlatList,
   Image,
@@ -1296,11 +1297,18 @@ const TypingIndicator: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     return () => clearInterval(interval);
   }, [dot1, dot2, dot3]);
 
-  const dotStyle = (val: any) =>
-    useAnimatedStyle(() => ({
-      transform: [{ translateY: val.value * -4 }],
-      opacity: 0.4 + val.value * 0.6,
-    }));
+  const dotStyle1 = useAnimatedStyle(() => ({
+    transform: [{ translateY: dot1.value * -4 }],
+    opacity: 0.4 + dot1.value * 0.6,
+  }));
+  const dotStyle2 = useAnimatedStyle(() => ({
+    transform: [{ translateY: dot2.value * -4 }],
+    opacity: 0.4 + dot2.value * 0.6,
+  }));
+  const dotStyle3 = useAnimatedStyle(() => ({
+    transform: [{ translateY: dot3.value * -4 }],
+    opacity: 0.4 + dot3.value * 0.6,
+  }));
 
   return (
     <View
@@ -1311,25 +1319,13 @@ const TypingIndicator: React.FC<{ isDark: boolean }> = ({ isDark }) => {
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         <Animated.View
-          style={[
-            styles.typingDot,
-            { backgroundColor: DS.primary },
-            dotStyle(dot1),
-          ]}
+          style={[styles.typingDot, { backgroundColor: DS.primary }, dotStyle1]}
         />
         <Animated.View
-          style={[
-            styles.typingDot,
-            { backgroundColor: DS.primary },
-            dotStyle(dot2),
-          ]}
+          style={[styles.typingDot, { backgroundColor: DS.primary }, dotStyle2]}
         />
         <Animated.View
-          style={[
-            styles.typingDot,
-            { backgroundColor: DS.primary },
-            dotStyle(dot3),
-          ]}
+          style={[styles.typingDot, { backgroundColor: DS.primary }, dotStyle3]}
         />
       </View>
     </View>
@@ -2385,7 +2381,7 @@ export default function FamilyChatScreen({
   const { members } = useFamily();
   const { userProfile } = useAuth();
   const { darkMode } = useCustomization();
-  const { startCall } = useCall();
+  const { startCall, activeCall, minimizeCall } = useCall();
   const insets = useSafeAreaInsets();
   const isDark = darkMode ?? false;
 
@@ -2428,6 +2424,21 @@ export default function FamilyChatScreen({
   const lastMarkedCountRef = useRef<number>(-1);
   const messagesRef = useRef<FamilyMessage[]>([]);
   const chatStillExistsRef = useRef(true);
+
+  // Back button: if a call is active, minimize it instead of ending it
+  // and instead of navigating away with the call still full-screen.
+  useEffect(() => {
+    const onBack = () => {
+      if (activeCall) {
+        minimizeCall();
+        navigation.goBack();
+        return true; // handled
+      }
+      return false; // let the navigator pop
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => sub.remove();
+  }, [activeCall, minimizeCall, navigation]);
 
   // Stable snapshot of the context API — every `useFamilyChat()`
   // return is a new object each render, so we freeze the first one.
@@ -3407,9 +3418,8 @@ export default function FamilyChatScreen({
       )}
 
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={KEYBOARD_VERTICAL_OFFSET}
+  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  keyboardVerticalOffset={insets.top + HEADER_TOP_PADDING + 44}
       >
         <FlatList
           ref={flatListRef}
