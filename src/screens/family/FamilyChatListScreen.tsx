@@ -8,7 +8,6 @@ import React, {
 import {
   ActivityIndicator,
   Dimensions,
-  FlatList,
   Image,
   Modal,
   Platform,
@@ -42,31 +41,34 @@ import Animated, {
   withTiming,
   runOnJS,
 } from 'react-native-reanimated';
-// SDK 54+ uses the new File/Directory API. The legacy module is still
-// available under this path for compatibility, but prefer the next API.
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../types/navigation';
-import { FamilyChat, FamilyMessage,} from '../../context/FamilyChatContext';
+import { FamilyChat } from '../../context/FamilyChatContext';
 import { FamilyMember, useFamily } from '../../context/FamilyContext';
 import { useAuth, subscribeToProfileChanges } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useFamilyChat } from '../../context/FamilyChatContext';
 import { resolveDisplayNames } from '../../utils/displayName';
 import { useCall } from '../../context/CallContext';
-type FamilyChatListScreenProps = NativeStackScreenProps<RootStackParamList, 'FamilyChatList'>;
-const { width, height } = Dimensions.get('window');
-const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
-const HEADER_TOP_PADDING = Platform.OS === 'ios' ? 52 : STATUS_BAR_HEIGHT + 14;
 
-// Cap system font scaling so extremely large accessibility text
-// doesn't blow out chat bubbles or the input bar.
+type FamilyChatListScreenProps = NativeStackScreenProps<
+  RootStackParamList,
+  'FamilyChatList'
+>;
+
+const { height } = Dimensions.get('window');
+const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
+// Safe-area top comes from `insets.top`; this constant is only the
+// small breathing room above the sticky header.
+const HEADER_TOP_PADDING = 4;
+
 import { Text as RNText, TextInput as RNTextInput } from 'react-native';
 const capScaling = (n: number) => Math.min(n, 1.35);
-// @ts-ignore - patch defaults once per module load
+// @ts-ignore
 RNText.defaultProps = { ...(RNText.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
 // @ts-ignore
 RNTextInput.defaultProps = { ...(RNTextInput.defaultProps || {}), maxFontSizeMultiplier: capScaling(1.35) };
@@ -113,9 +115,7 @@ const HAPTIC_HEAVY = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy
 const HAPTIC_SUCCESS = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 const HAPTIC_WARNING = () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   HELPERS
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── Helpers ─────────────────────────────────────────────────── */
 const isImageUri = (v: string | undefined | null): boolean => {
   if (!v || typeof v !== 'string') return false;
   return v.startsWith('http') || v.startsWith('file://') || v.startsWith('data:');
@@ -126,9 +126,7 @@ const isEmoji = (v: string | undefined | null): boolean => {
   return /\p{Emoji}/u.test(v);
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   GRADIENT TEXT
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── GradientText ────────────────────────────────────────────── */
 const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba2', '#f093fb'] }: {
   children: React.ReactNode; style?: any; colors?: string[];
 }) => {
@@ -152,9 +150,7 @@ const GradientText = React.memo(({ children, style, colors = ['#667eea', '#764ba
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PRESSABLE SCALE
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── PressableScale ──────────────────────────────────────────── */
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 const PressableScale = React.memo<{
   children: React.ReactNode; onPress?: () => void; onLongPress?: () => void;
@@ -177,9 +173,7 @@ const PressableScale = React.memo<{
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PULSING DOT
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── PulsingDot ──────────────────────────────────────────────── */
 const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 8 }) => {
   const pulse = useSharedValue(1);
   const halo = useSharedValue(1);
@@ -200,9 +194,7 @@ const PulsingDot: React.FC<{ color: string; size?: number }> = ({ color, size = 
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SAFE AVATAR
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── SafeAvatar ──────────────────────────────────────────────── */
 const SafeAvatar: React.FC<{
   avatar?: string | null; size?: number; fallbackEmoji?: string;
   fallbackIcon?: keyof typeof Ionicons.glyphMap; fallbackColor?: string;
@@ -234,9 +226,7 @@ const SafeAvatar: React.FC<{
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SWEET ALERT
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── SweetAlert ──────────────────────────────────────────────── */
 const SweetAlert = ({ visible, type, title, message, onClose }: {
   visible: boolean; type: 'success' | 'error' | 'warning' | 'info';
   title: string; message: string; onClose: () => void;
@@ -281,9 +271,7 @@ const SweetAlert = ({ visible, type, title, message, onClose }: {
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   PULSE HEADER
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── PulseHeader ─────────────────────────────────────────────── */
 interface PulseHeaderProps {
   isDark: boolean;
   chatCount: number;
@@ -296,15 +284,14 @@ interface PulseHeaderProps {
   onBack: () => void;
   onShareCode: () => void;
   onNewGroup: () => void;
-  /** Cross-link to the Community chat list. Provided by the parent screen
-   *  so `PulseHeader` doesn't need to reach into navigation itself. */
   onOpenCommunityChat: () => void;
+  onOpenCallHistory: () => void;
 }
 
 const PulseHeader = React.memo<PulseHeaderProps>(({
   isDark, chatCount, unreadCount, onlineCount, showSearch, searchQuery,
   onSearchChange, onToggleSearch, onBack, onShareCode, onNewGroup,
-  onOpenCommunityChat,
+  onOpenCommunityChat, onOpenCallHistory,
 }) => {
   const pulse = useSharedValue(1);
   const rotate = useSharedValue(0);
@@ -318,7 +305,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: pulse.value }] }));
 
   return (
-    <Animated.View entering={FadeInDown.duration(500).springify()}>
+    <Animated.View entering={FadeInDown.duration(400).springify()}>
       <View style={[styles.pulseWrap, { backgroundColor: isDark ? DS.darkCard : DS.white, borderColor: isDark ? DS.darkBorder : DS.gray200 }]}>
         <LinearGradient
           colors={isDark
@@ -390,7 +377,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
                     </View>
                   )}
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
                   <View style={[styles.pulseMiniDot, { backgroundColor: DS.success }]} />
                   <Text style={[styles.pulseSub, { color: isDark ? DS.gray400 : DS.gray500 }]} numberOfLines={1}>
                     {chatCount} chat{chatCount !== 1 ? 's' : ''} · {onlineCount} online
@@ -409,13 +396,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
                     <Ionicons name="person-add" size={18} color={isDark ? DS.gray300 : DS.gray600} />
                   </View>
                 </PressableScale>
-                <PressableScale
-                  onPress={() => {
-                    HAPTIC_LIGHT();
-                    navigation.navigate('CallHistory' as never);
-                  }}
-                  activeScale={0.9}
-                >
+                <PressableScale onPress={onOpenCallHistory} activeScale={0.9}>
                   <View style={[styles.pulseIconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : DS.gray100 }]}>
                     <Ionicons name="call" size={18} color={DS.success} />
                   </View>
@@ -423,7 +404,6 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
               </View>
             </View>
 
-            {/* Action strip */}
             <View style={styles.pulseActions}>
               <PressableScale onPress={onNewGroup} activeScale={0.96}>
                 <LinearGradient colors={[DS.primary, DS.accent]} style={styles.pulseActionPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
@@ -437,14 +417,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
                   <Text style={[styles.pulseActionSecondaryText, { color: isDark ? DS.gray300 : DS.gray700 }]}>Share Code</Text>
                 </View>
               </PressableScale>
-              {/* Cross-link to the Community chat list */}
-              <PressableScale
-                onPress={() => {
-                  HAPTIC_LIGHT();
-                  onOpenCommunityChat?.();
-                }}
-                activeScale={0.96}
-              >
+              <PressableScale onPress={onOpenCommunityChat} activeScale={0.96}>
                 <View style={[styles.pulseActionSecondary, { borderColor: isDark ? DS.darkBorder : DS.gray300, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : DS.white, paddingHorizontal: 14 }]}>
                   <Ionicons name="globe-outline" size={14} color={DS.accent} />
                 </View>
@@ -457,9 +430,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(({
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SECTION HEADER
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── SectionHeader ──────────────────────────────────────────── */
 const SectionHeader = ({ title, subtitle, icon, color = DS.primary, action }: {
   title: string; subtitle?: string; icon?: keyof typeof Ionicons.glyphMap;
   color?: string; action?: React.ReactNode;
@@ -480,9 +451,7 @@ const SectionHeader = ({ title, subtitle, icon, color = DS.primary, action }: {
   </View>
 );
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   USER BUBBLE
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── UserBubble ─────────────────────────────────────────────── */
 const UserBubble: React.FC<{ member: FamilyMember; isDark: boolean; onPress: () => void; disabled?: boolean }> = ({ member, isDark, onPress, disabled }) => {
   const roleColor = member.role === 'parent1' ? DS.primary : member.role === 'parent2' ? DS.accent : DS.success;
   const onlineStatus = (() => {
@@ -519,9 +488,7 @@ const UserBubble: React.FC<{ member: FamilyMember; isDark: boolean; onPress: () 
   );
 };
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   TYPING INDICATOR
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── TypingDots ─────────────────────────────────────────────── */
 const TypingDots = React.memo<{ color: string }>(({ color }) => {
   const d1 = useSharedValue(0);
   const d2 = useSharedValue(0);
@@ -537,24 +504,9 @@ const TypingDots = React.memo<{ color: string }>(({ color }) => {
     const interval = setInterval(animate, 1200);
     return () => clearInterval(interval);
   }, [d1, d2, d3]);
-  // Hooks MUST be called unconditionally at the top of a component
-  // (or a custom hook). Wrapping `useAnimatedStyle` in a helper that
-  // is *called during render* is legal only if it's called the same
-  // number of times every render — but it's fragile and Reanimated's
-  // fast refresh can sometimes break it. Declare each animated style
-  // explicitly.
-  const style1 = useAnimatedStyle(() => ({
-    transform: [{ translateY: d1.value * -3 }],
-    opacity: 0.4 + d1.value * 0.6,
-  }));
-  const style2 = useAnimatedStyle(() => ({
-    transform: [{ translateY: d2.value * -3 }],
-    opacity: 0.4 + d2.value * 0.6,
-  }));
-  const style3 = useAnimatedStyle(() => ({
-    transform: [{ translateY: d3.value * -3 }],
-    opacity: 0.4 + d3.value * 0.6,
-  }));
+  const style1 = useAnimatedStyle(() => ({ transform: [{ translateY: d1.value * -3 }], opacity: 0.4 + d1.value * 0.6 }));
+  const style2 = useAnimatedStyle(() => ({ transform: [{ translateY: d2.value * -3 }], opacity: 0.4 + d2.value * 0.6 }));
+  const style3 = useAnimatedStyle(() => ({ transform: [{ translateY: d3.value * -3 }], opacity: 0.4 + d3.value * 0.6 }));
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
       <Animated.View style={[styles.typingDot, { backgroundColor: color }, style1]} />
@@ -564,9 +516,7 @@ const TypingDots = React.memo<{ color: string }>(({ color }) => {
   );
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   CHAT LIST ITEM
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── ChatListItem ───────────────────────────────────────────── */
 const ChatListItem: React.FC<{
   chat: FamilyChat; isDark: boolean; onPress: () => void; onLongPress: () => void;
   unreadCount: number; isTyping?: boolean; onlineStatus?: 'online' | 'away' | 'offline';
@@ -575,33 +525,17 @@ const ChatListItem: React.FC<{
   nameMap?: Record<string, string>;
 }> = ({ chat, isDark, onPress, onLongPress, unreadCount, isTyping, onlineStatus, userId, otherMembers, nameMap }) => {
   const isDirect = chat.type === 'direct';
-  // For direct chats, find the *other* participant. `participantRoles`
-  // and `participantAvatars` are `Record<userId, value>` keyed by the
-  // participant's *user id*.
   const otherParticipantId = isDirect
     ? chat.participants.find((p) => p !== userId) ?? null
     : null;
 
-  // Prefer the *live* member from FamilyContext if available; fall back
-  // to the JSONB snapshot for members not in `members` (e.g. viewers).
-  // The snapshot is written once at chat creation and never refreshed,
-  // so it goes stale the moment the member edits their avatar.
   const liveMember = otherMembers?.find(
     (m) => m.id === otherParticipantId || (m as any).userId === otherParticipantId,
   );
-  // The peer is inactive if they're a direct-chat partner with NO
-  // family_members row AND NO cached participant name. A peer who
-  // merely has no live avatar is still active; only a missing name
-  // (written at chat-creation time) signals they were never resolvable.
   const isDeactivatedPeer =
     isDirect &&
     !!otherParticipantId &&
     !liveMember;
-  // Prefer live member; fall back to the JSONB snapshot on the chat
-  // row. `liveMember.role` can be undefined if the peer is only in
-  // `participantRoles` (e.g. legacy chats created before the member
-  // joined). Never leave `role` undefined — the header uses it to
-  // pick the display label.
   const otherAvatar = liveMember?.avatar
     ?? (otherParticipantId ? chat.participantAvatars?.[otherParticipantId] : null);
   const otherRoleRaw =
@@ -612,10 +546,6 @@ const ChatListItem: React.FC<{
   const statusColor = onlineStatus === 'online' ? DS.success : onlineStatus === 'away' ? DS.warning : DS.gray400;
 
   const otherRelationship = liveMember?.relationship;
-  // Prefer the LIVE relationship ("Mother", "Grandma") from
-  // FamilyContext. Fall back to the chat's stored snapshot.
-  // Never return "Family Member" unless we genuinely have no role
-  // and no relationship.
   const subtitle = isDirect
     ? (liveMember
         ? getMemberDisplayLabel({
@@ -643,6 +573,7 @@ const ChatListItem: React.FC<{
     if (chat.lastMessage.type === 'image') return '📷 Photo';
     if (chat.lastMessage.type === 'voice') return '🎤 Voice';
     if (chat.lastMessage.type === 'file') return '📎 File';
+    if (chat.lastMessage.type === 'call') return chat.lastMessage.content;
     if (chat.lastMessage.type === 'system') return chat.lastMessage.content;
     return chat.lastMessage.content.length > 34 ? chat.lastMessage.content.slice(0, 34) + '...' : chat.lastMessage.content;
   })();
@@ -761,8 +692,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   const insets = useSafeAreaInsets();
   const isDark = darkMode ?? false;
   const chatsRef = useRef<FamilyChat[]>(chats);
-  // Force list re-render on any profile change so participant
-  // avatars / names re-resolve via `members` (FamilyContext).
+
   const [, setProfileTick] = useState(0);
   useEffect(() => {
     if (!userProfile?.id) return;
@@ -772,6 +702,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     return unsub;
   }, [userProfile?.id]);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
+
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -797,6 +728,9 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
         });
       }
     });
+    callHistory.forEach((h) => {
+      if (h.peerId && h.peerId !== userProfile?.id) ids.add(h.peerId);
+    });
     if (ids.size === 0) return;
     let cancelled = false;
     resolveDisplayNames(Array.from(ids)).then((map) => {
@@ -805,23 +739,18 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     return () => {
       cancelled = true;
     };
-  }, [chats, userProfile?.id]);
+  }, [chats, callHistory, userProfile?.id]);
 
   // ── Instant list updates on any inbound message ─────────────
-  // Subscribing to each chat's message stream is 100x cheaper
-  // than polling; the map rebuild is trivial.
   const [realtimeTick, setRealtimeTick] = useState(0);
   const chatIdsKey = useMemo(() => chats.map((c) => c.id).join('|'), [chats]);
   useEffect(() => {
     if (!subscribeToChatMessages) return;
-    // NOTE: `forEach` hands you the *item* (FamilyChat), not `{ id }`.
-    // The previous code passed the whole chat object as a chatId,
-    // which made every subscriber fire constantly.
     const unsubs: Array<() => void> = [];
     chatsRef.current.forEach((chat) => {
       unsubs.push(
         subscribeToChatMessages(chat.id, () => {
-          requestAnimationFrame(() => setRealtimeTick((n) => n + 1));
+          setRealtimeTick((n) => n + 1);
         }),
       );
     });
@@ -860,14 +789,10 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
       if (typeof forceSync === 'function') {
         await forceSync();
       } else {
-        // Fallback so a stale `useFamilyChat()` value never leaves
-        // the spinner up.
         await new Promise((r) => setTimeout(r, 600));
       }
       HAPTIC_SUCCESS();
     } catch {
-      // Swallow — a failed refresh should NOT block the spinner
-      // from clearing.
     } finally {
       setRefreshing(false);
     }
@@ -922,10 +847,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
         (otherId && members.find((m: any) => m.userId === otherId)) ||
         undefined;
 
-      // ── GUARD: peer no longer on platform ──────────────────────
-      // If we can't find a family_members row AND there's no cached
-      // participant name, the peer was deleted / removed. Show a
-      // toast instead of opening a broken chat.
       const hasCachedName = !!otherId && !!chat.participantNames?.[otherId];
       if (otherId && !member && !hasCachedName) {
         showSweetAlert(
@@ -957,10 +878,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
       return;
     }
     HAPTIC_LIGHT();
-    // Pass the *stable, canonical* id — prefer `member.id` (family_members
-    // row) since `getOrCreateDirectChat` will fall back to matching on
-    // that; the returned chat will reference the profiles.userId on the
-    // participant list either way.
     const chatId = await getOrCreateDirectChat(member.id || memberUserId, member);
     if (chatId) {
       navigation.navigate('FamilyChat', {
@@ -1052,8 +969,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
     members.find((m: any) => m.userId === anyId);
 
   const getOnlineStatus = (memberId: string): 'online' | 'away' | 'offline' => {
-    // `memberId` here is a profiles.userId (from `chat.participants`),
-    // which may or may not equal `family_members.id`.
     const lastActive = findMemberByAnyId(memberId)?.lastActive;
     if (!lastActive) return 'offline';
     const mins = (Date.now() - new Date(lastActive).getTime()) / 60000;
@@ -1068,13 +983,25 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   };
 
   const sortedChats = useMemo(() => {
-    const source = Array.isArray(chats) && chats.length > 0 ? chats : [];
-    const filtered = searchQuery.trim()
-      ? chats.filter((c) =>
-          c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.lastMessage?.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (c.participantNames && Object.values(c.participantNames).some((n) => n.toLowerCase().includes(searchQuery.toLowerCase())))
-        )
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = q
+      ? chats.filter((c) => {
+          const otherId =
+            c.type === 'direct'
+              ? c.participants?.find((p) => p !== userProfile?.id)
+              : null;
+          const liveName = otherId ? nameMap[otherId] : undefined;
+          const haystack = [
+            c.name,
+            liveName,
+            c.lastMessage?.content,
+            ...(c.participantNames ? Object.values(c.participantNames) : []),
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+          return haystack.includes(q);
+        })
       : chats;
     return [...filtered].sort((a, b) => {
       if (a.isPinned && !b.isPinned) return -1;
@@ -1084,7 +1011,7 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
       return timeB - timeA;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chats, searchQuery, realtimeTick]);
+  }, [chats, searchQuery, realtimeTick, nameMap, userProfile?.id]);
 
   const renderMembersRow = () => (
     <View style={{ marginTop: DS.space.md }}>
@@ -1124,14 +1051,14 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
   return (
     <View style={[styles.container, { backgroundColor: isDark ? DS.darkBg : DS.gray50 }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
-            <UniversalSpinner visible={refreshing} section="main" size="small" overlay={true} blur={true} text="Refreshing..." variant="aurora" />
+      <UniversalSpinner visible={refreshing} section="main" size="small" overlay={true} blur={true} text="Refreshing..." variant="aurora" />
       <LinearGradient colors={isDark ? ['#0c0a09', '#12121e', '#0c0a09'] : ['#f8faff', '#eef0f5', '#e4e8f0']} style={StyleSheet.absoluteFill} />
 
       <SweetAlert visible={alert.visible} type={alert.type} title={alert.title} message={alert.message} onClose={() => setAlert((p) => ({ ...p, visible: false }))} />
 
       {/* Sticky header (on scroll) */}
       <Animated.View style={[styles.stickyHeader, {
-        paddingTop: HEADER_TOP_PADDING,
+        paddingTop: insets.top + HEADER_TOP_PADDING,
         backgroundColor: isDark ? 'rgba(12,10,9,0.92)' : 'rgba(255,255,255,0.92)',
         borderBottomColor: isDark ? DS.darkBorder : DS.gray200,
       }, headerAnim]}>
@@ -1153,11 +1080,10 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
       <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingTop: HEADER_TOP_PADDING + 8, paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{ paddingTop: insets.top + HEADER_TOP_PADDING + 48, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}
       >
-        {/* Pulse header */}
         <PulseHeader
           isDark={isDark}
           chatCount={chats.length}
@@ -1171,32 +1097,27 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
           onShareCode={handleShareCode}
           onNewGroup={() => setShowNewChatModal(true)}
           onOpenCommunityChat={() => {
-            // FamilyChatList lives in RootStack; ChatList lives in
-            // CommunityStack. Walk up to the root navigator and, if it
-            // supports the Community tab flow, jump there.
             try {
               const rootNav: any =
                 (navigation as any).getParent?.()?.getParent?.() ?? navigation;
-              // Prefer navigating through the tab navigator if present.
               rootNav.navigate('Main' as never, {
                 screen: 'Connect',
                 params: { screen: 'ChatList' },
               } as never);
             } catch {
-              // Fallback: best-effort flat navigate.
               try {
                 (navigation as any).navigate('ChatList');
-              } catch {
-                // Swallow — cross-link is a convenience, not critical.
-              }
+              } catch {}
             }
+          }}
+          onOpenCallHistory={() => {
+            HAPTIC_LIGHT();
+            navigation.navigate('CallHistory' as never);
           }}
         />
 
-        {/* Members row */}
         {renderMembersRow()}
 
-        {/* Recent Calls strip — pulls from useCall().callHistory */}
         {callHistory.length > 0 && (
           <View style={{ marginTop: DS.space.md }}>
             <SectionHeader
@@ -1248,8 +1169,15 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
                           {resolvedName}
                         </Text>
                         <Text style={{ fontSize: 11, color: isDark ? DS.gray400 : DS.gray500 }} numberOfLines={1}>
-                          {missed ? 'Missed' : h.status === 'outgoing' ? 'Outgoing' : 'Received'} {h.type} call
-                          {h.durationSec > 0 ? ` · ${Math.floor(h.durationSec / 60)}m ${h.durationSec % 60}s` : ''}
+                          {missed
+                            ? 'Missed'
+                            : h.status === 'outgoing'
+                            ? 'Outgoing'
+                            : 'Received'}{' '}
+                          {h.type} call
+                          {h.durationSec > 0
+                            ? ` · ${Math.floor(h.durationSec / 60)}m ${h.durationSec % 60}s`
+                            : ''}
                         </Text>
                       </View>
                       <Ionicons name={h.type === 'video' ? 'videocam' : 'call'} size={18} color={DS.success} />
@@ -1261,7 +1189,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
           </View>
         )}
 
-        {/* Chats list */}
         <View style={{ marginTop: DS.space.lg }}>
           <SectionHeader title="Conversations" subtitle={`${sortedChats.length} chat${sortedChats.length !== 1 ? 's' : ''}`} icon="chatbubbles-outline" color={DS.accent} />
           <View style={{ paddingHorizontal: DS.space.lg, gap: 8 }}>
@@ -1305,7 +1232,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
         <View style={{ height: 40 }} />
       </Animated.ScrollView>
 
-      {/* Chat Options Modal */}
       <Modal visible={showOptionsModal} transparent animationType="fade" onRequestClose={() => setShowOptionsModal(false)} statusBarTranslucent>
         <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowOptionsModal(false)} activeOpacity={1}>
           <BlurView intensity={isDark ? 70 : 90} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
@@ -1321,12 +1247,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
 
             <OptionRow icon={selectedChat?.isPinned ? 'pin-off' : 'pin'} label={selectedChat?.isPinned ? 'Unpin Chat' : 'Pin Chat'} color={DS.primary} onPress={handlePinChat} isDark={isDark} />
             <OptionRow icon={selectedChat?.isMuted ? 'volume-high' : 'volume-mute'} label={selectedChat?.isMuted ? 'Unmute' : 'Mute'} color={DS.warning} onPress={handleMuteChat} isDark={isDark} />
-            {/* Delete is available for every chat the user can see.
-                • Direct chats: any participant can delete (per-user hide +
-                  physical delete).
-                • Group chats: any member can hide-for-me; only Parent 1
-                  can physically delete for everyone (handled inside
-                  deleteChat). */}
             <OptionRow
               icon="trash"
               label={selectedChat?.type === 'direct' ? 'Delete Chat' : 'Delete for Me'}
@@ -1338,7 +1258,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
         </TouchableOpacity>
       </Modal>
 
-      {/* New Group Modal */}
       <Modal visible={showNewChatModal} transparent animationType="slide" onRequestClose={() => setShowNewChatModal(false)}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <BlurView intensity={isDark ? 90 : 100} tint={isDark ? 'dark' : 'light'} style={[styles.newGroupModal, { backgroundColor: isDark ? 'rgba(12,10,9,0.98)' : 'rgba(255,255,255,0.98)' }]}>
@@ -1349,7 +1268,6 @@ export default function FamilyChatListScreen({ navigation }: FamilyChatListScree
               </TouchableOpacity>
             </View>
 
-            {/* Group photo */}
             <View style={{ alignItems: 'center', marginVertical: DS.space.md }}>
               <TouchableOpacity onPress={handlePickImage} style={{ position: 'relative' }}>
                 {groupPhoto ? (
@@ -1448,75 +1366,67 @@ const OptionRow: React.FC<{ icon: any; label: string; color: string; onPress: ()
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  /* Sticky header */
   stickyHeader: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100,
-    paddingBottom: DS.space.md, borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: DS.space.sm, borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerInner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: DS.space.lg, height: 48,
+    paddingHorizontal: DS.space.lg, height: 44,
   },
   headerIconBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
   headerSub: { fontSize: 11, fontWeight: '500', marginTop: -2 },
 
-  /* Pulse header */
   pulseWrap: {
-    marginHorizontal: DS.space.lg, marginTop: DS.space.md,
-    borderRadius: DS.radius['2xl'], padding: DS.space.lg, overflow: 'hidden',
+    marginHorizontal: DS.space.lg, marginTop: DS.space.sm,
+    borderRadius: DS.radius['2xl'], padding: DS.space.md, overflow: 'hidden',
     borderWidth: 1, ...DS.shadow.md, position: 'relative',
   },
   pulseGlowL: { position: 'absolute', top: -80, left: -60, width: 220, height: 220, borderRadius: 110, opacity: 0.9 },
   pulseGlowR: { position: 'absolute', top: -70, right: -70, width: 200, height: 200, borderRadius: 100, opacity: 0.8 },
-  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.md },
-  pulseBackBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  pulseIconWrap: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  pulseIconGlow: { position: 'absolute', width: 58, height: 58, borderRadius: 29, backgroundColor: `${DS.primary}35` },
-  pulseIconRing: { position: 'absolute', width: 54, height: 54, borderRadius: 27, overflow: 'hidden' },
-  pulseIconInner: { width: 46, height: 46, borderRadius: 23, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  pulseTitle: { fontSize: 17, fontWeight: '800', letterSpacing: 0.5 },
+  pulseRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.sm },
+  pulseBackBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  pulseIconWrap: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  pulseIconGlow: { position: 'absolute', width: 52, height: 52, borderRadius: 26, backgroundColor: `${DS.primary}35` },
+  pulseIconRing: { position: 'absolute', width: 48, height: 48, borderRadius: 24, overflow: 'hidden' },
+  pulseIconInner: { width: 40, height: 40, borderRadius: 20, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  pulseTitle: { fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
   pulseLivePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
   pulseLiveText: { fontSize: 10, fontWeight: '800' },
   pulseMiniDot: { width: 6, height: 6, borderRadius: 3 },
   pulseSub: { fontSize: 11, fontWeight: '600', flex: 1 },
-  pulseIconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  pulseActions: { flexDirection: 'row', gap: DS.space.sm, marginTop: DS.space.md },
-  pulseActionPrimary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: DS.radius.md, gap: 6 },
+  pulseIconBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  pulseActions: { flexDirection: 'row', gap: DS.space.sm, marginTop: DS.space.sm },
+  pulseActionPrimary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, borderRadius: DS.radius.md, gap: 6 },
   pulseActionPrimaryText: { color: DS.white, fontSize: 12, fontWeight: '700' },
-  pulseActionSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: DS.radius.md, borderWidth: 1, gap: 6 },
+  pulseActionSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: DS.radius.md, borderWidth: 1, gap: 6 },
   pulseActionSecondaryText: { fontSize: 12, fontWeight: '700' },
 
-  /* Search row */
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: DS.space.sm },
   searchInner: { flex: 1, flexDirection: 'row', alignItems: 'center', height: 40, borderRadius: 20, paddingHorizontal: 12, borderWidth: 1, gap: 8 },
   searchInput: { flex: 1, fontSize: 13, fontWeight: '500' },
 
-  /* Section */
   sectionHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginHorizontal: DS.space.lg, marginBottom: DS.space.md, marginTop: DS.space.sm,
+    marginHorizontal: DS.space.lg, marginBottom: DS.space.sm, marginTop: DS.space.sm,
   },
   sectionIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3 },
   sectionSub: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.8 },
 
-  /* New group chip */
   newGroupChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   newGroupChipText: { color: DS.white, fontSize: 11, fontWeight: '700' },
 
-  /* User bubble */
   userBubble: { alignItems: 'center', paddingHorizontal: 8, gap: 3 },
   userBubbleName: { fontSize: 11, fontWeight: '700', marginTop: 3, maxWidth: 64, textAlign: 'center' },
   userBubbleRole: { fontSize: 9, fontWeight: '600' },
 
-  /* Add member */
   addMember: { alignItems: 'center', paddingHorizontal: 8, gap: 3 },
   addMemberIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   addMemberText: { fontSize: 11, fontWeight: '700', marginTop: 3 },
   addMemberSub: { fontSize: 9, fontWeight: '600' },
 
-  /* Chat item */
   chatItem: {
     flexDirection: 'row', alignItems: 'center', padding: DS.space.md,
     borderRadius: DS.radius.lg, overflow: 'hidden', ...DS.shadow.sm,
@@ -1531,7 +1441,6 @@ const styles = StyleSheet.create({
   unreadText: { color: DS.white, fontSize: 10, fontWeight: '800' },
   typingDot: { width: 5, height: 5, borderRadius: 2.5 },
 
-  /* Empty */
   emptyCard: { alignItems: 'center', paddingVertical: DS.space['2xl'], borderRadius: DS.radius.lg, borderWidth: 1, gap: DS.space.sm },
   emptyIcon: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.sm },
   emptyTitle: { fontSize: 16, fontWeight: '800' },
@@ -1539,7 +1448,6 @@ const styles = StyleSheet.create({
   emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: DS.radius.md },
   emptyBtnText: { color: DS.white, fontSize: 12, fontWeight: '700' },
 
-  /* Alert */
   alertOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 9999, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 100 },
   alertContainer: { minWidth: 260, maxWidth: 320, borderRadius: 20, overflow: 'hidden', ...DS.shadow.lg },
   alertGradient: { alignItems: 'center', paddingVertical: DS.space.lg, paddingHorizontal: DS.space.xl, gap: 6 },
@@ -1548,7 +1456,6 @@ const styles = StyleSheet.create({
   alertDismiss: { marginTop: 6 },
   alertDismissText: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
 
-  /* Modals */
   modalBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 20 },
   optionsModal: { width: '100%', maxWidth: 400, borderRadius: DS.radius['2xl'], padding: DS.space.lg, ...DS.shadow.lg },
   optionsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: DS.space.md },
@@ -1558,7 +1465,6 @@ const styles = StyleSheet.create({
   optionIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   optionLabel: { fontSize: 14, fontWeight: '700' },
 
-  /* New group modal */
   newGroupModal: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: DS.space.lg, paddingBottom: 40, maxHeight: height * 0.9 },
   newGroupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: DS.space.md },
   newGroupTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },

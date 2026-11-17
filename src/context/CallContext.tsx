@@ -194,9 +194,20 @@ async function logCallHistory(entry: {
     const nowIso = new Date(
       entry.endedAt ?? entry.startedAt,
     ).toISOString();
+    // Detect whether this is a direct chat (family_code='community')
+    // or a group (family_code=<FAM-…>). Simplest reliable signal:
+    // the chatId format used everywhere in this codebase.
+    const isDirectChat = String(entry.chatId).startsWith('direct_');
+    const messageFamilyCode = isDirectChat
+      ? 'community'
+      : (String(entry.chatId).startsWith('family_group_')
+          ? String(entry.chatId).replace('family_group_', '')
+          : 'community');
+
     await supabase.from('family_messages').insert({
       id: `call_${entry.callId}_${entry.userId}`,
       chat_id: entry.chatId,
+      family_code: messageFamilyCode,
       sender_id: 'system',
       sender_name: 'Call',
       sender_role: 'system',

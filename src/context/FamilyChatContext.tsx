@@ -31,7 +31,7 @@ import { notificationService } from '../services/NotificationService';
    TYPES
    ═══════════════════════════════════════════════════════════════════ */
 
-export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
+export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file' | 'call';
 
 export interface FileMetadata {
   name: string;
@@ -67,6 +67,9 @@ export interface FamilyMessage {
   isEdited?: boolean;
   editedAt?: string;
   deliveryStatus: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  /** Arbitrary per-message payload. Used by `type: 'call'` messages
+   *  to carry callId / peerId / callType / callStatus / durationSec. */
+  metadata?: Record<string, any>;
 }
 
 export interface FamilyChat {
@@ -826,6 +829,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             deliveryStatus:
               (raw.delivery_status as FamilyMessage['deliveryStatus']) ||
               'sent',
+            metadata: raw.metadata
+              ? (typeof raw.metadata === 'string'
+                  ? JSON.parse(raw.metadata as string)
+                  : (raw.metadata as any))
+              : undefined,
           };
 
           // If this chat is hidden for me, drop the message entirely.
@@ -1116,6 +1124,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             deliveryStatus:
               (raw.delivery_status as FamilyMessage['deliveryStatus']) ||
               'sent',
+            metadata: raw.metadata
+              ? (typeof raw.metadata === 'string'
+                  ? JSON.parse(raw.metadata as string)
+                  : (raw.metadata as any))
+              : undefined,
           };
           if (hiddenChatsRef.current.has(message.chatId)) return;
           const existingChat = chatsRef.current.find(c => c.id === message.chatId);
@@ -1556,6 +1569,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             isEdited: row.is_edited || false,
             editedAt: row.edited_at || undefined,
             deliveryStatus: (row.delivery_status as FamilyMessage['deliveryStatus']) || 'sent',
+            metadata: row.metadata
+              ? (typeof row.metadata === 'string'
+                  ? JSON.parse(row.metadata)
+                  : row.metadata)
+              : undefined,
           }));
           if (messages[chat.id].length > 0) {
             chat.lastMessage = messages[chat.id][messages[chat.id].length - 1];
@@ -2200,6 +2218,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (newMessage.fileMetadata) insertData.file_metadata = JSON.stringify(newMessage.fileMetadata);
         if (newMessage.replyTo) insertData.reply_to = newMessage.replyTo;
         if (newMessage.replyToPreview) insertData.reply_to_preview = newMessage.replyToPreview;
+        if (newMessage.metadata) insertData.metadata = newMessage.metadata;
 
         // Insert first — only flip to 'sent' after the DB confirms.
         const { error } = await supabase.from('family_messages').insert(insertData);
@@ -2367,7 +2386,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           read_by: [...new Set([...unread.flatMap(m => m.readBy), me.id])],
           // Flip to READ so the sender sees blue double ticks.
           delivery_status: 'read',
-          updated_at: new Date().toISOString(),
         })
         .in('id', ids);
 
@@ -2513,8 +2531,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const { error } = await supabase
         .from('family_messages')
         .delete()
-        .eq('chat_id', chatId)
-        .eq('family_code', familyCode);
+        .eq('chat_id', chatId);
 
       if (error) {
         sweetAlert.alert('Error', 'Failed to clear chat', 'error');
@@ -2988,6 +3005,193 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           sweetAlert.alert('Invalid Code', 'This family code does not exist', 'error');
           return false;
         }
+                  .maybeSingle();
+
+        if (chatError || !chatData) return false;
+        // adopt it locally and re-sync
+        await loadFamilyCode();
+        await performInitialSync();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [loadFamilyCode, performInitialSync],
+  );
+
+  /* ═══════════════════ PUBLIC API ═══════════════════ */
+
+  const getChatMessages = useCallback(
+    (chatId: string) => messagesRef.current[chatId] ?? [],
+    [],
+  );
+  const getChatById = useCallback(
+    (chatId: string) => chatsRef.current.find(c => c.id === chatId),
+    [],
+  );
+  const getUnreadCount = useCallback(
+    (chatId?: string) =>
+      chatId
+        ? chatsRef.current.find(c => c.id === chatId)?.unreadCount ?? 0
+        : chatsRef.current.reduce((s, c) => s + (c.isMuted ? 0 : c.unreadCount), 0),
+    [],
+  );
+  const getMemberChatInfo = useCallback((memberId: string) => {
+    const chat = chatsRef.current.find(c =>
+      c.type === 'direct' && c.participants.includes(memberId),
+    );
+    if (!chat) return null;
+    return {
+      name: chat.participantNames?.[memberId] || chat.name,
+      avatar: chat.participantAvatars?.[memberId] || '👤',
+      role: chat.participantRoles?.[memberId] || 'guardian',
+    };
+  }, []);
+  const generateFamilyCode = useCallback(() => generateFamilyCodeString(), []);
+  const getFamilyCode = useCallback(() => familyCodeRef.current, []);
+  const searchMessages = useCallback(
+    (chatId: string, q: string) =>
+      (messagesRef.current[chatId] ?? []).filter(m =>
+        m.content.toLowerCase().includes(q.toLowerCase()),
+      ),
+    [],
+  );
+  const getMessageById = useCallback(
+    (chatId: string, id: string) =>
+      messagesRef.current[chatId]?.find(m => m.id === id),
+    [],
+  );
+  const blockUser = useCallback(async (uid: string) => {
+    const next = Array.from(new Set([...blockedUsersRef.current, uid]));
+    setState(prev => ({ ...prev, blockedUsers: next }));
+    blockedUsersRef.current = next;
+    try {
+      const code = familyCodeRef.current || 'anon';
+      await AsyncStorage.setItem(
+        `@littleloom_blocked_${code}`,
+        JSON.stringify(next),
+      );
+    } catch {}
+  }, []);
+  const isUserBlocked = useCallback(
+    (uid: string) => blockedUsersRef.current.includes(uid),
+    [],
+  );
+  const syncFamilyData = useCallback(async () => {
+    await performInitialSync();
+  }, [performInitialSync]);
+  const forceSync = useCallback(async () => {
+    isInitializedRef.current = false;
+    await performInitialSync();
+  }, [performInitialSync]);
+
+  /* ═══════════════════ PROVIDER VALUE ═══════════════════ */
+
+  const value = useMemo<FamilyChatContextType>(
+    () => ({
+      ...state,
+      subscribeToChatMessages,
+      createFamilyGroup,
+      getOrCreateDirectChat,
+      getChatMessages,
+      sendMessage,
+      editMessage,
+      markChatRead,
+      markMessagesDelivered,
+      deleteMessage,
+      clearChat,
+      resendMessage,
+      pickAndSendImage,
+      pickAndSendFile,
+      pickAndSendVoice,
+      setTypingStatus,
+      isUserTyping,
+      getTypingUsers,
+      addReaction,
+      removeReaction,
+      muteChat,
+      pinChat,
+      leaveChat,
+      deleteChat,
+      setChatBackground,
+      generateFamilyCode,
+      getFamilyCode,
+      shareFamilyCode,
+      joinFamilyByCode,
+      getUnreadCount,
+      getChatById,
+      getMemberChatInfo,
+      syncFamilyData,
+      searchMessages,
+      getMessageById,
+      blockUser,
+      isUserBlocked,
+      forceSync,
+      setCurrentChatId,
+      hideChat,
+      unhideChat,
+      isChatHidden,
+    }),
+    [
+      state,
+      subscribeToChatMessages,
+      createFamilyGroup,
+      getOrCreateDirectChat,
+      getChatMessages,
+      sendMessage,
+      editMessage,
+      markChatRead,
+      markMessagesDelivered,
+      deleteMessage,
+      clearChat,
+      resendMessage,
+      pickAndSendImage,
+      pickAndSendFile,
+      pickAndSendVoice,
+      setTypingStatus,
+      isUserTyping,
+      getTypingUsers,
+      addReaction,
+      removeReaction,
+      muteChat,
+      pinChat,
+      leaveChat,
+      deleteChat,
+      setChatBackground,
+      generateFamilyCode,
+      getFamilyCode,
+      shareFamilyCode,
+      joinFamilyByCode,
+      getUnreadCount,
+      getChatById,
+      getMemberChatInfo,
+      syncFamilyData,
+      searchMessages,
+      getMessageById,
+      blockUser,
+      isUserBlocked,
+      forceSync,
+      setCurrentChatId,
+      hideChat,
+      unhideChat,
+      isChatHidden,
+    ],
+  );
+
+  return (
+    <FamilyChatContext.Provider value={value}>
+      {children}
+    </FamilyChatContext.Provider>
+  );
+};
+
+export const useFamilyChat = (): FamilyChatContextType => {
+  const ctx = useContext(FamilyChatContext);
+  if (!ctx) throw new Error('useFamilyChat must be used within FamilyChatProvider');
+  return ctx;
+};
+
+export default FamilyChatProvider;
 
         // Write BOTH the per-baby scoped key (authoritative for
         // multi-family users) and the legacy per-user key (for

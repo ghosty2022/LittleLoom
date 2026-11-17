@@ -49,7 +49,6 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import type { RootStackParamList } from '../../types/navigation';
-import UniversalSpinner from '../../components/UniversalSpinner';
 import {
   FamilyMessage,
   FileMetadata,
@@ -68,14 +67,11 @@ type FamilyChatScreenProps = NativeStackScreenProps<
 >;
 const { width, height } = Dimensions.get('window');
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
-// Safe-area top is handled by `useSafeAreaInsets()` below — this
-// constant is only used to keep the KeyboardAvoidingView offset in
-// sync with the header. Keep it tiny so the header hugs the notch.
-const HEADER_TOP_PADDING =
-  Platform.OS === 'ios' ? 12 : STATUS_BAR_HEIGHT + 4;
+// The header is padded with `insets.top + HEADER_TOP_PADDING`.
+// Keep this SMALL so the pulse card hugs the notch.
+const HEADER_TOP_PADDING = 4;
 
-const KEYBOARD_VERTICAL_OFFSET =
-  Platform.OS === 'ios' ? HEADER_TOP_PADDING + 76 : 0;
+const KEYBOARD_VERTICAL_OFFSET = Platform.OS === 'ios' ? 78 : 0;
 
 import { Text as RNText, TextInput as RNTextInput } from 'react-native';
 const capScaling = (n: number) => Math.min(n, 1.35);
@@ -155,9 +151,6 @@ const HAPTIC_SUCCESS = () =>
     Haptics.NotificationFeedbackType.Success,
   ).catch(() => {});
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   HELPERS
-   ═══════════════════════════════════════════════════════════════════════════ */
 const isImageUri = (v: string | undefined | null): boolean => {
   if (!v || typeof v !== 'string') return false;
   return (
@@ -410,7 +403,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(
     }));
 
     return (
-      <Animated.View entering={FadeInDown.duration(500).springify()}>
+      <Animated.View entering={FadeInDown.duration(400).springify()}>
         <View
           style={[
             styles.pulseWrap,
@@ -482,7 +475,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: DS.space.md,
+                  gap: DS.space.sm,
                 }}
               >
                 <View style={styles.pulseAvatarWrap}>
@@ -509,7 +502,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(
                   >
                     <SafeAvatar
                       avatar={headerAvatar}
-                      size={42}
+                      size={36}
                       fallbackEmoji={isGroup ? '👨‍👩‍👧‍👦' : '👤'}
                       fallbackColor={DS.primary}
                     />
@@ -530,7 +523,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(
                       flexDirection: 'row',
                       alignItems: 'center',
                       gap: 5,
-                      marginTop: 2,
+                      marginTop: 1,
                     }}
                   >
                     {typingText ? (
@@ -606,7 +599,6 @@ const PulseHeader = React.memo<PulseHeaderProps>(
                   <Ionicons name="globe-outline" size={18} color={DS.accent} />
                 </View>
               </PressableScale>
-              {/* In-app VIDEO call */}
               <PressableScale onPress={onVideo} activeScale={0.9}>
                 <View
                   style={[
@@ -625,7 +617,6 @@ const PulseHeader = React.memo<PulseHeaderProps>(
                   />
                 </View>
               </PressableScale>
-              {/* In-app VOICE call */}
               <PressableScale onPress={onVoice} activeScale={0.9}>
                 <View
                   style={[
@@ -671,7 +662,7 @@ const PulseHeader = React.memo<PulseHeaderProps>(
 );
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SWEET ALERT (local — matches the family chat aesthetic)
+   SWEET ALERT
    ═══════════════════════════════════════════════════════════════════════════ */
 const SweetAlertChat: React.FC<{
   visible: boolean;
@@ -1813,12 +1804,12 @@ const MessageBubble: React.FC<{
 
       <View style={[!isMe && !showAvatar && { marginLeft: 40 }]}>
         {!isMe && showAvatar && message.type !== 'system' && (
-  <Text style={[styles.senderName, { color: roleColor }]}>
-    {nameMap[message.senderId] ||
-      member?.fullName ||
-      message.senderName}
-  </Text>
-)}
+          <Text style={[styles.senderName, { color: roleColor }]}>
+            {nameMap[message.senderId] ||
+              member?.fullName ||
+              message.senderName}
+          </Text>
+        )}
 
         <Animated.View style={anim}>
           <TouchableOpacity
@@ -1963,7 +1954,7 @@ const MessageBubble: React.FC<{
                       const meta = (message as any).metadata || {};
                       if (!meta.peerId) return;
                       onCallBack?.({
-                        chatId: message.chatId ?? chatId,
+                        chatId: message.chatId || '',
                         peer: {
                           id: meta.peerId,
                           name: meta.peerName,
@@ -2133,7 +2124,6 @@ const MessageBubble: React.FC<{
         />
       </View>
 
-      {/* Actions Modal */}
       <Modal
         visible={showActions}
         transparent
@@ -2386,61 +2376,18 @@ export default function FamilyChatScreen({
     setCurrentChatId,
     deleteChat,
     isChatHidden,
+    subscribeToChatMessages,
+    familyCode: activeFamilyCode,
   } = useFamilyChat();
   const { members } = useFamily();
   const { userProfile } = useAuth();
   const { darkMode } = useCustomization();
-  const insets = useSafeAreaInsets();
-  // In-app calling — no dialer, no FaceTime.
   const { startCall } = useCall();
-const { chats } = useFamilyChat();
-const { callHistory } = useCall();
-const [nameMap, setNameMap] = useState<Record<string, string>>({});
-
-// Resolve fresh display names from `profiles` for every peer
-// that appears in this list. This is what keeps chat names in
-// sync with the Calls screen.
-useEffect(() => {
-  const ids = new Set<string>();
-  chats.forEach((c: any) => {
-    if (c.type === 'direct') {
-      c.participants?.forEach((p: string) => {
-        if (p !== userProfile?.id) ids.add(p);
-      });
-    }
-  });
-  callHistory.forEach((h) => {
-    if (h.peerId && h.peerId !== userProfile?.id) ids.add(h.peerId);
-  });
-  if (ids.size === 0) return;
-  let cancelled = false;
-  resolveDisplayNames(Array.from(ids)).then((map) => {
-    if (!cancelled) setNameMap(map);
-  });
-  return () => {
-    cancelled = true;
-  };
-}, [chats, callHistory, userProfile?.id]);
+  const insets = useSafeAreaInsets();
   const isDark = darkMode ?? false;
 
+  /* ── State ───────────────────────────────────────────────── */
   const [keyboardOpen, setKeyboardOpen] = useState(false);
-  useEffect(() => {
-    const showEvt =
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt =
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvt, () =>
-      setKeyboardOpen(true),
-    );
-    const hideSub = Keyboard.addListener(hideEvt, () =>
-      setKeyboardOpen(false),
-    );
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
   const [messages, setMessages] = useState<FamilyMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [chatId, setChatId] = useState<string>(initialChatId || '');
@@ -2460,6 +2407,8 @@ useEffect(() => {
   );
   const [showMessageInfo, setShowMessageInfo] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [showOptionsSheet, setShowOptionsSheet] = useState(false);
+  const [nameMap, setNameMap] = useState<Record<string, string>>({});
   const [alert, setAlert] = useState<{
     visible: boolean;
     type: 'success' | 'error' | 'warning' | 'info';
@@ -2467,43 +2416,7 @@ useEffect(() => {
     message: string;
   }>({ visible: false, type: 'success', title: '', message: '' });
 
-  // Fresh names from `profiles` so the chat header and bubbles
-  // never show the stale `family_members.full_name`.
-  useEffect(() => {
-    const ids = Array.from(new Set(messages.map((m) => m.senderId).filter(Boolean)));
-    if (ids.length === 0) return;
-    let cancelled = false;
-    resolveDisplayNames(ids).then((map) => {
-      if (!cancelled) setNameMap(map);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [messages.length]);
-  const [showOptionsSheet, setShowOptionsSheet] = useState(false);
-  const [nameMap, setNameMap] = useState<Record<string, string>>({});
-
-  // Resolve fresh names from `profiles` so the list never shows
-  // the stale snapshot written into `chat.name` at creation time.
-  useEffect(() => {
-    const ids = new Set<string>();
-    chats.forEach((c: FamilyChat) => {
-      if (c.type === 'direct') {
-        c.participants?.forEach((p) => {
-          if (p && p !== userProfile?.id) ids.add(p);
-        });
-      }
-    });
-    if (ids.size === 0) return;
-    let cancelled = false;
-    resolveDisplayNames(Array.from(ids)).then((map) => {
-      if (!cancelled) setNameMap(map);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [chats, userProfile?.id]);
-
+  /* ── Refs ────────────────────────────────────────────────── */
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -2513,13 +2426,8 @@ useEffect(() => {
   const messagesRef = useRef<FamilyMessage[]>([]);
   const chatStillExistsRef = useRef(true);
 
-  const { subscribeToChatMessages, familyCode: activeFamilyCode } =
-    useFamilyChat();
-
-  // ── STABLE CONTEXT SNAPSHOT ────────────────────────────────
-  // `useFamilyChat()` returns a NEW object every render, so every
-  // function it hands back has a new identity. Capturing them once
-  // via a ref keeps every useCallback below stable.
+  // Stable snapshot of the context API — every `useFamilyChat()`
+  // return is a new object each render, so we freeze the first one.
   const ctxRef = useRef<ReturnType<typeof useFamilyChat> | null>(null);
   if (!ctxRef.current) {
     ctxRef.current = {
@@ -2549,7 +2457,7 @@ useEffect(() => {
   }
   const ctx = ctxRef.current!;
 
-  /* ─── 1. Pure helpers ─────────────────────────────────────── */
+  /* ── Pure helpers ────────────────────────────────────────── */
   const formatDuration = (s: number) =>
     `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
@@ -2565,7 +2473,7 @@ useEffect(() => {
     setAlert({ visible: true, type, title, message });
   };
 
-  /* ─── 2. Derived memos (depend only on state/context) ────── */
+  /* ── Derived values ──────────────────────────────────────── */
   const headerInfo = useMemo(() => {
     if (!chatInfo)
       return {
@@ -2752,8 +2660,7 @@ useEffect(() => {
     navigation,
   ]);
 
-  /* ─── 3. Functions ───────────────────────────────────────── */
-
+  /* ── Functions ───────────────────────────────────────────── */
   const refreshMessages = useCallback(() => {
     if (!chatId) return;
     const msgs = ctx.getChatMessages(chatId);
@@ -2762,25 +2669,23 @@ useEffect(() => {
   }, [chatId]);
 
   const initializeChat = useCallback(async () => {
+    // Instant paint — no spinner.
     if (initialChatId) {
-      const seeded = getChatMessages(initialChatId);
-      if (seeded.length > 0) {
-        messagesRef.current = seeded;
-        setMessages(seeded);
-        setChatId(initialChatId);
-        setChatInfo(getChatById(initialChatId) ?? null);
-        setIsLoading(false);
-      } else {
-        setIsLoading(true);
-      }
-    } else {
-      setIsLoading(true);
+      const seeded = getChatMessages(initialChatId) ?? [];
+      messagesRef.current = seeded;
+      setMessages(seeded);
+      setChatId(initialChatId);
+      setChatInfo(getChatById(initialChatId) ?? null);
     }
 
     let targetChatId = initialChatId;
     if (!targetChatId && memberId) {
       const member = members.find((m) => m.id === memberId);
-      targetChatId = await getOrCreateDirectChat(memberId, member);
+      try {
+        targetChatId = await getOrCreateDirectChat(memberId, member);
+      } catch {
+        targetChatId = '';
+      }
     }
 
     if (targetChatId && isChatHidden(targetChatId)) {
@@ -2790,12 +2695,15 @@ useEffect(() => {
 
     if (targetChatId) {
       const chat = getChatById(targetChatId);
-      const seed = getChatMessages(targetChatId);
-      setChatInfo(chat);
-      messagesRef.current = seed;
-      setMessages(seed);
+      const seed = getChatMessages(targetChatId) ?? [];
+      if (chat) setChatInfo(chat);
+      if (seed.length > 0) {
+        messagesRef.current = seed;
+        setMessages(seed);
+      }
       setChatId(targetChatId);
     }
+
     setIsLoading(false);
   }, [
     initialChatId,
@@ -2955,22 +2863,6 @@ useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-              {message.type === 'call' ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 10 }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: isMe ? 'rgba(255,255,255,0.18)' : `${DS.primary}15` }}>
-                    <Ionicons name={(message as any).metadata?.callType === 'video' ? 'videocam' : 'call'} size={18} color={isMe ? DS.white : DS.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: isMe ? DS.white : isDark ? DS.gray100 : DS.gray900 }}>
-                      {message.content}
-                    </Text>
-                    <Text style={{ fontSize: 11, fontWeight: '500', marginTop: 2, color: isMe ? 'rgba(255,255,255,0.7)' : isDark ? DS.gray400 : DS.gray500 }}>
-                      Tap to call back
-                    </Text>
-                  </View>
-                </View>
-              ) : message.type === 'image' && message.imageUrl ? (
-
   const handleReply = useCallback((message: FamilyMessage) => {
     setReplyingTo({
       id: message.id,
@@ -3038,9 +2930,7 @@ useEffect(() => {
 
   const startRecording = useCallback(async () => {
     try {
-      // Lazy-load expo-audio so the screen still renders on the web
-      // (where recording isn't supported).
-      const { AudioModule, RecordingPresets, useAudioRecorder } =
+      const { AudioModule, RecordingPresets } =
         require('expo-audio');
       const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
@@ -3051,18 +2941,12 @@ useEffect(() => {
         );
         return;
       }
-      // The recorder instance is held on a ref so stopRecording can
-      // see it. The actual recording work is delegated to
-      // expo-audio's imperative API (`AudioModule`), which works
-      // from inside a useCallback.
       const rec = new (require('expo-audio').AudioRecorder)(
         RecordingPresets.HIGH_QUALITY,
       );
       await rec.prepareToRecordAsync();
       rec.record();
-      (recordingInterval as any).current = {
-        recorder: rec,
-      };
+      (recordingInterval as any).current = { recorder: rec };
       setIsRecording(true);
       setRecordingDuration(0);
       HAPTIC_HEAVY();
@@ -3073,7 +2957,7 @@ useEffect(() => {
       console.warn('[FamilyChat] startRecording failed:', err);
       setIsRecording(false);
     }
-  }, [showSweetAlert]);
+  }, []);
 
   const stopRecording = useCallback(async () => {
     if (recordingInterval.current)
@@ -3092,12 +2976,8 @@ useEffect(() => {
         audioUri = recCtx.recorder.uri ?? null;
       }
       if (audioUri) {
-        // Upload to Supabase Storage and send as a voice message,
-        // same pipeline as pickAndSendImage / pickAndSendFile.
         await pickAndSendVoice?.(chatId, audioUri);
       } else {
-        // Fall back to the placeholder so the UI is at least
-        // consistent with what the user expects to see.
         await sendMessage(chatId, '🎤 Voice message', 'voice');
       }
       refreshMessages();
@@ -3106,10 +2986,29 @@ useEffect(() => {
       console.warn('[FamilyChat] stopRecording failed:', err);
       showSweetAlert('error', 'Error', 'Failed to send voice message');
     }
-  }, [chatId, sendMessage, refreshMessages, showSweetAlert]);
+  }, [chatId, sendMessage, refreshMessages, pickAndSendVoice]);
 
-  /* ─── 4. Effects ─────────────────────────────────────────── */
+  /* ── Effects ─────────────────────────────────────────────── */
 
+  // Keyboard listeners
+  useEffect(() => {
+    const showEvt =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvt, () =>
+      setKeyboardOpen(true),
+    );
+    const hideSub = Keyboard.addListener(hideEvt, () =>
+      setKeyboardOpen(false),
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Active chat pointer
   useEffect(() => {
     if (chatId) setCurrentChatId(chatId);
     return () => {
@@ -3140,7 +3039,6 @@ useEffect(() => {
   useEffect(() => {
     if (!chatId || !subscribeToChatMessages) return;
     const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
-      // ── Mark incoming messages DELIVERED (double grey ticks) ──
       const meId = userProfile?.id;
       if (meId) {
         const undelivered = msgs
@@ -3159,17 +3057,14 @@ useEffect(() => {
         if (msgs.length === 0 && prev.length > 0 && !chatStillExistsRef.current) {
           return prev;
         }
-        // Merge so a transient empty/partial snapshot never blanks
-        // the list (that was the disappear → reappear flash).
         const byId = new Map<string, FamilyMessage>();
         prev.forEach((m) => byId.set(m.id, m));
         msgs.forEach((m) => byId.set(m.id, m));
-        const merged = Array.from(byId.values()).sort(
+        return Array.from(byId.values()).sort(
           (a, b) =>
             new Date(a.timestamp).getTime() -
             new Date(b.timestamp).getTime(),
         );
-        return merged;
       });
       const hasUnread =
         !!meId && msgs.some((m) => !m.readBy?.includes(meId));
@@ -3199,8 +3094,7 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialChatId, memberId]);
 
-  // Resolve fresh display names from `profiles` so chat and calls
-  // never diverge on a stale `family_members.full_name`.
+  // Fresh display names
   useEffect(() => {
     const ids = Array.from(
       new Set(messages.map((m) => m.senderId).filter(Boolean)),
@@ -3215,16 +3109,13 @@ useEffect(() => {
     };
   }, [messages.length]);
 
-  // Mark the chat read as soon as we mount with a valid chatId.
-  // Without this, opening the chat while it was already in the
-  // background never clears the unread badge for a message that
-  // arrived BEFORE this screen focused.
+  // Mark chat read on mount
   useEffect(() => {
     if (!chatId) return;
     markChatRead(chatId);
   }, [chatId, markChatRead]);
 
-  // Realtime profile-change: refresh chatInfo participants
+  // Profile-change listener
   useEffect(() => {
     if (!chatId) return;
     const unsub = subscribeToProfileChanges(() => {
@@ -3234,7 +3125,7 @@ useEffect(() => {
     return unsub;
   }, [chatId, getChatById]);
 
-  /* ─── 5. renderMessage ──────────────────────────────────── */
+  /* ── renderMessage ───────────────────────────────────────── */
   const renderMessage = useCallback(
     ({ item, index }: { item: FamilyMessage; index: number }) => {
       const isMe = item.senderId === userProfile?.id;
@@ -3311,38 +3202,10 @@ useEffect(() => {
         </View>
       );
     },
-    [
-      messages,
-      userProfile?.id,
-      isDark,
-      navigation,
-      // The rest are stable useCallbacks whose own deps are state-only
-      // — they don't need to be listed here, and doing so was making
-      // renderMessage a new function every render.
-    ],
+    [messages, userProfile?.id, isDark, navigation, nameMap],
   );
 
-  if (isLoading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: isDark ? DS.darkBg : DS.gray50,
-        }}
-      >
-        <UniversalSpinner
-          visible
-          section="main"
-          size="large"
-          overlay={false}
-          text="Opening chat..."
-          variant="aurora"
-        />
-      </View>
-    );
-  }
-
-  /* ── Pull peer info for calling ─────────────────────────── */
+  /* ── Peer info for calling ─────────────────────────────── */
   const peerForCall = (() => {
     if (!chatInfo || chatInfo.type !== 'direct') return null;
     const otherId = chatInfo.participants?.find(
@@ -3404,7 +3267,7 @@ useEffect(() => {
         isDark={isDark}
       />
 
-      {/* Pulse header — safe-area inset + minimal breathing room */}
+      {/* Pulse header — hugs the notch */}
       <View style={{ paddingTop: insets.top + HEADER_TOP_PADDING }}>
         <PulseHeader
           isDark={isDark}
@@ -3450,7 +3313,6 @@ useEffect(() => {
             setShowUserBubbles(!showUserBubbles)
           }
           onVideo={() => {
-            // ── IN-APP VIDEO CALL ───────────────────────────
             if (!peerForCall) {
               showSweetAlert(
                 'info',
@@ -3467,7 +3329,6 @@ useEffect(() => {
             });
           }}
           onVoice={() => {
-            // ── IN-APP VOICE CALL ───────────────────────────
             if (!peerForCall) {
               showSweetAlert(
                 'info',
@@ -3557,7 +3418,6 @@ useEffect(() => {
             paddingBottom: 20,
           }}
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => {}}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           removeClippedSubviews={false}
@@ -3671,178 +3531,138 @@ useEffect(() => {
           style={[
             styles.inputBar,
             {
-              backgroundColor: isDark
-                ? 'rgba(12,10,9,0.98)'
-                : 'rgba(255,255,255,0.98)',
+              backgroundColor: isDark ? DS.darkCard : DS.white,
               borderTopColor: isDark ? DS.darkBorder : DS.gray200,
-              paddingBottom: keyboardOpen
-                ? 8
-                : Math.max(10, insets.bottom),
+              paddingBottom: Math.max(insets.bottom, 8),
             },
           ]}
         >
-          <TouchableOpacity
-            style={styles.inputIconBtn}
-            onPress={showImageSourceAlert}
-          >
-            <Ionicons
-              name="image-outline"
-              size={22}
-              color={DS.primary}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.inputIconBtn}
-            onPress={handleFilePick}
-          >
-            <Ionicons
-              name="document-attach-outline"
-              size={22}
-              color={DS.primary}
-            />
-          </TouchableOpacity>
-
+          <PressableScale onPress={showImageSourceAlert} activeScale={0.9}>
+            <View
+              style={[
+                styles.inputIconBtn,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255,255,255,0.06)'
+                    : DS.gray100,
+                },
+              ]}
+            >
+              <Ionicons name="camera" size={20} color={DS.primary} />
+            </View>
+          </PressableScale>
+          <PressableScale onPress={handleFilePick} activeScale={0.9}>
+            <View
+              style={[
+                styles.inputIconBtn,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(255,255,255,0.06)'
+                    : DS.gray100,
+                },
+              ]}
+            >
+              <Ionicons name="attach" size={20} color={DS.accent} />
+            </View>
+          </PressableScale>
           <View
             style={[
-              styles.inputWrapper,
+              styles.inputField,
               {
                 backgroundColor: isDark
-                  ? 'rgba(255,255,255,0.06)'
+                  ? 'rgba(255,255,255,0.05)'
                   : DS.gray100,
-                borderColor: isDark ? DS.darkBorder : DS.gray200,
               },
             ]}
           >
             <TextInput
               ref={inputRef}
               style={[
-                styles.input,
+                styles.textInput,
                 { color: isDark ? DS.white : DS.gray900 },
               ]}
               placeholder={
-                editingMessage
-                  ? 'Edit message...'
-                  : 'Type a message...'
+                editingMessage ? 'Edit message...' : 'Type a message...'
               }
-              placeholderTextColor={
-                isDark ? DS.gray500 : DS.gray400
-              }
+              placeholderTextColor={isDark ? DS.gray600 : DS.gray400}
               value={inputText}
               onChangeText={handleInputChange}
               multiline
-              maxLength={1000}
+              maxLength={2000}
             />
           </View>
-
-          {inputText ? (
-            <PressableScale onPress={handleSend} activeScale={0.9}>
+          {inputText.trim() || editingMessage ? (
+            <PressableScale onPress={handleSend} activeScale={0.88}>
               <LinearGradient
                 colors={[DS.primary, DS.accent]}
                 style={styles.sendBtn}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <Ionicons
-                  name="send"
-                  size={18}
-                  color={DS.white}
-                />
+                <Ionicons name="send" size={18} color={DS.white} />
               </LinearGradient>
             </PressableScale>
           ) : (
-            <TouchableOpacity
-              style={styles.inputIconBtn}
-              onPressIn={startRecording}
-              onPressOut={stopRecording}
-              delayLongPress={200}
-            >
-              <Ionicons
-                name="mic-outline"
-                size={22}
-                color={isRecording ? DS.danger : DS.primary}
-              />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {isRecording && (
-          <View style={styles.recordingOverlay}>
-            <BlurView
-              intensity={100}
-              style={styles.recordingBar}
-              tint="dark"
+            <PressableScale
+              onPress={isRecording ? stopRecording : startRecording}
+              activeScale={0.88}
             >
               <View
-                style={{
-                  flex: 1,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                }}
+                style={[
+                  styles.sendBtn,
+                  {
+                    backgroundColor: isRecording
+                      ? DS.danger
+                      : isDark
+                      ? 'rgba(255,255,255,0.06)'
+                      : DS.gray100,
+                  },
+                ]}
               >
-                <View
-                  style={[
-                    styles.recordingDot,
-                    { backgroundColor: DS.danger },
-                  ]}
+                <Ionicons
+                  name={isRecording ? 'stop' : 'mic'}
+                  size={18}
+                  color={
+                    isRecording
+                      ? DS.white
+                      : isDark
+                      ? DS.gray300
+                      : DS.gray600
+                  }
                 />
-                <Text style={styles.recordingText}>
-                  Recording {formatDuration(recordingDuration)}
-                </Text>
               </View>
-              <PressableScale
-                onPress={stopRecording}
-                activeScale={0.9}
-              >
-                <View
-                  style={[
-                    styles.recordingStop,
-                    { backgroundColor: DS.success },
-                  ]}
-                >
-                  <Ionicons
-                    name="checkmark"
-                    size={22}
-                    color={DS.white}
-                  />
-                </View>
-              </PressableScale>
-            </BlurView>
-          </View>
-        )}
-
-        <SoftOptionsSheet
-          visible={showOptionsSheet}
-          onClose={() => setShowOptionsSheet(false)}
-          title={
-            chatInfo?.type === 'group'
-              ? 'Group Chat'
-              : headerInfo.name || 'Chat'
-          }
-          message={
-            chatInfo?.type === 'group'
-              ? `${chatInfo.participants?.length || 0} members`
-              : headerInfo.status
-          }
-          isDark={isDark}
-          options={chatOptions}
-        />
+            </PressableScale>
+          )}
+        </View>
       </View>
+
+      {/* Options sheet */}
+      <SoftOptionsSheet
+        visible={showOptionsSheet}
+        onClose={() => setShowOptionsSheet(false)}
+        title={headerInfo.name}
+        options={chatOptions}
+        isDark={isDark}
+      />
     </View>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES — unchanged from the working version
+   STYLES
    ═══════════════════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
   /* Pulse header */
   pulseWrap: {
-    marginHorizontal: DS.space.lg,
+    marginHorizontal: DS.space.md,
+    marginTop: DS.space.xs,
+    marginBottom: DS.space.xs,
     borderRadius: DS.radius['2xl'],
-    padding: DS.space.md,
+    paddingVertical: DS.space.sm,
+    paddingHorizontal: DS.space.md,
     overflow: 'hidden',
     borderWidth: 1,
-    ...DS.shadow.md,
+    ...DS.shadow.sm,
     position: 'relative',
   },
   pulseGlowL: {
@@ -3852,7 +3672,7 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 110,
-    opacity: 0.9,
+    opacity: 0.7,
   },
   pulseGlowR: {
     position: 'absolute',
@@ -3861,64 +3681,392 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: 100,
-    opacity: 0.8,
+    opacity: 0.6,
   },
   pulseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: DS.space.md,
+    gap: DS.space.sm,
   },
   pulseBackBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pulseAvatarWrap: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  pulseAvatarGlow: {
-    position: 'absolute',
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: `${DS.primary}35`,
-  },
-  pulseAvatarRing: {
-    position: 'absolute',
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    overflow: 'hidden',
-  },
-  pulseAvatarInner: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pulseName: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  pulseSub: { fontSize: 11, fontWeight: '600', flex: 1 },
-  pulseIconBtn: {
     width: 34,
     height: 34,
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  pulseAvatarWrap: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  pulseAvatarGlow: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: `${DS.primary}35`,
+  },
+  pulseAvatarRing: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+  },
+  pulseAvatarInner: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseName: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  pulseSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
+  },
+  pulseIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  /* Alert */
+  /* User bubbles */
+  userBubblesRow: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  userBubble: {
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    gap: 3,
+  },
+  userBubbleName: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 3,
+    maxWidth: 64,
+    textAlign: 'center',
+  },
+  userBubbleRole: { fontSize: 9, fontWeight: '600' },
+  userBubbleStatus: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+  },
+
+  /* Messages */
+  messageContainer: {
+    flexDirection: 'row',
+    marginVertical: 2,
+    paddingHorizontal: DS.space.sm,
+  },
+  myContainer: { justifyContent: 'flex-end' },
+  theirContainer: { justifyContent: 'flex-start' },
+  bubble: {
+    maxWidth: '80%',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  myBubble: {
+    borderBottomRightRadius: 4,
+  },
+  myBubbleLast: { borderBottomRightRadius: 18 },
+  theirBubble: {
+    borderWidth: 1,
+    borderBottomLeftRadius: 4,
+  },
+  theirBubbleLast: { borderBottomLeftRadius: 18 },
+  messageText: { fontSize: 14, lineHeight: 20 },
+  senderName: {
+    fontSize: 11,
+    fontWeight: '800',
+    marginBottom: 3,
+    marginLeft: 2,
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 3,
+    gap: 4,
+  },
+  timestamp: { fontSize: 10, fontWeight: '500' },
+  editedLabel: { fontSize: 9, fontWeight: '500', fontStyle: 'italic' },
+
+  /* Reply preview inside bubble */
+  replyPreview: {
+    borderRadius: 8,
+    padding: 6,
+    flexDirection: 'row',
+    marginBottom: 6,
+    gap: 6,
+  },
+  replyLine: { width: 3, borderRadius: 2 },
+  replyName: { fontSize: 11, fontWeight: '700' },
+
+  /* Image bubble */
+  imageContainer: {
+    width: 220,
+    height: 220,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  imagePlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* File bubble */
+  fileBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 10,
+    gap: 8,
+    minWidth: 200,
+  },
+  fileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fileName: { fontSize: 13, fontWeight: '700' },
+  fileSize: { fontSize: 10, marginTop: 2 },
+
+  /* Reactions */
+  reactionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 3,
+    marginTop: 3,
+  },
+  reactionsRight: { justifyContent: 'flex-end' },
+  reactionsLeft: { justifyContent: 'flex-start' },
+  reactionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  reactionCount: { fontSize: 10, fontWeight: '700' },
+
+  /* Date separator */
+  dateSep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 12,
+    paddingHorizontal: DS.space.lg,
+    gap: 10,
+  },
+  dateLine: { flex: 1, height: StyleSheet.hairlineWidth },
+  dateBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  dateText: { fontSize: 10, fontWeight: '700' },
+
+  /* Typing */
+  typingBubble: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginLeft: DS.space.lg,
+  },
+  typingDot: { width: 6, height: 6, borderRadius: 3 },
+
+  /* Empty state */
+  emptyChatIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: DS.space.md,
+  },
+  emptyChatTitle: { fontSize: 16, fontWeight: '800' },
+  emptyChatSub: { fontSize: 12, marginTop: 4 },
+
+  /* Quick replies */
+  quickReply: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  quickReplyText: { fontSize: 12, fontWeight: '600' },
+
+  /* Input bar */
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: DS.space.sm,
+    paddingTop: DS.space.sm,
+    gap: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  inputIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputField: {
+    flex: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    maxHeight: 100,
+    minHeight: 38,
+    justifyContent: 'center',
+  },
+  textInput: { fontSize: 14, lineHeight: 18 },
+  sendBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* Reply bar (above input) */
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: DS.space.md,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+
+  /* Modal backdrops */
+  modalBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    padding: 20,
+  },
+  actionBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  actionMenu: {
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    overflow: 'hidden',
+    paddingBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  emojiRow: {
+    paddingHorizontal: DS.space.md,
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  emojiButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+
+  /* Message info modal */
+  infoModal: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '80%',
+    borderRadius: DS.radius['2xl'],
+    overflow: 'hidden',
+    ...DS.shadow.lg,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: DS.space.lg,
+    gap: DS.space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  infoModalIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoModalTitle: { flex: 1, fontSize: 16, fontWeight: '800' },
+  infoModalClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  infoValue: { fontSize: 14, fontWeight: '600' },
+  infoRole: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  infoReaction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  infoReactionName: { fontSize: 11, fontWeight: '600' },
+
+  /* Image preview */
+  imagePreviewOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  imageCloseBtn: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  imageCloseBlur: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* SweetAlert */
   alertOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
@@ -3956,365 +4104,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255,255,255,0.7)',
     fontWeight: '600',
-  },
-
-  /* File bubble */
-  fileBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 14,
-    marginVertical: 2,
-    gap: 10,
-  },
-  fileIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fileName: { fontSize: 13, fontWeight: '600' },
-  fileSize: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-
-  /* User bubble */
-  userBubble: {
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    gap: 3,
-  },
-  userBubbleStatus: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-  },
-  userBubbleName: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 3,
-    maxWidth: 60,
-    textAlign: 'center',
-  },
-  userBubbleRole: { fontSize: 9, fontWeight: '600' },
-
-  /* Info Modal */
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  infoModal: {
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '80%',
-    borderRadius: DS.radius['2xl'],
-    overflow: 'hidden',
-    ...DS.shadow.lg,
-  },
-  infoModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: DS.space.md,
-    padding: DS.space.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  infoModalIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoModalTitle: {
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  infoModalClose: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  infoValue: { fontSize: 14, fontWeight: '600' },
-  infoRole: { fontSize: 11, fontWeight: '600', marginTop: 1 },
-  infoReaction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-  },
-  infoReactionName: { fontSize: 11, fontWeight: '600' },
-
-  /* Date separator */
-  dateSep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: DS.space.lg,
-    marginVertical: DS.space.md,
-  },
-  dateLine: { flex: 1, height: 1 },
-  dateBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginHorizontal: DS.space.md,
-  },
-  dateText: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  /* Typing */
-  typingBubble: {
-    alignSelf: 'flex-start',
-    padding: 10,
-    borderRadius: 16,
-    ...DS.shadow.sm,
-  },
-  typingDot: { width: 7, height: 7, borderRadius: 3.5 },
-
-  /* Reactions */
-  reactionsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginTop: 3,
-  },
-  reactionsRight: { alignSelf: 'flex-end', marginRight: 6 },
-  reactionsLeft: { alignSelf: 'flex-start', marginLeft: 48 },
-  reactionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  reactionCount: { fontSize: 10, fontWeight: '700' },
-
-  /* Image preview */
-  imagePreviewOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.9)',
-  },
-  imageCloseBtn: { position: 'absolute', top: 60, right: 20 },
-  imageCloseBlur: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-
-  /* Message bubbles */
-  messageContainer: {
-    marginVertical: 2,
-    paddingHorizontal: DS.space.lg,
-    flexDirection: 'row',
-  },
-  myContainer: { justifyContent: 'flex-end' },
-  theirContainer: { justifyContent: 'flex-start' },
-  senderName: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginBottom: 3,
-    marginLeft: 4,
-  },
-  bubble: {
-    maxWidth: Math.min(width * 0.78, 520),
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 16,
-    flexShrink: 1,
-  },
-  myBubble: { borderBottomRightRadius: 4 },
-  myBubbleLast: { borderBottomRightRadius: 16 },
-  theirBubble: { borderBottomLeftRadius: 4, borderWidth: 1 },
-  theirBubbleLast: { borderBottomLeftRadius: 16 },
-  replyPreview: {
-    flexDirection: 'row',
-    padding: 6,
-    borderRadius: 8,
-    marginBottom: 6,
-  },
-  replyLine: { width: 3, borderRadius: 2, marginRight: 8 },
-  replyName: { fontSize: 11, fontWeight: '700' },
-  imageContainer: {
-    width: width * 0.55,
-    height: width * 0.55,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  imagePlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  messageText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500',
-    flexShrink: 1,
-  },
-  messageFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 3,
-    gap: 4,
-  },
-  timestamp: { fontSize: 10, fontWeight: '500' },
-  editedLabel: { fontSize: 9, fontWeight: '500' },
-
-  /* Actions menu */
-  actionBackdrop: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  actionMenu: {
-    width: width * 0.85,
-    maxHeight: height * 0.7,
-    borderRadius: DS.radius['2xl'],
-    padding: DS.space.md,
-    overflow: 'hidden',
-  },
-  emojiRow: {
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderBottomWidth: 1,
-  },
-  emojiButton: { padding: 6, marginHorizontal: 2 },
-
-  /* Reply bar */
-  replyBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: DS.space.md,
-    borderTopWidth: 1,
-  },
-
-  /* User bubbles row */
-  userBubblesRow: { borderBottomWidth: 1 },
-
-  /* Empty chat */
-  emptyChatIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: DS.space.md,
-  },
-  emptyChatTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  emptyChatSub: { fontSize: 12, fontWeight: '500' },
-
-  /* Quick replies */
-  quickReply: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  quickReplyText: { fontSize: 12, fontWeight: '600' },
-
-  /* Input bar */
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: DS.space.md,
-    paddingTop: 8,
-    paddingBottom: 10,
-    gap: 4,
-    borderTopWidth: 1,
-  },
-  inputIconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inputWrapper: {
-    flex: 1,
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    maxHeight: 100,
-  },
-  input: {
-    fontSize: 14,
-    fontWeight: '500',
-    paddingVertical: 9,
-    maxHeight: 90,
-    flexShrink: 1,
-  },
-  sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...DS.shadow.md,
-  },
-
-  /* Recording overlay */
-  recordingOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: DS.space.md,
-  },
-  recordingBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 22,
-    backgroundColor: 'rgba(30,30,46,0.95)',
-  },
-  recordingDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 10,
-  },
-  recordingText: { fontSize: 14, fontWeight: '600', color: DS.white },
-  recordingStop: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
