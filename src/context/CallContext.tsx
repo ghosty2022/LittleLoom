@@ -144,8 +144,9 @@ async function logCallHistory(entry: {
   durationSec?: number;
   userId: string;
 }) {
+  // 1. Persist to the call_history table (drives CallHistoryScreen).
   try {
-    await supabase.from('call_history').insert({
+    const { error } = await supabase.from('call_history').insert({
       call_id: entry.callId,
       chat_id: entry.chatId,
       type: entry.type,
@@ -160,8 +161,65 @@ async function logCallHistory(entry: {
       duration_sec: entry.durationSec ?? 0,
       user_id: entry.userId,
     });
+    if (error && __DEV__) {
+      console.warn('[CallHistory] insert error', error);
+    }
   } catch (e) {
-    if (__DEV__) console.warn('[CallHistory] insert failed', e);
+    if (__DEV__) console.warn('[CallHistory] insert threw', e);
+  }
+
+  // 2. Write a chat-side "call" message so the conversation shows
+  //    "Missed · 2m 14s" etc. as a normal bubble. The id is
+  //    prefixed with `call_` so FamilyChatList can recognise it
+  //    without a schema change.
+  try {
+    const durationLabel = (() => {
+      const s = entry.durationSec ?? 0;
+      if (!s) return '';
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return m > 0 ? `${m}m ${r}s` : `${r}s`;
+    })();
+    const statusLabel =
+      entry.status === 'missed'
+        ? 'Missed'
+        : entry.status === 'declined'
+        ? 'Declined'
+        : entry.status === 'outgoing'
+        ? 'Outgoing'
+        : 'Received';
+    const label = `${statusLabel} ${entry.type} call${
+      durationLabel ? ` · ${durationLabel}` : ''
+    }`;
+    const nowIso = new Date(
+      entry.endedAt ?? entry.startedAt,
+    ).toISOString();
+    await supabase.from('family_messages').insert({
+      id: `call_${entry.callId}_${entry.userId}`,
+      chat_id: entry.chatId,
+      sender_id: 'system',
+      sender_name: 'Call',
+      sender_role: 'system',
+      content: label,
+      type: 'call',
+      is_edited: false,
+      timestamp: nowIso,
+      created_at: nowIso,
+      read_by: [entry.userId],
+      delivery_status: 'sent',
+      metadata: {
+        callId: entry.callId,
+        peerId: entry.peerId,
+        peerName: entry.peerName,
+        peerAvatar: entry.peerAvatar ?? null,
+        callType: entry.type,
+        callStatus: entry.status,
+        durationSec: entry.durationSec ?? 0,
+        direction: entry.status === 'outgoing' ? 'out' : 'in',
+      },
+    });
+  } catch (e) {
+    if (__DEV__) console.warn('[CallHistory] message write threw', e);
   }
 }
 
@@ -295,12 +353,27 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
               ? { ...prev, status: 'ended' }
               : prev,
           );
+          // Flip the pending row to "missed" so the conversation
+          // bubble and call history both reflect the unanswered call.
+          const meId = userProfile?.id;
+          if (meId) {
+            supabase
+              .from('call_history')
+              .update({ status: 'missed' })
+              .eq('call_id', callId)
+              .eq('user_id', meId)
+              .then(({ error }) => {
+                if (error && __DEV__) {
+                  console.warn('[CallHistory] timeout update failed', error);
+                }
+              });
+          }
           stopRingtone();
           setTimeout(() => setActiveCall(null), 1200);
         }
       }, RING_TIMEOUT_MS);
     },
-    [stopRingtone],
+    [stopRingtone, userProfile?.id],
   );
 
   /* ── Auto-end active calls after hard cap ──────────────── */
