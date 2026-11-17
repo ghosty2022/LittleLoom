@@ -31,7 +31,7 @@ import { notificationService } from '../services/NotificationService';
    TYPES
    ═══════════════════════════════════════════════════════════════════ */
 
-export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file' | 'call';
+export type MessageType = 'text' | 'image' | 'voice' | 'system' | 'file';
 
 export interface FileMetadata {
   name: string;
@@ -67,9 +67,6 @@ export interface FamilyMessage {
   isEdited?: boolean;
   editedAt?: string;
   deliveryStatus: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
-  /** Arbitrary per-message payload. Used by `type: 'call'` messages
-   *  to carry callId / peerId / callType / callStatus / durationSec. */
-  metadata?: Record<string, any>;
 }
 
 export interface FamilyChat {
@@ -110,18 +107,12 @@ interface FamilyChatState {
   pendingSync: string[];
   blockedUsers: string[];
   isSynced: boolean;
-  /** Chat IDs this user has permanently hidden/deleted (per-account). */
   hiddenChats: string[];
 }
 
 type ChatMessageListener = (chatId: string, messages: FamilyMessage[]) => void;
 
 interface FamilyChatContextType extends FamilyChatState {
-  /**
-   * Subscribe to per-chat message arrays without polling.
-   * Returns an unsubscribe function. Called every time the chat's
-   * message array changes (append, edit, delete, read-receipt).
-   */
   subscribeToChatMessages: (
     chatId: string,
     cb: ChatMessageListener,
@@ -176,11 +167,8 @@ interface FamilyChatContextType extends FamilyChatState {
   isUserBlocked: (userId: string) => boolean;
   forceSync: () => Promise<void>;
   setCurrentChatId: (chatId: string | null) => void;
-  /** Permanently hide a chat for the current user (survives realtime + restart). */
   hideChat: (chatId: string) => Promise<void>;
-  /** Un-hide (restore) a hidden chat. */
   unhideChat: (chatId: string) => Promise<void>;
-  /** Whether a chat is hidden for the current user. */
   isChatHidden: (chatId: string) => boolean;
 }
 
@@ -209,12 +197,8 @@ const createSystemMessage = (
   content: string,
   familyCode: string,
   deviceId: string,
-  senderName = 'LittleLoom',
-  // `sender_id` is `uuid NOT NULL` in the schema — 'system' would
-  // fail the UUID cast on insert. Callers MUST pass a real user id
-  // (the creator of the message). The `senderRole: 'system'` and
-  // `type: 'system'` still mark it as a system message in the UI.
   senderId: string,
+  senderName = 'LittleLoom',
 ): FamilyMessage => ({
   id: `sys_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
   syncId: `sys_${Crypto.randomUUID()}`,
@@ -261,20 +245,25 @@ const parseFileMeta = (raw: unknown): FileMetadata | undefined => {
   return undefined;
 };
 
-/**
- * Convert a base64 string into a Uint8Array.
- *
- * The previous code called `decode(...)` here, but `decode` is a DOM/
- * browser global that does NOT exist in React Native — it throws
- * `ReferenceError: decode is not defined` on every image/file upload.
- * Supabase's RN SDK accepts a Uint8Array, so we decode base64 manually.
- */
+const BASE64_CHARS =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 const base64ToUint8Array = (base64: string): Uint8Array => {
-  const binary = atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  const clean = base64.includes(',') ? base64.slice(base64.indexOf(',') + 1) : base64;
+  const stripped = clean.replace(/[^A-Za-z0-9+/=]/g, '');
+  const len = stripped.length;
+  const padding = stripped.endsWith('==') ? 2 : stripped.endsWith('=') ? 1 : 0;
+  const byteLength = (len / 4) * 3 - padding;
+  const bytes = new Uint8Array(byteLength);
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const e1 = BASE64_CHARS.indexOf(stripped[i]);
+    const e2 = BASE64_CHARS.indexOf(stripped[i + 1]);
+    const e3 = BASE64_CHARS.indexOf(stripped[i + 2]);
+    const e4 = BASE64_CHARS.indexOf(stripped[i + 3]);
+    bytes[p++] = (e1 << 2) | (e2 >> 4);
+    if (e3 !== -1 && p < byteLength) bytes[p++] = ((e2 & 15) << 4) | (e3 >> 2);
+    if (e4 !== -1 && p < byteLength) bytes[p++] = ((e3 & 3) << 6) | e4;
   }
   return bytes;
 };
@@ -303,16 +292,13 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     hiddenChats: [],
   });
 
-  /* ─── Refs (stable identity across renders) ──────────────────── */
+  /* ─── Refs ──────────────────────────────────────────────────── */
   const deviceIdRef = useRef<string>('');
   const typingTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const isInitializedRef = useRef(false);
   const isSubscribedRef = useRef(false);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Prevents two overlapping `performInitialSync()` runs — each would
-  // otherwise call `setupRealtimeListeners()` and orphan the previous
-  // channel (still subscribed server-side).
   const initialSyncInFlightRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
   const currentChatIdRef = useRef<string | null>(null);
@@ -320,20 +306,15 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const chatsRef = useRef<FamilyChat[]>([]);
   const messagesRef = useRef<Record<string, FamilyMessage[]>>({});
+  const typingUsersRef = useRef<Record<string, TypingStatus[]>>({});
   const familyCodeRef = useRef<string | null>(null);
   const userProfileRef = useRef(userProfile);
 
-  // ── Ref used by `sendMessage` instead of `state.blockedUsers` ──
-  // Reading `state.blockedUsers` directly inside `sendMessage` forces
-  // `sendMessage` to be re-created on every blocked-user toggle, which
-  // cascades to `pickAndSendImage`, `pickAndSendFile`, and the whole
-  // `value` memo. Reading from a ref keeps the callback stable.
   const blockedUsersRef = useRef<string[]>([]);
   useEffect(() => { blockedUsersRef.current = state.blockedUsers; }, [state.blockedUsers]);
+  useEffect(() => { typingUsersRef.current = state.typingUsers; }, [state.typingUsers]);
 
-  // ── Per-user hidden chats (deleted-but-must-stay-gone) ────────
-  // Persisted under a user-scoped AsyncStorage key so a different
-  // account on the same device never inherits them.
+  /* ─── Per-user hidden chats ─────────────────────────────────── */
   const hiddenChatsRef = useRef<Set<string>>(new Set());
 
   const hiddenChatsStorageKey = useCallback(
@@ -384,10 +365,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [],
   );
 
-  // ── Per-chat message subscribers ──────────────────────────────
-  const messageSubscribersRef = useRef<
-    Map<string, Set<ChatMessageListener>>
-  >(new Map());
+  /* ─── Per-chat message subscribers ──────────────────────────── */
+  const messageSubscribersRef = useRef<Map<string, Set<ChatMessageListener>>>(new Map());
+
   const subscribeToChatMessages = useCallback(
     (chatId: string, cb: ChatMessageListener) => {
       let set = messageSubscribersRef.current.get(chatId);
@@ -396,10 +376,15 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         messageSubscribersRef.current.set(chatId, set);
       }
       set.add(cb);
-      // fire current value immediately
-      try {
-        cb(chatId, messagesRef.current[chatId] ?? []);
-      } catch {}
+
+      const initial = messagesRef.current[chatId] ?? [];
+      queueMicrotask(() => {
+        const s = messageSubscribersRef.current.get(chatId);
+        if (s && s.has(cb)) {
+          try { cb(chatId, initial); } catch {}
+        }
+      });
+
       return () => {
         const s = messageSubscribersRef.current.get(chatId);
         if (!s) return;
@@ -410,7 +395,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [],
   );
 
-  // notify subscribers only for chats whose message array actually changed
   const prevMessagesRef = useRef<Record<string, FamilyMessage[]>>({});
   useEffect(() => {
     const subs = messageSubscribersRef.current;
@@ -421,7 +405,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const prev = prevMessagesRef.current;
     subs.forEach((listeners, chatId) => {
       const arr = state.messages[chatId] ?? [];
-      // Only fire if this chat's array reference actually changed
       if (prev[chatId] === arr) return;
       listeners.forEach((cb) => {
         try { cb(chatId, arr); } catch {}
@@ -430,30 +413,16 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     prevMessagesRef.current = state.messages;
   }, [state.messages]);
 
-  // ── Account-change guard ─────────────────────────────────────
-  // A new account on the same device must not see the previous
-  // account's family chats, messages, or family code.
-  //
-  // NOTE (Bug 11): this effect depends on `loadFamilyCode`, which is
-  // declared further down. Because `loadFamilyCode` appears in the
-  // dependency array, it was being referenced *during render* before
-  // its `const` initializer ran, throwing a TDZ ReferenceError.
-  // The effect body itself has therefore been moved BELOW the
-  // `loadFamilyCode` useCallback (see further down in this file).
-  // Only the ref is declared here.
-  // Initialise to `undefined` (NOT the current user's id) so the effect
-  // below fires on the first render with a real user id — otherwise the
-  // account-change guard sees prev===next and never runs the reset.
   const loadedForUserIdRef = useRef<string | null | undefined>(undefined);
 
-  /* ─── Keep refs synchronised with state ─────────────────────── */
+  /* ─── Keep refs in sync with state ──────────────────────────── */
   useEffect(() => { chatsRef.current = state.chats; }, [state.chats]);
   useEffect(() => { messagesRef.current = state.messages; }, [state.messages]);
   useEffect(() => { familyCodeRef.current = state.familyCode; }, [state.familyCode]);
   useEffect(() => { userProfileRef.current = userProfile; }, [userProfile]);
   useEffect(() => { currentChatIdRef.current = state.currentChatId; }, [state.currentChatId]);
 
-  /* ─── Mount / unmount ────────────────────────────────────────── */
+  /* ─── Mount / unmount ───────────────────────────────────────── */
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -473,19 +442,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   /* ─── Load Family Code ──────────────────────────────────────── */
-  // A user can belong to MULTIPLE families (Parent1 on Baby A,
-  // Guardian on Baby B). The family code MUST be derived from the
-  // ACTIVE baby, not stored per-user in `app_settings` — otherwise
-  // switching babies leaves the chat pointing at the previous
-  // family's code and shows the wrong conversation list.
-  //
-  // Canonical derivation (matches signUpWithInviteCode):
-  //   family_code = "FAM-" + first 6 chars of baby.id (uppercased)
-  //
-  // We still READ `app_settings.family_code` when it matches the
-  // active baby, because the inviter's row is authoritative for
-  // legacy codes that don't follow the derivation. If the row's
-  // code does NOT belong to the active baby, we derive it fresh.
   const loadFamilyCode = useCallback(async () => {
     try {
       let userId = userProfileRef.current?.id;
@@ -512,9 +468,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const activeBabyId: string | null = babyContext?.id ?? null;
 
-      // ── 1. Try to read a per-baby scoped family code first ─────
-      // We use a dedicated app_settings key so a user with multiple
-      // babies can persist a distinct code per baby.
       if (activeBabyId) {
         try {
           const { data: scopedRow } = await supabase
@@ -537,8 +490,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } catch {}
       }
 
-      // ── 2. Fall back to the legacy per-user key, BUT only accept
-      //       it if it matches the active baby's derivation. ─────
       let derivedFromBaby: string | null = null;
       if (activeBabyId) {
         derivedFromBaby = `FAM-${activeBabyId.slice(0, 6).toUpperCase()}`;
@@ -552,14 +503,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         .maybeSingle();
 
       let resolvedCode: string | null = null;
-
       if (data?.value && (!activeBabyId || data.value === derivedFromBaby)) {
-        // Accept legacy code only if it matches the active baby
-        // (or we don't yet know the baby — accept it provisionally).
         resolvedCode = data.value;
       } else if (derivedFromBaby) {
-        // The stored code belongs to a DIFFERENT baby — derive
-        // fresh from the active baby and persist it.
         resolvedCode = derivedFromBaby;
       }
 
@@ -572,9 +518,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           setState(prev => ({ ...prev, familyCode: resolvedCode, blockedUsers }));
         }
 
-        // Persist both keys so subsequent loads are instant:
-        //   • per-baby scoped key (authoritative going forward)
-        //   • legacy per-user key (kept in sync for back-compat)
         try {
           const writes: Array<Promise<any>> = [];
           if (activeBabyId) {
@@ -615,17 +558,14 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, [babyContext]);
 
-  /* ─── Account-change guard (moved below `loadFamilyCode`) ───── */
-  // Bug 11 fix: this effect lives here — AFTER `loadFamilyCode` is
-  // defined — so the dependency array no longer hits the TDZ.
+  /* ─── Account-change guard ──────────────────────────────────── */
   useEffect(() => {
     const nextId = userProfile?.id ?? null;
-    if (loadedForUserIdRef.current === nextId) return;
+    if (loadedForUserIdRef.current === nextId && nextId !== null) return;
+    if (loadedForUserIdRef.current === nextId && loadedForUserIdRef.current !== undefined) return;
 
     loadedForUserIdRef.current = nextId;
 
-    // Reset in-memory state so the new account doesn't inherit the
-    // previous account's chats / messages / family code.
     isInitializedRef.current = false;
     chatsRef.current = [];
     messagesRef.current = {};
@@ -644,22 +584,16 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }));
     }
 
-    // Re-load for the new user (if signed in).
     if (nextId) {
       loadFamilyCode().catch(() => {});
     }
   }, [userProfile?.id, loadFamilyCode]);
 
-  // ── Re-derive family code whenever the active BABY changes ───────
-  // Multi-family support: a user can be Parent1 on Baby A and
-  // Guardian on Baby B. Switching babies must re-derive the family
-  // code AND re-run performInitialSync so the chat list reflects
-  // the new family.
+  /* ─── Re-derive family code on baby switch ──────────────────── */
   useEffect(() => {
     if (!babyContext?.id) return;
     let cancelled = false;
     (async () => {
-      // Wipe chat state so the new family's chats hydrate cleanly.
       if (!cancelled && isMountedRef.current) {
         isInitializedRef.current = false;
         chatsRef.current = [];
@@ -681,7 +615,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => { cancelled = true; };
   }, [babyContext?.id, loadFamilyCode]);
 
-  /* ─── Initial Device ID + Notification Service ──────────────── */
+  /* ─── Boot: device id + notifications ───────────────────────── */
   useEffect(() => {
     (async () => {
       deviceIdRef.current = await getOrCreateDeviceId();
@@ -695,7 +629,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ─── Load per-user hidden chats ───────────────────────────── */
+  /* ─── Load per-user hidden chats ────────────────────────────── */
   useEffect(() => {
     const uid = userProfile?.id ?? null;
     let cancelled = false;
@@ -716,26 +650,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => { cancelled = true; };
   }, [userProfile?.id, hiddenChatsStorageKey]);
 
-  /* ─── Setup Realtime Listeners ──────────────────────────────── */
-  /**
-   * IMPORTANT: this callback must NOT depend on `state.chats` or `state.messages`.
-   * Everything dynamic is read from refs inside the callbacks.
-   */
+  /* ─── Realtime listeners ────────────────────────────────────── */
   const setupRealtimeListeners = useCallback(() => {
     const familyCode = familyCodeRef.current;
     if (!familyCode) return;
 
-    // ── Tear down any previous channel SYNCHRONOUSLY ───────────
-    // The Supabase JS SDK's `.on()` throws if called on a channel
-    // that has already been `.subscribe()`'d. `.unsubscribe()` is
-    // async, so a rapid re-setup can collide on the same topic
-    // name (`family-chat-${familyCode}`) and re-use the *old*
-    // subscribed instance, causing:
-    //   "cannot add 'postgres_changes' callbacks ... after subscribe()"
-    // To avoid this we:
-    //   1. removeChannel() to fully release the topic slot, AND
-    //   2. append a unique suffix so even a lingering instance
-    //      can never be reused by the SDK.
     if (realtimeChannelRef.current) {
       const old = realtimeChannelRef.current;
       realtimeChannelRef.current = null;
@@ -749,27 +668,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       reconnectTimeoutRef.current = null;
     }
 
-    // Unique suffix guarantees a fresh topic every time — the SDK
-    // cannot hand us back a previously-subscribed channel.
     const uniqueSuffix =
       typeof (global as any).crypto?.randomUUID === 'function'
         ? (global as any).crypto.randomUUID()
         : `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-    // ── Two channels: family-scoped + community-scoped ───────────
-    // Group messages live under `family_code = <FAM-...>`; direct
-    // chats are stored under `family_code = 'community'` (see
-    // `sendMessage`). A single channel cannot subscribe to two
-    // disjoint filters on the same table without re-subscribing
-    // (which the SDK rejects). So we run both concurrently and
-    // funnel every payload through the same handler.
-    // ── Family-agnostic channel for broadcasts, presence, and DMs ─
-    // Group messages are still scoped by the DB `family_code` column
-    // via the `.on('postgres_changes', { filter: family_code=eq... })`
-    // handler below — the channel *name* just needs to be stable so a
-    // peer in Family B can receive a Community DM sent by a peer in
-    // Family A. Include the USER id (not the family code) so multi-
-    // family users have ONE channel that lives across baby switches.
     const meIdForChannel = userProfileRef.current?.id ?? 'anon';
     const channel = supabase.channel(
       `family-chat-user-${meIdForChannel}-${uniqueSuffix}`,
@@ -781,7 +684,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       },
     );
 
-    /* ─── INSERT (family-scoped groups) ──────────────────────── */
     channel.on(
       'postgres_changes',
       {
@@ -793,13 +695,11 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
         const raw = payload.new as Record<string, unknown>;
         if (!raw) return;
-
         const isFromThisDevice = raw.device_id === deviceIdRef.current;
 
         try {
           const reactions = parseReactions(raw.reactions);
           const fileMetadata = parseFileMeta(raw.file_metadata);
-
           const message: FamilyMessage = {
             id: raw.id as string,
             syncId: raw.sync_id as string,
@@ -827,18 +727,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             isEdited: (raw.is_edited as boolean) || false,
             editedAt: (raw.edited_at as string) || undefined,
             deliveryStatus:
-              (raw.delivery_status as FamilyMessage['deliveryStatus']) ||
-              'sent',
-            metadata: raw.metadata
-              ? (typeof raw.metadata === 'string'
-                  ? JSON.parse(raw.metadata as string)
-                  : (raw.metadata as any))
-              : undefined,
+              (raw.delivery_status as FamilyMessage['deliveryStatus']) || 'sent',
           };
 
-          // If this chat is hidden for me, drop the message entirely.
           if (hiddenChatsRef.current.has(message.chatId)) return;
-
           const chat = chatsRef.current.find(c => c.id === message.chatId);
           const isChatMuted = chat?.isMuted ?? false;
 
@@ -891,7 +783,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       },
     );
 
-    /* ─── UPDATE ─────────────────────────────────────────────── */
     channel.on(
       'postgres_changes',
       {
@@ -931,34 +822,16 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       },
     );
 
-    /* ─── Instant message broadcast (arrives in ~50ms) ────────── */
     channel.on('broadcast', { event: 'message' }, (payload: { payload: any }) => {
       const data = payload?.payload;
       if (!data || !data.message) return;
-      // Ignore our own echo (we already inserted it optimistically)
       if (data.deviceId === deviceIdRef.current) return;
 
       try {
         const m = data.message as FamilyMessage;
-        // Ignore messages for chats this user has permanently hidden.
         if (hiddenChatsRef.current.has(m.chatId)) return;
 
-        // ── ACCEPT MESSAGES FOR *ANY* CHAT THE USER HAS ─────────
-        // The old check only accepted `m.familyCode === 'community'`
-        // or `m.familyCode === familyCode` (the family code captured
-        // when this channel was created). That meant a user who
-        // belongs to Family A and Family B, currently viewing A,
-        // silently dropped every message sent from B's group chat.
-        //
-        // Now: accept if the message is a community DM (sentinel
-        // 'community'), OR the message's family code matches the
-        // CURRENT family, OR the message's `chatId` corresponds to a
-        // chat that is already in `chatsRef.current` (which means
-        // we're a legitimate participant regardless of which family
-        // is currently active).
-        const chatForMessage = chatsRef.current.find(
-          (c) => c.id === m.chatId,
-        );
+        const chatForMessage = chatsRef.current.find(c => c.id === m.chatId);
         const isCommunityDm = m.familyCode === 'community';
         const isCurrentFamily = m.familyCode === familyCode;
         const isKnownChat = !!chatForMessage;
@@ -988,7 +861,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           return { ...prev, messages: updatedMessages, chats: updatedChats };
         });
 
-        // local notification only when user is NOT in this chat
         if (
           currentChatIdRef.current !== m.chatId &&
           !isChatMuted &&
@@ -1013,7 +885,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     });
 
-    /* ─── Typing Broadcast ───────────────────────────────────── */
     channel.on('broadcast', { event: 'typing' }, (payload: { payload: any }) => {
       const data = payload?.payload;
       if (!data || data.userId === deviceIdRef.current) return;
@@ -1043,7 +914,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     });
 
-    /* ─── Delivered broadcast (instant ✓✓) ──────────────────── */
     channel.on('broadcast', { event: 'delivered' }, (payload: any) => {
       const data = payload?.payload;
       if (!data?.messageId || !data?.chatId) return;
@@ -1054,10 +924,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         let changed = false;
         const updated = list.map(m => {
           if (m.id !== data.messageId) return m;
-          if (
-            m.deliveryStatus === 'read' ||
-            m.deliveryStatus === 'delivered'
-          ) {
+          if (m.deliveryStatus === 'read' || m.deliveryStatus === 'delivered') {
             return m;
           }
           changed = true;
@@ -1071,15 +938,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     });
 
-    /* ─── Presence ───────────────────────────────────────────── */
-    channel.on('presence', { event: 'sync' }, () => {
-      // Intentionally empty — presence not used for UI yet.
-    });
+    channel.on('presence', { event: 'sync' }, () => {});
 
-    /* ─── INSERT (community DMs) ──────────────────────────────── */
-    // Same handler shape, but the filter is the sentinel family_code
-    // used by direct chats. Without this, DMs sent while the peer
-    // is in a DIFFERENT family never realtime-deliver.
     channel.on(
       'postgres_changes',
       {
@@ -1122,13 +982,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             isEdited: (raw.is_edited as boolean) || false,
             editedAt: (raw.edited_at as string) || undefined,
             deliveryStatus:
-              (raw.delivery_status as FamilyMessage['deliveryStatus']) ||
-              'sent',
-            metadata: raw.metadata
-              ? (typeof raw.metadata === 'string'
-                  ? JSON.parse(raw.metadata as string)
-                  : (raw.metadata as any))
-              : undefined,
+              (raw.delivery_status as FamilyMessage['deliveryStatus']) || 'sent',
           };
           if (hiddenChatsRef.current.has(message.chatId)) return;
           const existingChat = chatsRef.current.find(c => c.id === message.chatId);
@@ -1178,7 +1032,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       },
     );
 
-    /* ─── UPDATE (community DMs) ──────────────────────────────── */
     channel.on(
       'postgres_changes',
       {
@@ -1217,7 +1070,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       },
     );
 
-    /* ─── Subscribe ──────────────────────────────────────────── */
     channel.subscribe(status => {
       if (status === 'SUBSCRIBED') {
         isSubscribedRef.current = true;
@@ -1249,24 +1101,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     realtimeChannelRef.current = channel;
   }, []);
 
-    
   /* ─── Perform Initial Sync ──────────────────────────────────── */
-  const performInitialSync = useCallback(async () => {
+  const performInitialSync = useCallback(async (force = false) => {
     const familyCode = familyCodeRef.current;
     if (!familyCode) return;
 
-    // ── Concurrency guard ────────────────────────────────────────
-    // Multiple callers can hit this within the same tick:
-    //   • the "kick off sync" effect when familyCode arrives
-    //   • the profile-change subscription
-    //   • joinFamilyByCode
-    //   • forceSync / syncFamilyData
-    // Without this guard each call would run `setupRealtimeListeners()`
-    // and orphan the previous channel. The 2nd caller would then try
-    // to add `.on()` handlers to a channel the SDK is still tearing
-    // down → the "cannot add postgres_changes callbacks after
-    // subscribe()" error.
-    if (initialSyncInFlightRef.current) {
+    if (initialSyncInFlightRef.current && !force) {
       if (__DEV__) console.log('[FamilyChat] performInitialSync already in flight — skipping');
       return;
     }
@@ -1276,8 +1116,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
-      // `let` because the self-heal block below reassigns this
-      // with the freshly-seeded rows.
       let { data: chatsData, error: chatsError } = await supabase
         .from('family_chats')
         .select('*')
@@ -1285,31 +1123,13 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (chatsError) console.warn('[FamilyChat] Chats fetch error:', chatsError.message);
 
-      // ── Self-heal: if I have a family_code but no chats at all,
-      //    create the family group + at least one DM with my family
-      //    (the inviter). This guarantees a fresh invitee — who has
-      //    never had a chat created for them — still sees a chat
-      //    after signing in on any device.
       const me = userProfileRef.current;
       const hasChats = (chatsData ?? []).length > 0;
-      // Only self-heal if we know which BABY this family code belongs
-      // to. Without a baby we'd seed `family_group_FAM-XXXXXX` and DMs
-      // to *whoever* happens to be in family_members — but there's no
-      // baby to key it on. A user who's only signed up for Community
-      // (no baby) should never hit this path.
       const hasBabyForCode = !!babyContext?.id;
       if (!hasChats && me?.id && hasBabyForCode) {
         try {
-          // ── Resolve the baby this family code belongs to ────────
-          // `app_settings.current_baby_id` is per-user and can point
-          // at a DIFFERENT baby than the one this family code was
-          // derived from (multi-family users). Prefer the scoped
-          // `family_code_<babyId>` row to find the correct baby.
           let myBabyId: string | null = babyContext?.id ?? null;
 
-          // If the family code looks like "FAM-XXXXXX", we can find
-          // the baby by prefix match — the canonical derivation in
-          // `signUpWithInviteCode` uses the first 6 chars of baby.id.
           const codeMatches = /^FAM-([A-Z0-9]{6})$/i.exec(familyCode);
           if (codeMatches) {
             const prefix = codeMatches[1].toLowerCase();
@@ -1325,8 +1145,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             } catch {}
           }
 
-          // Fall back to the per-user current_baby_id if we still
-          // don't know which baby this code belongs to.
           if (!myBabyId) {
             const { data: myBabySetting } = await supabase
               .from('app_settings')
@@ -1352,7 +1170,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             .map(r => r.user_id)
             .filter((id: string | null): id is string => !!id && id !== me.id);
 
-          // Resolve profile info for everyone in the family.
           const profileMap: Record<string, { name: string; avatar: string; role: string }> = {};
           if (otherIds.length > 0) {
             const { data: profs } = await supabase
@@ -1372,7 +1189,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const myName = me.fullName || 'Family Member';
           const myAvatar = me.avatar || '👤';
 
-          // Group chat
           const groupChatId = `family_group_${familyCode}`;
           const groupParticipants = [me.id, ...otherIds];
           const groupNames: Record<string, string> = { [me.id]: myName };
@@ -1403,7 +1219,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             is_pinned: true,
           });
 
-          // DM with each other family member
           for (const uid of otherIds) {
             const p = profileMap[uid];
             if (!p) continue;
@@ -1432,7 +1247,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             });
           }
 
-          // Re-fetch chats now that we've seeded.
           const { data: reseeded } = await supabase
             .from('family_chats')
             .select('*')
@@ -1449,21 +1263,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const messages: Record<string, FamilyMessage[]> = {};
 
       for (const chatRow of chatsData ?? []) {
-        // Permanently hidden/deleted chats must never be rehydrated.
         if (hiddenChatsRef.current.has(chatRow.id)) continue;
-        // ── Hydrate participant_names / participant_avatars from
-        //    the CURRENT `profiles` rows. The JSONB snapshot on the
-        //    chat row is only written at creation time, so without
-        //    this hydration, a user who changes their avatar never
-        //    sees it in the chat header.
         const participantIds: string[] = Array.isArray(chatRow.participants)
           ? chatRow.participants.filter((id: any) => typeof id === 'string')
           : [];
         let liveNames: Record<string, string> = { ...(chatRow.participant_names || {}) };
         let liveAvatars: Record<string, string> = { ...(chatRow.participant_avatars || {}) };
-        // Also read the live roles from `family_members` for this baby
-        // so a role change on Parent 2 ↔ Guardian ↔ Viewer is reflected
-        // in the chat header, member badges, and permission gates.
         let liveRoles: Record<string, string> = { ...(chatRow.participant_roles || {}) };
         if (participantIds.length > 0) {
           try {
@@ -1479,7 +1284,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             });
           } catch {}
 
-          // Authoritative role source: `family_members` for this baby.
           try {
             const babyId = babyContext?.id;
             if (babyId) {
@@ -1492,8 +1296,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 if (fm?.user_id && fm?.role) liveRoles[fm.user_id] = fm.role;
               });
 
-              // Write back if the DB JSONB is stale — so a cold-start
-              // on another device sees the correct role.
               const staleJsonb =
                 JSON.stringify(liveRoles) !== JSON.stringify(chatRow.participant_roles || {});
               if (staleJsonb) {
@@ -1527,8 +1329,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
         chats.push(chat);
 
-        // For direct chats (DMs), don't filter by family — they are
-        // global. For group chats, filter by the family code.
         const isDirectChat = chat.type === 'direct';
         let msgQuery = supabase
           .from('family_messages')
@@ -1569,11 +1369,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             isEdited: row.is_edited || false,
             editedAt: row.edited_at || undefined,
             deliveryStatus: (row.delivery_status as FamilyMessage['deliveryStatus']) || 'sent',
-            metadata: row.metadata
-              ? (typeof row.metadata === 'string'
-                  ? JSON.parse(row.metadata)
-                  : row.metadata)
-              : undefined,
           }));
           if (messages[chat.id].length > 0) {
             chat.lastMessage = messages[chat.id][messages[chat.id].length - 1];
@@ -1585,16 +1380,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       messagesRef.current = messages;
 
       setState(prev => {
-        // ── MERGE, don't replace ────────────────────────────────
-        // Realtime may have delivered messages/chats while the
-        // network fetch was in flight. Replacing wholesale wiped
-        // them until the next sync — that's the "disappearing then
-        // reappearing on refresh" bug.
         const prevChatsById = new Map(prev.chats.map(c => [c.id, c]));
         const mergedChats = chats.map(c => {
           const existing = prevChatsById.get(c.id);
           if (!existing) return c;
-          // Keep the *fresher* lastMessage/unreadCount from realtime.
           const existingTs = existing.lastMessage
             ? new Date(existing.lastMessage.timestamp).getTime()
             : 0;
@@ -1611,7 +1400,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
           return c;
         });
-        // Include any chats realtime added that the DB fetch missed.
         prev.chats.forEach(existing => {
           if (!mergedChats.some(c => c.id === existing.id)) {
             mergedChats.push(existing);
@@ -1623,8 +1411,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const fetched = mergedMessages[chatId] ?? [];
           const live = prev.messages[chatId] ?? [];
           if (live.length === 0) return;
-          // Merge by id so a realtime message received during the
-          // fetch isn't dropped.
           const byId = new Map<string, FamilyMessage>();
           fetched.forEach(m => byId.set(m.id, m));
           live.forEach(m => {
@@ -1658,25 +1444,17 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } finally {
       initialSyncInFlightRef.current = false;
     }
-  }, [setupRealtimeListeners]);
+  }, [setupRealtimeListeners, babyContext]);
 
   /* ─── Kick off sync once family code is known ───────────────── */
   useEffect(() => {
     if (!deviceIdRef.current) return;
     if (!state.familyCode) return;
     if (isInitializedRef.current) return;
-
     performInitialSync();
   }, [state.familyCode, performInitialSync]);
 
-  /* ─── Realtime profile-change: refresh chat participant data ── */
-  // A member editing their avatar / name must update chat headers
-  // and any `participantAvatars` display. We re-sync the chat list
-  // (which re-hydrates names + avatars from `profiles`).
-  //
-  // A profile-change burst (e.g. auth bootstrap hydrating several
-  // rows on cold start) fires many events within a few hundred ms.
-  // Coalesce them into one re-sync via a debounce.
+  /* ─── Profile-change refresh (debounced) ────────────────────── */
   useEffect(() => {
     if (!state.familyCode) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1686,11 +1464,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
         if (!isMountedRef.current) return;
-        // ── DO NOT wipe chats ─────────────────────────────────
-        // We only need to re-hydrate participant names/avatars.
-        // Re-running performInitialSync here used to REPLACE the
-        // whole chat list (flash / disappearing chats).
-        // Instead, refresh names/avatars in-place.
         (async () => {
           try {
             const participantIds = new Set<string>();
@@ -1749,13 +1522,12 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, [state.familyCode, performInitialSync]);
 
-  /* ─── Setters ────────────────────────────────────────────────── */
+  /* ─── Setters ───────────────────────────────────────────────── */
   const setCurrentChatId = useCallback((chatId: string | null) => {
     setState(prev => ({ ...prev, currentChatId: chatId }));
   }, []);
 
-  /* ─── Chat Management ───────────────────────────────────────── */
-
+  /* ─── createFamilyGroup ─────────────────────────────────────── */
   const createFamilyGroup = useCallback(
     async (name?: string, avatar?: string): Promise<string> => {
       const familyCode = familyCodeRef.current;
@@ -1764,13 +1536,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const chatId = `family_group_${familyCode}`;
 
-      // 1. Check if it exists locally in state first
       const localChat = chatsRef.current.find(c => c.id === chatId);
-      if (localChat) {
-        return chatId;
-      }
+      if (localChat) return chatId;
 
-      // 2. Check if it exists in the database
       const { data: existing } = await supabase
         .from('family_chats')
         .select('*')
@@ -1778,8 +1546,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         .maybeSingle();
 
       if (existing) {
-        // If it exists on the server but not locally, un-hide it
-        // and add it to the local state so the user can see it.
         await unhideChat(chatId);
         setState(prev => {
           if (prev.chats.some(c => c.id === chatId)) return prev;
@@ -1791,11 +1557,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const participantNames: Record<string, string> = {};
       const participantRoles: Record<string, string> = {};
       const participantAvatars: Record<string, string> = {};
-      // `FamilyMember.id` is the `family_members` row id — NOT the
-      // profile UUID. `family_chats.participants` must hold profile
-      // UUIDs (matches the `parent1_id` / `parent2_id` shape) so
-      // every other query in this file (participants.includes, .contains,
-      // getOrCreateDirectChat's [me.id, otherId] compare) works.
       members.forEach(m => {
         const uid = (m as any).userId || m.id;
         participantRoles[uid] = m.role;
@@ -1836,9 +1597,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         chatId,
         `Welcome to ${getCurrentBaby()?.name || 'your baby'}'s family chat! 💕`,
         familyCode,
-  deviceIdRef.current,
-  'LittleLoom',
-  me.id,
+        deviceIdRef.current,
+        me.id,
+        'LittleLoom',
       );
 
       await supabase.from('family_messages').insert({
@@ -1886,18 +1647,16 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       return chatId;
     },
-    [members, getCurrentBaby, sweetAlert],
+    [members, getCurrentBaby, sweetAlert, unhideChat],
   );
 
+  /* ─── getOrCreateDirectChat ─────────────────────────────────── */
   const getOrCreateDirectChat = useCallback(
     async (memberId: string, memberInfo?: Partial<FamilyMember>): Promise<string> => {
       const familyCode = familyCodeRef.current;
       const me = userProfileRef.current;
       if (!familyCode || !me) return '';
 
-      // A brand-new direct chat with this member means the user is
-      // re-engaging — un-hide any previously-deleted DM between us.
-      // We don't know the chatId yet, so compute the canonical key.
       const preKey = `direct_${[me.id, memberId].sort().join('_')}`;
       if (hiddenChatsRef.current.has(preKey)) {
         await unhideChat(preKey);
@@ -1905,13 +1664,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       let actualUserId = memberId;
       let memberName = memberInfo?.fullName || '';
-      // Only accept a SHORT emoji as an avatar snapshot. If the
-      // caller passed an http/file URI, `family_chats.participant_avatars`
-      // stores that string, and every screen that reads it (call
-      // overlay, chat list) would try to render the URL as text.
-      // Prefer '👤' — the hydrate-from-`profiles` step in
-      // `performInitialSync` will pull the real image when it's
-      // available.
       let memberAvatar =
         memberInfo?.avatar && memberInfo.avatar.length <= 4
           ? memberInfo.avatar
@@ -1950,15 +1702,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
 
-      // ── DIRECT CHATS ARE GLOBAL (family-agnostic) ─────────────
-      // The chat id is deterministic (`direct_<sorted-uids>`), so
-      // the row already exists regardless of which family it was
-      // created under. Filtering by `family_code` here would miss
-      // it after a baby switch / on another device whose active
-      // family differs from the one that created the DM, causing
-      // an INSERT with an existing primary key → 23505.
-      //
-      // We therefore look up by participants ONLY.
       const { data: existing } = await supabase
         .from('family_chats')
         .select('*')
@@ -1967,13 +1710,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         .maybeSingle();
 
       if (existing) {
-        // If the user re-opens a previously hidden DM, un-hide it.
         if (hiddenChatsRef.current.has(existing.id)) {
           await unhideChat(existing.id);
         }
-        // If it exists on the server but not locally (e.g. created
-        // on another device / under a different family), adopt it
-        // into local state so the caller can navigate straight in.
         if (!chatsRef.current.some(c => c.id === existing.id)) {
           const adopted: FamilyChat = {
             id: existing.id,
@@ -2036,9 +1775,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         { onConflict: 'id', ignoreDuplicates: true },
       );
 
-      // `ignoreDuplicates: true` + 23505 both mean "someone else already
-      // created this DM (or it existed under a different family code)".
-      // That's not an error for the caller — the chat id is valid.
       if (error && (error as any).code !== '23505') {
         console.error('[FamilyChat] Create direct chat error:', error);
         sweetAlert.alert('Error', 'Failed to create chat: ' + error.message, 'error');
@@ -2065,11 +1801,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setState(prev => ({ ...prev, chats: [newChat, ...prev.chats] }));
       return chatId;
     },
-    [members, sweetAlert],
+    [members, sweetAlert, unhideChat],
   );
 
-  /* ─── Send Message ──────────────────────────────────────────── */
-
+  /* ─── sendMessage ───────────────────────────────────────────── */
   const sendMessage = useCallback(
     async (
       chatId: string,
@@ -2082,16 +1817,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const familyCode = familyCodeRef.current;
       let me = userProfileRef.current;
 
-      // ── AUTH REF HYDRATION GUARD ────────────────────────────────
-      // `userProfileRef` is synced by a `useEffect` on `userProfile`
-      // — on cold boot or right after an account switch there is a
-      // one-tick window where the SCREEN has `userProfile` but the
-      // ref inside this callback is still `null`. The old code threw
-      // "You must be logged in to send messages" in that window,
-      // even though the user clearly was signed in.
-      //
-      // Fix: give the ref up to ~800 ms to hydrate before declaring
-      // the user signed-out. This is a no-op in the happy path.
       if (!me) {
         for (let i = 0; i < 8 && !me; i++) {
           await new Promise((r) => setTimeout(r, 100));
@@ -2112,8 +1837,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (chat.type === 'direct') {
         const otherId = chat.participants.find(p => p !== me.id);
-        // BUG FIX: read from ref instead of `state.blockedUsers` so this
-        // callback doesn't need to re-create whenever blocked users change.
         if (otherId && blockedUsersRef.current.includes(otherId)) {
           sweetAlert.alert('Blocked', 'You have blocked this user.', 'warning');
           return;
@@ -2131,19 +1854,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-      // ── Community DMs are GLOBAL, not per-family ───────────
-      // A `direct_<sorted-uids>` chat is conceptually a single
-      // conversation between two people, regardless of which family
-      // they're currently viewing. If we tag it with the active
-      // `familyCode`, messages sent while in Family A disappear from
-      // the peer's view when they switch to Family B — because the
-      // realtime channel name (which derives from `family_code`) and
-      // the INSERT filter both key on the active family.
-      //
-      // Use a stable sentinel so the DM is family-agnostic. Group
-      // chats (`family_group_<familyCode>`) stay scoped to their
-      // family code — that's correct: different babies = different
-      // family groups.
       const isDirectChat = chat.type === 'direct';
       const messageFamilyCode = isDirectChat ? 'community' : familyCode;
 
@@ -2181,14 +1891,9 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           ...prev.messages,
           [chatId]: [...(prev.messages[chatId] ?? []), newMessage],
         };
-        // Sync refs immediately so subsequent reads (markChatRead, resendMessage, etc.) see fresh data.
         chatsRef.current = updatedChats;
         messagesRef.current = updatedMessages;
-        return {
-          ...prev,
-          chats: updatedChats,
-          messages: updatedMessages,
-        };
+        return { ...prev, chats: updatedChats, messages: updatedMessages };
       });
 
       try {
@@ -2218,9 +1923,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (newMessage.fileMetadata) insertData.file_metadata = JSON.stringify(newMessage.fileMetadata);
         if (newMessage.replyTo) insertData.reply_to = newMessage.replyTo;
         if (newMessage.replyToPreview) insertData.reply_to_preview = newMessage.replyToPreview;
-        if (newMessage.metadata) insertData.metadata = newMessage.metadata;
 
-        // Insert first — only flip to 'sent' after the DB confirms.
         const { error } = await supabase.from('family_messages').insert(insertData);
         if (error) throw error;
 
@@ -2234,9 +1937,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           },
         }));
 
-        // ─── INSTANT BROADCAST to every subscribed device ─────
-        // Fires in ~50ms on the peer's phone — no Postgres webhook
-        // and no polling needed. deviceId prevents self-echo.
         if (realtimeChannelRef.current && isSubscribedRef.current) {
           realtimeChannelRef.current
             .send({
@@ -2250,7 +1950,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             .catch(() => {});
         }
 
-        // Fire-and-forget DB row update (chat last-message pointer)
         supabase
           .from('family_chats')
           .update({ last_message_id: newMessage.id, updated_at: now })
@@ -2276,13 +1975,10 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [sweetAlert],
   );
 
-  /* ─── Resend / Edit / Delete / Clear ─────────────────────────── */
-
+  /* ─── resendMessage ─────────────────────────────────────────── */
   const resendMessage = useCallback(
     async (chatId: string, messageId: string): Promise<void> => {
       const message = messagesRef.current[chatId]?.find(m => m.id === messageId);
-      // Accept `failed` OR stuck-at-`sending` (network dropped
-      // mid-insert). Both should be retryable.
       if (
         !message ||
         (message.deliveryStatus !== 'failed' &&
@@ -2332,6 +2028,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [],
   );
 
+  /* ─── editMessage ───────────────────────────────────────────── */
   const editMessage = useCallback(
     async (chatId: string, messageId: string, newContent: string) => {
       const me = userProfileRef.current;
@@ -2362,72 +2059,61 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [sweetAlert],
   );
 
-  const markChatRead = useCallback(
-    async (chatId: string) => {
-      const me = userProfileRef.current;
-      if (!me) return;
+  /* ─── markChatRead ──────────────────────────────────────────── */
+  const markChatRead = useCallback(async (chatId: string) => {
+    const me = userProfileRef.current;
+    if (!me) return;
 
-      const msgs = messagesRef.current[chatId] ?? [];
-      const unread = msgs.filter(m => !m.readBy.includes(me.id));
-      if (unread.length === 0) {
-        // Still reset local unread badge
-        setState(prev => ({
-          ...prev,
-          chats: prev.chats.map(c => (c.id === chatId ? { ...c, unreadCount: 0 } : c)),
-        }));
-        return;
-      }
+    const msgs = messagesRef.current[chatId] ?? [];
+    const unread = msgs.filter(m => !m.readBy.includes(me.id));
+    if (unread.length === 0) {
+      setState(prev => ({
+        ...prev,
+        chats: prev.chats.map(c => (c.id === chatId ? { ...c, unreadCount: 0 } : c)),
+      }));
+      return;
+    }
 
-      const ids = unread.map(m => m.id);
-      const { error } = await supabase
-        .from('family_messages')
-        .update({
-          read: true,
-          read_by: [...new Set([...unread.flatMap(m => m.readBy), me.id])],
-          // Flip to READ so the sender sees blue double ticks.
-          delivery_status: 'read',
-        })
-        .in('id', ids);
+    const ids = unread.map(m => m.id);
+    const { error } = await supabase
+      .from('family_messages')
+      .update({
+        read: true,
+        read_by: [...new Set([...unread.flatMap(m => m.readBy), me.id])],
+        delivery_status: 'read',
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', ids);
 
-      if (error) {
-        console.warn('[FamilyChat] markChatRead error:', error);
-      }
+    if (error) {
+      console.warn('[FamilyChat] markChatRead error:', error);
+    }
 
-      setState(prev => {
-        const updatedMessages = (prev.messages[chatId] ?? []).map(m =>
-          ids.includes(m.id) && !m.readBy.includes(me.id)
-            ? {
-                ...m,
-                read: true,
-                readBy: [...m.readBy, me.id],
-                deliveryStatus: 'read' as const,
-              }
-            : m,
-        );
-        const updatedChats = prev.chats.map(c =>
-          c.id === chatId ? { ...c, unreadCount: 0 } : c,
-        );
-        return { ...prev, chats: updatedChats, messages: { ...prev.messages, [chatId]: updatedMessages } };
-      });
-    },
-    [],
-  );
+    setState(prev => {
+      const updatedMessages = (prev.messages[chatId] ?? []).map(m =>
+        ids.includes(m.id) && !m.readBy.includes(me.id)
+          ? {
+              ...m,
+              read: true,
+              readBy: [...m.readBy, me.id],
+              deliveryStatus: 'read' as const,
+            }
+          : m,
+      );
+      const updatedChats = prev.chats.map(c =>
+        c.id === chatId ? { ...c, unreadCount: 0 } : c,
+      );
+      return { ...prev, chats: updatedChats, messages: { ...prev.messages, [chatId]: updatedMessages } };
+    });
+  }, []);
 
-  /**
-   * Mark messages DELIVERED (double grey ticks) when this device
-   * receives them via realtime / broadcast.
-   *
-   * Marks only the peer's messages — our own messages stay
-   * 'sent'/'delivered'/'read' based on what the *peer* reports.
-   */
+  /* ─── markMessagesDelivered ─────────────────────────────────── */
   const markMessagesDelivered = useCallback(
     async (chatId: string, messageIds: string[]) => {
       if (!messageIds.length) return;
       const me = userProfileRef.current;
       if (!me?.id) return;
 
-      // Only touch messages we did NOT send ourselves, and only
-      // those currently in 'sent'/'sending' state.
       const targets =
         messagesRef.current[chatId]
           ?.filter(
@@ -2441,7 +2127,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (targets.length === 0) return;
 
-      // Optimistic local update.
       setState(prev => {
         const list = prev.messages[chatId] ?? [];
         const updated = list.map(m =>
@@ -2455,8 +2140,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
       });
 
-      // Broadcast "delivered" so the sender's UI flips to ✓✓ within
-      // ~50ms instead of waiting for the Postgres UPDATE round-trip.
       if (realtimeChannelRef.current && isSubscribedRef.current) {
         targets.forEach((id) => {
           realtimeChannelRef.current
@@ -2473,8 +2156,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         });
       }
 
-      // Persist — best effort. If the column is missing it throws
-      // silently and we still show the tick locally.
       try {
         await supabase
           .from('family_messages')
@@ -2488,6 +2169,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [],
   );
 
+  /* ─── deleteMessage ─────────────────────────────────────────── */
   const deleteMessage = useCallback(
     async (chatId: string, messageId: string) => {
       const me = userProfileRef.current;
@@ -2518,6 +2200,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [sweetAlert],
   );
 
+  /* ─── clearChat ─────────────────────────────────────────────── */
   const clearChat = useCallback(
     async (chatId: string) => {
       const familyCode = familyCodeRef.current;
@@ -2531,7 +2214,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const { error } = await supabase
         .from('family_messages')
         .delete()
-        .eq('chat_id', chatId);
+        .eq('chat_id', chatId)
+        .eq('family_code', familyCode);
 
       if (error) {
         sweetAlert.alert('Error', 'Failed to clear chat', 'error');
@@ -2542,8 +2226,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [sweetAlert],
   );
 
-  /* ─── Image / File Picker ───────────────────────────────────── */
-
+  /* ─── Media pickers ─────────────────────────────────────────── */
   const pickAndSendImage = useCallback(
     async (chatId: string, fromCamera = false): Promise<void> => {
       const familyCode = familyCodeRef.current;
@@ -2581,8 +2264,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const ext = uri.split('.').pop() || 'jpg';
         const storagePath = `chat_images/${familyCode}/${Date.now()}.${ext}`;
 
-        // BUG FIX: `decode(...)` is a DOM-only global that doesn't exist
-        // in React Native. Read base64 and convert to Uint8Array instead.
         const fileData = await FileSystem.readAsStringAsync(uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -2621,9 +2302,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const binary = base64ToUint8Array(fileData);
         const { error: uploadError } = await supabase.storage
           .from('chat_media')
-          .upload(storagePath, binary, {
-            contentType: 'audio/mp4',
-          });
+          .upload(storagePath, binary, { contentType: 'audio/mp4' });
         if (uploadError) {
           sweetAlert.alert('Error', 'Failed to upload voice message', 'error');
           return;
@@ -2661,8 +2340,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
         const storagePath = `chat_files/${familyCode}/${Date.now()}_${asset.name}`;
 
-        // BUG FIX: `decode(...)` is a DOM-only global that doesn't exist
-        // in React Native. Read base64 and convert to Uint8Array instead.
         const fileData = await FileSystem.readAsStringAsync(asset.uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -2699,7 +2376,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   );
 
   /* ─── Reactions ─────────────────────────────────────────────── */
-
   const addReaction = useCallback(
     async (chatId: string, messageId: string, emoji: string) => {
       const me = userProfileRef.current;
@@ -2717,7 +2393,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const { error } = await supabase
         .from('family_messages')
         .update({ reactions: JSON.stringify(updated), updated_at: new Date().toISOString() })
-        .eq('id', messageId);
+        .eq('id', messageId)
+        .eq('chat_id', chatId);
 
       if (error) return;
 
@@ -2749,7 +2426,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const { error } = await supabase
         .from('family_messages')
         .update({ reactions: JSON.stringify(updated), updated_at: new Date().toISOString() })
-        .eq('id', messageId);
+        .eq('id', messageId)
+        .eq('chat_id', chatId);
 
       if (error) return;
 
@@ -2767,7 +2445,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   );
 
   /* ─── Typing ────────────────────────────────────────────────── */
-
   const setTypingStatus = useCallback((chatId: string, isTyping: boolean) => {
     const me = userProfileRef.current;
     if (!me) return;
@@ -2809,8 +2486,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           type: 'broadcast',
           event: 'typing',
           payload: {
-            // deviceId used as userId so typing uses our per-device
-            // identifier (user may be signed in on 2 devices).
             userId: deviceIdRef.current,
             userName: me.fullName,
             chatId,
@@ -2822,24 +2497,22 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     if (isTyping) {
-      // 2.5s auto-stop; long enough that typing isn't flickery.
       typingTimeoutRef.current[key] = setTimeout(() => setTypingStatus(chatId, false), 2500);
     }
   }, []);
 
   const isUserTyping = useCallback(
     (chatId: string, userId: string) =>
-      (state.typingUsers[chatId] ?? []).some(t => t.userId === userId && t.isTyping),
-    [state.typingUsers],
+      (typingUsersRef.current[chatId] ?? []).some(t => t.userId === userId && t.isTyping),
+    [],
   );
 
   const getTypingUsers = useCallback(
-    (chatId: string) => state.typingUsers[chatId] ?? [],
-    [state.typingUsers],
+    (chatId: string) => typingUsersRef.current[chatId] ?? [],
+    [],
   );
 
-  /* ─── Chat Settings ─────────────────────────────────────────── */
-
+  /* ─── muteChat / pinChat / setChatBackground ────────────────── */
   const muteChat = useCallback(async (chatId: string, muted: boolean) => {
     const { error } = await supabase
       .from('family_chats')
@@ -2904,20 +2577,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [sweetAlert],
   );
 
-  /**
-   * Delete a chat permanently for the CURRENT user.
-   *
-   * Semantics:
-   *  • Always hide the chat for me (per-user `hiddenChats`) so it can
-   *    never reappear from realtime / initial sync, regardless of
-   *    whether the underlying rows are physically deleted.
-   *  • For DIRECT chats, physically delete the row + its messages —
-   *    direct chats belong to exactly two people, and both expect a
-   *    "delete" to nuke the conversation. No parent1 guard here: either
-   *    participant can delete a 1:1 DM they're part of.
-   *  • For GROUP chats, physically deleting is destructive for everyone,
-   *    so only Parent 1 may do it; otherwise we just hide it for me.
-   */
   const deleteChat = useCallback(
     async (chatId: string) => {
       const familyCode = familyCodeRef.current;
@@ -2927,10 +2586,8 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const chat = chatsRef.current.find(c => c.id === chatId);
       const isDirect = chat?.type === 'direct';
 
-      // Hide for me immediately — this is what "disappears forever" means.
       await hideChat(chatId);
 
-      // Optimistic local removal.
       setState(prev => {
         const nextMessages = { ...prev.messages };
         delete nextMessages[chatId];
@@ -2942,11 +2599,6 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
 
       if (isDirect) {
-        // Physical delete — either participant may delete a 1:1 DM.
-        // Direct chats are GLOBAL (family-agnostic). Filtering by
-        // the *current* `family_code` silently no-ops after a baby
-        // switch because the row lives under the creating family's
-        // code. Match on id ONLY.
         const { error } = await supabase
           .from('family_chats')
           .delete()
@@ -2958,9 +2610,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return;
       }
 
-      // Group chat — only Parent 1 may physically delete for everyone.
       if (me.role !== 'parent1') {
-        // Hidden-for-me only; nothing else to do.
         return;
       }
 
@@ -2977,8 +2627,7 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [sweetAlert, hideChat],
   );
 
-  /* ─── Family Code ───────────────────────────────────────────── */
-
+  /* ─── Family code ───────────────────────────────────────────── */
   const shareFamilyCode = useCallback(async () => {
     const code = familyCodeRef.current || generateFamilyCodeString();
     try {
@@ -3005,18 +2654,86 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           sweetAlert.alert('Invalid Code', 'This family code does not exist', 'error');
           return false;
         }
-                  .maybeSingle();
 
-        if (chatError || !chatData) return false;
-        // adopt it locally and re-sync
-        await loadFamilyCode();
-        await performInitialSync();
+        // Persist the code (per-baby scoped + legacy per-user key).
+        const joinRows: Array<Record<string, unknown>> = [
+          {
+            key: 'family_code',
+            value: code,
+            user_id: userProfileRef.current?.id ?? null,
+            updated_at: new Date().toISOString(),
+          },
+        ];
+        if (babyContext?.id) {
+          joinRows.push({
+            key: `family_code_${babyContext.id}`,
+            value: code,
+            user_id: userProfileRef.current?.id ?? null,
+            updated_at: new Date().toISOString(),
+          });
+        }
+        await supabase
+          .from('app_settings')
+          .upsert(joinRows, { onConflict: 'key,user_id' });
+
+        if (userProfileRef.current && !chatData.participants.includes(userProfileRef.current.id)) {
+          const me = userProfileRef.current;
+          const updatedNames = { ...chatData.participant_names, [me.id]: me.fullName };
+          const updatedRoles = { ...chatData.participant_roles, [me.id]: me.role || 'guardian' };
+          const updatedAvatars = { ...chatData.participant_avatars, [me.id]: me.avatar || '👤' };
+
+          await supabase
+            .from('family_chats')
+            .update({
+              participants: [...chatData.participants, me.id],
+              participant_names: updatedNames,
+              participant_roles: updatedRoles,
+              participant_avatars: updatedAvatars,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', chatData.id);
+
+          const welcome = createSystemMessage(
+            chatData.id,
+            `👋 ${me.fullName} joined the family`,
+            code,
+            deviceIdRef.current,
+            me.id,
+            'LittleLoom',
+          );
+          await supabase.from('family_messages').insert({
+            id: welcome.id,
+            sync_id: welcome.syncId,
+            device_id: welcome.deviceId,
+            version: welcome.version,
+            chat_id: welcome.chatId,
+            sender_id: welcome.senderId,
+            sender_name: welcome.senderName,
+            sender_role: welcome.senderRole,
+            sender_avatar: welcome.senderAvatar,
+            content: welcome.content,
+            type: welcome.type,
+            timestamp: welcome.timestamp,
+            read: welcome.read,
+            read_by: welcome.readBy,
+            family_code: welcome.familyCode,
+            delivery_status: welcome.deliveryStatus,
+          });
+        }
+
+        familyCodeRef.current = code;
+        setState(prev => ({ ...prev, familyCode: code }));
+        await performInitialSync(true);
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         return true;
-      } catch {
+      } catch (error) {
+        console.error('[FamilyChat] Join family error:', error);
+        sweetAlert.alert('Error', 'Failed to join family', 'error');
         return false;
       }
     },
-    [loadFamilyCode, performInitialSync],
+    [babyContext, performInitialSync, sweetAlert],
   );
 
   /* ═══════════════════ PUBLIC API ═══════════════════ */
@@ -3030,35 +2747,58 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [],
   );
   const getUnreadCount = useCallback(
-    (chatId?: string) =>
-      chatId
-        ? chatsRef.current.find(c => c.id === chatId)?.unreadCount ?? 0
-        : chatsRef.current.reduce((s, c) => s + (c.isMuted ? 0 : c.unreadCount), 0),
+    (chatId?: string): number => {
+      if (chatId) {
+        if (hiddenChatsRef.current.has(chatId)) return 0;
+        const chat = chatsRef.current.find(c => c.id === chatId);
+        return chat?.isMuted ? 0 : chat?.unreadCount ?? 0;
+      }
+      return chatsRef.current.reduce(
+        (total, chat) =>
+          hiddenChatsRef.current.has(chat.id)
+            ? total
+            : total + (chat.isMuted ? 0 : chat.unreadCount),
+        0,
+      );
+    },
     [],
   );
-  const getMemberChatInfo = useCallback((memberId: string) => {
-    const chat = chatsRef.current.find(c =>
-      c.type === 'direct' && c.participants.includes(memberId),
-    );
-    if (!chat) return null;
-    return {
-      name: chat.participantNames?.[memberId] || chat.name,
-      avatar: chat.participantAvatars?.[memberId] || '👤',
-      role: chat.participantRoles?.[memberId] || 'guardian',
-    };
-  }, []);
+  const getMemberChatInfo = useCallback(
+    (memberId: string): { name: string; avatar: string; role: string } | null => {
+      const member =
+        members.find(m => m.id === memberId) ||
+        members.find(m => (m as any).userId === memberId);
+      if (member) {
+        return {
+          name: member.fullName,
+          avatar: member.avatar || '👤',
+          role: member.role,
+        };
+      }
+      const chat = chatsRef.current.find(c =>
+        c.type === 'direct' && c.participants.includes(memberId),
+      );
+      if (!chat) return null;
+      return {
+        name: chat.participantNames?.[memberId] || chat.name,
+        avatar: chat.participantAvatars?.[memberId] || '👤',
+        role: chat.participantRoles?.[memberId] || 'guardian',
+      };
+    },
+    [members],
+  );
   const generateFamilyCode = useCallback(() => generateFamilyCodeString(), []);
   const getFamilyCode = useCallback(() => familyCodeRef.current, []);
-  const searchMessages = useCallback(
-    (chatId: string, q: string) =>
-      (messagesRef.current[chatId] ?? []).filter(m =>
-        m.content.toLowerCase().includes(q.toLowerCase()),
-      ),
-    [],
-  );
+  const searchMessages = useCallback((chatId: string, query: string) => {
+    const all = messagesRef.current[chatId] ?? [];
+    const q = query.toLowerCase();
+    return all.filter(
+      m => m.content.toLowerCase().includes(q) || m.senderName.toLowerCase().includes(q),
+    );
+  }, []);
   const getMessageById = useCallback(
-    (chatId: string, id: string) =>
-      messagesRef.current[chatId]?.find(m => m.id === id),
+    (chatId: string, messageId: string) =>
+      messagesRef.current[chatId]?.find(m => m.id === messageId),
     [],
   );
   const blockUser = useCallback(async (uid: string) => {
@@ -3072,17 +2812,17 @@ export const FamilyChatProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         JSON.stringify(next),
       );
     } catch {}
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
   }, []);
   const isUserBlocked = useCallback(
     (uid: string) => blockedUsersRef.current.includes(uid),
     [],
   );
   const syncFamilyData = useCallback(async () => {
-    await performInitialSync();
+    await performInitialSync(true);
   }, [performInitialSync]);
   const forceSync = useCallback(async () => {
-    isInitializedRef.current = false;
-    await performInitialSync();
+    await performInitialSync(true);
   }, [performInitialSync]);
 
   /* ═══════════════════ PROVIDER VALUE ═══════════════════ */
@@ -3189,294 +2929,6 @@ export const useFamilyChat = (): FamilyChatContextType => {
   const ctx = useContext(FamilyChatContext);
   if (!ctx) throw new Error('useFamilyChat must be used within FamilyChatProvider');
   return ctx;
-};
-
-export default FamilyChatProvider;
-
-        // Write BOTH the per-baby scoped key (authoritative for
-        // multi-family users) and the legacy per-user key (for
-        // back-compat with existing screens).
-        const joinRows: Array<Record<string, unknown>> = [
-          {
-            key: 'family_code',
-            value: code,
-            user_id: userProfileRef.current?.id ?? null,
-            updated_at: new Date().toISOString(),
-          },
-        ];
-        if (babyContext?.id) {
-          joinRows.push({
-            key: `family_code_${babyContext.id}`,
-            value: code,
-            user_id: userProfileRef.current?.id ?? null,
-            updated_at: new Date().toISOString(),
-          });
-        }
-        await supabase
-          .from('app_settings')
-          .upsert(joinRows, { onConflict: 'key,user_id' });
-
-        if (userProfileRef.current && !chatData.participants.includes(userProfileRef.current.id)) {
-          const me = userProfileRef.current;
-          const updatedNames = { ...chatData.participant_names, [me.id]: me.fullName };
-          const updatedRoles = { ...chatData.participant_roles, [me.id]: me.role || 'guardian' };
-          const updatedAvatars = { ...chatData.participant_avatars, [me.id]: me.avatar || '👤' };
-
-          await supabase
-            .from('family_chats')
-            .update({
-              participants: [...chatData.participants, me.id],
-              participant_names: updatedNames,
-              participant_roles: updatedRoles,
-              participant_avatars: updatedAvatars,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', chatData.id);
-
-          const welcome = createSystemMessage(
-            chatData.id,
-            `👋 ${me.fullName} joined the family`,
-            code,
-  deviceIdRef.current,
-  'LittleLoom',
-  me.id,
-          );
-          await supabase.from('family_messages').insert({
-            id: welcome.id,
-            sync_id: welcome.syncId,
-            device_id: welcome.deviceId,
-            version: welcome.version,
-            chat_id: welcome.chatId,
-            sender_id: welcome.senderId,
-            sender_name: welcome.senderName,
-            sender_role: welcome.senderRole,
-            sender_avatar: welcome.senderAvatar,
-            content: welcome.content,
-            type: welcome.type,
-            timestamp: welcome.timestamp,
-            read: welcome.read,
-            read_by: welcome.readBy,
-            family_code: welcome.familyCode,
-            delivery_status: welcome.deliveryStatus,
-          });
-        }
-
-        familyCodeRef.current = code;
-        setState(prev => ({ ...prev, familyCode: code }));
-        await performInitialSync();
-
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        return true;
-      } catch (error) {
-        console.error('[FamilyChat] Join family error:', error);
-        sweetAlert.alert('Error', 'Failed to join family', 'error');
-        return false;
-      }
-    },
-    [performInitialSync, sweetAlert],
-  );
-
-  /* ─── Block User ────────────────────────────────────────────── */
-
-  const blockUser = useCallback(async (userId: string) => {
-    setState(prev => {
-      const isBlocked = prev.blockedUsers.includes(userId);
-      const updated = isBlocked
-        ? prev.blockedUsers.filter(id => id !== userId)
-        : [...prev.blockedUsers, userId];
-
-      if (prev.familyCode) {
-        AsyncStorage.setItem(
-          `@littleloom_blocked_${prev.familyCode}`,
-          JSON.stringify(updated),
-        ).catch(() => {});
-      }
-      return { ...prev, blockedUsers: updated };
-    });
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-  }, []);
-
-  const isUserBlocked = useCallback(
-    (userId: string) => state.blockedUsers.includes(userId),
-    [state.blockedUsers],
-  );
-
-  /* ─── Getters ───────────────────────────────────────────────── */
-
-const getChatMessages = useCallback(
-  (chatId: string) => messagesRef.current[chatId] ?? [],
-  [],
-);
-
-  const getMessageById = useCallback(
-    (chatId: string, messageId: string) =>
-      messagesRef.current[chatId]?.find(m => m.id === messageId),
-    [],
-  );
-
-  const getChatById = useCallback(
-    (chatId: string) => chatsRef.current.find(c => c.id === chatId),
-    [],
-  );
-
-  const getFamilyCode = useCallback(() => familyCodeRef.current, []);
-
-  const getUnreadCount = useCallback(
-    (chatId?: string): number => {
-      if (chatId) {
-        if (hiddenChatsRef.current.has(chatId)) return 0;
-        const chat = chatsRef.current.find(c => c.id === chatId);
-        return chat?.isMuted ? 0 : chat?.unreadCount ?? 0;
-      }
-      return chatsRef.current.reduce(
-        (total, chat) =>
-          hiddenChatsRef.current.has(chat.id)
-            ? total
-            : total + (chat.isMuted ? 0 : chat.unreadCount),
-        0,
-      );
-    },
-    [],
-  );
-
-  const getMemberChatInfo = useCallback(
-    (memberId: string): { name: string; avatar: string; role: string; displayLabel: string } | null => {
-      // `memberId` may be a `family_members.id` OR a `profiles.id`
-      // (chat participants are UUIDs, but some callers pass the row
-      // id). Match both.
-      const member =
-        members.find(m => m.id === memberId) ||
-        members.find(m => (m as any).userId === memberId);
-      if (!member) return null;
-      const displayLabel =
-        (member.relationship && member.relationship.trim()) ||
-        (member.role === 'parent1' ? 'Primary Parent'
-          : member.role === 'parent2' ? 'Co-Parent'
-          : member.role === 'guardian' ? 'Guardian'
-          : 'Viewer');
-      return { name: member.fullName, avatar: member.avatar || '👤', role: member.role, displayLabel };
-    },
-    [members],
-  );
-
-  const searchMessages = useCallback((chatId: string, query: string) => {
-    const all = messagesRef.current[chatId] ?? [];
-    const q = query.toLowerCase();
-    return all.filter(
-      m => m.content.toLowerCase().includes(q) || m.senderName.toLowerCase().includes(q),
-    );
-  }, []);
-
-  const syncFamilyData = useCallback(async () => {
-    isInitializedRef.current = false;
-    await performInitialSync();
-  }, [performInitialSync]);
-
-  const forceSync = useCallback(async () => {
-    isInitializedRef.current = false;
-    isSubscribedRef.current = false;
-    await performInitialSync();
-  }, [performInitialSync]);
-
-  /* ─── Context Value ─────────────────────────────────────────── */
-
-  const value = useMemo<FamilyChatContextType>(
-    () => ({
-      ...state,
-      subscribeToChatMessages,
-      createFamilyGroup,
-      getOrCreateDirectChat,
-      getChatMessages,
-      sendMessage,
-      editMessage,
-      markChatRead,
-      markMessagesDelivered,
-      deleteMessage,
-      clearChat,
-      resendMessage,
-      pickAndSendImage,
-      pickAndSendFile,
-      pickAndSendVoice,
-      setTypingStatus,
-      isUserTyping,
-      getTypingUsers,
-      addReaction,
-      removeReaction,
-      muteChat,
-      pinChat,
-      leaveChat,
-      deleteChat,
-      setChatBackground,
-      generateFamilyCode: generateFamilyCodeString,
-      getFamilyCode,
-      shareFamilyCode,
-      joinFamilyByCode,
-      getUnreadCount,
-      getChatById,
-      getMemberChatInfo,
-      syncFamilyData,
-      searchMessages,
-      getMessageById,
-      blockUser,
-      isUserBlocked,
-      forceSync,
-      setCurrentChatId,
-      hideChat,
-      unhideChat,
-      isChatHidden,
-    }),
-    [
-      state,
-      subscribeToChatMessages,
-      createFamilyGroup,
-      getOrCreateDirectChat,
-      getChatMessages,
-      sendMessage,
-      editMessage,
-      markChatRead,
-      markMessagesDelivered,
-      deleteMessage,
-      clearChat,
-      resendMessage,
-      pickAndSendImage,
-      pickAndSendFile,
-      pickAndSendVoice,
-      setTypingStatus,
-      isUserTyping,
-      getTypingUsers,
-      addReaction,
-      removeReaction,
-      muteChat,
-      pinChat,
-      leaveChat,
-      deleteChat,
-      setChatBackground,
-      getFamilyCode,
-      shareFamilyCode,
-      joinFamilyByCode,
-      getUnreadCount,
-      getChatById,
-      getMemberChatInfo,
-      syncFamilyData,
-      searchMessages,
-      getMessageById,
-      blockUser,
-      isUserBlocked,
-      forceSync,
-      setCurrentChatId,
-      hideChat,
-      unhideChat,
-      isChatHidden,
-    ],
-  );
-
-  return <FamilyChatContext.Provider value={value}>{children}</FamilyChatContext.Provider>;
-};
-
-export const useFamilyChat = (): FamilyChatContextType => {
-  const context = useContext(FamilyChatContext);
-  if (!context) throw new Error('useFamilyChat must be used within FamilyChatProvider');
-  return context;
 };
 
 export default FamilyChatProvider;
