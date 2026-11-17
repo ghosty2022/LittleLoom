@@ -21,7 +21,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
+// expo-audio is accessed through useRingtones (hooks/useRingtones.ts)
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
@@ -31,7 +31,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-
+import { useRingtones } from '../hooks/useRingtones';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/utils/supabase';
 
@@ -105,7 +105,6 @@ const DS = {
 
 const RING_TIMEOUT_MS = 45_000;
 const ACTIVE_MAX_MS = 60 * 60_000;
-
 const isImageUri = (v: string | undefined | null): boolean => {
   if (!v || typeof v !== 'string') return false;
   return (
@@ -132,7 +131,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   );
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeMaxRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const ringPlayerRef = useRef<AudioPlayer | null>(null);
+  // (ringtone player is owned by useRingtones — no local ref)
   const ringHapticIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
@@ -142,41 +141,18 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     activeCallRef.current = activeCall;
   }, [activeCall]);
 
-  /* ── Ringtone management (expo-audio) ──────────────────── */
-  const stopRingtone = useCallback(() => {
-    try {
-      if (ringHapticIntervalRef.current) {
-        clearInterval(ringHapticIntervalRef.current);
-        ringHapticIntervalRef.current = null;
-      }
-      if (ringPlayerRef.current) {
-        ringPlayerRef.current.pause();
-        ringPlayerRef.current.remove();
-        ringPlayerRef.current = null;
-      }
-    } catch {}
-  }, []);
+  /* ── Ringtone management (expo-audio, shared hook) ─────── */
+  const { start: startRingtone, stop: stopRingtone } = useRingtones();
 
   const playRingtone = useCallback(
     (kind: 'incoming' | 'outgoing') => {
-      stopRingtone();
-      // 1. Try to load the bundled ringtone (drop the MP3 files in
-      //    assets/sounds/ring_incoming.mp3 and ring_outgoing.mp3).
-      try {
-        const source =
-          kind === 'incoming'
-            ? // @ts-ignore – metro asset resolution
-              require('../../assets/sounds/ring_incoming.mp3')
-            : // @ts-ignore
-              require('../../assets/sounds/ring_outgoing.mp3');
-        const player = createAudioPlayer(source);
-        player.loop = true;
-        player.volume = 0.8;
-        player.play();
-        ringPlayerRef.current = player;
-      } catch {
-        // 2. Fallback: haptic pattern that mimics a ringtone.
+      // Shared hook owns the player; never create a second one here.
+      startRingtone(kind).catch(() => {
+        // Fallback: haptic pattern that mimics a ringtone.
         let n = 0;
+        if (ringHapticIntervalRef.current) {
+          clearInterval(ringHapticIntervalRef.current);
+        }
         ringHapticIntervalRef.current = setInterval(() => {
           n++;
           if (kind === 'incoming') {
@@ -189,9 +165,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
             ).catch(() => {});
           }
         }, 1500);
-      }
+      });
     },
-    [stopRingtone],
+    [startRingtone],
   );
 
   /* ── Auto-cancel unanswered outgoing calls ─────────────── */
@@ -303,6 +279,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => {
       if (ringTimeoutRef.current) clearTimeout(ringTimeoutRef.current);
       if (activeMaxRef.current) clearTimeout(activeMaxRef.current);
+      if (ringHapticIntervalRef.current) {
+        clearInterval(ringHapticIntervalRef.current);
+        ringHapticIntervalRef.current = null;
+      }
       stopRingtone();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

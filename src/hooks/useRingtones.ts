@@ -17,7 +17,7 @@ export function useRingtones() {
   const stop = useCallback(() => {
     try {
       playerRef.current?.pause();
-      playerRef.current?.release?.();
+      playerRef.current?.remove();
     } catch {}
     playerRef.current = null;
   }, []);
