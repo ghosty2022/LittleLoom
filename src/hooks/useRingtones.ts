@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { AudioModule, createAudioPlayer } from 'expo-audio';
 
-const RING_IN = require('../assets/sounds/ring_incoming.mp3');
-const RING_OUT = require('../assets/sounds/ring_outgoing.mp3');
+const RING_IN = require('../../assets/sounds/ring_incoming.mp3');
+const RING_OUT = require('../../assets/sounds/ring_outgoing.mp3');
 
 export type RingKind = 'incoming' | 'outgoing';
 

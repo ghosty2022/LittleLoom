@@ -47,6 +47,27 @@ export type CallStatus =
   | 'active'
   | 'ended';
 
+export type CallHistoryStatus =
+  | 'incoming'
+  | 'outgoing'
+  | 'missed'
+  | 'declined'
+  | 'answered';
+
+export interface CallHistoryEntry {
+  id: string;
+  callId: string;
+  chatId: string;
+  type: CallType;
+  status: CallHistoryStatus;
+  peerId: string;
+  peerName: string;
+  peerAvatar?: string;
+  startedAt: number;
+  endedAt?: number;
+  durationSec: number;
+}
+
 export interface CallParticipant {
   id: string;
   name: string;
@@ -131,7 +152,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
   );
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeMaxRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // (ringtone player is owned by useRingtones — no local ref)
   const ringHapticIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
@@ -447,6 +467,20 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
+      // Persist as "outgoing" immediately; upgraded to "answered"
+      // on call-answer, or left as "missed" by the ring timeout.
+      logCallHistory({
+        callId,
+        chatId: params.chatId,
+        type: params.type,
+        status: 'outgoing',
+        peerId: params.peer.id,
+        peerName: params.peer.name,
+        peerAvatar: params.peer.avatar,
+        startedAt: Date.now(),
+        userId: me.id,
+      });
+
       // Peer-online probe — if their presence channel has no key,
       // show "Waiting for answer…" instead of "Ringing…".
       // (Best-effort; if the channel isn't ready we assume online.)
@@ -497,6 +531,19 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         payload: { callId: call.callId, to: call.peer.id },
       });
     } catch {}
+    if (userProfile?.id) {
+      logCallHistory({
+        callId: call.callId,
+        chatId: call.chatId,
+        type: call.type,
+        status: 'incoming',
+        peerId: call.peer.id,
+        peerName: call.peer.name,
+        peerAvatar: call.peer.avatar,
+        startedAt: call.ringingAt,
+        userId: userProfile.id,
+      });
+    }
     setTimeout(() => {
       setActiveCall((prev) =>
         prev && prev.callId === call.callId
@@ -536,6 +583,23 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
         payload: { callId: call.callId, to: call.peer.id },
       });
     } catch {}
+    if (userProfile?.id) {
+      logCallHistory({
+        callId: call.callId,
+        chatId: call.chatId,
+        type: call.type,
+        status: call.isOutgoing ? 'outgoing' : 'incoming',
+        peerId: call.peer.id,
+        peerName: call.peer.name,
+        peerAvatar: call.peer.avatar,
+        startedAt: call.ringingAt,
+        endedAt: Date.now(),
+        durationSec: call.connectedAt
+          ? Math.floor((Date.now() - call.connectedAt) / 1000)
+          : 0,
+        userId: userProfile.id,
+      });
+    }
     setActiveCall((prev) => (prev ? { ...prev, status: 'ended' } : prev));
     // A waiting call would now have nowhere to go — clear it.
     setWaitingCall(null);
@@ -1138,4 +1202,38 @@ const styles = StyleSheet.create({
   },
 });
 
+/* ═══════════════════════════════════════════════════════════════
+   CALL HISTORY PERSISTENCE
+   ═══════════════════════════════════════════════════════════════ */
+async function logCallHistory(entry: {
+  callId: string;
+  chatId: string;
+  type: CallType;
+  status: 'incoming' | 'outgoing' | 'missed' | 'declined' | 'answered';
+  peerId: string;
+  peerName: string;
+  peerAvatar?: string;
+  startedAt: number;
+  endedAt?: number;
+  durationSec?: number;
+  userId: string;
+}) {
+  try {
+    await supabase.from('call_history').insert({
+      call_id: entry.callId,
+      chat_id: entry.chatId,
+      type: entry.type,
+      status: entry.status,
+      peer_id: entry.peerId,
+      peer_name: entry.peerName,
+      peer_avatar: entry.peerAvatar ?? null,
+      started_at: new Date(entry.startedAt).toISOString(),
+      ended_at: entry.endedAt ? new Date(entry.endedAt).toISOString() : null,
+      duration_sec: entry.durationSec ?? 0,
+      user_id: entry.userId,
+    });
+  } catch (e) {
+    if (__DEV__) console.warn('[CallHistory] insert failed', e);
+  }
+}
 export default CallProvider;
