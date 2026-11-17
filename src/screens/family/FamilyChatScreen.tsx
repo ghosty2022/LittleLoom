@@ -3604,24 +3604,24 @@ export default function FamilyChatScreen({
             </BlurView>
           </View>
         )}
-      </View>
 
-      <SoftOptionsSheet
-        visible={showOptionsSheet}
-        onClose={() => setShowOptionsSheet(false)}
-        title={
-          chatInfo?.type === 'group'
-            ? 'Group Chat'
-            : headerInfo.name || 'Chat'
-        }
-        message={
-          chatInfo?.type === 'group'
-            ? `${chatInfo.participants?.length || 0} members`
-            : headerInfo.status
-        }
-        isDark={isDark}
-        options={chatOptions}
-      />
+        <SoftOptionsSheet
+          visible={showOptionsSheet}
+          onClose={() => setShowOptionsSheet(false)}
+          title={
+            chatInfo?.type === 'group'
+              ? 'Group Chat'
+              : headerInfo.name || 'Chat'
+          }
+          message={
+            chatInfo?.type === 'group'
+              ? `${chatInfo.participants?.length || 0} members`
+              : headerInfo.status
+          }
+          isDark={isDark}
+          options={chatOptions}
+        />
+      </View>
     </View>
   );
 }
@@ -4059,38 +4059,7 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-  },      // Broadcast "delivered" so the sender's UI flips to ✓✓ within
-      // ~50ms instead of waiting for the Postgres UPDATE round-trip.
-      if (realtimeChannelRef.current && isSubscribedRef.current) {
-        targets.forEach((id) => {
-          realtimeChannelRef.current
-            ?.send({
-              type: 'broadcast',
-              event: 'delivered',
-              payload: {
-                messageId: id,
-                chatId,
-                deviceId: deviceIdRef.current,
-              },
-            })
-            .catch(() => {});
-        });
-      }
-
-      // Persist — best effort. If the column is missing it throws
-      // silently and we still show the tick locally.
-      try {
-        await supabase
-          .from('family_messages')
-          .update({
-            delivery_status: 'delivered',
-            updated_at: new Date().toISOString(),
-          })
-          .in('id', targets);
-      } catch {}
-    },
-    [],
-  );
+  },
   inputWrapper: {
     flex: 1,
     borderRadius: 22,
