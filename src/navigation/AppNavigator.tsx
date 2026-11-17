@@ -64,6 +64,7 @@ import { TimelinePicker } from '../components/trackers/TimelinePicker';
 
 import LiquidGlassNavigation from '../components/LiquidGlassNavigation';
 import { InlineSpinner, UniversalSpinner } from '../components/UniversalSpinner';
+import { InCallPill } from '../components/InCallPill';
 import { useSecurity } from '../context/SecurityContext';
 import { useSafeApp, useSafeBaby, useSafeAuth } from '../hooks/useSafeContexts';
 import { RootStackParamList, MainTabParamList, NavigationState } from '../types/navigation';
@@ -1180,6 +1181,11 @@ function NavigationContent({
               />
             </Stack.Group>
           </Stack.Navigator>
+
+          {/* Minimized-call pill — must live inside NavigationContainer so
+              `useNavigation()` in InCallPill resolves. Sits as a sibling of
+              the Stack so it overlays every route. */}
+          <InCallPill />
       </View>
     </NavigationContainer>
   );

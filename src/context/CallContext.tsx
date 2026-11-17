@@ -120,21 +120,6 @@ export interface CallContextType {
   isCallMinimized: boolean;
   minimizeCall: () => void;
   restoreCall: () => void;
-  /** true while a call is active but the CallScreen is not focused */
-  isCallMinimized: boolean;
-  minimizeCall: () => void;
-  restoreCall: () => void;
-  groupedCallHistory: Array<{
-    peerId: string;
-    peerName: string;
-    peerAvatar?: string;
-    chatId: string;
-    type: 'voice' | 'video';
-    count: number;
-    missedCount: number;
-    latest: CallHistoryEntry;
-    entries: CallHistoryEntry[];
-  }>;
   clearCallHistory: () => Promise<void>;
 }
 
@@ -784,14 +769,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     ).catch(() => {});
   }, [activeCall, userProfile?.id, refreshCallHistory]);
 
-  const [isCallMinimized, setIsCallMinimized] = useState(false);
-  const minimizeCall = useCallback(() => setIsCallMinimized(true), []);
-  const restoreCall = useCallback(() => setIsCallMinimized(false), []);
-  // Auto-clear the flag whenever the call ends.
-  useEffect(() => {
-    if (!activeCall) setIsCallMinimized(false);
-  }, [activeCall]);
-
   const endCall = useCallback(async () => {
     const call = activeCall;
     if (!call) return;
@@ -894,47 +871,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
     return Array.from(byPeer.values());
   }, [callHistory]);
 
-  const groupedCallHistory = useMemo(() => {
-    type Group = {
-      peerId: string;
-      peerName: string;
-      peerAvatar?: string;
-      chatId: string;
-      type: 'voice' | 'video';
-      count: number;
-      missedCount: number;
-      latest: CallHistoryEntry;
-      entries: CallHistoryEntry[];
-    };
-    const byPeer = new Map<string, Group>();
-    const sorted = [...callHistory].sort(
-      (a, b) =>
-        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-    );
-    for (const e of sorted) {
-      const key = e.peerId || e.chatId;
-      let g = byPeer.get(key);
-      if (!g) {
-        g = {
-          peerId: e.peerId,
-          peerName: e.peerName,
-          peerAvatar: e.peerAvatar,
-          chatId: e.chatId,
-          type: e.type,
-          count: 0,
-          missedCount: 0,
-          latest: e,
-          entries: [],
-        };
-        byPeer.set(key, g);
-      }
-      g.count += 1;
-      if (e.status === 'missed' || e.status === 'declined') g.missedCount += 1;
-      g.entries.push(e);
-    }
-    return Array.from(byPeer.values());
-  }, [callHistory]);
-
   const [isCallMinimized, setIsCallMinimized] = useState(false);
   const minimizeCall = useCallback(() => setIsCallMinimized(true), []);
   const restoreCall = useCallback(() => setIsCallMinimized(false), []);
@@ -954,11 +890,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       toggleCamera,
       callDurationSec,
       callHistory,
-    groupedCallHistory,
-    isCallMinimized,
-    minimizeCall,
-    restoreCall,
       groupedCallHistory,
+      isCallMinimized,
+      minimizeCall,
+      restoreCall,
       clearCallHistory,
     }),
     [
@@ -973,10 +908,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({
       toggleCamera,
       callDurationSec,
       callHistory,
-    groupedCallHistory,
-    isCallMinimized,
-    minimizeCall,
-    restoreCall,
+      groupedCallHistory,
+      isCallMinimized,
+      minimizeCall,
+      restoreCall,
       clearCallHistory,
     ],
   );
@@ -1077,7 +1012,10 @@ const CallOverlay: React.FC = () => {
   const ctx = useContext(CallContext);
   const insets = useSafeAreaInsets();
   if (!ctx || !ctx.activeCall) return null;
-
+  // When minimized, the InCallPill takes over — do not draw the
+  // full-screen call UI on top of whatever screen the user went to.
+  if (ctx.isCallMinimized) return null;
+  
   const {
     activeCall,
     waitingCall,

@@ -2440,6 +2440,45 @@ export default function FamilyChatScreen({
     return () => sub.remove();
   }, [activeCall, minimizeCall, navigation]);
 
+  // When a call that belongs to this chat ends, append a `call` bubble
+  // to the conversation so it shows up in the thread with a call-back
+  // action (MessageBubble already renders `type: 'call'`).
+  const lastLoggedCallRef = useRef<string | null>(null);
+  const prevActiveCallRef = useRef(activeCall);
+  useEffect(() => {
+    const prev = prevActiveCallRef.current;
+    prevActiveCallRef.current = activeCall;
+    if (!prev || activeCall) return; // only on transition active → ended
+    if (prev.chatId !== chatId) return;
+    if (lastLoggedCallRef.current === prev.id) return;
+    lastLoggedCallRef.current = prev.id;
+    (async () => {
+      try {
+        await ctx.sendMessage(
+          chatId,
+          prev.status === 'missed' || prev.status === 'declined'
+            ? 'Missed call'
+            : prev.type === 'video'
+            ? 'Video call'
+            : 'Voice call',
+          'call' as any,
+          {
+            metadata: {
+              callType: prev.type,
+              peerId: prev.peerId,
+              peerName: prev.peerName,
+              peerAvatar: prev.peerAvatar,
+              status: prev.status,
+              durationSec: prev.durationSec ?? 0,
+            },
+          } as any,
+        );
+      } catch (e) {
+        console.warn('[FamilyChat] call-event log failed:', e);
+      }
+    })();
+  }, [activeCall, chatId, ctx]);
+
   // Stable snapshot of the context API — every `useFamilyChat()`
   // return is a new object each render, so we freeze the first one.
   const ctxRef = useRef<ReturnType<typeof useFamilyChat> | null>(null);

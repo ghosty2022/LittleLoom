@@ -1,3 +1,4 @@
+// src/components/InCallPill.tsx
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,14 +15,23 @@ const DS = {
   darkBorder: 'rgba(255,255,255,0.06)',
 };
 
+/**
+ * Floating "in call" pill shown when a call is active but the CallScreen
+ * is not focused (i.e. `isCallMinimized === true`).
+ *
+ * MUST be rendered inside AppNavigator's NavigationContainer — `useNavigation`
+ * requires a navigation context ancestor. See AppNavigator.tsx.
+ */
 export function InCallPill() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { isDark } = useCustomization();
   const { activeCall, isCallMinimized, restoreCall, endCall } = useCall();
 
-  // Hooks are all called before this early return — safe.
+  // All hooks are called before this early return — Rules of Hooks safe.
   if (!activeCall || !isCallMinimized) return null;
+
+  const peerName = activeCall.peer?.name ?? 'In call';
 
   return (
     <View
@@ -50,11 +60,11 @@ export function InCallPill() {
           style={[styles.label, { color: isDark ? DS.white : '#1c1917' }]}
           numberOfLines={1}
         >
-          {activeCall.peerName ?? 'In call'} · Tap to return
+          {peerName} · Tap to return
         </Text>
         <TouchableOpacity
-          onPress={() => endCall('hangup')}
-          style={{ padding: 6, marginLeft: 4 }}
+          onPress={() => endCall()}
+          style={styles.closeBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons name="close" size={14} color={DS.danger} />
@@ -94,5 +104,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     flexShrink: 1,
+  },
+  closeBtn: {
+    padding: 6,
+    marginLeft: 4,
   },
 });
