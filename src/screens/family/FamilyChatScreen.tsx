@@ -3419,47 +3419,48 @@ export default function FamilyChatScreen({
       <View style={{ flexShrink: 0 }}>
         {!inputText && !replyingTo && quickReplies.length > 0 && (
           <View style={{ height: 44, justifyContent: 'center' }}>
-          <Animated.ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingHorizontal: DS.space.md,
-              paddingVertical: 6,
-              gap: 8,
-              alignItems: 'center',
-            }}
-            keyboardShouldPersistTaps="handled"
-          >
-            {quickReplies.map((reply, i) => (
-              <PressableScale
-                key={i}
-                onPress={() => {
-                  setInputText(reply);
-                  setTimeout(() => handleSend(), 50);
-                }}
-                activeScale={0.94}
-              >
-                <View
-                  style={[
-                    styles.quickReply,
-                    {
-                      backgroundColor: `${DS.primary}10`,
-                      borderColor: `${DS.primary}20`,
-                    },
-                  ]}
+            <Animated.ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{
+                paddingHorizontal: DS.space.md,
+                paddingVertical: 6,
+                gap: 8,
+                alignItems: 'center',
+              }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {quickReplies.map((reply, i) => (
+                <PressableScale
+                  key={i}
+                  onPress={() => {
+                    setInputText(reply);
+                    setTimeout(() => handleSend(), 50);
+                  }}
+                  activeScale={0.94}
                 >
-                  <Text
+                  <View
                     style={[
-                      styles.quickReplyText,
-                      { color: DS.primary },
+                      styles.quickReply,
+                      {
+                        backgroundColor: `${DS.primary}10`,
+                        borderColor: `${DS.primary}20`,
+                      },
                     ]}
                   >
-                    {reply}
-                  </Text>
-                </View>
-              </PressableScale>
-            ))}
-          </Animated.ScrollView>
+                    <Text
+                      style={[
+                        styles.quickReplyText,
+                        { color: DS.primary },
+                      ]}
+                    >
+                      {reply}
+                    </Text>
+                  </View>
+                </PressableScale>
+              ))}
+            </Animated.ScrollView>
+          </View>
         )}
 
         <View
