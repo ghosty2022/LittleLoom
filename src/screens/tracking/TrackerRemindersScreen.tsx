@@ -193,7 +193,6 @@ const HAPTIC_LIGHT = () => Vibration.vibrate(20);
 const computeStreak = (acts: any[]): { currentStreak: number; todayLogged: boolean } => {
   if (!acts || acts.length === 0) return { currentStreak: 0, todayLogged: false };
 
-  // De-duplicate days via a Set of yyyy-MM-dd strings.
   const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
   const loggedDays = new Set<string>();
   for (const a of acts) {
@@ -207,8 +206,6 @@ const computeStreak = (acts: any[]): { currentStreak: number; todayLogged: boole
   const today = new Date();
   const todayLogged = loggedDays.has(dayKey(today));
 
-  // Walk backwards from today (or yesterday if today isn't logged yet,
-  // since a streak can still be "alive" until midnight).
   let cursor = todayLogged ? today : addDays(today, -1);
   let currentStreak = 0;
   while (loggedDays.has(dayKey(cursor))) {
@@ -967,18 +964,8 @@ export default function RemindersScreen({ navigation, route }: Props) {
     const list: DailyInsight[] = [];
     const now = new Date();
     const babyActs = activities.filter((a: any) => a.babyId === baby.id);
-    const streak = (() => {
-      const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
-      const logged = new Set<string>();
-      for (const a of babyActs) {
-        const ts = a?.timestamp ?? a?.createdAt ?? a?.date;
-        if (ts) { const dt = new Date(ts); if (!isNaN(dt.getTime())) logged.add(dayKey(dt)); }
-      }
-      let s = 0; let cur = new Date();
-      if (!logged.has(dayKey(cur))) cur = addDays(cur, -1);
-      while (logged.has(dayKey(cur))) { s++; cur = addDays(cur, -1); }
-      return s;
-    })();
+    const s = computeStreak(babyActs);
+    const streak = s.currentStreak;
     if (streak >= 3) list.push({ id: 'streak-insight', type: 'streak', title: `${streak}-Day Streak!`, message: "You're on fire!", emoji: '🔥', color: DS.warning, actionLabel: 'Quick Log', actionScreen: 'Timeline' });
     const overdue = reminders.filter(r => {
       const [h, m] = r.time.split(':').map(Number);
@@ -997,20 +984,11 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const checkStreakStatus = useCallback(() => {
     if (!baby) return;
     const babyActs = activities.filter((a: any) => a.babyId === baby.id);
-    const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
-    const logged = new Set<string>();
-    for (const a of babyActs) {
-      const ts = a?.timestamp ?? a?.createdAt ?? a?.date;
-      if (ts) { const dt = new Date(ts); if (!isNaN(dt.getTime())) logged.add(dayKey(dt)); }
-    }
-    const now = new Date();
-    const todayLogged = logged.has(dayKey(now));
-    let streak = 0;
-    let cur = todayLogged ? now : addDays(now, -1);
-    while (logged.has(dayKey(cur))) { streak++; cur = addDays(cur, -1); }
-    const hour = now.getHours();
-    const atRisk = !todayLogged && hour >= 18 && streak > 0;
-    setStreakData({ current: streak, atRisk, hoursLeft: atRisk ? 24 - hour : 0 });
+    const s = computeStreak(babyActs);
+    const today = babyActs.some((a: any) => isSameDay(new Date(a.timestamp), new Date()));
+    const hour = new Date().getHours();
+    const atRisk = !today && hour >= 18 && s.currentStreak > 0;
+    setStreakData({ current: s.currentStreak, atRisk, hoursLeft: atRisk ? 24 - hour : 0 });
   }, [baby, activities]);
 
   const handleAchievementSuggestion = () => {
@@ -1863,21 +1841,5 @@ const styles = StyleSheet.create({
   deleteBtnText: { fontSize: 13, fontWeight: '700' },
 
   /* Toast */
-  toast: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, marginHorizontal: 20, ...DS.shadow.lg, minWidth: 280 },
-  toastIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  toastTitle: { fontSize: 14, fontWeight: '700' },
-  toastMsg: { fontSize: 12, fontWeight: '500', marginTop: 1 },
-
-  /* Baby required */
-  noBabyGradient: { padding: 40, alignItems: 'center', borderRadius: 24 },
-  noBabyTitle: { fontSize: 22, fontWeight: '800', color: DS.white, marginTop: 12 },
-  noBabySub: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 6, textAlign: 'center' },
-  noBabyBtn: { backgroundColor: DS.white, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 14, marginTop: 16 },
-  noBabyBtnText: { fontSize: 14, fontWeight: '700' },
-  babyReqCard: { width: '100%', maxWidth: 340, borderRadius: DS.radius['2xl'], padding: DS.space['2xl'], alignItems: 'center', ...DS.shadow.lg },
-  babyReqIcon: { width: 60, height: 60, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: DS.space.md },
-  babyReqTitle: { fontSize: 20, fontWeight: '800', marginBottom: 6, textAlign: 'center' },
-  babyReqDesc: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: DS.space.lg, paddingHorizontal: 6 },
-  babyReqBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, width: '100%' },
-  babyReqBtnText: { color: DS.white, fontSize: 14, fontWeight: '700' },
+  toast: { flexDirection: 'row', alignItems: 'center', gap: 12 },
 });
