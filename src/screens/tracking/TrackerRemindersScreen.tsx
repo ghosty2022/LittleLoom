@@ -184,6 +184,41 @@ const WEEKDAYS = [
 
 const HAPTIC_LIGHT = () => Vibration.vibrate(20);
 
+/**
+ * Counts consecutive days (ending today) that contain at least one
+ * activity for the given list. Returns the streak length and whether
+ * today's streak is still "alive" (i.e. today has no log yet but the
+ * previous days do).
+ */
+const computeStreak = (acts: any[]): { currentStreak: number; todayLogged: boolean } => {
+  if (!acts || acts.length === 0) return { currentStreak: 0, todayLogged: false };
+
+  // De-duplicate days via a Set of yyyy-MM-dd strings.
+  const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
+  const loggedDays = new Set<string>();
+  for (const a of acts) {
+    const ts = a?.timestamp ?? a?.createdAt ?? a?.date;
+    if (!ts) continue;
+    const dt = new Date(ts);
+    if (isNaN(dt.getTime())) continue;
+    loggedDays.add(dayKey(dt));
+  }
+
+  const today = new Date();
+  const todayLogged = loggedDays.has(dayKey(today));
+
+  // Walk backwards from today (or yesterday if today isn't logged yet,
+  // since a streak can still be "alive" until midnight).
+  let cursor = todayLogged ? today : addDays(today, -1);
+  let currentStreak = 0;
+  while (loggedDays.has(dayKey(cursor))) {
+    currentStreak++;
+    cursor = addDays(cursor, -1);
+  }
+
+  return { currentStreak, todayLogged };
+};
+
 /* ═══════════════════════════════════════════════════════════════════════════
    GradientText + PressableScale
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -932,8 +967,18 @@ export default function RemindersScreen({ navigation, route }: Props) {
     const list: DailyInsight[] = [];
     const now = new Date();
     const babyActs = activities.filter((a: any) => a.babyId === baby.id);
-    const s = computeStreak(babyActs);
-    const streak = s.currentStreak;
+    const streak = (() => {
+      const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
+      const logged = new Set<string>();
+      for (const a of babyActs) {
+        const ts = a?.timestamp ?? a?.createdAt ?? a?.date;
+        if (ts) { const dt = new Date(ts); if (!isNaN(dt.getTime())) logged.add(dayKey(dt)); }
+      }
+      let s = 0; let cur = new Date();
+      if (!logged.has(dayKey(cur))) cur = addDays(cur, -1);
+      while (logged.has(dayKey(cur))) { s++; cur = addDays(cur, -1); }
+      return s;
+    })();
     if (streak >= 3) list.push({ id: 'streak-insight', type: 'streak', title: `${streak}-Day Streak!`, message: "You're on fire!", emoji: '🔥', color: DS.warning, actionLabel: 'Quick Log', actionScreen: 'Timeline' });
     const overdue = reminders.filter(r => {
       const [h, m] = r.time.split(':').map(Number);
@@ -952,11 +997,20 @@ export default function RemindersScreen({ navigation, route }: Props) {
   const checkStreakStatus = useCallback(() => {
     if (!baby) return;
     const babyActs = activities.filter((a: any) => a.babyId === baby.id);
-    const s = computeStreak(babyActs);
-    const today = babyActs.some((a: any) => isSameDay(new Date(a.timestamp), new Date()));
-    const hour = new Date().getHours();
-    const atRisk = !today && hour >= 18 && s.currentStreak > 0;
-    setStreakData({ current: s.currentStreak, atRisk, hoursLeft: atRisk ? 24 - hour : 0 });
+    const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
+    const logged = new Set<string>();
+    for (const a of babyActs) {
+      const ts = a?.timestamp ?? a?.createdAt ?? a?.date;
+      if (ts) { const dt = new Date(ts); if (!isNaN(dt.getTime())) logged.add(dayKey(dt)); }
+    }
+    const now = new Date();
+    const todayLogged = logged.has(dayKey(now));
+    let streak = 0;
+    let cur = todayLogged ? now : addDays(now, -1);
+    while (logged.has(dayKey(cur))) { streak++; cur = addDays(cur, -1); }
+    const hour = now.getHours();
+    const atRisk = !todayLogged && hour >= 18 && streak > 0;
+    setStreakData({ current: streak, atRisk, hoursLeft: atRisk ? 24 - hour : 0 });
   }, [baby, activities]);
 
   const handleAchievementSuggestion = () => {
@@ -1459,9 +1513,10 @@ export default function RemindersScreen({ navigation, route }: Props) {
               <Text style={[styles.chartSub, { color: isDark ? DS.gray400 : DS.gray500 }]}>Completed per day</Text>
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', height: 100, marginTop: 12 }}>
                 {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => {
-                  const count = analytics?.weekly?.[d] || 0;
-                  const max = Math.max(...Object.values(analytics?.weekly || { M: 1 }), 1);
-                  const h = Math.max((count as number / max as number) * 80, 4);
+                  const weekly: Record<string, number> = analytics?.weekly || {};
+                  const count = weekly[d] || 0;
+                  const max = Math.max(...Object.values(weekly), 1);
+                  const h = Math.max((count / max) * 80, 4);
                   return (
                     <View key={i} style={{ alignItems: 'center', gap: 4 }}>
                       <View style={{ width: 20, height: h, borderRadius: 4, backgroundColor: DS.primary }} />
