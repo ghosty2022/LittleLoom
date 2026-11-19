@@ -58,7 +58,6 @@ import {
 import { useAuth, subscribeToProfileChanges } from '../../context/AuthContext';
 import { useCustomization } from '../../hooks/useCustomization';
 import { useFamily } from '../../context/FamilyContext';
-import { useMedia } from '../../context/MediaContext';
 import { useCall } from '../../context/CallContext';
 import { resolveDisplayNames } from '../../utils/displayName';
 
@@ -68,26 +67,26 @@ type FamilyChatScreenProps = NativeStackScreenProps<
 >;
 const { width, height } = Dimensions.get('window');
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight || 0;
-// The header is padded with `insets.top + HEADER_TOP_PADDING`.
-// Keep this SMALL so the pulse card hugs the notch.
 const HEADER_TOP_PADDING = 4;
 
 function useKeyboardHeight() {
   const [height, setHeight] = useState(0);
   useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const show = Keyboard.addListener(showEvt, (e) => setHeight(e.endCoordinates.height));
+    const showEvt =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e) =>
+      setHeight(e.endCoordinates.height),
+    );
     const hide = Keyboard.addListener(hideEvt, () => setHeight(0));
-    return () => { show.remove(); hide.remove(); };
+    return () => {
+      show.remove();
+      hide.remove();
+    };
   }, []);
   return height;
 }
-
-// Measured at runtime from insets + the fixed 44-px sticky-header row.
-// Do NOT bake a magic number here — on notched devices the pulse card
-// is 4 px under `insets.top`, but the *sticky* header that actually
-// offsets the KeyboardAvoidingView is exactly 44 px tall.
 
 import { Text as RNText, TextInput as RNTextInput } from 'react-native';
 const capScaling = (n: number) => Math.min(n, 1.35);
@@ -169,11 +168,7 @@ const HAPTIC_SUCCESS = () =>
 
 const isImageUri = (v: string | undefined | null): boolean => {
   if (!v || typeof v !== 'string') return false;
-  return (
-    v.startsWith('http') ||
-    v.startsWith('file://') ||
-    v.startsWith('data:')
-  );
+  return v.startsWith('http') || v.startsWith('file://') || v.startsWith('data:');
 };
 const isEmoji = (v: string | undefined | null): boolean => {
   if (!v || typeof v !== 'string') return false;
@@ -195,14 +190,7 @@ const PressableScale = React.memo<{
   style?: any;
   activeScale?: number;
 }>(
-  ({
-    children,
-    onPress,
-    onLongPress,
-    disabled,
-    style,
-    activeScale = 0.96,
-  }) => {
+  ({ children, onPress, onLongPress, disabled, style, activeScale = 0.96 }) => {
     const scale = useSharedValue(1);
     const anim = useAnimatedStyle(() => ({
       transform: [{ scale: scale.value }],
@@ -495,12 +483,8 @@ const PulseHeader = React.memo<PulseHeaderProps>(
                 }}
               >
                 <View style={styles.pulseAvatarWrap}>
-                  <Animated.View
-                    style={[styles.pulseAvatarGlow, glowStyle]}
-                  />
-                  <Animated.View
-                    style={[styles.pulseAvatarRing, ringStyle]}
-                  >
+                  <Animated.View style={[styles.pulseAvatarGlow, glowStyle]} />
+                  <Animated.View style={[styles.pulseAvatarRing, ringStyle]}>
                     <LinearGradient
                       colors={[DS.primary, DS.accent, DS.warning, DS.primary]}
                       start={{ x: 0, y: 0 }}
@@ -822,9 +806,7 @@ const FileBubble: React.FC<{
         style={[
           styles.fileBubble,
           {
-            backgroundColor: isMe
-              ? 'rgba(255,255,255,0.15)'
-              : DS.gray100,
+            backgroundColor: isMe ? 'rgba(255,255,255,0.15)' : DS.gray100,
           },
         ]}
       >
@@ -846,10 +828,7 @@ const FileBubble: React.FC<{
         </View>
         <View style={{ flex: 1 }}>
           <Text
-            style={[
-              styles.fileName,
-              { color: isMe ? DS.white : DS.gray900 },
-            ]}
+            style={[styles.fileName, { color: isMe ? DS.white : DS.gray900 }]}
             numberOfLines={1}
           >
             {fileMeta.name}
@@ -928,7 +907,7 @@ const UserBubble: React.FC<{
           ]}
           numberOfLines={1}
         >
-          {member.fullName.split(' ')[0]}
+          {(member.fullName || 'Member').split(' ')[0]}
         </Text>
         <Text style={[styles.userBubbleRole, { color: roleColor }]}>
           {member.relationship && member.relationship.trim()
@@ -993,11 +972,7 @@ const MessageInfoModal: React.FC<{
                 { backgroundColor: `${DS.primary}15` },
               ]}
             >
-              <Ionicons
-                name="information-circle"
-                size={28}
-                color={DS.primary}
-              />
+              <Ionicons name="information-circle" size={28} color={DS.primary} />
             </View>
             <Text
               style={[
@@ -1215,9 +1190,7 @@ const MessageInfoModal: React.FC<{
                       <Text
                         style={[
                           styles.infoReactionName,
-                          {
-                            color: isDark ? DS.gray200 : DS.gray700,
-                          },
+                          { color: isDark ? DS.gray200 : DS.gray700 },
                         ]}
                       >
                         {r.userName}
@@ -1264,10 +1237,7 @@ const DateSeparator: React.FC<{ date: string; isDark: boolean }> = ({
         ]}
       >
         <Text
-          style={[
-            styles.dateText,
-            { color: isDark ? DS.gray400 : DS.gray500 },
-          ]}
+          style={[styles.dateText, { color: isDark ? DS.gray400 : DS.gray500 }]}
         >
           {text}
         </Text>
@@ -1442,9 +1412,7 @@ const SoftOptionsSheet: React.FC<{
                 paddingVertical: 12,
                 paddingHorizontal: 6,
                 borderBottomWidth:
-                  i < options.length - 1
-                    ? StyleSheet.hairlineWidth
-                    : 0,
+                  i < options.length - 1 ? StyleSheet.hairlineWidth : 0,
                 borderBottomColor: isDark
                   ? 'rgba(255,255,255,0.06)'
                   : 'rgba(0,0,0,0.06)',
@@ -1516,11 +1484,7 @@ const SoftOptionsSheet: React.FC<{
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <TouchableOpacity
-        style={{ flex: 1 }}
-        onPress={onClose}
-        activeOpacity={1}
-      >
+      <TouchableOpacity style={{ flex: 1 }} onPress={onClose} activeOpacity={1}>
         <Animated.View
           style={[
             {
@@ -1643,7 +1607,12 @@ const ImagePreviewModal: React.FC<{
 }> = ({ visible, imageUrl, onClose, isDark }) => {
   const [loading, setLoading] = useState(true);
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       <TouchableOpacity
         style={styles.imagePreviewOverlay}
         onPress={onClose}
@@ -1678,10 +1647,7 @@ const ImagePreviewModal: React.FC<{
             onLoadEnd={() => setLoading(false)}
             onError={() => setLoading(false)}
           />
-          <TouchableOpacity
-            style={styles.imageCloseBtn}
-            onPress={onClose}
-          >
+          <TouchableOpacity style={styles.imageCloseBtn} onPress={onClose}>
             <BlurView intensity={80} style={styles.imageCloseBlur}>
               <Ionicons name="close" size={22} color={DS.white} />
             </BlurView>
@@ -1740,7 +1706,6 @@ const MessageBubble: React.FC<{
   isFirstInGroup,
   isLastInGroup,
   onAvatarPress,
-  showSweetAlert,
   nameMap,
   onCallBack,
 }) => {
@@ -1864,9 +1829,7 @@ const MessageBubble: React.FC<{
                       style={[
                         styles.replyName,
                         {
-                          color: isMe
-                            ? 'rgba(255,255,255,0.8)'
-                            : DS.primary,
+                          color: isMe ? 'rgba(255,255,255,0.8)' : DS.primary,
                         },
                       ]}
                       numberOfLines={1}
@@ -2062,9 +2025,7 @@ const MessageBubble: React.FC<{
                     style={{
                       fontSize: 11,
                       fontWeight: '600',
-                      color: isMe
-                        ? 'rgba(255,255,255,0.8)'
-                        : DS.gray500,
+                      color: isMe ? 'rgba(255,255,255,0.8)' : DS.gray500,
                     }}
                   >
                     0:24
@@ -2080,8 +2041,7 @@ const MessageBubble: React.FC<{
                         : isDark
                         ? DS.gray100
                         : DS.gray900,
-                      fontStyle:
-                        message.type === 'system' ? 'italic' : 'normal',
+                      fontStyle: message.type === 'system' ? 'italic' : 'normal',
                       fontSize: message.type === 'system' ? 12 : 14,
                     },
                   ]}
@@ -2110,9 +2070,7 @@ const MessageBubble: React.FC<{
                     style={[
                       styles.editedLabel,
                       {
-                        color: isMe
-                          ? 'rgba(255,255,255,0.6)'
-                          : DS.gray400,
+                        color: isMe ? 'rgba(255,255,255,0.6)' : DS.gray400,
                       },
                     ]}
                   >
@@ -2165,9 +2123,7 @@ const MessageBubble: React.FC<{
               contentContainerStyle={[
                 styles.emojiRow,
                 {
-                  borderBottomColor: isDark
-                    ? DS.darkBorder
-                    : DS.gray200,
+                  borderBottomColor: isDark ? DS.darkBorder : DS.gray200,
                 },
               ]}
             >
@@ -2308,9 +2264,7 @@ const ReplyPreview: React.FC<{
         },
       ]}
     >
-      <View
-        style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
-      >
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
         <View
           style={{
             width: 3,
@@ -2397,6 +2351,8 @@ export default function FamilyChatScreen({
   const insets = useSafeAreaInsets();
   const isDark = darkMode ?? false;
   const keyboardHeight = useKeyboardHeight();
+  void keyboardHeight;
+  void STATUS_BAR_HEIGHT;
 
   /* ── State ───────────────────────────────────────────────── */
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -2438,62 +2394,7 @@ export default function FamilyChatScreen({
   const messagesRef = useRef<FamilyMessage[]>([]);
   const chatStillExistsRef = useRef(true);
 
-  // Back button: if a call is active, minimize it instead of ending it
-  // and instead of navigating away with the call still full-screen.
-  useEffect(() => {
-    const onBack = () => {
-      if (activeCall) {
-        minimizeCall();
-        navigation.goBack();
-        return true; // handled
-      }
-      return false; // let the navigator pop
-    };
-    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
-    return () => sub.remove();
-  }, [activeCall, minimizeCall, navigation]);
-
-  // When a call that belongs to this chat ends, append a `call` bubble
-  // to the conversation so it shows up in the thread with a call-back
-  // action (MessageBubble already renders `type: 'call'`).
-  const lastLoggedCallRef = useRef<string | null>(null);
-  const prevActiveCallRef = useRef(activeCall);
-  useEffect(() => {
-    const prev = prevActiveCallRef.current;
-    prevActiveCallRef.current = activeCall;
-    if (!prev || activeCall) return; // only on transition active → ended
-    if (prev.chatId !== chatId) return;
-    if (lastLoggedCallRef.current === prev.id) return;
-    lastLoggedCallRef.current = prev.id;
-    (async () => {
-      try {
-        await ctx.sendMessage(
-          chatId,
-          prev.status === 'missed' || prev.status === 'declined'
-            ? 'Missed call'
-            : prev.type === 'video'
-            ? 'Video call'
-            : 'Voice call',
-          'call' as any,
-          {
-            metadata: {
-              callType: prev.type,
-              peerId: prev.peerId,
-              peerName: prev.peerName,
-              peerAvatar: prev.peerAvatar,
-              status: prev.status,
-              durationSec: prev.durationSec ?? 0,
-            },
-          } as any,
-        );
-      } catch (e) {
-        console.warn('[FamilyChat] call-event log failed:', e);
-      }
-    })();
-  }, [activeCall, chatId, ctx]);
-
-  // Stable snapshot of the context API — every `useFamilyChat()`
-  // return is a new object each render, so we freeze the first one.
+  // Stable snapshot of the context API so effects can rely on it.
   const ctxRef = useRef<ReturnType<typeof useFamilyChat> | null>(null);
   if (!ctxRef.current) {
     ctxRef.current = {
@@ -2522,6 +2423,57 @@ export default function FamilyChatScreen({
     } as any;
   }
   const ctx = ctxRef.current!;
+
+  // Back button: minimize an active call rather than end it.
+  useEffect(() => {
+    const onBack = () => {
+      if (activeCall) {
+        minimizeCall();
+        navigation.goBack();
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => sub.remove();
+  }, [activeCall, minimizeCall, navigation]);
+
+  // Log a `call` bubble when a call in this chat ends.
+  const lastLoggedCallRef = useRef<string | null>(null);
+  const prevActiveCallRef = useRef(activeCall);
+  useEffect(() => {
+    const prev = prevActiveCallRef.current;
+    prevActiveCallRef.current = activeCall;
+    if (!prev || activeCall) return;
+    if (prev.chatId !== chatId) return;
+    if (lastLoggedCallRef.current === prev.id) return;
+    lastLoggedCallRef.current = prev.id;
+    (async () => {
+      try {
+        await ctxRef.current!.sendMessage(
+          chatId,
+          prev.status === 'missed' || prev.status === 'declined'
+            ? 'Missed call'
+            : prev.type === 'video'
+            ? 'Video call'
+            : 'Voice call',
+          'call' as any,
+          {
+            metadata: {
+              callType: prev.type,
+              peerId: prev.peerId,
+              peerName: prev.peerName,
+              peerAvatar: prev.peerAvatar,
+              status: prev.status,
+              durationSec: prev.durationSec ?? 0,
+            },
+          } as any,
+        );
+      } catch (e) {
+        console.warn('[FamilyChat] call-event log failed:', e);
+      }
+    })();
+  }, [activeCall, chatId]);
 
   /* ── Pure helpers ────────────────────────────────────────── */
   const formatDuration = (s: number) =>
@@ -2597,18 +2549,14 @@ export default function FamilyChatScreen({
   const quickReplies = useMemo<string[]>(() => {
     const lastInbound = [...messages]
       .reverse()
-      .find(
-        (m) => m.senderId !== userProfile?.id && m.type === 'text',
-      );
+      .find((m) => m.senderId !== userProfile?.id && m.type === 'text');
     const text = (lastInbound?.content || '').toLowerCase();
     const isOnline = (headerInfo.status || '')
       .toLowerCase()
       .includes('online');
     const role = String(
       chatInfo?.participantRoles?.[
-        chatInfo?.participants?.find(
-          (p: string) => p !== userProfile?.id,
-        ) || ''
+        chatInfo?.participants?.find((p: string) => p !== userProfile?.id) || ''
       ] || '',
     ).toLowerCase();
     const set = new Set<string>();
@@ -2651,9 +2599,7 @@ export default function FamilyChatScreen({
     const blocked = isUserBlocked(otherId || '');
     const peerName =
       headerInfo.name ||
-      (chatInfo?.type === 'group'
-        ? 'this group'
-        : 'this conversation');
+      (chatInfo?.type === 'group' ? 'this group' : 'this conversation');
 
     const opts: SoftOption[] = [];
 
@@ -2680,8 +2626,7 @@ export default function FamilyChatScreen({
 
     opts.push({
       icon: 'trash-outline',
-      label:
-        chatInfo?.type === 'group' ? 'Delete for Me' : 'Delete Chat',
+      label: chatInfo?.type === 'group' ? 'Delete for Me' : 'Delete Chat',
       subtitle:
         chatInfo?.type === 'group'
           ? 'Hide this group from your list'
@@ -2702,11 +2647,7 @@ export default function FamilyChatScreen({
                   await deleteChat(chatId);
                   navigation.goBack();
                 } catch {
-                  showSweetAlert(
-                    'error',
-                    'Error',
-                    'Failed to delete chat.',
-                  );
+                  showSweetAlert('error', 'Error', 'Failed to delete chat.');
                 }
               },
             },
@@ -2735,7 +2676,6 @@ export default function FamilyChatScreen({
   }, [chatId]);
 
   const initializeChat = useCallback(async () => {
-    // Instant paint — no spinner.
     if (initialChatId) {
       const seeded = getChatMessages(initialChatId) ?? [];
       messagesRef.current = seeded;
@@ -2853,8 +2793,7 @@ export default function FamilyChatScreen({
           lastTypingSentRef.current = now;
           setTypingStatus(chatId, true);
         }
-        if (typingTimeoutRef.current)
-          clearTimeout(typingTimeoutRef.current);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = setTimeout(() => {
           lastTypingSentRef.current = 0;
           setTypingStatus(chatId, false);
@@ -2890,11 +2829,7 @@ export default function FamilyChatScreen({
     try {
       await pickAndSendFile(chatId);
       refreshMessages();
-      showSweetAlert(
-        'success',
-        'File Sent! 📎',
-        'Your file has been shared',
-      );
+      showSweetAlert('success', 'File Sent! 📎', 'Your file has been shared');
     } catch {
       showSweetAlert('error', 'Error', 'Failed to send file');
     }
@@ -2966,10 +2901,7 @@ export default function FamilyChatScreen({
           const dl = await FileSystem.downloadAsync(meta.uri, dest);
           localUri = dl.uri;
         } catch (dlErr) {
-          console.warn(
-            '[FamilyChat] file download failed, opening URL:',
-            dlErr,
-          );
+          console.warn('[FamilyChat] file download failed, opening URL:', dlErr);
         }
       }
       const Sharing = require('expo-sharing');
@@ -2996,8 +2928,7 @@ export default function FamilyChatScreen({
 
   const startRecording = useCallback(async () => {
     try {
-      const { AudioModule, RecordingPresets } =
-        require('expo-audio');
+      const { AudioModule, RecordingPresets } = require('expo-audio');
       const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
         showSweetAlert(
@@ -3026,8 +2957,7 @@ export default function FamilyChatScreen({
   }, []);
 
   const stopRecording = useCallback(async () => {
-    if (recordingInterval.current)
-      clearInterval(recordingInterval.current);
+    if (recordingInterval.current) clearInterval(recordingInterval.current);
     const recCtx = (recordingInterval as any).current;
     setIsRecording(false);
     setRecordingDuration(0);
@@ -3055,26 +2985,19 @@ export default function FamilyChatScreen({
   }, [chatId, sendMessage, refreshMessages, pickAndSendVoice]);
 
   /* ── Effects ─────────────────────────────────────────────── */
-
-  // Keyboard listeners
   useEffect(() => {
     const showEvt =
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvt =
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvt, () =>
-      setKeyboardOpen(true),
-    );
-    const hideSub = Keyboard.addListener(hideEvt, () =>
-      setKeyboardOpen(false),
-    );
+    const showSub = Keyboard.addListener(showEvt, () => setKeyboardOpen(true));
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardOpen(false));
     return () => {
       showSub.remove();
       hideSub.remove();
     };
   }, []);
 
-  // Active chat pointer
   useEffect(() => {
     if (chatId) setCurrentChatId(chatId);
     return () => {
@@ -3082,15 +3005,12 @@ export default function FamilyChatScreen({
     };
   }, [chatId, setCurrentChatId]);
 
-  // Family-switch guard
   useEffect(() => {
     if (!chatId) return;
     const fresh = getChatById(chatId);
     const chatFamily = fresh?.familyCode;
     const switchedFamily =
-      chatFamily &&
-      activeFamilyCode &&
-      chatFamily !== activeFamilyCode;
+      chatFamily && activeFamilyCode && chatFamily !== activeFamilyCode;
     if ((!fresh && !chatStillExistsRef.current) || switchedFamily) {
       if (chatStillExistsRef.current) {
         chatStillExistsRef.current = false;
@@ -3101,7 +3021,6 @@ export default function FamilyChatScreen({
     }
   }, [chatId, activeFamilyCode, getChatById, navigation]);
 
-  // Live message sync
   useEffect(() => {
     if (!chatId || !subscribeToChatMessages) return;
     const unsub = subscribeToChatMessages(chatId, (_cid, msgs) => {
@@ -3111,8 +3030,7 @@ export default function FamilyChatScreen({
           .filter(
             (m) =>
               m.senderId !== meId &&
-              (m.deliveryStatus === 'sent' ||
-                m.deliveryStatus === 'sending'),
+              (m.deliveryStatus === 'sent' || m.deliveryStatus === 'sending'),
           )
           .map((m) => m.id);
         if (undelivered.length > 0) {
@@ -3120,7 +3038,11 @@ export default function FamilyChatScreen({
         }
       }
       setMessages((prev) => {
-        if (msgs.length === 0 && prev.length > 0 && !chatStillExistsRef.current) {
+        if (
+          msgs.length === 0 &&
+          prev.length > 0 &&
+          !chatStillExistsRef.current
+        ) {
           return prev;
         }
         const byId = new Map<string, FamilyMessage>();
@@ -3128,16 +3050,12 @@ export default function FamilyChatScreen({
         msgs.forEach((m) => byId.set(m.id, m));
         return Array.from(byId.values()).sort(
           (a, b) =>
-            new Date(a.timestamp).getTime() -
-            new Date(b.timestamp).getTime(),
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
         );
       });
       const hasUnread =
         !!meId && msgs.some((m) => !m.readBy?.includes(meId));
-      if (
-        hasUnread &&
-        lastMarkedCountRef.current !== msgs.length
-      ) {
+      if (hasUnread && lastMarkedCountRef.current !== msgs.length) {
         lastMarkedCountRef.current = msgs.length;
         markChatRead(chatId);
       }
@@ -3154,13 +3072,11 @@ export default function FamilyChatScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, userProfile?.id]);
 
-  // Chat bootstrap
   useEffect(() => {
     initializeChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialChatId, memberId]);
 
-  // Fresh display names
   useEffect(() => {
     const ids = Array.from(
       new Set(messages.map((m) => m.senderId).filter(Boolean)),
@@ -3175,13 +3091,11 @@ export default function FamilyChatScreen({
     };
   }, [messages.length]);
 
-  // Mark chat read on mount
   useEffect(() => {
     if (!chatId) return;
     markChatRead(chatId);
   }, [chatId, markChatRead]);
 
-  // Profile-change listener
   useEffect(() => {
     if (!chatId) return;
     const unsub = subscribeToProfileChanges(() => {
@@ -3240,9 +3154,7 @@ export default function FamilyChatScreen({
             isFirstInGroup={isFirst}
             isLastInGroup={isLast}
             onAvatarPress={(targetId, senderMember) => {
-              const role = String(
-                senderMember?.role || '',
-              ).toLowerCase();
+              const role = String(senderMember?.role || '').toLowerCase();
               const mode =
                 role === 'parent1'
                   ? 'parent1'
@@ -3315,9 +3227,7 @@ export default function FamilyChatScreen({
         type={alert.type}
         title={alert.title}
         message={alert.message}
-        onClose={() =>
-          setAlert((p) => ({ ...p, visible: false }))
-        }
+        onClose={() => setAlert((p) => ({ ...p, visible: false }))}
       />
       <MessageInfoModal
         visible={showMessageInfo}
@@ -3333,7 +3243,7 @@ export default function FamilyChatScreen({
         isDark={isDark}
       />
 
-      {/* Pulse header — hugs the notch */}
+      {/* Pulse header */}
       <View style={{ paddingTop: insets.top + HEADER_TOP_PADDING }}>
         <PulseHeader
           isDark={isDark}
@@ -3352,13 +3262,9 @@ export default function FamilyChatScreen({
               if (!otherId) return;
               const memberRow =
                 members.find((m: any) => m.id === otherId) ||
-                members.find(
-                  (m: any) => m.userId === otherId,
-                );
+                members.find((m: any) => m.userId === otherId);
               const targetId = memberRow?.id || otherId;
-              const role = String(
-                memberRow?.role || '',
-              ).toLowerCase();
+              const role = String(memberRow?.role || '').toLowerCase();
               const mode =
                 role === 'parent1'
                   ? 'parent1'
@@ -3375,9 +3281,7 @@ export default function FamilyChatScreen({
               });
             }
           }}
-          onToggleUsers={() =>
-            setShowUserBubbles(!showUserBubbles)
-          }
+          onToggleUsers={() => setShowUserBubbles(!showUserBubbles)}
           onVideo={() => {
             if (!peerForCall) {
               showSweetAlert(
@@ -3410,301 +3314,313 @@ export default function FamilyChatScreen({
               peer: peerForCall,
             });
           }}
-          onOpenCommunityChat={
-            chatInfo?.type === 'direct'
-              ? () => {
-                  const otherId = chatInfo.participants?.find(
-                    (p: string) => p !== userProfile?.id,
-                  );
-                  if (!otherId) return;
-                  HAPTIC_LIGHT();
-                  const rootNav =
-                    (navigation as any).getParent?.()?.getParent?.() ??
-                    navigation;
-                  rootNav.navigate('Chat', {
-                    userId: otherId,
-                    chatId: otherId,
-                  });
-                }
-              : undefined
-          }
           onOptions={() => setShowOptionsSheet(true)}
+          onOpenCommunityChat={() => {
+            /* no CommunityChat route wired — no-op */
+          }}
         />
       </View>
 
-      {/* User bubbles row */}
-      {showUserBubbles && (
-        <Animated.View
-          entering={FadeInDown}
-          style={[
-            styles.userBubblesRow,
-            {
-              borderBottomColor: isDark
-                ? DS.darkBorder
-                : DS.gray200,
-            },
-          ]}
-        >
-          <Animated.ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingHorizontal: DS.space.md,
-              paddingVertical: 8,
-            }}
-          >
-            {otherMembers.map((m, i) => (
-              <Animated.View
-                key={m.id}
-                entering={FadeInDown.delay(i * 40)}
-              >
-                <UserBubble
-                  member={m}
-                  isDark={isDark}
-                  onPress={() => HAPTIC_LIGHT()}
-                />
-              </Animated.View>
-            ))}
-          </Animated.ScrollView>
-        </Animated.View>
-      )}
-
-      <View style={{ flex: 1, paddingBottom: keyboardHeight }}>
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{
-            paddingTop: DS.space.xs,
-            paddingBottom: 20,
-          }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          removeClippedSubviews={false}
-          style={{ flex: 1 }}
-          ListEmptyComponent={
-            <View
-              style={{
-                alignItems: 'center',
-                paddingTop: 60,
+      {/* Messages + composer */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={insets.top + HEADER_TOP_PADDING + 44}
+      >
+        {showUserBubbles && (
+          <View style={{ paddingVertical: DS.space.sm }}>
+            <FlatList
+              horizontal
+              data={otherMembers}
+              keyExtractor={(m: any) => m.id || m.userId}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{
                 paddingHorizontal: DS.space.lg,
+                gap: DS.space.md,
               }}
-            >
-              <View
-                style={[
-                  styles.emptyChatIcon,
-                  { backgroundColor: `${DS.primary}15` },
-                ]}
-              >
-                <Ionicons
-                  name="chatbubbles-outline"
-                  size={40}
-                  color={DS.primary}
+              renderItem={({ item }) => (
+                <UserBubble
+                  member={item}
+                  isDark={isDark}
+                  onPress={() => {
+                    const targetId = item.id || (item as any).userId;
+                    const role = String(item.role || '').toLowerCase();
+                    const mode =
+                      role === 'parent1'
+                        ? 'parent1'
+                        : role === 'parent2'
+                        ? 'parent2'
+                        : role === 'viewer'
+                        ? 'viewer'
+                        : 'guardian';
+                    navigation.navigate('EditGuardian', {
+                      memberId: targetId,
+                      guardianId: targetId,
+                      mode,
+                      fromChat: true,
+                    });
+                  }}
                 />
-              </View>
-              <Text
-                style={[
-                  styles.emptyChatTitle,
-                  { color: isDark ? DS.white : DS.gray900 },
-                ]}
-              >
-                No messages yet
-              </Text>
-              <Text
-                style={[
-                  styles.emptyChatSub,
-                  { color: isDark ? DS.gray400 : DS.gray500 },
-                ]}
-              >
-                Start the conversation!
-              </Text>
-            </View>
-          }
-        />
-
-        {typingText && (
-          <View
-            style={{
-              paddingHorizontal: DS.space.lg,
-              marginBottom: 4,
-            }}
-          >
-            <TypingIndicator isDark={isDark} />
+              )}
+            />
           </View>
         )}
 
-        <ReplyPreview
-          replyTo={replyingTo}
-          onCancel={() => setReplyingTo(null)}
-          isDark={isDark}
-        />
+        {isLoading ? (
+          <View
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ActivityIndicator size="large" color={DS.primary} />
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            renderItem={renderMessage}
+            contentContainerStyle={{ paddingVertical: DS.space.lg }}
+            onContentSizeChange={() =>
+              flatListRef.current?.scrollToEnd({ animated: false })
+            }
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', marginTop: 60 }}>
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: '600',
+                    color: isDark ? DS.gray500 : DS.gray400,
+                  }}
+                >
+                  No messages yet — say hi! 👋
+                </Text>
+              </View>
+            }
+          />
+        )}
 
-        <View style={{ flexShrink: 0 }}>
-          {!inputText && !replyingTo && quickReplies.length > 0 && (
-          <View style={{ height: 44, justifyContent: 'center' }}>
-            <Animated.ScrollView
+        <View
+          style={{
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: isDark ? DS.darkBorder : DS.gray200,
+            backgroundColor: isDark ? DS.darkSurface : DS.white,
+            paddingBottom: keyboardOpen ? 8 : insets.bottom + 8,
+          }}
+        >
+          <ReplyPreview
+            replyTo={replyingTo}
+            onCancel={() => setReplyingTo(null)}
+            isDark={isDark}
+          />
+
+          {editingMessage && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: DS.space.lg,
+                paddingTop: 8,
+              }}
+            >
+              <Ionicons name="pencil" size={14} color={DS.warning} />
+              <Text
+                style={{
+                  flex: 1,
+                  marginLeft: 6,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: DS.warning,
+                }}
+              >
+                Editing message…
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setEditingMessage(null);
+                  setInputText('');
+                }}
+              >
+                <Ionicons name="close" size={16} color={DS.gray400} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-end',
+              paddingHorizontal: DS.space.md,
+              paddingTop: DS.space.sm,
+              gap: DS.space.sm,
+            }}
+          >
+            <TouchableOpacity
+              onPress={showImageSourceAlert}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isDark
+                  ? 'rgba(255,255,255,0.06)'
+                  : DS.gray100,
+              }}
+            >
+              <Ionicons name="image-outline" size={20} color={DS.primary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleFilePick}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isDark
+                  ? 'rgba(255,255,255,0.06)'
+                  : DS.gray100,
+              }}
+            >
+              <Ionicons name="attach" size={20} color={DS.accent} />
+            </TouchableOpacity>
+
+            <View
+              style={{
+                flex: 1,
+                minHeight: 40,
+                maxHeight: 120,
+                borderRadius: 20,
+                paddingHorizontal: DS.space.md,
+                paddingVertical: 8,
+                justifyContent: 'center',
+                backgroundColor: isDark
+                  ? 'rgba(255,255,255,0.06)'
+                  : DS.gray100,
+              }}
+            >
+              <TextInput
+                ref={inputRef}
+                value={inputText}
+                onChangeText={handleInputChange}
+                placeholder="Message…"
+                placeholderTextColor={isDark ? DS.gray500 : DS.gray400}
+                multiline
+                style={{
+                  fontSize: 15,
+                  fontWeight: '500',
+                  color: isDark ? DS.white : DS.gray900,
+                  padding: 0,
+                }}
+              />
+            </View>
+
+            {inputText.trim() ? (
+              <TouchableOpacity
+                onPress={handleSend}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: DS.primary,
+                }}
+              >
+                <Ionicons
+                  name={editingMessage ? 'checkmark' : 'send'}
+                  size={20}
+                  color={DS.white}
+                />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPressIn={startRecording}
+                onPressOut={stopRecording}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isRecording ? DS.danger : DS.primary,
+                }}
+              >
+                <Ionicons
+                  name={isRecording ? 'stop' : 'mic'}
+                  size={20}
+                  color={DS.white}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {isRecording && (
+            <Text
+              style={{
+                textAlign: 'center',
+                fontSize: 12,
+                fontWeight: '600',
+                color: DS.danger,
+                marginTop: 4,
+              }}
+            >
+              Recording… {formatDuration(recordingDuration)}
+            </Text>
+          )}
+
+          {!inputText.trim() && !isRecording && quickReplies.length > 0 && (
+            <FlatList
               horizontal
+              data={quickReplies}
+              keyExtractor={(q, i) => `${q}-${i}`}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{
                 paddingHorizontal: DS.space.md,
-                paddingVertical: 6,
-                gap: 8,
-                alignItems: 'center',
+                paddingVertical: DS.space.sm,
+                gap: DS.space.sm,
               }}
-              keyboardShouldPersistTaps="handled"
-            >
-              {quickReplies.map((reply, i) => (
+              renderItem={({ item }) => (
                 <PressableScale
-                  key={i}
                   onPress={() => {
-                    setInputText(reply);
-                    setTimeout(() => handleSend(), 50);
+                    setInputText(item);
+                    inputRef.current?.focus();
                   }}
                   activeScale={0.94}
                 >
                   <View
-                    style={[
-                      styles.quickReply,
-                      {
-                        backgroundColor: `${DS.primary}10`,
-                        borderColor: `${DS.primary}20`,
-                      },
-                    ]}
+                    style={{
+                      paddingHorizontal: DS.space.md,
+                      paddingVertical: 6,
+                      borderRadius: 14,
+                      backgroundColor: isDark
+                        ? 'rgba(255,255,255,0.06)'
+                        : DS.gray100,
+                      borderWidth: 1,
+                      borderColor: isDark ? DS.darkBorder : DS.gray200,
+                    }}
                   >
                     <Text
-                      style={[
-                        styles.quickReplyText,
-                        { color: DS.primary },
-                      ]}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color: isDark ? DS.gray300 : DS.gray600,
+                      }}
                     >
-                      {reply}
+                      {item}
                     </Text>
                   </View>
                 </PressableScale>
-              ))}
-            </Animated.ScrollView>
-          </View>
-        )}
-
-        <View
-          style={[
-            styles.inputBar,
-            {
-              backgroundColor: isDark ? DS.darkCard : DS.white,
-              borderTopColor: isDark ? DS.darkBorder : DS.gray200,
-              paddingBottom: Math.max(insets.bottom, 8),
-            },
-          ]}
-        >
-          <PressableScale onPress={showImageSourceAlert} activeScale={0.9}>
-            <View
-              style={[
-                styles.inputIconBtn,
-                {
-                  backgroundColor: isDark
-                    ? 'rgba(255,255,255,0.06)'
-                    : DS.gray100,
-                },
-              ]}
-            >
-              <Ionicons name="camera" size={20} color={DS.primary} />
-            </View>
-          </PressableScale>
-          <PressableScale onPress={handleFilePick} activeScale={0.9}>
-            <View
-              style={[
-                styles.inputIconBtn,
-                {
-                  backgroundColor: isDark
-                    ? 'rgba(255,255,255,0.06)'
-                    : DS.gray100,
-                },
-              ]}
-            >
-              <Ionicons name="attach" size={20} color={DS.accent} />
-            </View>
-          </PressableScale>
-          <View
-            style={[
-              styles.inputField,
-              {
-                backgroundColor: isDark
-                  ? 'rgba(255,255,255,0.05)'
-                  : DS.gray100,
-              },
-            ]}
-          >
-            <TextInput
-              ref={inputRef}
-              style={[
-                styles.textInput,
-                { color: isDark ? DS.white : DS.gray900 },
-              ]}
-              placeholder={
-                editingMessage ? 'Edit message...' : 'Type a message...'
-              }
-              placeholderTextColor={isDark ? DS.gray600 : DS.gray400}
-              value={inputText}
-              onChangeText={handleInputChange}
-              multiline
-              maxLength={2000}
+              )}
             />
-          </View>
-          {inputText.trim() || editingMessage ? (
-            <PressableScale onPress={handleSend} activeScale={0.88}>
-              <LinearGradient
-                colors={[DS.primary, DS.accent]}
-                style={styles.sendBtn}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Ionicons name="send" size={18} color={DS.white} />
-              </LinearGradient>
-            </PressableScale>
-          ) : (
-            <PressableScale
-              onPress={isRecording ? stopRecording : startRecording}
-              activeScale={0.88}
-            >
-              <View
-                style={[
-                  styles.sendBtn,
-                  {
-                    backgroundColor: isRecording
-                      ? DS.danger
-                      : isDark
-                      ? 'rgba(255,255,255,0.06)'
-                      : DS.gray100,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={isRecording ? 'stop' : 'mic'}
-                  size={18}
-                  color={
-                    isRecording
-                      ? DS.white
-                      : isDark
-                      ? DS.gray300
-                      : DS.gray600
-                  }
-                />
-              </View>
-                                    </PressableScale>
           )}
         </View>
-        </View>
-      </View>
-    </View>
-  );
-}
-      {/* Options sheet */}
+      </KeyboardAvoidingView>
+
       <SoftOptionsSheet
         visible={showOptionsSheet}
         onClose={() => setShowOptionsSheet(false)}
-        title={headerInfo.name}
+        title="Chat Options"
         options={chatOptions}
         isDark={isDark}
       />
@@ -3713,49 +3629,43 @@ export default function FamilyChatScreen({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STYLES
+   STYLES — every key referenced above is defined here.
    ═══════════════════════════════════════════════════════════════════════════ */
 const styles = StyleSheet.create({
-  /* Pulse header */
+  // ── Pulse header ──────────────────────────────────────────
   pulseWrap: {
-    marginHorizontal: DS.space.md,
-    marginTop: DS.space.xs,
-    marginBottom: DS.space.xs,
-    borderRadius: DS.radius['2xl'],
-    paddingVertical: DS.space.sm,
-    paddingHorizontal: DS.space.md,
-    overflow: 'hidden',
+    marginHorizontal: 12,
+    borderRadius: 22,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    ...DS.shadow.sm,
-    position: 'relative',
+    overflow: 'hidden',
   },
   pulseGlowL: {
     position: 'absolute',
-    top: -80,
-    left: -60,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    opacity: 0.7,
+    left: -40,
+    top: -40,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
   },
   pulseGlowR: {
     position: 'absolute',
-    top: -70,
-    right: -70,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    opacity: 0.6,
+    right: -40,
+    bottom: -40,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
   },
   pulseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: DS.space.sm,
+    gap: 10,
   },
   pulseBackBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3764,14 +3674,13 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
   pulseAvatarGlow: {
     position: 'absolute',
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: `${DS.primary}35`,
+    backgroundColor: 'rgba(99,102,241,0.35)',
   },
   pulseAvatarRing: {
     position: 'absolute',
@@ -3781,12 +3690,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   pulseAvatarInner: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    overflow: 'hidden',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   pulseName: {
     fontSize: 15,
@@ -3796,7 +3705,6 @@ const styles = StyleSheet.create({
   pulseSub: {
     fontSize: 11,
     fontWeight: '600',
-    flex: 1,
   },
   pulseIconBtn: {
     width: 32,
@@ -3806,299 +3714,156 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  /* User bubbles */
-  userBubblesRow: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  userBubble: {
+  // ── Sweet alert ───────────────────────────────────────────
+  alertOverlay: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
-    paddingHorizontal: 8,
-    gap: 3,
+    justifyContent: 'center',
+    zIndex: 9999,
   },
-  userBubbleName: {
-    fontSize: 10,
-    fontWeight: '700',
-    marginTop: 3,
-    maxWidth: 64,
+  alertContainer: {
+    width: '80%',
+    maxWidth: 320,
+    borderRadius: 24,
+    overflow: 'hidden',
+    ...DS.shadow.lg,
+  },
+  alertGradient: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  alertTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: DS.white,
+    marginTop: 10,
     textAlign: 'center',
   },
-  userBubbleRole: { fontSize: 9, fontWeight: '600' },
+  alertMessage: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.92)',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  alertDismiss: {
+    marginTop: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  alertDismissText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: DS.white,
+  },
+
+  // ── File bubble ───────────────────────────────────────────
+  fileBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    borderRadius: 14,
+    minWidth: 220,
+  },
+  fileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fileName: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  fileSize: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+
+  // ── User bubble ───────────────────────────────────────────
+  userBubble: {
+    width: 78,
+    alignItems: 'center',
+    gap: 4,
+  },
   userBubbleStatus: {
     position: 'absolute',
-    bottom: -2,
-    right: -2,
+    right: 2,
+    bottom: 2,
     width: 12,
     height: 12,
     borderRadius: 6,
     borderWidth: 2,
   },
-
-  /* Messages */
-  messageContainer: {
-    flexDirection: 'row',
-    marginVertical: 2,
-    paddingHorizontal: DS.space.sm,
+  userBubbleName: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
   },
-  myContainer: { justifyContent: 'flex-end' },
-  theirContainer: { justifyContent: 'flex-start' },
-  bubble: {
-    maxWidth: '80%',
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  myBubble: {
-    borderBottomRightRadius: 4,
-  },
-  myBubbleLast: { borderBottomRightRadius: 18 },
-  theirBubble: {
-    borderWidth: 1,
-    borderBottomLeftRadius: 4,
-  },
-  theirBubbleLast: { borderBottomLeftRadius: 18 },
-  messageText: { fontSize: 14, lineHeight: 20 },
-  senderName: {
-    fontSize: 11,
-    fontWeight: '800',
-    marginBottom: 3,
-    marginLeft: 2,
-  },
-  messageFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 3,
-    gap: 4,
-  },
-  timestamp: { fontSize: 10, fontWeight: '500' },
-  editedLabel: { fontSize: 9, fontWeight: '500', fontStyle: 'italic' },
-
-  /* Reply preview inside bubble */
-  replyPreview: {
-    borderRadius: 8,
-    padding: 6,
-    flexDirection: 'row',
-    marginBottom: 6,
-    gap: 6,
-  },
-  replyLine: { width: 3, borderRadius: 2 },
-  replyName: { fontSize: 11, fontWeight: '700' },
-
-  /* Image bubble */
-  imageContainer: {
-    width: 220,
-    height: 220,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  imagePlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
+  userBubbleRole: {
+    fontSize: 10,
+    fontWeight: '600',
   },
 
-  /* File bubble */
-  fileBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    borderRadius: 10,
-    gap: 8,
-    minWidth: 200,
-  },
-  fileIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fileName: { fontSize: 13, fontWeight: '700' },
-  fileSize: { fontSize: 10, marginTop: 2 },
-
-  /* Reactions */
-  reactionsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 3,
-    marginTop: 3,
-  },
-  reactionsRight: { justifyContent: 'flex-end' },
-  reactionsLeft: { justifyContent: 'flex-start' },
-  reactionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  reactionCount: { fontSize: 10, fontWeight: '700' },
-
-  /* Date separator */
-  dateSep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 12,
-    paddingHorizontal: DS.space.lg,
-    gap: 10,
-  },
-  dateLine: { flex: 1, height: StyleSheet.hairlineWidth },
-  dateBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  dateText: { fontSize: 10, fontWeight: '700' },
-
-  /* Typing */
-  typingBubble: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginLeft: DS.space.lg,
-  },
-  typingDot: { width: 6, height: 6, borderRadius: 3 },
-
-  /* Empty state */
-  emptyChatIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: DS.space.md,
-  },
-  emptyChatTitle: { fontSize: 16, fontWeight: '800' },
-  emptyChatSub: { fontSize: 12, marginTop: 4 },
-
-  /* Quick replies */
-  quickReply: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  quickReplyText: { fontSize: 12, fontWeight: '600' },
-
-  /* Input bar */
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: DS.space.sm,
-    paddingTop: DS.space.sm,
-    gap: 6,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  inputIconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inputField: {
-    flex: 1,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    maxHeight: 100,
-    minHeight: 38,
-    justifyContent: 'center',
-  },
-  textInput: { fontSize: 14, lineHeight: 18 },
-  sendBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  /* Reply bar (above input) */
-  replyBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: DS.space.md,
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 8,
-  },
-
-  /* Modal backdrops */
+  // ── Modals ────────────────────────────────────────────────
   modalBackdrop: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
     padding: 20,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  actionBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  actionMenu: {
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    overflow: 'hidden',
-    paddingBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  emojiRow: {
-    paddingHorizontal: DS.space.md,
-    paddingVertical: 10,
-    gap: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  emojiButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-
-  /* Message info modal */
   infoModal: {
     width: '100%',
     maxWidth: 420,
-    maxHeight: '80%',
-    borderRadius: DS.radius['2xl'],
+    maxHeight: '85%',
+    borderRadius: 24,
     overflow: 'hidden',
-    ...DS.shadow.lg,
   },
   infoModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: DS.space.lg,
-    gap: DS.space.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    padding: 16,
+    gap: 12,
   },
   infoModalIcon: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  infoModalTitle: { flex: 1, fontSize: 16, fontWeight: '800' },
+  infoModalTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '800',
+  },
   infoModalClose: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
   infoLabel: {
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
-  infoValue: { fontSize: 14, fontWeight: '600' },
-  infoRole: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  infoRole: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   infoReaction: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4107,66 +3872,220 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
-  infoReactionName: { fontSize: 11, fontWeight: '600' },
+  infoReactionName: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
 
-  /* Image preview */
+  // ── Date separator ────────────────────────────────────────
+  dateSep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginVertical: 10,
+    gap: 10,
+  },
+  dateLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
+  dateBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  dateText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  // ── Typing indicator ──────────────────────────────────────
+  typingBubble: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    marginLeft: 16,
+    marginBottom: 8,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  // ── Reactions ─────────────────────────────────────────────
+  reactionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 4,
+  },
+  reactionsLeft: {
+    justifyContent: 'flex-start',
+  },
+  reactionsRight: {
+    justifyContent: 'flex-end',
+  },
+  reactionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  reactionCount: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  // ── Image preview ─────────────────────────────────────────
   imagePreviewOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
   },
   imageCloseBtn: {
     position: 'absolute',
-    top: 60,
+    top: 40,
     right: 20,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
   },
   imageCloseBlur: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  /* SweetAlert */
-  alertOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 9999,
-    alignItems: 'center',
+  // ── Message bubble ────────────────────────────────────────
+  messageContainer: {
+    paddingHorizontal: 12,
+    marginBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  myContainer: {
+    justifyContent: 'flex-end',
+  },
+  theirContainer: {
     justifyContent: 'flex-start',
-    paddingTop: 100,
   },
-  alertContainer: {
-    minWidth: 260,
-    maxWidth: 320,
-    borderRadius: 20,
-    overflow: 'hidden',
-    ...DS.shadow.lg,
-  },
-  alertGradient: {
-    alignItems: 'center',
-    paddingVertical: DS.space.lg,
-    paddingHorizontal: DS.space.xl,
-    gap: 6,
-  },
-  alertTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: DS.white,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  alertMessage: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.9)',
-    textAlign: 'center',
-  },
-  alertDismiss: { marginTop: 6 },
-  alertDismissText: {
+  senderName: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '700',
+    marginLeft: 4,
+    marginBottom: 2,
+  },
+  bubble: {
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    maxWidth: width * 0.72,
+  },
+  myBubble: {
+    borderTopRightRadius: 6,
+  },
+  myBubbleLast: {
+    borderBottomRightRadius: 18,
+  },
+  theirBubble: {
+    borderWidth: 1,
+    borderTopLeftRadius: 6,
+  },
+  theirBubbleLast: {
+    borderBottomLeftRadius: 18,
+  },
+  messageText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+    gap: 4,
+  },
+  timestamp: {
+    fontSize: 10,
     fontWeight: '600',
+  },
+  editedLabel: {
+    fontSize: 10,
+    fontStyle: 'italic',
+    fontWeight: '500',
+  },
+  replyPreview: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  replyLine: {
+    width: 3,
+    borderRadius: 2,
+  },
+  replyName: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  imageContainer: {
+    width: width * 0.6,
+    height: width * 0.6,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  imagePlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Action menu ───────────────────────────────────────────
+  actionBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  actionMenu: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 22,
+    overflow: 'hidden',
+    paddingBottom: 6,
+  },
+  emojiRow: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  emojiButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Reply bar ─────────────────────────────────────────────
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
   },
 });
